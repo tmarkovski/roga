@@ -15,3 +15,5 @@ Records aren't rewritten when a decision changes. Instead, a new record explains
 | [7](0007-commit-list-is-an-nstableview.md) | Build the commit list on NSTableView | Accepted |
 | [8](0008-require-git-2-44.md) | Require git 2.44 or later | Accepted |
 | [9](0009-diff-view-uses-textkit-1.md) | Show diffs in a TextKit 1 text view | Accepted |
+| [10](0010-our-own-tabs-in-one-window.md) | Show repositories as tabs that yaga draws itself | Accepted |
+| [11](0011-thin-xcode-project-and-a-local-package.md) | Keep the Xcode project thin and the code in a local Swift package | Accepted |

@@ -4,16 +4,18 @@ This roadmap splits yaga's first releases into phases. Each release should be so
 
 ## Before release 1
 
-So far we have written the [vision](VISION.md), recorded decisions 1 to 9, and built prototypes for [Git access, drawing the history, and the diff view](prototypes/git-access/RESULTS.md).
+So far we have written the [vision](VISION.md) and the [architecture](ARCHITECTURE.md), sketched the [main window](docs/main-window.md), recorded decisions 1 to 11, and built prototypes for:
 
-These are still to do before writing app code:
+- [Git access, drawing the history, and the diff view](prototypes/git-access/RESULTS.md)
+- [native window tabs](prototypes/window-tabs/README.md), which we decided against
+- [the main window](prototypes/main-window/README.md) with yaga's own tabs
 
-1. **Settle the architecture and file structure.** That covers the Xcode project, the local Swift packages, and which module owns which part of the app.
-2. **Sketch the main window** as a single rough wireframe.
-3. **Set up the project:**
-   - Swift 6 language mode with strict concurrency checking
-   - CI that runs the tests and the benchmarks against both the oldest supported git (2.44) and the newest release
-   - a signed, notarized build with Sparkle, so updates work from the first public build
+One step is left before writing app code, which is to **set up the project:**
+
+- a thin Xcode project in the JSON format and the YagaKit package (decision 11), with the modules that the architecture lists
+- Swift 6 language mode with strict concurrency checking
+- CI that runs the tests and the benchmarks against both the oldest supported git (2.44) and the newest release
+- a signed, notarized build with Sparkle, so updates work from the first public build
 
 ## Release 1: a fast read-only viewer
 
@@ -27,7 +29,7 @@ The work happens in this order:
    - The commit graph comes from the commit-graph reader. That includes split chains, commits newer than the file, and the fallbacks to git that decision 5 lists.
    - yaga writes and updates the commit-graph file in the background (decision 6).
    - The commit list is an `NSTableView` (decision 7). It loads the text for visible rows from a long-running `git cat-file` process.
-   - A sidebar shows branches, tags and remotes, and a details pane shows the selected commit.
+   - The window follows the [main window](docs/main-window.md) wireframe. Tabs hold repositories, a navigator on the right shows worktrees, branches, remotes, tags and stashes, and panels below the history show the selected commit and its diff.
 2. **Diffs.** yaga shows unified diffs with changed words highlighted, for a single commit or between any two commits. It shows the list of changed files first and loads each file's patch when it's needed, into a TextKit 1 text view (decision 9). Rename detection is on.
 3. **Worktrees and uncommitted changes.** yaga lists every worktree with its branch, its path, and whether it has uncommitted changes, and lets the user switch between them. For any worktree, it shows the staged, unstaged and untracked changes, without changing them.
 4. **Branch review.** yaga shows everything a branch changed since it left its base, the way a pull request does. That means the branch's commits and one combined diff against the merge base.
