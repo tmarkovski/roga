@@ -18,16 +18,16 @@ From the bottom up, the code is in these layers:
 
 ## Project layout
 
-The Xcode project contains only the app target, and it's saved in Xcode's JSON format. Everything else is in a local Swift package called YagaKit, which the app depends on (decision 11). This is the planned layout. File names show where things go and will change as the code is written.
+The Xcode project contains only the app target, and it's saved in Xcode's JSON format. Everything else is in a local Swift package called YagaKit, which the app depends on (decision 11). The package and its modules exist, but most of the files below are still to be written. Their names show where things go and will change as the code is written.
 
 ```text
 yaga/
 ├── Yaga.xcodeproj/                 JSON project file (project.xcproj) with only the app target
 ├── App/                            the app target
 │   ├── YagaApplication.swift       entry point, scenes, Sparkle updater
-│   ├── Info.plist
-│   ├── Yaga.entitlements
-│   └── Assets.xcassets
+│   ├── CheckForUpdatesButton.swift
+│   ├── Info.plist                  Sparkle's feed address and public key
+│   └── Assets.xcassets             the app icon, once there is one
 ├── YagaKit/                        the local Swift package
 │   ├── Package.swift
 │   ├── Sources/
@@ -46,6 +46,7 @@ yaga/
 │   │   │       └── PatchParser.swift       unified patches
 │   │   ├── GitRunner/
 │   │   │   ├── GitInstallation.swift   finding git and checking its version
+│   │   │   ├── GitVersion.swift        reading git version and the 2.44 minimum
 │   │   │   ├── LoginShellPath.swift
 │   │   │   ├── Spawn.swift             posix_spawn, pipes, process exit
 │   │   │   ├── GitCommand.swift        arguments and environment for every command
@@ -92,9 +93,13 @@ yaga/
 │       ├── CommitGraphTests/
 │       ├── RepositoryEngineTests/
 │       └── Fixtures/                   scripts that build test repositories
-├── Scripts/                        release: build, sign, notarize, publish the appcast
-├── .github/workflows/
-├── docs/decisions/
+├── Scripts/
+│   ├── build-git.sh                builds an old git for CI
+│   └── release.sh                  builds, signs and notarizes a release, and updates the appcast
+├── .github/workflows/ci.yml
+├── docs/
+│   ├── decisions/
+│   └── releasing.md
 └── prototypes/                     throwaway experiments, never imported by the app
 ```
 
@@ -109,7 +114,7 @@ yaga/
 | `HistoryUI` | The commit list: the table, drawing rows and graph lanes, keyboard handling and accessibility | `GitCore`, `CommitGraph` | AppKit |
 | `DiffUI` | The diff view: the TextKit 1 text view, line numbers, line backgrounds, and building attributed text | `GitCore` | AppKit |
 | `YagaUI` | Windows, tabs, the navigator, details, settings, menus and onboarding, and the main-actor models that connect sessions to views | all of the above | SwiftUI, AppKit |
-| App target | The entry point, Sparkle, the Info.plist, entitlements and assets | `YagaUI`, Sparkle | SwiftUI |
+| App target | The entry point, Sparkle, the Info.plist and assets | `YagaUI`, Sparkle | SwiftUI |
 | `yaga-bench` | Benchmarks for the performance targets in the roadmap | `RepositoryEngine`, `HistoryUI`, `DiffUI` | AppKit |
 
 These rules keep the layers apart:
@@ -186,7 +191,8 @@ The session waits about 100 ms for related changes to arrive together, reloads o
 ## Concurrency
 
 - yaga uses the Swift 6 language mode with complete concurrency checking.
-- `YagaUI`, `HistoryUI` and `DiffUI` make the main actor their default isolation, with SwiftPM's `defaultIsolation(MainActor.self)` setting. The window tabs preview used that setting. The engine modules keep the normal default, where code isn't isolated unless it says so.
+- Every target also turns on the upcoming features that Xcode calls approachable concurrency. With them, a nonisolated async function runs on its caller's actor unless it's marked `@concurrent`, so moving work off an actor is always written down.
+- `YagaUI`, `HistoryUI`, `DiffUI` and the app target make the main actor their default isolation, with SwiftPM's `defaultIsolation(MainActor.self)` setting and Xcode's `SWIFT_DEFAULT_ACTOR_ISOLATION`. The window tabs preview used that setting. The engine modules keep the normal default, where code isn't isolated unless it says so.
 - Each repository session is an actor. Work that takes real time, such as ordering history or building attributed text, runs in `@concurrent` functions, away from both the session and the main actor.
 - Blocking calls never run on Swift's shared thread pool. That pool has about one thread per CPU core, and a thread stuck in a blocking `read` stalls unrelated work. Pipes are read with `DispatchIO`, and process exit is detected with a dispatch source before `waitpid` collects the status.
 - Every git command belongs to a task. Cancelling the task stops the process, first with `SIGTERM` and then with `SIGKILL` if it doesn't exit. Selecting a different commit cancels the diff that was loading for the previous one.
@@ -226,11 +232,15 @@ yaga then runs `git version`. If git is missing or older than 2.44 (decision 8),
   - shallow clones and replace refs
   - SHA-256 and reftable repositories
 - Engine tests run real git against those repositories.
-- CI runs everything against git 2.44 and the newest git. A separate job runs `yaga-bench` on a cached Linux clone and fails when a performance target from the roadmap is missed.
+- CI runs everything against git 2.44 and the newest git. A separate job will run `yaga-bench` on a cached Linux clone and fail when a performance target from the roadmap is missed. That job comes with the first benchmark.
 
 ## Building and releasing
 
-The app is built with `xcodebuild`, which needs Xcode 27 or later because of the JSON project format. Release scripts sign the app with a Developer ID, notarize it with `notarytool`, and publish a Sparkle appcast (decision 1). The details belong to the project setup step in the roadmap.
+The project and CI use Xcode 27.2, because of the JSON project format. CI runs on GitHub's `xcode-27` runner image. It builds and tests YagaKit twice, once with git 2.44.0, which `Scripts/build-git.sh` builds from source and CI caches, and once with the git that comes with the image. It also builds the app.
+
+The app's bundle identifier is `build.yaga.app`, and the app is named yaga. It isn't sandboxed, and the hardened runtime that notarization requires is turned on by a build setting, so the app needs no entitlements file. Development builds are signed to run locally and don't need a developer account.
+
+`Scripts/release.sh` archives the app, signs it with a Developer ID, notarizes and staples it, zips it, and adds it to the Sparkle appcast (decision 1). The zips are published as GitHub releases, and the appcast at `https://yaga.build/appcast.xml`. [docs/releasing.md](docs/releasing.md) describes the one-time setup and the steps for each release. Sparkle starts only when the Info.plist has the public key that updates are signed with, so development builds never look for updates.
 
 ## Still open
 

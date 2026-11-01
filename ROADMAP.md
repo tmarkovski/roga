@@ -10,12 +10,17 @@ So far we have written the [vision](VISION.md) and the [architecture](ARCHITECTU
 - [native window tabs](prototypes/window-tabs/README.md), which we decided against
 - [the main window](prototypes/main-window/README.md) with yaga's own tabs
 
-One step is left before writing app code, which is to **set up the project:**
+The project is set up, so the next step is release 1. It has:
 
 - a thin Xcode project in the JSON format and the YagaKit package (decision 11), with the modules that the architecture lists
 - Swift 6 language mode with strict concurrency checking
-- CI that runs the tests and the benchmarks against both the oldest supported git (2.44) and the newest release
-- a signed, notarized build with Sparkle, so updates work from the first public build
+- CI that runs the tests against both the oldest supported git (2.44) and the newest release, and builds the app
+- a release script that signs and notarizes the app and updates the Sparkle appcast, so updates work from the first public build
+
+Some of the setup comes later, when there's something for it to work on:
+
+- The benchmark job in CI comes with the first benchmark, in the history work.
+- The first release needs a Developer ID certificate, notarization credentials and Sparkle's signing key, which [docs/releasing.md](docs/releasing.md) describes. The Homebrew cask follows the first release.
 
 ## Release 1: a fast read-only viewer
 
