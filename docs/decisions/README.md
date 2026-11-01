@@ -13,3 +13,4 @@ Records aren't rewritten when a decision changes. Instead, a new record explains
 | [5](0005-read-the-commit-graph-and-run-git.md) | Read history from the commit-graph file and run git for everything else | Accepted |
 | [6](0006-keep-the-commit-graph-up-to-date.md) | Keep the commit-graph file up to date automatically | Accepted |
 | [7](0007-commit-list-is-an-nstableview.md) | Build the commit list on NSTableView | Accepted |
+| [8](0008-require-git-2-44.md) | Require git 2.44 or later | Accepted |

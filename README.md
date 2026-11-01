@@ -4,7 +4,7 @@ Yet Another Git App. A fast, native Git client for macOS, written in Swift.
 
 https://yaga.build
 
-See [VISION.md](VISION.md) for what yaga is trying to be, and [docs/decisions](docs/decisions/README.md) for the decisions behind it.
+See [VISION.md](VISION.md) for what yaga is trying to be, [ROADMAP.md](ROADMAP.md) for the order of the work, and [docs/decisions](docs/decisions/README.md) for the decisions behind it.
 
 ## License
 

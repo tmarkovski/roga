@@ -32,4 +32,4 @@ The vision left open how yaga talks to Git: by linking libgit2, by running the `
 - Large repositories without a commit-graph file are slow to open until one exists. Decision 6 covers how yaga keeps the file up to date.
 - yaga has no C library dependency for Git access, so the build stays plain Swift.
 - yaga depends on the stability of git's machine-readable output: `--porcelain=v2`, `-z`, `--format`, and `cat-file --batch`. These formats are designed to stay stable, but yaga's tests should run against both the oldest and the newest supported git.
-- The minimum git version needs to cover the features above. git 2.36 is the current candidate, because it brought the built-in filesystem monitor to macOS.
+- The minimum git version needs to cover the features above. Decision 8 sets it.

@@ -44,10 +44,6 @@ These are things yaga deliberately won't try to be, at least for now.
 - **An editor or IDE.** yaga shows and stages code but doesn't try to replace the user's editor.
 - **A Git replacement.** yaga doesn't invent its own branching model or workflow on top of Git.
 
-## Open questions
+## Roadmap and decisions
 
-- **What the first release includes.** A reasonable first release might be fast history browsing, staging and committing, and worktree support, with interactive rebase following later.
-
-## Decisions
-
-Specific decisions about how yaga is built and shipped are recorded in [docs/decisions](docs/decisions/README.md).
+The order of the work, starting with a read-only first release, is in the [roadmap](ROADMAP.md). Specific decisions about how yaga is built and shipped are recorded in [docs/decisions](docs/decisions/README.md).
