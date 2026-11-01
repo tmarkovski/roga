@@ -46,7 +46,6 @@ These are things yaga deliberately won't try to be, at least for now.
 
 ## Open questions
 
-- **How yaga talks to Git.** We could link against libgit2, shell out to the `git` binary, or combine the two (for example, reading through a library and writing through `git` so hooks and config behave exactly as expected). This choice shapes both performance and correctness, so it should be decided early with benchmarks.
 - **What the first release includes.** A reasonable first release might be fast history browsing, staging and committing, and worktree support, with interactive rebase following later.
 
 ## Decisions

@@ -10,3 +10,5 @@ Records aren't rewritten when a decision changes. Instead, a new record explains
 | [2](0002-minimum-macos-26.md) | Require macOS 26 or later | Accepted |
 | [3](0003-use-the-users-git.md) | Use the user's git, with a minimum version | Accepted |
 | [4](0004-apache-2-license.md) | License yaga under Apache 2.0 | Accepted |
+| [5](0005-read-the-commit-graph-and-run-git.md) | Read history from the commit-graph file and run git for everything else | Accepted |
+| [6](0006-keep-the-commit-graph-up-to-date.md) | Keep the commit-graph file up to date automatically | Accepted |
