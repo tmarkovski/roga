@@ -17,3 +17,6 @@ build/
 *.ipa
 *.dSYM
 *.dSYM.zip
+
+# Large repositories cloned for benchmarks
+bench-repos/

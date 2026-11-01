@@ -1,0 +1,124 @@
+machine: Apple M3, 24 GB, macOS 27.0.1
+git: git version 2.52.0, libgit2: 1.9.7
+repository: git at 50fe5cc63f, 4857 tracked files
+
+# History without a commit-graph file
+
+== log-cli, default order
+   82634 commits, graph up to 383 lanes wide
+   first screen        min      11.2 ms   median      12.2 ms   (3 runs)
+   all commits loaded  min     623.0 ms   median     636.3 ms   (3 runs)
+   index and layout    min      17.3 ms   median      17.4 ms   (3 runs)
+   peak memory: benchmark 33 MB, git child processes 72 MB
+
+== log-cli, date order
+   82634 commits, graph up to 281 lanes wide
+   first screen        min     422.5 ms   median     422.6 ms   (3 runs)
+   all commits loaded  min     552.1 ms   median     552.4 ms   (3 runs)
+   index and layout    min      13.7 ms   median      13.9 ms   (3 runs)
+   peak memory: benchmark 33 MB, git child processes 141 MB
+
+== log-libgit2, topological and time order
+   82634 commits, graph up to 281 lanes wide
+   first commit from walk  min     572.8 ms   median     573.8 ms   (3 runs)
+   first screen            min     573.0 ms   median     574.1 ms   (3 runs)
+   all commits loaded      min     674.3 ms   median     678.5 ms   (3 runs)
+   index and layout        min      14.4 ms   median      14.6 ms   (3 runs)
+   peak memory: benchmark 264 MB, git child processes 0 MB
+
+# Writing the commit-graph file
+
+   git commit-graph write --reachable took 0.541 s
+   size: 4.9M
+
+   git log: 82634 commits; commit-graph order: 82634 commits
+   same set of commits: true
+   commits whose parents differ from git's: 0
+   rows at the same position as git's order: 82623 of 82634
+
+# History with a commit-graph file
+
+== log-cli, default order
+   82634 commits, graph up to 383 lanes wide
+   first screen        min      10.5 ms   median      10.8 ms   (3 runs)
+   all commits loaded  min     622.8 ms   median     625.5 ms   (3 runs)
+   index and layout    min      16.5 ms   median      17.3 ms   (3 runs)
+   peak memory: benchmark 33 MB, git child processes 70 MB
+
+== log-cli, date order
+   82634 commits, graph up to 281 lanes wide
+   first screen        min      10.7 ms   median      11.9 ms   (3 runs)
+   all commits loaded  min     624.7 ms   median     625.8 ms   (3 runs)
+   index and layout    min      13.8 ms   median      14.5 ms   (3 runs)
+   peak memory: benchmark 33 MB, git child processes 71 MB
+
+== log-cli, topo order
+   82634 commits, graph up to 280 lanes wide
+   first screen        min      11.3 ms   median      11.4 ms   (3 runs)
+   all commits loaded  min     615.6 ms   median     617.2 ms   (3 runs)
+   index and layout    min      13.0 ms   median      13.8 ms   (3 runs)
+   peak memory: benchmark 33 MB, git child processes 71 MB
+
+== log-libgit2, topological and time order
+   82634 commits, graph up to 281 lanes wide
+   first commit from walk  min     579.0 ms   median     579.7 ms   (3 runs)
+   first screen            min     579.1 ms   median     580.2 ms   (3 runs)
+   all commits loaded      min     684.2 ms   median     689.8 ms   (3 runs)
+   index and layout        min      14.3 ms   median      15.0 ms   (3 runs)
+   peak memory: benchmark 265 MB, git child processes 0 MB
+
+== log-graph, commit-graph order with cat-file metadata
+   82634 commits of 85936 in the graph, up to 281 lanes wide
+   first row: The 12th batch
+   resolve HEAD              min       8.1 ms   median       8.7 ms   (3 runs)
+   open commit-graph         min       0.1 ms   median       0.1 ms   (3 runs)
+   walk and order            min       5.6 ms   median       5.8 ms   (3 runs)
+   first window of metadata  min       9.7 ms   median      10.3 ms   (3 runs)
+   first screen              min      23.6 ms   median      24.7 ms   (3 runs)
+   jump to the middle        min       0.8 ms   median       0.8 ms   (3 runs)
+   layout                    min      11.6 ms   median      14.3 ms   (3 runs)
+   peak memory: benchmark 14 MB, git child processes 15 MB
+
+== log-graph, commit-graph order with libgit2 metadata
+   82634 commits of 85936 in the graph, up to 281 lanes wide
+   first row: The 12th batch
+   resolve HEAD              min       8.9 ms   median       9.2 ms   (3 runs)
+   open commit-graph         min       0.1 ms   median       0.1 ms   (3 runs)
+   walk and order            min       4.7 ms   median       5.0 ms   (3 runs)
+   first window of metadata  min       5.8 ms   median       5.8 ms   (3 runs)
+   first screen              min      19.7 ms   median      19.8 ms   (3 runs)
+   jump to the middle        min       0.8 ms   median       0.8 ms   (3 runs)
+   layout                    min      11.3 ms   median      11.4 ms   (3 runs)
+   peak memory: benchmark 25 MB, git child processes 9 MB
+
+# Status of a clean working tree
+
+== status, cli
+   0 entries
+   status  min      15.2 ms   median      15.8 ms   (5 runs)
+   peak memory: benchmark 8 MB, git child processes 12 MB
+
+== status, cli-fsmonitor
+   0 entries
+   status  min      22.5 ms   median      23.1 ms   (5 runs)
+   peak memory: benchmark 8 MB, git child processes 12 MB
+
+== status, libgit2
+   0 entries
+   status  min      19.0 ms   median      19.2 ms   (5 runs)
+   peak memory: benchmark 24 MB, git child processes 0 MB
+
+# Full patch from v2.40.0 to v2.45.0
+
+== diff v2.40.0..v2.45.0, cli
+   1649 files, 274622 lines, 9 MB of patch text
+   first output  min      16.3 ms   median      16.8 ms   (3 runs)
+   whole patch   min     283.6 ms   median     284.5 ms   (3 runs)
+   peak memory: benchmark 8 MB, git child processes 98 MB
+
+== diff v2.40.0..v2.45.0, libgit2
+   1648 files, 269129 lines, 8 MB of patch text
+   first output  min      24.5 ms   median      25.7 ms   (3 runs)
+   whole patch   min     438.0 ms   median     439.6 ms   (3 runs)
+   peak memory: benchmark 86 MB, git child processes 0 MB
+

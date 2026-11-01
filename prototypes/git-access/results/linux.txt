@@ -1,0 +1,125 @@
+machine: Apple M3, 24 GB, macOS 27.0.1
+git: git version 2.52.0, libgit2: 1.9.7
+repository: linux at cbbddb6b08cc, 97345 tracked files
+
+# History without a commit-graph file
+
+== log-cli, default order
+   1505091 commits, graph up to 1064 lanes wide
+   first screen        min      24.0 ms   median      27.4 ms   (3 runs)
+   all commits loaded  min   11799.6 ms   median   12348.8 ms   (3 runs)
+   index and layout    min     700.6 ms   median     771.5 ms   (3 runs)
+   peak memory: benchmark 502 MB, git child processes 1502 MB
+
+== log-cli, date order
+   1505091 commits, graph up to 702 lanes wide
+   first screen        min    8194.1 ms   median    8804.4 ms   (3 runs)
+   all commits loaded  min   10891.9 ms   median   11933.0 ms   (3 runs)
+   index and layout    min     517.8 ms   median     521.0 ms   (3 runs)
+   peak memory: benchmark 529 MB, git child processes 3079 MB
+
+== log-libgit2, topological and time order
+   1505091 commits, graph up to 702 lanes wide
+   first commit from walk  min   16433.2 ms   median   16534.7 ms   (3 runs)
+   first screen            min   16435.1 ms   median   16536.3 ms   (3 runs)
+   all commits loaded      min   33646.5 ms   median   34252.3 ms   (3 runs)
+   index and layout        min     518.7 ms   median     523.9 ms   (3 runs)
+   peak memory: benchmark 2530 MB, git child processes 0 MB
+
+# Writing the commit-graph file
+
+   git commit-graph write --reachable took 16.251 s
+   size:  96M
+
+   git log: 1505091 commits; commit-graph order: 1505091 commits
+   same set of commits: true
+   commits whose parents differ from git's: 0
+   rows at the same position as git's order: 1504940 of 1505091
+
+# History with a commit-graph file
+
+== log-cli, default order
+   1505091 commits, graph up to 1064 lanes wide
+   first screen        min      19.5 ms   median      21.7 ms   (3 runs)
+   all commits loaded  min   11576.0 ms   median   11765.4 ms   (3 runs)
+   index and layout    min     690.9 ms   median     705.6 ms   (3 runs)
+   peak memory: benchmark 556 MB, git child processes 1461 MB
+
+== log-cli, date order
+   1505091 commits, graph up to 702 lanes wide
+   first screen        min      27.0 ms   median      27.3 ms   (3 runs)
+   all commits loaded  min   11788.4 ms   median   11853.0 ms   (3 runs)
+   index and layout    min     505.6 ms   median     506.2 ms   (3 runs)
+   peak memory: benchmark 556 MB, git child processes 1453 MB
+
+== log-cli, topo order
+   1505091 commits, graph up to 804 lanes wide
+   first screen        min      27.6 ms   median      29.6 ms   (3 runs)
+   all commits loaded  min   11696.6 ms   median   11713.2 ms   (3 runs)
+   index and layout    min     525.0 ms   median     525.3 ms   (3 runs)
+   peak memory: benchmark 556 MB, git child processes 1441 MB
+
+== log-libgit2, topological and time order
+   1505091 commits, graph up to 702 lanes wide
+   first commit from walk  min   16780.1 ms   median   17122.9 ms   (3 runs)
+   first screen            min   16781.8 ms   median   17125.0 ms   (3 runs)
+   all commits loaded      min   34039.8 ms   median   34830.7 ms   (3 runs)
+   index and layout        min     527.1 ms   median     533.7 ms   (3 runs)
+   peak memory: benchmark 2444 MB, git child processes 0 MB
+
+== log-graph, commit-graph order with cat-file metadata
+   1505091 commits of 1505131 in the graph, up to 702 lanes wide
+   first row: Merge tag 'power-utilities-2026.10.31' of git://git.kernel.org/pub/scm/linux/kernel/git/lenb/linux
+   resolve HEAD              min       9.1 ms   median       9.3 ms   (3 runs)
+   open commit-graph         min       0.4 ms   median       0.5 ms   (3 runs)
+   walk and order            min     367.4 ms   median     371.6 ms   (3 runs)
+   first window of metadata  min      18.1 ms   median      18.7 ms   (3 runs)
+   first screen              min     395.9 ms   median     399.3 ms   (3 runs)
+   jump to the middle        min       1.3 ms   median       1.4 ms   (3 runs)
+   layout                    min     483.8 ms   median     484.3 ms   (3 runs)
+   peak memory: benchmark 81 MB, git child processes 29 MB
+
+== log-graph, commit-graph order with libgit2 metadata
+   1505091 commits of 1505131 in the graph, up to 702 lanes wide
+   first row: Merge tag 'power-utilities-2026.10.31' of git://git.kernel.org/pub/scm/linux/kernel/git/lenb/linux
+   resolve HEAD              min       7.7 ms   median       8.6 ms   (3 runs)
+   open commit-graph         min       0.4 ms   median       0.4 ms   (3 runs)
+   walk and order            min     360.2 ms   median     362.3 ms   (3 runs)
+   first window of metadata  min       7.0 ms   median       7.1 ms   (3 runs)
+   first screen              min     377.1 ms   median     378.3 ms   (3 runs)
+   jump to the middle        min       1.3 ms   median       1.3 ms   (3 runs)
+   layout                    min     485.4 ms   median     488.1 ms   (3 runs)
+   peak memory: benchmark 107 MB, git child processes 9 MB
+
+# Status of a clean working tree
+
+== status, cli
+   13 entries
+   status  min     260.8 ms   median     277.5 ms   (5 runs)
+   peak memory: benchmark 8 MB, git child processes 35 MB
+
+== status, cli-fsmonitor
+   13 entries
+   status  min      49.7 ms   median      50.6 ms   (5 runs)
+   peak memory: benchmark 8 MB, git child processes 36 MB
+
+== status, libgit2
+   26 entries
+   status  min     417.9 ms   median     422.1 ms   (5 runs)
+   peak memory: benchmark 330 MB, git child processes 0 MB
+
+# Full patch from v6.0 to v6.1
+
+== diff v6.0..v6.1, cli
+   12914 files, 1287656 lines, 45 MB of patch text
+   first output  min     160.4 ms   median     173.0 ms   (3 runs)
+   whole patch   min    2547.7 ms   median    2568.9 ms   (3 runs)
+   peak memory: benchmark 8 MB, git child processes 777 MB
+
+== diff v6.0..v6.1, libgit2
+   12903 files, 1247255 lines, 44 MB of patch text
+   first output  min    2607.2 ms   median    2646.6 ms   (3 runs)
+   whole patch   min    6938.3 ms   median    7035.1 ms   (3 runs)
+   peak memory: benchmark 766 MB, git child processes 0 MB
+
+exit=0
