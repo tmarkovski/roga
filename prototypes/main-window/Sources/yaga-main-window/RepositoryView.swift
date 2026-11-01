@@ -49,8 +49,13 @@ struct HistoryPanel: View {
 
     var body: some View {
         Panel {
-            SubTab(title: "History", isSelected: model.mode == .history) { model.mode = .history }
-            SubTab(title: "Changes", count: model.changes.count, isSelected: model.mode == .changes) { model.mode = .changes }
+            SegmentedSwitch(
+                segments: [
+                    .init(value: ContentMode.history, title: "History"),
+                    .init(value: ContentMode.changes, title: "Changes", count: model.changes.count),
+                ],
+                selection: $model.mode
+            )
         } trailing: {
             if let active = model.active {
                 Label(active.branchLabel, systemImage: "arrow.triangle.branch")

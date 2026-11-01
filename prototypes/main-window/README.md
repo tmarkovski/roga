@@ -3,7 +3,7 @@
 This is a throwaway preview of yaga's main window with the tabs that yaga draws itself ([decision 10](../../docs/decisions/0010-our-own-tabs-in-one-window.md)). It isn't part of the app. [docs/main-window.md](../../docs/main-window.md) describes the layout it settled. The layout follows the Claude app:
 
 - The repository tabs share the top row with the traffic lights, and nothing sits above them.
-- Every section below is a plain rectangle with its own header. Sub-tabs or a title go on the left of the header, and commands go on the right.
+- Every section below is a plain rectangle with its own header. A segmented switch or a title goes on the left of the header, and commands go on the right.
 - History is on top. The selected commit and its diff are below it, and the navigator with worktrees, branches, remotes, tags and stashes is on the right.
 
 The commit list and the diff are quick SwiftUI stand-ins. The app will use an `NSTableView` (decision 7) and a TextKit 1 text view (decision 9). The graph column is a placeholder line, and the search, filter and "more" buttons don't do anything yet.
@@ -29,6 +29,7 @@ Without `--open-all`, macOS restores the window's tabs from the last session, an
 - Open another repository with Command-T or the plus button.
 - Right-click a tab to close other tabs or move the tab to a new window.
 - In `agents-demo`, click a worktree in the navigator to switch to it. Then open Changes to see its uncommitted files, or right-click the worktree to open it in a new tab.
+- Move the pointer over a navigator section or a worktree to see its commands, which replace the count shown at rest.
 - Hide and show the navigator with the button at the right end of the tab bar.
 
 ## What it showed

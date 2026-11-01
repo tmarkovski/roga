@@ -230,7 +230,7 @@ struct TabItem: View {
                 .allowsHitTesting(isSelected || hovering)
         }
         .padding(.leading, 9)
-        .padding(.trailing, 5)
+        .padding(.trailing, 4)
         .frame(height: 30)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -255,11 +255,14 @@ struct CloseButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: "xmark")
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(.secondary)
-                .frame(width: 18, height: 18)
-                .background(Circle().fill(hovering ? Color.primary.opacity(0.09) : .clear))
-                .contentShape(Circle())
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Color.primary.opacity(hovering ? 0.92 : 0.7))
+                .frame(width: 22, height: 22)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.primary.opacity(hovering ? 0.1 : 0))
+                )
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
