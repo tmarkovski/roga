@@ -17,3 +17,4 @@ Records aren't rewritten when a decision changes. Instead, a new record explains
 | [9](0009-diff-view-uses-textkit-1.md) | Show diffs in a TextKit 1 text view | Accepted |
 | [10](0010-our-own-tabs-in-one-window.md) | Show repositories as tabs that yaga draws itself | Accepted |
 | [11](0011-thin-xcode-project-and-a-local-package.md) | Keep the Xcode project thin and the code in a local Swift package | Accepted |
+| [12](0012-history-in-topological-order.md) | Show history in topological order by default | Accepted |

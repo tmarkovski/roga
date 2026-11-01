@@ -52,7 +52,7 @@ Below the tab bar, every section is a panel: a plain rectangle with a 40-point h
 The history panel fills the top of the window, left of the navigator.
 
 - A segmented switch, styled like the Claude app's switch between chat and code, chooses between **History** and **Changes**. The selected segment is raised in white on a gray track, and Changes shows how many uncommitted files the current worktree has. A segmented switch suits two or three views of the same panel. If more views join them, sub-tabs would scale better.
-- The right side of its header shows the current worktree's branch, a button for choosing which branches the history shows, and a menu for more commands.
+- The right side of its header shows the current worktree's branch, a button for choosing which branches the history shows, a switch between topological order and date order (decision 12), and a menu for more commands.
 - **History** lists commits with the graph, then the commit's refs as colored badges, its subject, author, date and short hash. The current branch is green with a checkmark, local branches are blue, remote branches are purple, and tags are orange.
 - **Changes** lists the current worktree's uncommitted files, each with a status letter, its name and its folder.
 

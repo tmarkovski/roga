@@ -180,7 +180,7 @@ Views don't receive commit text or diffs as part of a snapshot. They ask the ses
 
 **Opening a repository.** yaga finds the repository's top level and common directory, gets a session from the registry, and then loads four things concurrently: refs with `git for-each-ref`, worktrees with `git worktree list --porcelain -z`, history, and the status of every worktree.
 
-**History.** The session maps the commit-graph file or chain and finds the position of each branch tip in it. Commits newer than the file come from `git rev-list`, and they're added after the file's commits. `HistoryOrder` hands out rows the way git's own walk does, a few at a time. The generation numbers in the file tell it how far below those rows it has to look, so the first screen is ready before most of history has been read. On Linux, the first 100 rows took about 5 ms and the other 1.5 million about half a second, which runs in the background along with laying out the lanes. When git wouldn't use a commit-graph file, or there isn't one yet, the session streams `git log` instead and adds graph lines once the file exists (decisions 5 and 6). The commit list asks for the text of the rows it's about to draw, in batches, and the session answers from its cache or from `cat-file`.
+**History.** The session maps the commit-graph file or chain and finds the position of each branch tip in it. Commits newer than the file come from `git rev-list`, and they're added after the file's commits. `HistoryOrder` hands out rows the way git's own walk does, a few at a time, in topological order unless the user switches to date order (decision 12). The generation numbers in the file tell it how far below those rows it has to look, so the first screen is ready before most of history has been read. On Linux, the first 100 rows took about 5 ms and the other 1.5 million about half a second, which runs in the background along with laying out the lanes. When git wouldn't use a commit-graph file, or there isn't one yet, the session streams `git log` instead and adds graph lines once the file exists (decisions 5 and 6). The commit list asks for the text of the rows it's about to draw, in batches, and the session answers from its cache or from `cat-file`.
 
 **Changes on disk.** FSEvents reports changed paths, and the session sorts them by what they affect:
 
@@ -260,6 +260,5 @@ The app's bundle identifier is `build.yaga.app`, and the app is named yaga. It i
 - How much commit text the cache keeps, and whether that depends on the size of the repository.
 - What the tab strip does when the tabs don't fit. The [main window](docs/main-window.md#still-open) lists the other open questions about the layout.
 - Whether a command palette ships in release 1.
-- Which order the commit list uses by default: date order, like `git log --date-order`, or topological order, like `git log --graph`, which keeps each line of history together. `HistoryOrder` does both.
 - Reading commit-graph layers from alternate object folders. git looks for a chain's layers there, and yaga doesn't yet.
 - Which keyboard shortcuts switch between History and Changes, since Command-1 to Command-9 already switch tabs.
