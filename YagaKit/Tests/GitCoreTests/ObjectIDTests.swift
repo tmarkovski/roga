@@ -41,6 +41,16 @@ struct ObjectIDTests {
         #expect(ObjectID(bytes: [UInt8](repeating: 0, count: 21)) == nil)
     }
 
+    @Test(arguments: ObjectFormat.allCases)
+    func loadsRawBytes(_ format: ObjectFormat) throws {
+        // One byte more than the ID, so that reading too far would show.
+        let bytes = (0...format.byteCount).map { UInt8(255 - $0) }
+        let id = bytes.withUnsafeBytes { ObjectID(loading: $0.baseAddress!, format: format) }
+        #expect(id == ObjectID(bytes: bytes.prefix(format.byteCount)))
+        #expect(id.byte(at: 0) == 255)
+        #expect(id.byte(at: format.byteCount - 1) == UInt8(256 - format.byteCount))
+    }
+
     @Test func ordersLikeTheBytes() throws {
         let low = try #require(ObjectID(hex: "00ffffffffffffffffffffffffffffffffffffff"))
         let high = try #require(ObjectID(hex: "0100000000000000000000000000000000000000"))

@@ -41,6 +41,26 @@ public struct ObjectID: Hashable, Comparable, Sendable {
         (w0, w1, w2, w3) = words
     }
 
+    /// Creates an ID from the raw bytes at `pointer`, such as an ID in a
+    /// mapped commit-graph file. The format says how many bytes to read.
+    public init(loading pointer: UnsafeRawPointer, format: ObjectFormat) {
+        func word(_ offset: Int) -> UInt64 {
+            UInt64(bigEndian: pointer.loadUnaligned(fromByteOffset: offset, as: UInt64.self))
+        }
+        self.format = format
+        w0 = word(0)
+        w1 = word(8)
+        switch format {
+        case .sha1:
+            let last = UInt32(bigEndian: pointer.loadUnaligned(fromByteOffset: 16, as: UInt32.self))
+            w2 = UInt64(last) << 32
+            w3 = 0
+        case .sha256:
+            w2 = word(16)
+            w3 = word(24)
+        }
+    }
+
     /// Creates an ID from its full hexadecimal form, as git prints it. Both
     /// lowercase and uppercase digits are accepted.
     public init?(hex: some StringProtocol) {
@@ -76,7 +96,9 @@ public struct ObjectID: Hashable, Comparable, Sendable {
         return (lhs.w0, lhs.w1, lhs.w2, lhs.w3) < (rhs.w0, rhs.w1, rhs.w2, rhs.w3)
     }
 
-    private func byte(at index: Int) -> UInt8 {
+    /// The byte at `index`, which is less than the format's byte count.
+    public func byte(at index: Int) -> UInt8 {
+        precondition(index >= 0 && index < format.byteCount, "Byte \(index) is outside a \(format) ID")
         let word = switch index / 8 {
         case 0: w0
         case 1: w1

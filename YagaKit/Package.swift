@@ -60,7 +60,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "yaga-bench",
-            dependencies: ["RepositoryEngine", "HistoryUI", "DiffUI"],
+            dependencies: ["GitCore", "GitRunner", "CommitGraph", "RepositoryEngine", "HistoryUI", "DiffUI"],
             swiftSettings: settings
         ),
         .testTarget(
@@ -71,6 +71,11 @@ let package = Package(
         .testTarget(
             name: "GitRunnerTests",
             dependencies: ["GitCore", "GitRunner", "TestSupport"],
+            swiftSettings: settings
+        ),
+        .testTarget(
+            name: "CommitGraphTests",
+            dependencies: ["CommitGraph", "GitCore", "GitRunner", "TestSupport"],
             swiftSettings: settings
         ),
         // Shared by the test targets: the git the tests run, and the test

@@ -22,6 +22,29 @@ public enum Fixture {
         public static let readme = "ef045c580cffe77c02cb1218c57e6f2c9c64928c"
     }
 
+    /// The `history` repositories: one history, with merges, an octopus
+    /// merge, a second root, commits with the same time, and dates out of
+    /// order, whose commit-graph is stored in different ways. Each one is a
+    /// folder inside the fixture's folder.
+    public enum History: String, CaseIterable, Sendable {
+        /// One commit-graph file.
+        case single
+        /// A split chain of three layers.
+        case chain
+        /// A chain whose upper layers have no corrected commit dates.
+        case mixed
+        /// One file that leaves out the newest commits.
+        case stale
+        /// One file, in a repository that uses SHA-256.
+        case sha256
+
+        /// Builds the repositories if they aren't built yet, and returns the
+        /// real path of this one.
+        public func repository() async throws -> String {
+            try await Fixture.repository("history") + "/" + rawValue
+        }
+    }
+
     /// Builds the repository that `Tests/Fixtures/<name>.sh` describes, or
     /// returns the one already built, and returns its real path.
     public static func repository(_ name: String) async throws -> String {

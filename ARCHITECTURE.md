@@ -57,9 +57,10 @@ yaga/
 │   │   │   ├── CatFileSession.swift    long-running cat-file --batch-command
 │   │   │   └── CommandLog.swift        every git command yaga ran
 │   │   ├── CommitGraph/
+│   │   │   ├── CommitGraph.swift       positions, parents and dates, and commits newer than the files
 │   │   │   ├── CommitGraphFile.swift   one mapped commit-graph file
-│   │   │   ├── CommitGraphChain.swift  split chains
-│   │   │   ├── HistoryOrder.swift      date order and topological order
+│   │   │   ├── CommitGraphChain.swift  finding the single file or the split chain
+│   │   │   ├── HistoryOrder.swift      date order and topological order, a few rows at a time
 │   │   │   └── LaneLayout.swift        graph lines for each row
 │   │   ├── RepositoryEngine/
 │   │   │   ├── RepositorySession.swift one actor per repository
@@ -119,7 +120,7 @@ yaga/
 | `DiffUI` | The diff view: the TextKit 1 text view, line numbers, line backgrounds, and building attributed text | `GitCore` | AppKit |
 | `YagaUI` | Windows, tabs, the navigator, details, settings, menus and onboarding, and the main-actor models that connect sessions to views | all of the above | SwiftUI, AppKit |
 | App target | The entry point, Sparkle, the Info.plist and assets | `YagaUI`, Sparkle | SwiftUI |
-| `yaga-bench` | Benchmarks for the performance targets in the roadmap | `RepositoryEngine`, `HistoryUI`, `DiffUI` | AppKit |
+| `yaga-bench` | Benchmarks for the performance targets in the roadmap | `GitCore`, `GitRunner`, `CommitGraph`, `RepositoryEngine`, `HistoryUI`, `DiffUI` | AppKit |
 
 These rules keep the layers apart:
 
@@ -179,7 +180,7 @@ Views don't receive commit text or diffs as part of a snapshot. They ask the ses
 
 **Opening a repository.** yaga finds the repository's top level and common directory, gets a session from the registry, and then loads four things concurrently: refs with `git for-each-ref`, worktrees with `git worktree list --porcelain -z`, history, and the status of every worktree.
 
-**History.** The session maps the commit-graph file or chain and finds the position of each branch tip in it. Commits newer than the file come from `git rev-list`. Ordering the whole history and laying out its lanes run in the background, which took 372 ms for Linux in the prototype. When git wouldn't use a commit-graph file, or there isn't one yet, the session streams `git log` instead and adds graph lines once the file exists (decisions 5 and 6). The commit list asks for the text of the rows it's about to draw, in batches, and the session answers from its cache or from `cat-file`.
+**History.** The session maps the commit-graph file or chain and finds the position of each branch tip in it. Commits newer than the file come from `git rev-list`, and they're added after the file's commits. `HistoryOrder` hands out rows the way git's own walk does, a few at a time. The generation numbers in the file tell it how far below those rows it has to look, so the first screen is ready before most of history has been read. On Linux, the first 100 rows took about 5 ms and the other 1.5 million about half a second, which runs in the background along with laying out the lanes. When git wouldn't use a commit-graph file, or there isn't one yet, the session streams `git log` instead and adds graph lines once the file exists (decisions 5 and 6). The commit list asks for the text of the rows it's about to draw, in batches, and the session answers from its cache or from `cat-file`.
 
 **Changes on disk.** FSEvents reports changed paths, and the session sorts them by what they affect:
 
@@ -234,15 +235,14 @@ Wherever `/usr/bin/git` comes up in the search, yaga runs it only if `xcode-sele
 - Parsers are tested against captured git output stored as files, captured from both git 2.44 and the newest release.
 - Test repositories are built by the scripts in `Tests/Fixtures` when the tests run, with fixed names and dates so that object IDs are the same on every run and with every git version. The scripts and the tests keep the user's and the system's git configuration out with `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_NOSYSTEM=1`, so that settings such as commit signing can't change the results.
 - The `TestSupport` target builds each test repository once per test run, and finds the git the tests use, which is the first supported git on the `PATH`. CI puts the git it's testing first.
-- So far there's a small `basic` repository. Later ones will cover:
-  - merges and octopus merges
+- There are two so far. `basic` is a small repository. `history` builds one history five times, with its commit-graph stored as a single file, as a split chain, as a chain whose upper layers have no corrected commit dates, as a file that leaves out the newest commits, and in a SHA-256 repository. The history has merges, an octopus merge, a second root, commits with the same time on several branches, and dates out of order. Later repositories will cover:
   - renames
   - worktrees
-  - split commit-graph chains
   - shallow clones and replace refs
-  - SHA-256 and reftable repositories
-- Engine tests run real git against those repositories.
-- CI runs everything against git 2.44 and the newest git. A separate job will run `yaga-bench` on a cached Linux clone and fail when a performance target from the roadmap is missed. That job comes with the first benchmark.
+  - reftable repositories
+- Engine tests run real git against those repositories. The commit-graph tests compare every commit's parents, dates and generation numbers, and the order of history from several sets of tips, with what git prints.
+- CI runs everything against git 2.44 and the newest git.
+- `yaga-bench history` measures the first screen of history and ordering the rest, and `--verify` compares the order with `git log`. A clone of Linux with only its commits is enough for it. A CI job that runs it on a cached clone, and fails when a performance target from the roadmap is missed, is still to be added.
 
 ## Building and releasing
 
@@ -260,4 +260,6 @@ The app's bundle identifier is `build.yaga.app`, and the app is named yaga. It i
 - How much commit text the cache keeps, and whether that depends on the size of the repository.
 - What the tab strip does when the tabs don't fit. The [main window](docs/main-window.md#still-open) lists the other open questions about the layout.
 - Whether a command palette ships in release 1.
+- Which order the commit list uses by default: date order, like `git log --date-order`, or topological order, like `git log --graph`, which keeps each line of history together. `HistoryOrder` does both.
+- Reading commit-graph layers from alternate object folders. git looks for a chain's layers there, and yaga doesn't yet.
 - Which keyboard shortcuts switch between History and Changes, since Command-1 to Command-9 already switch tabs.
