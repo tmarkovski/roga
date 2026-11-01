@@ -6,7 +6,7 @@ struct GitBench: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "git-bench",
         abstract: "Compares ways for yaga to read a Git repository.",
-        subcommands: [LogCLI.self, LogLibgit2.self, LogGraph.self, Status.self, Diff.self, VerifyGraph.self, Render.self]
+        subcommands: [LogCLI.self, LogLibgit2.self, LogGraph.self, Status.self, Diff.self, VerifyGraph.self, Render.self, DiffRender.self]
     )
 }
 

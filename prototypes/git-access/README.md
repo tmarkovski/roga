@@ -12,6 +12,8 @@ It also compares working tree status (`git status`, with and without the filesys
 
 Its `render` command opens a window that shows the history in an AppKit `NSTableView`, a SwiftUI `List`, or a SwiftUI `LazyVStack`. It then measures how long each frame takes while it scrolls, jumps to random positions, inserts commits and selects rows.
 
+Its `diff-render` command does the same for a diff between two revisions, shown in an `NSTableView` or in an `NSTextView` using TextKit 1 or TextKit 2.
+
 Findings are in [RESULTS.md](RESULTS.md), and raw output is in [results/](results/).
 
 ## Running it
@@ -39,6 +41,14 @@ prototypes/git-access/.build/release/git-bench render --repo bench-repos/linux -
 ```
 
 Use `--engine list` or `--engine lazy-stack` for the SwiftUI views, and `--rows` to show only part of the history.
+
+The `diff-render` command works the same way. By default it shows the whole diff from v6.0 to v6.1:
+
+```bash
+prototypes/git-access/.build/release/git-bench diff-render --repo bench-repos/linux --engine textkit1 --path drivers/net/wireless/realtek/rtw89/rtw8852c_table.c
+```
+
+Use `--engine table`, `--engine textkit1` or `--engine text` (TextKit 2), `--path` to show a single file, and `--wrap` or `--plain` to change how the text views lay out and color the diff.
 
 Each subcommand can also be run on its own. Use `--help` to see the options:
 

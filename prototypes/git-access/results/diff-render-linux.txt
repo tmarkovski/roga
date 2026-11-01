@@ -1,0 +1,119 @@
+== diff-render, table, v6.0..v6.1, drivers/net/wireless/realtek/rtw89/rtw8852c_table.c
+   40325 lines in 1 files, 1 MB of patch text
+   git diff took 59 ms, splitting into lines 2 ms, preparing the view 2 ms
+   first rows on screen: 129.9 ms after the window opened
+   steady scroll at 6000 pt/s for 5 s: 301 frames at 60 Hz, 0 hitches, hitch time 0.0 ms/s
+   frame time: median 16.7 ms, 95th percentile 16.7 ms, longest 19.0 ms
+   20 jumps to random positions: median 15.9 ms, longest 16.0 ms until the next frame
+   2973 rows drawn in all, scrolled content 685525 pt tall
+   peak memory: 180 MB
+
+== diff-render, text, v6.0..v6.1, drivers/net/wireless/realtek/rtw89/rtw8852c_table.c
+   40325 lines in 1 files, 1 MB of patch text
+   git diff took 43 ms, splitting into lines 3 ms, preparing the view 1098 ms
+   TextKit 2 in use: true, backgrounds: true, wrapped: false
+   first rows on screen: 136.3 ms after the window opened
+   steady scroll at 6000 pt/s for 5 s: 174 frames at 60 Hz, 4 hitches, hitch time 420.0 ms/s
+   frame time: median 16.7 ms, 95th percentile 16.7 ms, longest 1033.3 ms
+   20 jumps to random positions: median 633.2 ms, longest 911.5 ms until the next frame
+   scrolled content 604890 pt tall when the first rows appeared
+   peak memory: 453 MB
+
+== diff-render, textkit1, v6.0..v6.1, drivers/net/wireless/realtek/rtw89/rtw8852c_table.c
+   40325 lines in 1 files, 1 MB of patch text
+   git diff took 75 ms, splitting into lines 2 ms, preparing the view 58 ms
+   TextKit 2 in use: false, backgrounds: true, wrapped: false
+   first rows on screen: 105.8 ms after the window opened
+   steady scroll at 6000 pt/s for 5 s: 301 frames at 60 Hz, 0 hitches, hitch time 0.0 ms/s
+   frame time: median 16.7 ms, 95th percentile 16.7 ms, longest 24.9 ms
+   20 jumps to random positions: median 6.1 ms, longest 16.5 ms until the next frame
+   scrolled content 273181 pt tall when the first rows appeared
+   peak memory: 144 MB
+
+== diff-render, text, v6.0..v6.1, drivers/net/wireless/realtek/rtw89/rtw8852c_table.c
+   40325 lines in 1 files, 1 MB of patch text
+   git diff took 50 ms, splitting into lines 2 ms, preparing the view 830 ms
+   TextKit 2 in use: true, backgrounds: false, wrapped: false
+   first rows on screen: 120.2 ms after the window opened
+   steady scroll at 6000 pt/s for 5 s: 201 frames at 60 Hz, 4 hitches, hitch time 330.0 ms/s
+   frame time: median 16.7 ms, 95th percentile 16.7 ms, longest 816.6 ms
+   20 jumps to random positions: median 533.1 ms, longest 716.5 ms until the next frame
+   scrolled content 604890 pt tall when the first rows appeared
+   peak memory: 389 MB
+
+== diff-render, text, v6.0..v6.1, drivers/net/wireless/realtek/rtw89/rtw8852c_table.c
+   40325 lines in 1 files, 1 MB of patch text
+   git diff took 82 ms, splitting into lines 2 ms, preparing the view 60 ms
+   TextKit 2 in use: true, backgrounds: true, wrapped: true
+   first rows on screen: 105.6 ms after the window opened
+   steady scroll at 6000 pt/s for 5 s: 300 frames at 60 Hz, 1 hitches, hitch time 3.3 ms/s
+   frame time: median 16.7 ms, 95th percentile 16.7 ms, longest 33.3 ms
+   20 jumps to random positions: median 16.5 ms, longest 312.5 ms until the next frame
+   scrolled content 512546 pt tall when the first rows appeared
+   peak memory: 170 MB
+
+== diff-render, textkit1, v6.0..v6.1, drivers/net/wireless/realtek/rtw89/rtw8852c_table.c
+   40325 lines in 1 files, 1 MB of patch text
+   git diff took 45 ms, splitting into lines 2 ms, preparing the view 12 ms
+   TextKit 2 in use: false, backgrounds: false, wrapped: false
+   first rows on screen: 86.4 ms after the window opened
+   steady scroll at 6000 pt/s for 5 s: 301 frames at 60 Hz, 0 hitches, hitch time 0.0 ms/s
+   frame time: median 16.7 ms, 95th percentile 16.7 ms, longest 22.7 ms
+   20 jumps to random positions: median 7.9 ms, longest 16.6 ms until the next frame
+   scrolled content 273181 pt tall when the first rows appeared
+   peak memory: 117 MB
+
+== diff-render, text, v6.0..v6.1, drivers/net/wireless/realtek/rtw89/rtw8852c_table.c
+   40325 lines in 1 files, 1 MB of patch text
+   git diff took 65 ms, splitting into lines 2 ms, preparing the view 1102 ms
+   TextKit 2 in use: true, backgrounds: true, wrapped: false
+   first rows on screen: 134.2 ms after the window opened
+   steady scroll at 6000 pt/s for 5 s: 172 frames at 60 Hz, 4 hitches, hitch time 426.7 ms/s
+   frame time: median 16.7 ms, 95th percentile 16.7 ms, longest 1050.0 ms
+   20 jumps to random positions: median 699.7 ms, longest 977.2 ms until the next frame
+   scrolled content 604890 pt tall when the first rows appeared
+   peak memory: 439 MB
+
+== diff-render, text, v6.0..v6.1, drivers/net/wireless/realtek/rtw89/rtw8852c_table.c
+   40325 lines in 1 files, 1 MB of patch text
+   git diff took 60 ms, splitting into lines 2 ms, preparing the view 1063 ms
+   TextKit 2 in use: true, backgrounds: true, wrapped: false
+   first rows on screen: 98.4 ms after the window opened
+   steady scroll at 6000 pt/s for 5 s: 291 frames at 60 Hz, 2 hitches, hitch time 30.0 ms/s
+   frame time: median 16.7 ms, 95th percentile 16.7 ms, longest 137.8 ms
+   20 jumps to random positions: median 16.5 ms, longest 133.1 ms until the next frame
+   scrolled content 604890 pt tall when the first rows appeared
+   peak memory: 325 MB
+
+== diff-render, table, v6.0..v6.1, whole diff
+   1287656 lines in 12914 files, 45 MB of patch text
+   git diff took 6439 ms, splitting into lines 142 ms, preparing the view 1 ms
+   first rows on screen: 100.6 ms after the window opened
+   steady scroll at 6000 pt/s for 5 s: 301 frames at 60 Hz, 0 hitches, hitch time 0.0 ms/s
+   frame time: median 16.7 ms, 95th percentile 16.7 ms, longest 17.4 ms
+   20 jumps to random positions: median 15.9 ms, longest 16.0 ms until the next frame
+   2974 rows drawn in all, scrolled content 21890152 pt tall
+   peak memory: 273 MB
+
+== diff-render, textkit1, v6.0..v6.1, whole diff
+   1287656 lines in 12914 files, 45 MB of patch text
+   git diff took 2565 ms, splitting into lines 145 ms, preparing the view 1102 ms
+   TextKit 2 in use: false, backgrounds: true, wrapped: false
+   first rows on screen: 107.5 ms after the window opened
+   steady scroll at 6000 pt/s for 5 s: 300 frames at 60 Hz, 1 hitches, hitch time 2.7 ms/s
+   frame time: median 16.7 ms, 95th percentile 16.7 ms, longest 30.1 ms
+   20 jumps to random positions: median 10.8 ms, longest 22.8 ms until the next frame
+   scrolled content 10472558 pt tall when the first rows appeared
+   peak memory: 495 MB
+
+== diff-render, text, v6.0..v6.1, whole diff
+   1287656 lines in 12914 files, 45 MB of patch text
+   git diff took 2567 ms, splitting into lines 142 ms, preparing the view 1162 ms
+   TextKit 2 in use: true, backgrounds: true, wrapped: true
+   first rows on screen: 102.3 ms after the window opened
+   steady scroll at 6000 pt/s for 5 s: 300 frames at 60 Hz, 1 hitches, hitch time 3.3 ms/s
+   frame time: median 16.7 ms, 95th percentile 16.7 ms, longest 33.3 ms
+   20 jumps to random positions: median 16.5 ms, longest 166.5 ms until the next frame
+   scrolled content 11622795 pt tall when the first rows appeared
+   peak memory: 474 MB
+

@@ -79,7 +79,9 @@ struct Render: ParsableCommand {
                 options: [.userInitiated, .latencyCritical], reason: "Measuring scrolling")
             let driver = ScrollDriver(window: window, settings: settings, actions: actions) { results in
                 ProcessInfo.processInfo.endActivity(activity)
-                results.print(title: title, loadTime: loadTime, settings: settings)
+                results.print(title: title,
+                              setup: "history loaded in \(Int(loadTime.milliseconds)) ms before the window opened",
+                              settings: settings)
                 Darwin.exit(0)
             }
             window.makeKeyAndOrderFront(nil)
@@ -201,6 +203,8 @@ struct ScrollSettings {
 struct ViewActions {
     var insertCommits: @MainActor () -> Void
     var selectRow: @MainActor (Int) -> Void
+    /// Whether the view has put content on screen yet.
+    var contentReady: @MainActor () -> Bool = { firstRowDrawn }
 }
 
 struct ScrollResults {
@@ -212,7 +216,7 @@ struct ScrollResults {
     var insertLatencies: [Double] = []
     var selectLatencies: [Double] = []
 
-    func print(title: String, loadTime: Duration, settings: ScrollSettings) {
+    func print(title: String, setup: String, settings: ScrollSettings) {
         let intervals = frameIntervals.sorted()
         let hitches = frameIntervals.filter { $0 > nominalFrame * 1.5 }
         let hitchTime = hitches.reduce(0) { $0 + ($1 - nominalFrame) } / settings.seconds
@@ -220,7 +224,7 @@ struct ScrollResults {
         func ms(_ seconds: Double) -> String { String(format: "%.1f ms", seconds * 1000) }
 
         Swift.print("== \(title)")
-        Swift.print("   history loaded in \(String(format: "%.0f ms", loadTime.milliseconds)) before the window opened")
+        Swift.print("   \(setup)")
         Swift.print("   first rows on screen: \(ms(firstContent)) after the window opened")
         Swift.print(String(format: "   steady scroll at %.0f pt/s for %.0f s: %d frames at %.0f Hz, %d hitches, hitch time %.1f ms/s",
                            settings.speed, settings.seconds, frameIntervals.count, 1 / nominalFrame,
@@ -239,7 +243,11 @@ struct ScrollResults {
         if !selections.isEmpty {
             Swift.print("   \(selections.count) selections of a visible row: median \(ms(selections[selections.count / 2])), longest \(ms(selections.last!)) until the next frame")
         }
-        Swift.print(String(format: "   %d rows drawn in all, scrolled content %.0f pt tall", rowsDrawn, contentHeight))
+        if rowsDrawn > 0 {
+            Swift.print(String(format: "   %d rows drawn in all, scrolled content %.0f pt tall", rowsDrawn, contentHeight))
+        } else {
+            Swift.print(String(format: "   scrolled content %.0f pt tall when the first rows appeared", contentHeight))
+        }
         Swift.print(String(format: "   peak memory: %.0f MB\n", Double(peakMemory().process) / 1_048_576))
     }
 }
@@ -284,7 +292,7 @@ final class ScrollDriver: NSObject {
         let now = CACurrentMediaTime()
         switch phase {
         case .waitingForContent:
-            guard firstRowDrawn else { return }
+            guard actions.contentReady() else { return }
             results.firstContent = now - shownAt
             scrollView = Self.largestScrollView(in: window.contentView!)
             guard scrollView != nil else {

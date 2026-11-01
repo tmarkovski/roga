@@ -1,6 +1,6 @@
 # Results
 
-These results answer two questions. The first is the open question in the vision about how yaga should talk to Git. The short answer is to run the `git` binary for almost everything, read git's commit-graph file directly to get the shape of history, and not use libgit2. The second is whether SwiftUI can show the history of a very large repository. It can scroll through it smoothly, but every change to the data or the selection freezes the app for a time that grows with the number of commits, so the commit list should be an AppKit `NSTableView`. That second answer is in [Drawing the history](#drawing-the-history).
+These results answer two questions. The first is the open question in the vision about how yaga should talk to Git. The short answer is to run the `git` binary for almost everything, read git's commit-graph file directly to get the shape of history, and not use libgit2. The second is whether SwiftUI can show the history of a very large repository. It can scroll through it smoothly, but every change to the data or the selection freezes the app for a time that grows with the number of commits, so the commit list should be an AppKit `NSTableView`. That second answer is in [Drawing the history](#drawing-the-history). A third section, [The diff view](#the-diff-view), compares an `NSTableView` with TextKit 1 and TextKit 2 for showing large diffs.
 
 ## Setup
 
@@ -158,8 +158,76 @@ The cost in the SwiftUI `List` grows with the number of rows:
 - The graph is simplified: rows draw straight lane lines and a dot, without the curves where branches merge.
 - The text in each row is generated, so the cost of loading real commit text while scrolling isn't included. The Git access results showed that loading a screen of commits from `cat-file` takes 1.4 ms.
 
+## The diff view
+
+The test diff runs from Linux v6.0 to v6.1. It changes 12,914 files and 1.29 million lines, which comes to 45 MB of patch text. The file with the largest patch is `drivers/net/wireless/realtek/rtw89/rtw8852c_table.c`, with 27,113 lines added and 9,879 removed. Its patch is 40,325 lines long, and many of its removed and added lines pair up, so it exercises highlighting of changed words.
+
+### Getting the diff from git
+
+| What | Time |
+| --- | ---: |
+| List of changed files with renames (`git diff --raw -M`) | 175 ms (2.8 s on the first, cold run) |
+| The same list with line counts (`git diff --numstat -M`) | 1.6 s |
+| The patch for the largest file | 31 to 82 ms |
+| The whole patch | 2.6 s (6.4 s on the first, cold run) |
+
+Splitting the whole patch into lines took 142 ms.
+
+### Drawing it
+
+The `diff-render` command shows a diff in one of three ways:
+
+- **An `NSTableView`** with one self-drawn row per diff line, the same approach decision 7 chose for the commit list. Rows show old and new line numbers, a full-width background for added and removed lines, and a darker background behind the changed part of a line.
+- **An `NSTextView` using TextKit 2**, with the whole diff as one attributed string. Added and removed lines get background colors, and so do the changed parts.
+- **An `NSTextView` using TextKit 1** with non-contiguous layout turned on, so it lays out only what's visible. The attributed string is the same as for TextKit 2.
+
+Each view went through the same scrolling and jumping steps as the commit list test. The text views had no line numbers, and their backgrounds covered only the text, not the full width of the line. The raw output is in [results/diff-render-linux.txt](results/diff-render-linux.txt).
+
+For the largest file:
+
+| Setup | Preparing the view | Longest frame while scrolling | Jumps, median and longest | Peak memory |
+| --- | ---: | ---: | ---: | ---: |
+| `NSTableView` | 2 ms | 19 ms | 16 ms, 16 ms | 180 MB |
+| TextKit 1, non-contiguous layout | 58 ms | 25 ms | 6 ms, 17 ms | 144 MB |
+| TextKit 2, lines wrapped | 60 ms | 33 ms | 17 ms, 313 ms | 170 MB |
+| TextKit 2, unwrapped, view sizes its own width | 1,098 ms | 1,033 ms | 633 ms, 912 ms | 453 MB |
+| Same, without any background colors | 830 ms | 817 ms | 533 ms, 717 ms | 389 MB |
+| TextKit 2, unwrapped, fixed 20,000-point width | 1,063 ms | 138 ms | 17 ms, 133 ms | 325 MB |
+
+For the whole diff as one document:
+
+| Setup | Preparing the view | Longest frame while scrolling | Jumps, median and longest | Peak memory |
+| --- | ---: | ---: | ---: | ---: |
+| `NSTableView` | 1 ms | 17 ms | 16 ms, 16 ms | 273 MB |
+| TextKit 1, non-contiguous layout | 1,102 ms | 30 ms | 11 ms, 23 ms | 495 MB |
+| TextKit 2, lines wrapped | 1,162 ms | 33 ms | 17 ms, 167 ms | 474 MB |
+
+### What this shows
+
+**TextKit 2 handles unwrapped text badly.** A diff of code usually shouldn't wrap. When the text view sized its own width, TextKit 2 took a second to prepare a 40,000-line file and stalled for up to a second while scrolling, even without any colors. A fixed width cut the stalls to about 140 ms, but preparing still took a second and memory was twice that of TextKit 1. With wrapping on, it performed about as well as TextKit 1.
+
+**TextKit 1 with non-contiguous layout works well at every size we tried.** For the largest file it prepared in 58 ms and scrolled smoothly. For the whole diff it scrolled smoothly too, but it spent 1.1 seconds building the attributed string first and used almost twice the memory of the table.
+
+**The table costs nothing up front.** It draws each line from the parsed bytes when the line comes into view, so it needed 1 ms to prepare even the whole diff, and it used the least memory at that size.
+
+**What the text views give for free, the table would have to build.** An `NSTextView` provides text selection across lines, copying, the find bar, and VoiceOver support. With a table, yaga would have to write all of that itself. In return, the table makes full-width line backgrounds and line numbers simple, while the text views need extra drawing code for both.
+
+**Two TextKit details matter for the real app:**
+- Asking a TextKit 2 `NSTextView` for its `layoutManager` silently switches it to TextKit 1. My first TextKit 2 run did exactly that by accident.
+- The text views only estimate the full height of a large document, at roughly half the real height here. So the scrollbar's size and position shift as the user scrolls through a huge diff.
+
+### Recommendation
+
+Use a TextKit 1 `NSTextView` with non-contiguous layout for the diff content. Show the changed files in a list, and load the patch for the selected file or files into the text view, as the roadmap already plans. At the sizes that approach produces, TextKit 1 prepares in tens of milliseconds even for the largest file in this release. It also gives selection, copying, find and accessibility without any custom code, which matters for a view whose whole purpose is reading code. Line numbers and full-width backgrounds need some custom drawing, through a ruler view and a layout manager subclass.
+
+The main risk is that TextKit 1 is the older text system and Apple's direction is TextKit 2. TextKit 1 is still fully supported, and the choice should be revisited if TextKit 2's handling of unwrapped text improves. If yaga ever needs to show a diff as large as a whole Linux release in one continuous view, the table remains the faster option, at the cost of building selection and find ourselves.
+
+### Limits
+
+- The text views had no line numbers, and their backgrounds covered only the text. Adding both will cost some drawing time that wasn't measured.
+- Selecting all text, copying, and searching with the find bar weren't measured on a large diff.
+
 ## Not tested yet
 
-- Loading a large diff one file at a time, and whether the diff view also needs AppKit.
 - Searching across all commit text.
 - A cold file cache, Apple's git 2.54.0, a 120 Hz display, and a second very large repository such as Chromium.
