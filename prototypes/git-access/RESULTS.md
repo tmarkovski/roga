@@ -1,6 +1,6 @@
 # Results
 
-These results answer the open question in the vision about how yaga should talk to Git. The short answer is to run the `git` binary for almost everything, read git's commit-graph file directly to get the shape of history, and not use libgit2.
+These results answer two questions. The first is the open question in the vision about how yaga should talk to Git. The short answer is to run the `git` binary for almost everything, read git's commit-graph file directly to get the shape of history, and not use libgit2. The second is whether SwiftUI can show the history of a very large repository. It can scroll through it smoothly, but every change to the data or the selection freezes the app for a time that grows with the number of commits, so the commit list should be an AppKit `NSTableView`. That second answer is in [Drawing the history](#drawing-the-history).
 
 ## Setup
 
@@ -8,6 +8,7 @@ These results answer the open question in the vision about how yaga should talk 
 - git 2.52.0 from Homebrew and libgit2 1.9.7.
 - The Linux kernel at `cbbddb6b08cc` (1,505,091 commits and 97,345 files), and git's own repository (82,634 commits and about 4,500 files).
 - Every number is the median of three to five runs, with the files already in the operating system's cache, which matches reopening a repository you've used recently.
+- The Git access benchmarks ran on battery power with Low Power Mode off. Spot checks repeated on AC power matched them.
 
 I left out Chromium because the machine had only 38 GB of free disk space. The raw output is in [results/linux.txt](results/linux.txt) and [results/git.txt](results/git.txt).
 
@@ -56,11 +57,19 @@ Once the history was ordered, laying out the graph took about 0.5 seconds for al
 
 | Approach | Linux | git's repository |
 | --- | ---: | ---: |
-| `git status --porcelain=v2` | 278 ms | 16 ms |
-| Same, with the filesystem monitor and untracked cache | 51 ms | 23 ms |
+| `git status --porcelain=v2` | 251 ms | 16 ms |
+| Same, with the untracked cache | 103 ms | not measured |
+| Same, with the filesystem monitor and the untracked cache | 51 ms | 23 ms |
 | libgit2 | 422 ms (330 MB) | 19 ms |
 
-The filesystem monitor and the untracked cache make status on Linux more than five times faster. yaga can turn them on for a single command with `-c core.fsmonitor=true -c core.untrackedCache=true`, without changing the user's configuration. But the first of these settings starts a filesystem monitor daemon for the repository that keeps running, and the second stores extra data in the index. On a small repository the pair made status slightly slower, so yaga would only want them for large ones.
+The first two Linux rows come from a later run on AC power, after I noticed that the cache had changed the results. The first run recorded 278 ms for plain status, but by then the untracked cache was already saved in the index.
+
+The two settings work differently:
+
+- **The untracked cache** is extra data that git saves in the index. Once it's there, git keeps using it by default, even for commands that don't ask for it. It needs no background process, and it alone made status on Linux about two and a half times faster.
+- **The filesystem monitor** starts a daemon for the repository that keeps running. Together with the untracked cache, it made status on Linux about five times faster.
+
+yaga can turn either one on for a single command, for example with `-c core.untrackedCache=true`, without changing the user's configuration. On a small repository the pair made status slightly slower, so yaga would only want them for large ones. Whether yaga uses them is a separate decision.
 
 Linux has 13 files whose names differ from another file's only in case. macOS's default file system is case-insensitive, so a fresh Linux checkout on a Mac shows those 13 as modified. git reported 13 entries, while libgit2 reported 26 for the same working tree. I didn't look into why, but it's the kind of disagreement with git that yaga can't afford.
 
@@ -96,9 +105,61 @@ The real commit-graph reader would also need to handle things the prototype skip
 - commits newer than the file
 - repositories that use SHA-256
 
+## Drawing the history
+
+The `render` command opens a window that shows Linux's 1,505,091 commits in one of three views:
+
+- an AppKit `NSTableView` whose rows draw themselves
+- a SwiftUI `List`
+- a SwiftUI `LazyVStack` inside a `ScrollView`
+
+The order and lanes are real, from the commit-graph reader. Each row draws up to 20 lane lines, a dot for the commit, a subject, an author and a date. The text is generated, so the test measures drawing and not loading. In the SwiftUI views, every row has a stable ID based on its commit, the way the app would identify it.
+
+A display link drives each run and records the time until every frame. The driver scrolls the view's underlying `NSScrollView` directly, the way a trackpad does, so all three views are measured the same way. Each run goes through four steps:
+
+1. It scrolls steadily at 6,000 points per second for 5 seconds.
+2. It jumps to 20 random positions, as if someone dragged the scrollbar.
+3. It inserts 10 new commits at the top five times, as a fetch would.
+4. It selects a visible row five times.
+
+The display runs at 60 Hz, so one frame lasts 16.7 ms, and anything noticeably longer means the app visibly stalled. The raw output is in [results/render-linux.txt](results/render-linux.txt).
+
+| Step | `NSTableView` | SwiftUI `List` | SwiftUI `LazyVStack` |
+| --- | ---: | ---: | ---: |
+| Steady scrolling, longest frame | 17 ms | 18 ms | 17 ms |
+| Jump to a random position, longest | 16 ms | 26 ms | 42 ms |
+| Insert 10 commits at the top, median | 24 ms | 453 ms | 574 ms |
+| Select a visible row, median | 17 ms | 413 ms | 17 ms |
+| Peak memory, including about 250 MB for the history itself | 255 MB | 380 MB | 301 MB |
+
+Each view drew between 2,150 and 2,530 rows during its run, and the scrolled content was 33.1 million points tall in all three. That confirms that the driver really scrolled each view.
+
+The cost in the SwiftUI `List` grows with the number of rows:
+
+| Rows | Insert 10 commits, median | Select a row, median |
+| ---: | ---: | ---: |
+| 100,000 | 92 ms | 68 ms |
+| 500,000 | 183 ms | 167 ms |
+| 1,505,091 | 453 ms | 413 ms |
+
+### What this shows
+
+**All three views scroll smoothly through 1.5 million rows.** On macOS, a SwiftUI `List` is built on `NSTableView` underneath, and it creates rows only as they come into view.
+
+**Every change to the list's data freezes SwiftUI for a time that grows with its size.** Inserting commits, which happens after every fetch, froze the `List` for about half a second at Linux's size and for about a tenth of a second at 100,000 commits. SwiftUI compares the identities of every row each time the collection changes. `NSTableView` only does the work for the rows that changed.
+
+**Selection in a SwiftUI `List` costs about the same as a data change.** Selecting a row in the `List` froze it for 413 ms. The `LazyVStack` selected rows in one frame because each visible row checked the selection itself, so a selection change only redrew those rows. Even so, its inserts were the slowest of the three.
+
+**The commit list should be an `NSTableView`.** SwiftUI can still be used for the rest of the window, and the table can be placed in a SwiftUI layout with `NSViewRepresentable`. Working around the SwiftUI costs would mean giving SwiftUI only a window of rows and faking the full height, which rebuilds what `NSTableView` already does.
+
+### Limits
+
+- The display ran at 60 Hz. A 120 Hz display halves the time available for each frame. The table's frames stayed far under even that budget, but I didn't measure on one.
+- The graph is simplified: rows draw straight lane lines and a dot, without the curves where branches merge.
+- The text in each row is generated, so the cost of loading real commit text while scrolling isn't included. The Git access results showed that loading a screen of commits from `cat-file` takes 1.4 ms.
+
 ## Not tested yet
 
-- Drawing a million rows: whether a SwiftUI `List` can do it or the graph needs AppKit.
-- Loading a large diff one file at a time.
+- Loading a large diff one file at a time, and whether the diff view also needs AppKit.
 - Searching across all commit text.
-- A cold file cache, Apple's git 2.54.0, and a second very large repository such as Chromium.
+- A cold file cache, Apple's git 2.54.0, a 120 Hz display, and a second very large repository such as Chromium.

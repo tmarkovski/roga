@@ -138,11 +138,15 @@ struct CommitTable {
 struct GraphLayout {
     var columns: [Int32]
     var maxWidth: Int
+    /// How many lanes are open at each row, when requested.
+    var widths: [UInt16] = []
 }
 
 /// Assigns each row a column in the commit graph. `parentRows` appends the rows of a row's parents.
-func layoutGraph(rowCount: Int, parentRows: (Int, inout [Int32]) -> Void) -> GraphLayout {
+func layoutGraph(rowCount: Int, recordWidths: Bool = false,
+                 parentRows: (Int, inout [Int32]) -> Void) -> GraphLayout {
     var columns = [Int32](repeating: 0, count: rowCount)
+    var widths = [UInt16](repeating: 0, count: recordWidths ? rowCount : 0)
     var lanes: [Int32] = []
     var parents: [Int32] = []
     var maxWidth = 0
@@ -173,6 +177,7 @@ func layoutGraph(rowCount: Int, parentRows: (Int, inout [Int32]) -> Void) -> Gra
         while lanes.last == -1 { lanes.removeLast() }
         columns[row] = Int32(column)
         maxWidth = max(maxWidth, lanes.count)
+        if recordWidths { widths[row] = UInt16(clamping: max(lanes.count, column + 1)) }
     }
-    return GraphLayout(columns: columns, maxWidth: maxWidth)
+    return GraphLayout(columns: columns, maxWidth: maxWidth, widths: widths)
 }

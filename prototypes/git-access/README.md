@@ -10,6 +10,8 @@ It compares three ways to load the history of `HEAD`:
 
 It also compares working tree status (`git status`, with and without the filesystem monitor, and libgit2) and full patches between two revisions (`git diff` and libgit2).
 
+Its `render` command opens a window that shows the history in an AppKit `NSTableView`, a SwiftUI `List`, or a SwiftUI `LazyVStack`. It then measures how long each frame takes while it scrolls, jumps to random positions, inserts commits and selects rows.
+
 Findings are in [RESULTS.md](RESULTS.md), and raw output is in [results/](results/).
 
 ## Running it
@@ -29,6 +31,14 @@ git clone https://github.com/torvalds/linux.git bench-repos/linux
 ```bash
 prototypes/git-access/run-benchmarks.sh bench-repos/linux v6.0 v6.1
 ```
+
+The `render` command isn't part of the script, because each run opens a window on screen for about 15 seconds. It needs the commit-graph file that the script writes. Run it once for each view:
+
+```bash
+prototypes/git-access/.build/release/git-bench render --repo bench-repos/linux --engine table
+```
+
+Use `--engine list` or `--engine lazy-stack` for the SwiftUI views, and `--rows` to show only part of the history.
 
 Each subcommand can also be run on its own. Use `--help` to see the options:
 

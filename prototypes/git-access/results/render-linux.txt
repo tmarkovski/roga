@@ -1,0 +1,41 @@
+== render, table, 1505091 rows
+   history loaded in 1300 ms before the window opened
+   first rows on screen: 557.8 ms after the window opened
+   steady scroll at 6000 pt/s for 5 s: 301 frames at 60 Hz, 0 hitches, hitch time 0.0 ms/s
+   frame time: median 16.7 ms, 95th percentile 16.7 ms, longest 17.0 ms
+   20 jumps to random positions: median 15.9 ms, longest 16.0 ms until the next frame
+   5 inserts of 10 commits at the top: median 23.6 ms, longest 33.3 ms until the next frame
+   5 selections of a visible row: median 16.7 ms, longest 16.7 ms until the next frame
+   2529 rows drawn in all, scrolled content 33112002 pt tall
+   peak memory: 255 MB
+
+== render, list, 1505091 rows
+   history loaded in 878 ms before the window opened
+   first rows on screen: 123.4 ms after the window opened
+   steady scroll at 6000 pt/s for 5 s: 300 frames at 60 Hz, 0 hitches, hitch time 0.0 ms/s
+   frame time: median 16.7 ms, 95th percentile 16.7 ms, longest 17.6 ms
+   20 jumps to random positions: median 12.6 ms, longest 26.0 ms until the next frame
+   5 inserts of 10 commits at the top: median 453.4 ms, longest 571.4 ms until the next frame
+   5 selections of a visible row: median 413.0 ms, longest 433.3 ms until the next frame
+   2226 rows drawn in all, scrolled content 33112002 pt tall
+   peak memory: 380 MB
+
+== render, lazy-stack, 1505091 rows
+   history loaded in 824 ms before the window opened
+   first rows on screen: 84.9 ms after the window opened
+   steady scroll at 6000 pt/s for 5 s: 301 frames at 60 Hz, 0 hitches, hitch time 0.0 ms/s
+   frame time: median 16.7 ms, 95th percentile 16.7 ms, longest 16.9 ms
+   20 jumps to random positions: median 27.7 ms, longest 41.6 ms until the next frame
+   5 inserts of 10 commits at the top: median 573.6 ms, longest 650.0 ms until the next frame
+   5 selections of a visible row: median 16.6 ms, longest 16.7 ms until the next frame
+   2150 rows drawn in all, scrolled content 33112002 pt tall
+   peak memory: 301 MB
+
+== render, list, 100000 rows
+   steady scroll at 6000 pt/s for 5 s: 300 frames at 60 Hz, 1 hitches, hitch time 2.0 ms/s
+   5 inserts of 10 commits at the top: median 92.1 ms, longest 105.0 ms until the next frame
+   5 selections of a visible row: median 67.6 ms, longest 83.3 ms until the next frame
+== render, list, 500000 rows
+   steady scroll at 6000 pt/s for 5 s: 301 frames at 60 Hz, 0 hitches, hitch time 0.0 ms/s
+   5 inserts of 10 commits at the top: median 183.3 ms, longest 196.2 ms until the next frame
+   5 selections of a visible row: median 166.6 ms, longest 183.3 ms until the next frame
