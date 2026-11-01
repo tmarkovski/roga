@@ -137,7 +137,13 @@ Each window saves its list of tabs, with the repository and selected worktree fo
 - SwiftUI doesn't reopen a single welcome window that was closed at the last quit ([window tabs preview](prototypes/window-tabs/README.md)).
 - When a launch comes with paths to open, AppKit treats it as a request to open files, and SwiftUI doesn't open its first window ([main window preview](prototypes/main-window/README.md)). yaga has to handle open requests itself, both from Finder and from any command-line launcher such as `yaga .`.
 
-Menu commands act on the selected tab of the key window. Each window publishes its selected tab through SwiftUI's focused values, and the menus read it from there.
+## Commands
+
+Every command is defined once, in `YagaUI/Commands`. A definition gives the command's name, its icon, its keyboard shortcut, when it's available, and what it does. The menu bar, the buttons in panel headers, context menus, the buttons that appear on hover in the navigator, and a command palette if yaga gets one all show commands from those definitions instead of defining their own. That way a command has the same name and shortcut wherever it appears, and it's always in the menu bar. It also means the roadmap's requirement that every action has a keyboard shortcut can be checked in one place.
+
+A command that isn't available is disabled in menus, and its buttons are disabled or hidden. Commands act on the selected tab of the key window. Each window publishes its selected tab through SwiftUI's focused values, and the menus read it from there.
+
+Which commands each panel shows is decided as each feature is built, and [docs/main-window.md](docs/main-window.md) records where they go.
 
 ## Repository sessions
 
@@ -231,3 +237,5 @@ The app is built with `xcodebuild`, which needs Xcode 27 or later because of the
 - Whether a session stops watching the file system and closes its `cat-file` process while none of its tabs is visible.
 - How much commit text the cache keeps, and whether that depends on the size of the repository.
 - What the tab strip does when the tabs don't fit. The [main window](docs/main-window.md#still-open) lists the other open questions about the layout.
+- Whether a command palette ships in release 1.
+- Which keyboard shortcuts switch between History and Changes, since Command-1 to Command-9 already switch tabs.
