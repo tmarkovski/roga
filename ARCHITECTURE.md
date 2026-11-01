@@ -236,7 +236,7 @@ yaga then runs `git version`. If git is missing or older than 2.44 (decision 8),
 
 ## Building and releasing
 
-The project and CI use Xcode 27.2, because of the JSON project format. CI runs on GitHub's `xcode-27` runner image. It builds and tests YagaKit twice, once with git 2.44.0, which `Scripts/build-git.sh` builds from source and CI caches, and once with the git that comes with the image. It also builds the app.
+The project and CI use Xcode 27.2, because of the JSON project format. CI runs on GitHub's `xcode-27` runner image. For now it runs only when started by hand, from the Actions tab or with `gh workflow run ci.yml`, to save macOS runner minutes. It builds and tests YagaKit twice, once with git 2.44.0, which `Scripts/build-git.sh` builds from source and CI caches, and once with the git that comes with the image. It also builds the app.
 
 The app's bundle identifier is `build.yaga.app`, and the app is named yaga. It isn't sandboxed, and the hardened runtime that notarization requires is turned on by a build setting, so the app needs no entitlements file. Development builds are signed to run locally and don't need a developer account.
 

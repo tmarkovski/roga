@@ -1,9 +1,13 @@
 name: CI
 
+# CI only runs when started by hand for now, to save macOS runner minutes.
+# Start it from the Actions tab or with `gh workflow run ci.yml`. To run it on
+# every push again, uncomment the push and pull_request triggers.
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
+  # push:
+  #   branches: [main]
+  # pull_request:
 
 permissions:
   contents: read
