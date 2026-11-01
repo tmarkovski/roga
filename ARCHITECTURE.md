@@ -33,6 +33,7 @@ yaga/
 │   ├── Sources/
 │   │   ├── GitCore/
 │   │   │   ├── ObjectID.swift          SHA-1 and SHA-256 object IDs
+│   │   │   ├── ObjectType.swift        commit, tree, blob and tag
 │   │   │   ├── Refs.swift
 │   │   │   ├── CommitInfo.swift
 │   │   │   ├── StatusEntry.swift
@@ -45,12 +46,14 @@ yaga/
 │   │   │       ├── RawDiffParser.swift     diff --raw -z
 │   │   │       └── PatchParser.swift       unified patches
 │   │   ├── GitRunner/
+│   │   │   ├── Git.swift               running a command, which every git command goes through
 │   │   │   ├── GitInstallation.swift   finding git and checking its version
 │   │   │   ├── GitVersion.swift        reading git version and the 2.44 minimum
-│   │   │   ├── LoginShellPath.swift
-│   │   │   ├── Spawn.swift             posix_spawn, pipes, process exit
-│   │   │   ├── GitCommand.swift        arguments and environment for every command
-│   │   │   ├── GitOutput.swift         streaming output as an async sequence
+│   │   │   ├── LoginShellPath.swift    the PATH from the user's login shell
+│   │   │   ├── Spawn.swift             posix_spawn, process exit, stopping a process group
+│   │   │   ├── Pipes.swift             reading and writing pipes with DispatchIO
+│   │   │   ├── GitCommand.swift        the arguments, options and environment of one command
+│   │   │   ├── GitOutput.swift         streaming output as an async sequence, and splitting it into records
 │   │   │   ├── CatFileSession.swift    long-running cat-file --batch-command
 │   │   │   └── CommandLog.swift        every git command yaga ran
 │   │   ├── CommitGraph/
@@ -92,6 +95,7 @@ yaga/
 │       ├── GitRunnerTests/
 │       ├── CommitGraphTests/
 │       ├── RepositoryEngineTests/
+│       ├── TestSupport/                the git the tests run, and the test repositories
 │       └── Fixtures/                   scripts that build test repositories
 ├── Scripts/
 │   ├── build-git.sh                builds an old git for CI
@@ -195,7 +199,8 @@ The session waits about 100 ms for related changes to arrive together, reloads o
 - `YagaUI`, `HistoryUI`, `DiffUI` and the app target make the main actor their default isolation, with SwiftPM's `defaultIsolation(MainActor.self)` setting and Xcode's `SWIFT_DEFAULT_ACTOR_ISOLATION`. The window tabs preview used that setting. The engine modules keep the normal default, where code isn't isolated unless it says so.
 - Each repository session is an actor. Work that takes real time, such as ordering history or building attributed text, runs in `@concurrent` functions, away from both the session and the main actor.
 - Blocking calls never run on Swift's shared thread pool. That pool has about one thread per CPU core, and a thread stuck in a blocking `read` stalls unrelated work. Pipes are read with `DispatchIO`, and process exit is detected with a dispatch source before `waitpid` collects the status.
-- Every git command belongs to a task. Cancelling the task stops the process, first with `SIGTERM` and then with `SIGKILL` if it doesn't exit. Selecting a different commit cancels the diff that was loading for the previous one.
+- Output is read a chunk at a time, as the code that uses it asks for more. When that code falls behind, git waits on a full pipe, so even the output of `git log` for all of Linux never piles up in memory.
+- Every git command belongs to a task. Cancelling the task stops the process, first with `SIGTERM` and then with `SIGKILL` if it hasn't exited two seconds later. Leaving a loop over streamed output early stops it the same way. Each git leads a process group of its own, and the signals go to the whole group, so anything git started stops too. Selecting a different commit cancels the diff that was loading for the previous one.
 - Data crosses between actors as `Sendable` values. History is stored as parallel arrays, one array for each field, rather than as an object for each commit, and the arrays are copy-on-write, so passing a snapshot along doesn't copy it.
 - Every load carries a generation number, and the session drops results from a generation that's already been replaced.
 
@@ -204,7 +209,8 @@ The session waits about 100 ms for related changes to arrive together, reloads o
 - **Every git command goes through `GitRunner`** and is recorded in the command log, with its arguments, how long it took, and its exit status. A view of that log comes later, and it's how yaga keeps the vision's promise to show what Git is doing.
 - **yaga only parses output meant for machines:** `-z`, `--porcelain=v2`, `--format` with NUL separators, and `cat-file --batch-command`. It never parses text meant for people.
 - **Background reads pass `--no-optional-locks`,** so yaga never holds the index lock while the user or an agent is running git.
-- **yaga leaves the user's git configuration alone.** It only overrides settings that change the shape of the output, such as color and the pager, and it passes `--no-ext-diff` so that external diff tools don't run. It sets `GIT_TERMINAL_PROMPT=0` so that git never waits for input nobody can see.
+- **yaga leaves the user's git configuration alone.** A command overrides only the settings that change the shape of its output. A patch, for example, is read with `--no-color` and `--no-ext-diff`, so that colors and external diff tools never reach the parser. The pager needs nothing, because git only starts one when its output is a terminal.
+- **The environment is the user's, with three changes.** yaga sets `PATH` to the one from the user's login shell, and `GIT_TERMINAL_PROMPT=0` so that git never waits for input nobody can see. It also clears the variables that choose a repository, the ones that `git rev-parse --local-env-vars` lists, such as `GIT_DIR`. Otherwise a variable inherited from wherever yaga was started, such as a git hook, could point every command at the wrong repository.
 - **Refs always come from git** (`for-each-ref`), never from reading files under `.git`. Git 3.0, expected in spring 2027, makes the reftable format the default for new repositories, and reftable stores refs in a different way.
 - **Object IDs can be SHA-1 or SHA-256.** Git 3.0 makes SHA-256 the default for new repositories. A session learns the hash from `git rev-parse --show-object-format`. `ObjectID` holds up to 32 bytes, and the commit-graph reader handles both hash versions.
 - **History rows refer to commits by their position in the commit-graph file,** a 32-bit number, rather than by object ID. Object IDs are read from the mapped file when they're needed. For 1.5 million commits that's 6 MB of positions instead of 48 MB of SHA-256 IDs. Commits newer than the file get positions after the file's last one.
@@ -213,18 +219,22 @@ The session waits about 100 ms for related changes to arrive together, reloads o
 
 At launch, `GitInstallation` looks for git in this order:
 
-1. the path set in Settings, if there is one
-2. the `PATH` from the user's login shell, read once with a time limit and then cached, because apps started from Finder get a minimal `PATH` (decision 3)
+1. the path set in Settings, if there is one. yaga uses that git or explains what's wrong with it, and never falls back to another one.
+2. the folders in the `PATH` from the user's login shell, because apps started from Finder get a minimal `PATH` (decision 3). yaga starts the shell the way a terminal does, as an interactive login shell, since many people set `PATH` in files that only those read, such as `.zshrc`. It gives the shell five seconds.
 3. Homebrew's locations, `/opt/homebrew/bin` and `/usr/local/bin`
-4. `/usr/bin/git`, but only if `xcode-select -p` finds the developer tools, because otherwise running it opens the dialog that offers to install them
+4. `/usr/bin/git`
 
-yaga then runs `git version`. If git is missing or older than 2.44 (decision 8), it explains what to do instead of opening repositories. Settings shows which git yaga uses and its version.
+yaga runs `git version` for each git it finds and uses the first one that's 2.44 or later (decision 8). An older git is passed over rather than ending the search. A Mac often has an old git first on the `PATH` and a newer one elsewhere, and decision 8 only asks people to upgrade when their only git is too old. Settings shows which git yaga uses, its version, and the gits it passed over. When no git is new enough, yaga explains what to do instead of opening repositories.
+
+Wherever `/usr/bin/git` comes up in the search, yaga runs it only if `xcode-select -p` finds the developer tools, because otherwise running it opens the dialog that offers to install them. yaga recognizes that git by its real path, so a folder in the `PATH` that leads to it through a symbolic link is caught too.
 
 ## Testing
 
 - Unit tests use Swift Testing.
 - Parsers are tested against captured git output stored as files, captured from both git 2.44 and the newest release.
-- Test repositories are built by scripts when the tests run, with fixed author and committer dates so that object IDs are the same on every run. They cover:
+- Test repositories are built by the scripts in `Tests/Fixtures` when the tests run, with fixed names and dates so that object IDs are the same on every run and with every git version. The scripts and the tests keep the user's and the system's git configuration out with `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_NOSYSTEM=1`, so that settings such as commit signing can't change the results.
+- The `TestSupport` target builds each test repository once per test run, and finds the git the tests use, which is the first supported git on the `PATH`. CI puts the git it's testing first.
+- So far there's a small `basic` repository. Later ones will cover:
   - merges and octopus merges
   - renames
   - worktrees
@@ -245,6 +255,8 @@ The app's bundle identifier is `build.yaga.app`, and the app is named yaga. It i
 ## Still open
 
 - Whether a session stops watching the file system and closes its `cat-file` process while none of its tabs is visible.
+- Whether yaga runs the git that `/usr/bin/git` stands for directly. That stub looks up the developer tools every time it runs, which made a short command take 13 ms instead of 6.4 ms.
+- Whether yaga saves the login shell's `PATH` between launches, so that finding git doesn't wait for the user's shell to start.
 - How much commit text the cache keeps, and whether that depends on the size of the repository.
 - What the tab strip does when the tabs don't fit. The [main window](docs/main-window.md#still-open) lists the other open questions about the layout.
 - Whether a command palette ships in release 1.

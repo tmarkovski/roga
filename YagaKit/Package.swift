@@ -70,7 +70,15 @@ let package = Package(
         ),
         .testTarget(
             name: "GitRunnerTests",
+            dependencies: ["GitCore", "GitRunner", "TestSupport"],
+            swiftSettings: settings
+        ),
+        // Shared by the test targets: the git the tests run, and the test
+        // repositories that the scripts in Tests/Fixtures build.
+        .target(
+            name: "TestSupport",
             dependencies: ["GitRunner"],
+            path: "Tests/TestSupport",
             swiftSettings: settings
         ),
     ]

@@ -1,5 +1,5 @@
 /// A git release number, as `git version` prints it.
-public struct GitVersion: Comparable, Sendable, CustomStringConvertible {
+public struct GitVersion: Comparable, Hashable, Sendable, CustomStringConvertible {
     public var major: Int
     public var minor: Int
     public var patch: Int
