@@ -4,14 +4,13 @@ This roadmap splits yaga's first releases into phases. Each release should be so
 
 ## Before release 1
 
-So far we have written the [vision](VISION.md), recorded decisions 1 to 8, and built prototypes for [Git access and drawing the history](prototypes/git-access/RESULTS.md).
+So far we have written the [vision](VISION.md), recorded decisions 1 to 9, and built prototypes for [Git access, drawing the history, and the diff view](prototypes/git-access/RESULTS.md).
 
 These are still to do before writing app code:
 
-1. **Test the diff view at scale.** Show the diff from Linux v6.0 to v6.1, which changes 12,914 files and 1.29 million lines. Check whether a list of files with each file's patch drawn in an `NSTableView` keeps up, or whether TextKit 2 is a better fit. Decision 7 says to test large views like this before choosing SwiftUI for them.
-2. **Settle the architecture and file structure.** That covers the Xcode project, the local Swift packages, and which module owns which part of the app.
-3. **Sketch the main window** as a single rough wireframe.
-4. **Set up the project:**
+1. **Settle the architecture and file structure.** That covers the Xcode project, the local Swift packages, and which module owns which part of the app.
+2. **Sketch the main window** as a single rough wireframe.
+3. **Set up the project:**
    - Swift 6 language mode with strict concurrency checking
    - CI that runs the tests and the benchmarks against both the oldest supported git (2.44) and the newest release
    - a signed, notarized build with Sparkle, so updates work from the first public build
@@ -29,7 +28,7 @@ The work happens in this order:
    - yaga writes and updates the commit-graph file in the background (decision 6).
    - The commit list is an `NSTableView` (decision 7). It loads the text for visible rows from a long-running `git cat-file` process.
    - A sidebar shows branches, tags and remotes, and a details pane shows the selected commit.
-2. **Diffs.** yaga shows unified diffs with changed words highlighted, for a single commit or between any two commits. It shows the list of changed files first and loads each file's patch when it's needed. Rename detection is on.
+2. **Diffs.** yaga shows unified diffs with changed words highlighted, for a single commit or between any two commits. It shows the list of changed files first and loads each file's patch when it's needed, into a TextKit 1 text view (decision 9). Rename detection is on.
 3. **Worktrees and uncommitted changes.** yaga lists every worktree with its branch, its path, and whether it has uncommitted changes, and lets the user switch between them. For any worktree, it shows the staged, unstaged and untracked changes, without changing them.
 4. **Branch review.** yaga shows everything a branch changed since it left its base, the way a pull request does. That means the branch's commits and one combined diff against the merge base.
 5. **Live refresh.** yaga watches every worktree and the repository with FSEvents. It updates history, branches and changes as the user or their agents write. Background git commands run with `--no-optional-locks`, so yaga never holds the index lock while someone else is running git.
