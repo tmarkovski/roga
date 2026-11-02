@@ -6,6 +6,7 @@
 //   yaga-bench commit-graph <repository>
 //   yaga-bench diff [--lines N] [--line-length N] [--jumps N]
 //   yaga-bench status <worktree> [--runs N]
+//   yaga-bench refs <worktree> [--runs N]
 //
 // The history benchmark orders history from HEAD with the commit-graph reader
 // alone, then through a repository session from every branch, remote branch
@@ -35,6 +36,9 @@
 // The status benchmark lists a worktree's uncommitted files the way the app
 // does. It only reads the worktree, and it needs one with its files checked
 // out, which the clone for the history benchmark doesn't have.
+//
+// The refs benchmark reads what the refs panel lists. It only reads the
+// repository, so the clone for the history benchmark works.
 
 import Foundation
 
@@ -49,11 +53,14 @@ do {
         try await DiffBenchmark(arguments: Array(arguments.dropFirst())).run()
     case "status":
         try await StatusBenchmark(arguments: Array(arguments.dropFirst())).run()
+    case "refs":
+        try await RefsBenchmark(arguments: Array(arguments.dropFirst())).run()
     default:
         print("Usage: yaga-bench history <repository> [--sort date|topological] [--runs N] [--verify] [--cold [--parts]]")
         print("       yaga-bench commit-graph <repository>")
         print("       yaga-bench diff [--lines N] [--line-length N] [--jumps N]")
         print("       yaga-bench status <worktree> [--runs N]")
+        print("       yaga-bench refs <worktree> [--runs N]")
         exit(2)
     }
 } catch {

@@ -7,6 +7,8 @@ import SwiftUI
 enum Palette {
     static let surface = gray(light: 1.0, dark: 0.135)
     static let separator = gray(light: 0.885, dark: 0.225)
+    /// The background of the refs panel, a shade darker than the other panels.
+    static let sideColumn = gray(light: 0.96, dark: 0.098)
     /// The fill under a row or an icon button while the pointer is over it.
     /// It darkens whatever is behind it, such as the sidebar's material.
     static let hover = Color.primary.opacity(0.075)

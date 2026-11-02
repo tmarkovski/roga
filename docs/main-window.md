@@ -69,12 +69,16 @@ Two panels sit under the history panel.
 
 ## The refs panel
 
-The refs panel is on the right. It's a shade darker than the panels, like the sidebar. It's the inspector macOS provides, and the button at the right end of the title row hides it.
+The refs panel is on the right. It's a shade darker than the panels, like the sidebar. It's the inspector macOS provides, and the button at the right end of the title row hides it, as View > Hide Refs and Control-Command-I do. It's 288 points wide, and it can be dragged up to 400.
 
-- Its header has the title **Refs**, a button that sorts by name or by date, and a menu for more commands. A filter field below the header narrows every section at once.
-- Its sections are **Branches**, **Remotes**, **Tags** and **Stashes**. A section's header shows its title with a small triangle after it, and clicking the header collapses or expands the section. The header shows how many items the section has, and on hover it shows the section's commands instead, such as creating a branch or tag in release 2.
-- A branch row shows the branch's name. Its second line says which worktree has it checked out and how far it is ahead of or behind the branch it's compared with, as in `in fix-login · 3 ahead, 2 behind main`, and the same counts sit at the right as arrows. The branch checked out in the window's worktree has a checkmark. On hover, the row shows buttons that hide the branch from history and review it against its base.
-- A remote shows its URL, with its branches under it. A tag shows the subject of the commit it points to. A stash shows its message and when it was made.
+When the window gets too narrow to keep 400 points for the middle, the panel gives way, and its button and menu command are disabled until there's room. It comes back by itself when the window is wide enough again, unless the user had closed it. Decision 13 expected the panel to be what gives way first.
+
+- Its header has the title **Refs**, a button that sorts by name or by date, and a menu with every command the panel has. A filter field below the header narrows every section at once, by the names of branches, remotes and tags and the messages of stashes, and it opens any section that's collapsed. View > Filter Refs and Option-Command-F go to it, showing the panel first if it's hidden. The down arrow goes from the field to the first row, and Escape clears it.
+- Its sections are **Branches**, **Remotes**, **Tags** and **Stashes**. A section's header shows its title with a small triangle after it, and clicking the header collapses or expands the section, which is one setting for every repository. The header shows how many items the section has, stays in view while its rows scroll, and on hover it will show the section's commands, such as creating a branch or tag in release 2.
+- Clicking a branch, remote branch or tag selects its commit in history, whichever worktree has it checked out. After that the up and down arrows move through the rows, skipping remotes, stashes and anything else with no commit to select.
+- A branch row shows the branch's name. Its second line says which worktree has it checked out and how far it is ahead of or behind the branch it's compared with, as in `in fix-login · 3 ahead, 2 behind main`, or when it last changed if neither applies, and the same counts sit beside the name as arrows. A branch is compared with its upstream, or without one, with the repository's main branch: the one `origin/HEAD` names, or a local `main` or `master`. The branch checked out in the window's worktree comes first and has a checkmark. On hover, a branch that another worktree has checked out shows a button that switches the window to that worktree. The buttons that hide a branch from history and review it against its base come with those features.
+- A remote shows its address, without the user name or password in its URL, with its branches under it and each one's date. A remote that has branches left but isn't configured any more says so. A tag shows the subject of the commit it points to. A stash shows its message, what git calls it and when it was made, and clicking one doesn't do anything until the panels can show what's in it.
+- By name, branches and remote branches go from A to Z and tags go from the latest version to the oldest, and numbers in names count as numbers, so `v0.10` is newer than `v0.9`. By date, they all go from the latest to the oldest. Stashes keep git's order, which is already that.
 
 ## Colors and type
 
@@ -96,9 +100,7 @@ We sketched several ways to show uncommitted changes. [Decision 15](decisions/00
 
 - How repositories are reordered in the sidebar: by dragging, or with commands that move one up or down.
 - How often the sidebar updates the uncommitted counts of repositories that aren't showing.
-- What collapses first when the window gets narrow. Decision 13 expects the refs panel to go first.
-- What clicking a branch does when a worktree has it checked out: select its tip in history, or switch the window to that worktree.
-- Which branch each branch is compared with in the refs panel: its upstream, or the repository's main branch.
+- What gives way after the refs panel when the window gets narrow, such as a sidebar someone dragged wide.
 - What Command-1 to Command-9 and Control-Tab do now that there are no tabs, such as selecting repositories in the sidebar.
 - Which keyboard shortcut goes to the row for uncommitted changes, which can be scrolled out of view.
 - Whether a worktree with uncommitted changes opens with their row selected.

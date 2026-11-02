@@ -55,6 +55,10 @@ final class RepositoryModel {
     let selectedCommit: SelectedCommit
     /// The worktree's uncommitted changes, when their row is selected.
     let selectedChanges: SelectedChanges
+    /// What the refs panel lists.
+    let refs: RefsModel
+    /// Goes up when the refs panel should read its lists again, if it's showing.
+    private(set) var refsChecks = 0
     /// How many files have uncommitted changes. While there are any, a row for
     /// them comes before the first commit.
     private(set) var uncommittedFiles = 0
@@ -105,6 +109,7 @@ final class RepositoryModel {
         self.reportUncommittedFiles = reportUncommittedFiles
         selectedCommit = SelectedCommit(session: session)
         selectedChanges = SelectedChanges(session: session, worktree: worktree, selectedFile: selectedCommit.selectedFile)
+        refs = RefsModel(session: session, worktree: worktree)
         selectedChanges.onLoad = { [weak self] count in self?.show(uncommittedFiles: count) }
     }
 
@@ -133,6 +138,7 @@ final class RepositoryModel {
 
     func reload() {
         reloads += 1
+        refsChecks += 1
     }
 
     /// Writes what the repository's commit-graph files are missing, in the
@@ -198,6 +204,7 @@ final class RepositoryModel {
     /// Looks at the worktree again, because yaga became active and whatever
     /// the user was doing elsewhere may have changed it.
     func becameActive() {
+        refsChecks += 1
         check?.cancel()
         check = Task { await checkForChanges() }
     }
@@ -288,6 +295,12 @@ final class RepositoryModel {
     /// Selects a commit, if history has it.
     func select(commit id: ObjectID) {
         if let row = history.flatMap({ Self.row(of: id, in: $0) }) { selectRow(row + rowOffset) }
+    }
+
+    /// Selects the commit a ref points to, and the ref's row in the refs panel.
+    func select(ref name: String, commit id: ObjectID) {
+        refs.select(ref: name)
+        select(commit: id)
     }
 
     /// Whether history has a commit. A shallow clone doesn't have the parents

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import GitCore
 import GitRunner
@@ -24,6 +25,10 @@ public struct WorkspaceView: View {
     @Environment(RepositoryList.self) private var list
     @State private var recent = RecentWorktrees()
     @State private var columns = NavigationSplitViewVisibility.all
+    @SceneStorage("showsRefsPanel") private var wantsRefsPanel = true
+    /// The width of the window, once it's in one.
+    @State private var windowWidth: Double?
+    @State private var sidebarWidth = 0.0
 
     public init(window: Binding<WorkspaceWindow?>) {
         _window = window
@@ -43,6 +48,7 @@ public struct WorkspaceView: View {
         NavigationSplitView(columnVisibility: $columns) {
             Sidebar(list: list, selection: selection, open: open, locate: locate)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 400)
+                .onGeometryChange(for: Double.self) { $0.size.width } action: { sidebarWidth = $0 }
                 .overlay(alignment: .trailing) {
                     // A line between the sidebar and the worktree, from the
                     // top of the window to the bottom.
@@ -62,6 +68,23 @@ public struct WorkspaceView: View {
                 }
         } detail: {
             detail
+                .inspector(isPresented: refsPanelIsPresented) {
+                    refsPanel
+                        .inspectorColumnWidth(
+                            min: RefsPanelVisibility.defaultWidth,
+                            ideal: RefsPanelVisibility.defaultWidth,
+                            max: RefsPanelVisibility.maximumWidth
+                        )
+                }
+                .toolbar {
+                    ToolbarItem(placement: .primaryAction) {
+                        RefsPanelToggle(visibility: refsPanelVisibility)
+                    }
+                    .sharedBackgroundVisibility(.hidden)
+                }
+        }
+        .background {
+            WindowWidthReader { windowWidth = $0 }
         }
         .navigationTitle(title)
         .navigationSubtitle(subtitle)
@@ -82,6 +105,50 @@ public struct WorkspaceView: View {
         }
         .focusedSceneValue(\.selection, selection)
         .focusedSceneValue(\.sidebarVisibility, $columns)
+        .focusedSceneValue(\.refsPanelVisibility, refsPanelVisibility)
+    }
+
+    private var refsPanelFits: Bool {
+        guard let windowWidth else { return true }
+        return RefsPanelVisibility.fits(
+            window: windowWidth,
+            sidebar: columns == .detailOnly ? 0 : sidebarWidth
+        )
+    }
+
+    private var refsPanelVisibility: RefsPanelVisibility {
+        RefsPanelVisibility(isWanted: $wantsRefsPanel, fits: refsPanelFits)
+    }
+
+    /// Whether the panel shows. It only says the user closed it while it fits,
+    /// because hiding it for a narrow window doesn't change what they want.
+    private var refsPanelIsPresented: Binding<Bool> {
+        Binding {
+            refsPanelVisibility.isShowing
+        } set: { isPresented in
+            if refsPanelFits { wantsRefsPanel = isPresented }
+        }
+    }
+
+    /// The refs of the repository whose worktree the window shows.
+    @ViewBuilder private var refsPanel: some View {
+        if let selected = window?.selection,
+           let repository = list.repository(at: selected.repository),
+           case .open(let session) = repository.state,
+           repository.worktrees.contains(where: { $0.path == selected.worktree }) {
+            RefsPanel(model: model(for: selected, session: session), isShown: $wantsRefsPanel) { worktree in
+                selection.wrappedValue = WorktreeSelection(repository: selected.repository, worktree: worktree)
+            }
+            .id(selected)
+        } else {
+            RefsPanelPlaceholder()
+        }
+    }
+
+    private func model(for selected: WorktreeSelection, session: RepositorySession) -> RepositoryModel {
+        recent.model(for: selected, session: session) { [list] count in
+            list.setUncommittedFiles(count, in: selected)
+        }
     }
 
     @ViewBuilder private var detail: some View {
@@ -140,9 +207,7 @@ public struct WorkspaceView: View {
             }
         case .open(let session):
             if repository.worktrees.contains(where: { $0.path == selected.worktree }) {
-                RepositoryView(model: recent.model(for: selected, session: session) { [list] count in
-                    list.setUncommittedFiles(count, in: selected)
-                })
+                RepositoryView(model: model(for: selected, session: session))
                     .id(selected)
             } else {
                 // The worktree is gone, and resolving the selection moves the
@@ -167,6 +232,45 @@ public struct WorkspaceView: View {
 
     private func locate(_ repository: ListedRepository) {
         locateRepository(repository, list: list) { selection.wrappedValue = $0 }
+    }
+}
+
+/// Says how wide the window is, whenever that changes.
+///
+/// It reads the window rather than the size SwiftUI gives a view, because that
+/// size depends on the columns. When they don't fit, it's what they need rather
+/// than what the window has, so hiding the refs panel changes it, which would
+/// show the panel again, and so on forever.
+private struct WindowWidthReader: NSViewRepresentable {
+    let changed: (Double) -> Void
+
+    func makeNSView(context: Context) -> ReaderView {
+        ReaderView()
+    }
+
+    func updateNSView(_ view: ReaderView, context: Context) {
+        view.changed = changed
+    }
+
+    final class ReaderView: NSView {
+        var changed: ((Double) -> Void)?
+        private var observation: (any NSObjectProtocol)?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            observation.map(NotificationCenter.default.removeObserver)
+            observation = nil
+            guard let window else { return }
+            observation = NotificationCenter.default.addObserver(forName: NSWindow.didResizeNotification, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.report() }
+            }
+            // SwiftUI is in the middle of an update here.
+            DispatchQueue.main.async { [weak self] in self?.report() }
+        }
+
+        private func report() {
+            if let window { changed?(window.frame.width) }
+        }
     }
 }
 

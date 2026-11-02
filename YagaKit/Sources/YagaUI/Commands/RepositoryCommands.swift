@@ -7,6 +7,8 @@ public struct RepositoryCommands: Commands {
     @FocusedValue(\.selection) private var selection
     @FocusedValue(\.repository) private var repository
     @FocusedValue(\.sidebarVisibility) private var sidebarVisibility
+    @FocusedValue(\.refsPanelVisibility) private var refsPanelVisibility
+    @AppStorage(RefsPanelSettings.sort) private var refsSort = RefsModel.Sort.name
     @Environment(\.openWindow) private var openWindow
 
     /// The shortcut for opening a repository, which the sidebar shows too.
@@ -17,6 +19,11 @@ public struct RepositoryCommands: Commands {
     /// The shortcut for finding text in the diff, which the diff panel shows
     /// too.
     static let findShortcut = KeyboardShortcut("f")
+    /// The shortcut for hiding the refs panel, which is what macOS gives an
+    /// inspector.
+    static let refsPanelShortcut = KeyboardShortcut("i", modifiers: [.control, .command])
+    /// The shortcut for going to the refs panel's filter.
+    static let filterRefsShortcut = KeyboardShortcut("f", modifiers: [.option, .command])
 
     public init(list: RepositoryList) {
         self.list = list
@@ -59,6 +66,22 @@ public struct RepositoryCommands: Commands {
             }
             .keyboardShortcut("s", modifiers: [.control, .command])
             .disabled(sidebarVisibility == nil)
+            Button(refsPanelVisibility?.commandTitle ?? "Hide Refs") {
+                withAnimation { refsPanelVisibility?.isWanted.wrappedValue.toggle() }
+            }
+            .keyboardShortcut(Self.refsPanelShortcut)
+            .disabled(refsPanelVisibility?.fits != true)
+            Button("Filter Refs") {
+                refsPanelVisibility?.isWanted.wrappedValue = true
+                repository?.refs.wantsFilterFocus = true
+            }
+            .keyboardShortcut(Self.filterRefsShortcut)
+            .disabled(repository == nil || refsPanelVisibility?.fits != true)
+            Picker("Sort Refs", selection: $refsSort) {
+                ForEach(RefsModel.Sort.allCases, id: \.self) { sort in
+                    Text(sort.title).tag(sort)
+                }
+            }
         }
         CommandGroup(before: .toolbar) {
             Picker("Order", selection: Binding(

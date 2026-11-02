@@ -52,6 +52,26 @@ public actor RepositorySession {
         try await RefsLoader.load(git: git, in: worktree ?? location.directory)
     }
 
+    /// Lists every branch, remote, tag and stash, with what the refs panel says
+    /// about each, including the subject of the commit each tag points to.
+    ///
+    /// - Parameter worktree: The folder of the worktree whose current branch
+    ///   to read.
+    public nonisolated func refDetails(in worktree: String) async throws -> RefDetails {
+        var details = try await RefDetailsLoader.load(git: git, in: worktree, worktrees: try await worktrees())
+        // Reading them in pieces leaves room for the commit list to read the
+        // text of its rows in between, in a repository with very many tags.
+        let tagged = details.tags.indices.filter { details.tags[$0].commit != nil }
+        for start in stride(from: 0, to: tagged.count, by: 1000) {
+            let indices = tagged[start..<min(start + 1000, tagged.count)]
+            let commits = try await commits(indices.compactMap { details.tags[$0].commit })
+            for (index, commit) in zip(indices, commits) {
+                details.tags[index].subject = commit?.subject
+            }
+        }
+        return details
+    }
+
     /// Lists the main worktree first, then the linked ones in the order of
     /// their names.
     public nonisolated func worktrees() async throws -> [Worktree] {

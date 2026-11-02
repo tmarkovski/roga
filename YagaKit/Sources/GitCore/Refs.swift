@@ -51,9 +51,9 @@ public struct Ref: Sendable, Hashable {
         return name.hasPrefix("refs/") ? String(name.dropFirst("refs/".count)) : name
     }
 
-    static let branchPrefix = "refs/heads/"
-    static let remoteBranchPrefix = "refs/remotes/"
-    static let tagPrefix = "refs/tags/"
+    public static let branchPrefix = "refs/heads/"
+    public static let remoteBranchPrefix = "refs/remotes/"
+    public static let tagPrefix = "refs/tags/"
 }
 
 /// Every ref in a repository, and what `HEAD` points to.
@@ -70,5 +70,20 @@ public struct RefList: Sendable, Hashable {
         self.refs = refs
         self.currentBranch = currentBranch
         self.head = head
+    }
+
+    /// The branch that others are compared with when they have no upstream.
+    /// That's the one a remote's `HEAD` names, preferring origin, and the
+    /// local branch of that name if there is one. Without a remote's `HEAD`,
+    /// it's a local `main` or `master`.
+    public var mainBranch: Ref? {
+        func ref(_ name: String) -> Ref? { refs.first { $0.name == name } }
+        let remoteHeads = refs.filter { $0.kind == .remoteBranch && $0.symbolicTarget != nil && $0.name.hasSuffix("/HEAD") }
+        let remoteHead = remoteHeads.first { $0.name == Ref.remoteBranchPrefix + "origin/HEAD" } ?? remoteHeads.first
+        if let remoteHead, let target = remoteHead.symbolicTarget {
+            let folder = remoteHead.name.dropLast("HEAD".count)
+            return ref(Ref.branchPrefix + target.dropFirst(folder.count)) ?? ref(target)
+        }
+        return ref(Ref.branchPrefix + "main") ?? ref(Ref.branchPrefix + "master")
     }
 }
