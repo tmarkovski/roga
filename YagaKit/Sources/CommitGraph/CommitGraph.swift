@@ -64,6 +64,13 @@ public struct CommitGraph: Sendable {
         }
     }
 
+    /// Makes a graph without stored commits, for a repository that has no
+    /// commit-graph file or whose file git wouldn't use. Every commit is then
+    /// added as a newer one.
+    public init(format: ObjectFormat) {
+        self.init(format: format, layers: [])
+    }
+
     /// The paths of the files the commits are stored in, base first.
     public var paths: [String] { layers.map(\.path) }
 

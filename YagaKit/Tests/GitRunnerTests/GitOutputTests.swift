@@ -27,6 +27,18 @@ struct GitOutputTests {
         #expect(ids == Fixture.Basic.mainHistory)
     }
 
+    @Test func writesInput() async throws {
+        let git = try await TestGit.make()
+        let repository = try await Fixture.repository("basic")
+        let input = Array("main\n^\(Fixture.Basic.mainHistory[2])\n".utf8)
+        var ids: [String] = []
+        for try await line in git.stream(GitCommand("rev-list", "--stdin", in: repository), input: input)
+            .records(separatedBy: UInt8(ascii: "\n")) {
+            ids.append(String(decoding: line, as: UTF8.self))
+        }
+        #expect(ids == Array(Fixture.Basic.mainHistory.prefix(2)))
+    }
+
     @Test func splitsNULSeparatedRecords() async throws {
         let git = try await TestGit.make()
         let repository = try await Fixture.repository("basic")

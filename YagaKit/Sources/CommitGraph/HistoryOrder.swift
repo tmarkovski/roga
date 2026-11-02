@@ -10,6 +10,11 @@
 /// commits below are all counted too. The walk only counts down as far as
 /// the commits it's about to hand out, so the first screen of history needs
 /// the commits near the top, not all of them.
+///
+/// git decides which tips are ready before it hands out anything, which
+/// means counting down to the oldest tip first. With every tag of Linux as a
+/// tip, that's most of its history. This waits until the walk reaches each
+/// tip's place in the order instead, and gives the same order.
 public struct HistoryOrder: Sendable {
     public enum Sort: Sendable {
         /// Newest first by commit time, but never a parent before all of its
@@ -27,8 +32,14 @@ public struct HistoryOrder: Sendable {
 
     /// For each commit, what git calls its indegree: 0 until counting reaches
     /// it, and then one more than the number of its children that haven't
-    /// been handed out. A commit is ready when this drops to 1.
+    /// been handed out. A commit is ready when this drops to 1, and is then
+    /// marked `queued` until it's handed out, when it goes back to 0.
     private var pendingChildren: [Int32]
+    /// The tips, newest first, and how many of them have been settled: put in
+    /// the ready queue if nothing above them leads to them, or left for
+    /// their children to make ready.
+    private let tips: [Tip]
+    private var settledTips = 0
     /// Whether each commit has been queued for counting.
     private var queuedForCounting: [Bool]
     /// Commits whose parents still have to be counted, highest generation first.
@@ -49,37 +60,38 @@ public struct HistoryOrder: Sendable {
         self.sort = sort
         pendingChildren = Array(repeating: 0, count: graph.count)
         queuedForCounting = Array(repeating: false, count: graph.count)
-        ready = ReadyQueue(sort: sort)
 
         // git sorts the tips by commit time with a stable sort, so tips with
         // the same time stay in the order they were given.
         var seen = Set<Position>()
         let unique = tips.filter { seen.insert($0).inserted }
         let times = unique.map(graph.commitTime(at:))
-        let sorted = unique.indices
-            .sorted { times[$0] != times[$1] ? times[$0] > times[$1] : $0 < $1 }
-            .map { unique[$0] }
+        let newestFirst = unique.indices.sorted { times[$0] != times[$1] ? times[$0] > times[$1] : $0 < $1 }
 
-        for tip in sorted {
+        var sortedTips: [Tip] = []
+        for (arrival, index) in newestFirst.enumerated() {
+            let tip = unique[index]
             let generation = try graph.generation(at: tip)
             queuedForCounting[Int(tip)] = true
             counting.push(CountingEntry(generation: generation, position: tip))
-            countedDownTo = min(countedDownTo, generation)
             pendingChildren[Int(tip)] = 1
+            sortedTips.append(Tip(position: tip, time: times[index], arrival: UInt32(arrival), generation: generation))
         }
-        try count(downTo: countedDownTo)
-        // A tip that's reachable from another tip waits for its children.
-        for tip in sorted where pendingChildren[Int(tip)] == 1 {
-            ready.push(tip, time: graph.commitTime(at: tip))
-        }
-        ready.startWithFirstPushed()
+        self.tips = sortedTips
+        // Tips that are ready come out ahead of commits with the same time
+        // that become ready later, as they do in git.
+        ready = ReadyQueue(sort: sort, firstArrival: UInt32(sortedTips.count))
+        // Commits without generation numbers, such as ones newer than the
+        // files, can't be counted a little at a time.
+        try count(downTo: CommitGraph.infiniteGeneration)
     }
 
     /// Whether every commit has been handed out.
-    public var isFinished: Bool { ready.isEmpty }
+    public var isFinished: Bool { ready.isEmpty && settledTips == tips.count }
 
     /// Returns the next commit, or nil when there are no more.
     public mutating func next() throws(CommitGraphError) -> Position? {
+        try settleTipsThatComeNext()
         guard let commit = ready.pop() else { return nil }
         pendingChildren[Int(commit)] = 0
         var index = 0
@@ -94,10 +106,42 @@ public struct HistoryOrder: Sendable {
             }
             pendingChildren[Int(parent)] -= 1
             if pendingChildren[Int(parent)] == 1 {
+                pendingChildren[Int(parent)] = Self.queued
                 ready.push(parent, time: graph.commitTime(at: parent))
             }
         }
         return commit
+    }
+
+    /// Marks a commit that's in the ready queue.
+    private static let queued: Int32 = -1
+
+    /// Settles the tips that could come out before the commit at the front of
+    /// the ready queue. git puts the ready tips in the queue first, so in
+    /// topological order they're at the bottom of the stack, in the order of
+    /// the tips, and come out only once it's empty above them. In date order
+    /// they come out by time, ahead of later commits with the same time.
+    private mutating func settleTipsThatComeNext() throws(CommitGraphError) {
+        while settledTips < tips.count {
+            let tip = tips[settledTips]
+            switch sort {
+            case .topological:
+                guard ready.isEmpty else { return }
+            case .date:
+                if let front = ready.front, !ReadyEntry.comesBefore(tip.readyEntry, front) { return }
+            }
+            settledTips += 1
+            // A tip is ready when no commit that leads to it has been
+            // counted, once everything above its generation is.
+            if tip.generation < countedDownTo {
+                countedDownTo = tip.generation
+                try count(downTo: tip.generation)
+            }
+            if pendingChildren[Int(tip.position)] == 1 {
+                pendingChildren[Int(tip.position)] = Self.queued
+                ready.push(tip.readyEntry)
+            }
+        }
     }
 
     /// Returns up to `count` commits, or fewer when there are no more.
@@ -148,11 +192,17 @@ extension HistoryOrder {
         let sort: Sort
         private var byDate = BinaryHeap<ReadyEntry>()
         private var stack: [Position] = []
-        private var arrivals: UInt32 = 0
+        private var arrivals: UInt32
 
-        init(sort: Sort) {
+        /// Commits pushed by time get arrival numbers from `firstArrival` up,
+        /// and the ones below are left for tips.
+        init(sort: Sort, firstArrival: UInt32 = 0) {
             self.sort = sort
+            arrivals = firstArrival
         }
+
+        /// The commit that comes out next in date order.
+        var front: ReadyEntry? { byDate.first }
 
         var isEmpty: Bool {
             switch sort {
@@ -162,12 +212,15 @@ extension HistoryOrder {
         }
 
         mutating func push(_ position: Position, time: Int64) {
+            push(ReadyEntry(time: time, arrival: arrivals, position: position))
+            arrivals += 1
+        }
+
+        /// Pushes a commit with an arrival number it already has.
+        mutating func push(_ entry: ReadyEntry) {
             switch sort {
-            case .date:
-                byDate.push(ReadyEntry(time: time, arrival: arrivals, position: position))
-                arrivals += 1
-            case .topological:
-                stack.append(position)
+            case .date: byDate.push(entry)
+            case .topological: stack.append(entry.position)
             }
         }
 
@@ -177,13 +230,16 @@ extension HistoryOrder {
             case .topological: stack.popLast()
             }
         }
+    }
 
-        /// Makes the commits pushed so far come out in the order they were
-        /// pushed. git does this for the tips in topological order, so that
-        /// the newest tip comes first.
-        mutating func startWithFirstPushed() {
-            if sort == .topological { stack.reverse() }
-        }
+    private struct Tip: Sendable {
+        var position: Position
+        var time: Int64
+        /// The tip's place in the order of tips.
+        var arrival: UInt32
+        var generation: UInt64
+
+        var readyEntry: ReadyEntry { ReadyEntry(time: time, arrival: arrival, position: position) }
     }
 
     private struct ReadyEntry: HeapElement {

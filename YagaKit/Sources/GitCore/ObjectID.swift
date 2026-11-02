@@ -64,7 +64,12 @@ public struct ObjectID: Hashable, Comparable, Sendable {
     /// Creates an ID from its full hexadecimal form, as git prints it. Both
     /// lowercase and uppercase digits are accepted.
     public init?(hex: some StringProtocol) {
-        let digits = hex.utf8
+        self.init(hexDigits: hex.utf8)
+    }
+
+    /// Creates an ID from the UTF-8 bytes of its full hexadecimal form, such
+    /// as an ID in git's output, without making a string first.
+    public init?(hexDigits digits: some Collection<UInt8>) {
         switch digits.count {
         case ObjectFormat.sha1.hexLength: format = .sha1
         case ObjectFormat.sha256.hexLength: format = .sha256

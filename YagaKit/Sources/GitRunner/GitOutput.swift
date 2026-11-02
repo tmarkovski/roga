@@ -14,9 +14,10 @@ public struct GitOutput: AsyncSequence, Sendable {
 
     let git: Git
     let command: GitCommand
+    let input: [UInt8]?
 
     public func makeAsyncIterator() -> Iterator {
-        Iterator(git: git, command: command)
+        Iterator(git: git, command: command, input: input)
     }
 
     /// Splits the output into records that end with `separator`, such as the
@@ -28,12 +29,14 @@ public struct GitOutput: AsyncSequence, Sendable {
     public final class Iterator: AsyncIteratorProtocol {
         private let git: Git
         private let command: GitCommand
+        private let input: [UInt8]?
         private var running: RunningGit?
         private var finished = false
 
-        init(git: Git, command: GitCommand) {
+        init(git: Git, command: GitCommand, input: [UInt8]?) {
             self.git = git
             self.command = command
+            self.input = input
         }
 
         deinit {
@@ -48,12 +51,17 @@ public struct GitOutput: AsyncSequence, Sendable {
             } else {
                 do {
                     try Task.checkCancellation()
-                    running = try git.start(command)
+                    running = try git.start(command, withInput: input != nil)
                 } catch {
                     finished = true
                     throw error
                 }
                 self.running = running
+                if let input, let writer = running.process.input {
+                    // Write while reading, so that neither side waits for the other.
+                    writer.submit(input)
+                    writer.close()
+                }
             }
             do {
                 let chunk = try await withTaskCancellationHandler {

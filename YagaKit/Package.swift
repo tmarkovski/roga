@@ -78,6 +78,11 @@ let package = Package(
             dependencies: ["CommitGraph", "GitCore", "GitRunner", "TestSupport"],
             swiftSettings: settings
         ),
+        .testTarget(
+            name: "RepositoryEngineTests",
+            dependencies: ["RepositoryEngine", "CommitGraph", "GitCore", "GitRunner", "TestSupport"],
+            swiftSettings: settings
+        ),
         // Shared by the test targets: the git the tests run, and the test
         // repositories that the scripts in Tests/Fixtures build.
         .target(

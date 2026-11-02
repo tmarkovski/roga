@@ -92,8 +92,11 @@ public struct Git: Sendable {
 
     /// Returns the output of a command as it arrives. Each iteration runs the
     /// command again.
-    public func stream(_ command: GitCommand) -> GitOutput {
-        GitOutput(git: self, command: command)
+    ///
+    /// - Parameter input: Bytes to write to the command's standard input,
+    ///   which is empty otherwise.
+    public func stream(_ command: GitCommand, input: [UInt8]? = nil) -> GitOutput {
+        GitOutput(git: self, command: command, input: input)
     }
 
     /// Starts git and records the command in the log.

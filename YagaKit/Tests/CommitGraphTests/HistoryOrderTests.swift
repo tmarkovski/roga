@@ -7,7 +7,9 @@ import Testing
 struct HistoryOrderTests {
     /// Sets of tips to order from, as names git understands. They include
     /// tips with the same commit time in both orders, an annotated tag on the
-    /// same commit as a branch, and repeated tips.
+    /// same commit as a branch, repeated tips, old tips that lead nowhere
+    /// else, an old tip that the others lead to, and a tip with the same time
+    /// as a commit that becomes ready after it.
     static let tipSets: [[String]] = [
         ["main"],
         ["future"],
@@ -15,6 +17,9 @@ struct HistoryOrderTests {
         ["topic-d", "topic-c", "topic-b"],
         ["main", "future", "old-feature", "pages", "topic-a", "topic-b", "topic-c", "topic-d", "base", "v1.0"],
         ["v1.0", "pages", "main", "pages", "topic-a"],
+        ["topic-a", "old-feature", "pages"],
+        ["pages", "base~290", "old-feature", "base"],
+        ["topic-b", "topic-c~1"],
     ]
 
     @Test(arguments: Fixture.History.allCases, [HistoryOrder.Sort.date, .topological])
@@ -57,6 +62,20 @@ struct HistoryOrderTests {
         #expect(rows == Array(try await gitOrder(sort, from: ["base"], in: repository).prefix(10)))
         #expect(order.countedCommitsSoFar <= 11)
         #expect(!order.isFinished)
+    }
+
+    /// git counts down to the oldest tip before it hands out anything, but
+    /// old tips only need counting when the walk reaches them.
+    @Test(arguments: [HistoryOrder.Sort.date, .topological])
+    func waitsForOldTips(_ sort: HistoryOrder.Sort) async throws {
+        let repository = try await Fixture.History.single.repository()
+        let graph = try await Fixture.History.single.graph()
+        let names = ["base", "pages", "old-feature", "base~290"]
+        let tips = try await resolve(names, in: repository).map { try #require(graph.position(of: $0)) }
+        var order = try HistoryOrder(graph: graph, tips: tips, sort: sort)
+        let rows = try order.next(10).map(graph.id(at:))
+        #expect(order.countedCommitsSoFar <= 11)
+        #expect(rows + (try order.next(Int.max)).map(graph.id(at:)) == (try await gitOrder(sort, from: names, in: repository)))
     }
 
     @Test func handsOutRowsInBatches() async throws {

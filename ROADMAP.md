@@ -4,7 +4,7 @@ This roadmap splits yaga's first releases into phases. Each release should be so
 
 ## Before release 1
 
-So far we have written the [vision](VISION.md) and the [architecture](ARCHITECTURE.md), sketched the [main window](docs/main-window.md), recorded decisions 1 to 11, and built prototypes for:
+So far we have written the [vision](VISION.md) and the [architecture](ARCHITECTURE.md), sketched the [main window](docs/main-window.md), recorded decisions 1 to 12, and built prototypes for:
 
 - [Git access, drawing the history, and the diff view](prototypes/git-access/RESULTS.md)
 - [native window tabs](prototypes/window-tabs/README.md), which we decided against

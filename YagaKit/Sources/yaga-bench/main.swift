@@ -4,8 +4,11 @@
 // Usage:
 //   yaga-bench history <repository> [--sort date|topological] [--runs N] [--verify]
 //
-// The history benchmark needs a repository with a commit-graph file. Only
-// commits matter to it, so a clone of Linux without trees or files is enough:
+// The history benchmark orders history from HEAD with the commit-graph reader
+// alone, then through a repository session from every branch, remote branch
+// and tag, as the app does. It needs a repository with a commit-graph file.
+// Only commits matter to it, so a clone of Linux without trees or files is
+// enough:
 //
 //   git clone --filter=tree:0 --no-checkout https://github.com/torvalds/linux.git bench-repos/linux-commits
 //   git -C bench-repos/linux-commits commit-graph write --reachable

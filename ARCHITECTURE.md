@@ -34,11 +34,12 @@ yaga/
 │   │   ├── GitCore/
 │   │   │   ├── ObjectID.swift          SHA-1 and SHA-256 object IDs
 │   │   │   ├── ObjectType.swift        commit, tree, blob and tag
-│   │   │   ├── Refs.swift
-│   │   │   ├── CommitInfo.swift
+│   │   │   ├── Refs.swift              refs, and what HEAD points to
+│   │   │   ├── CommitInfo.swift        a commit's parents, author, committer and message
 │   │   │   ├── StatusEntry.swift
 │   │   │   ├── DiffFile.swift
 │   │   │   └── Parsing/                one parser per git output format
+│   │   │       ├── ParseError.swift
 │   │   │       ├── CommitParser.swift      commit objects from cat-file
 │   │   │       ├── RefListParser.swift     for-each-ref
 │   │   │       ├── WorktreeListParser.swift
@@ -63,10 +64,10 @@ yaga/
 │   │   │   ├── HistoryOrder.swift      date order and topological order, a few rows at a time
 │   │   │   └── LaneLayout.swift        graph lines for each row
 │   │   ├── RepositoryEngine/
+│   │   │   ├── RepositoryLocation.swift where a repository's files are, and its hash
 │   │   │   ├── RepositorySession.swift one actor per repository
 │   │   │   ├── SessionRegistry.swift
 │   │   │   ├── HistoryLoader.swift     commit-graph, newer commits, fallbacks
-│   │   │   ├── CommitTextCache.swift
 │   │   │   ├── RefsLoader.swift
 │   │   │   ├── WorktreeLoader.swift
 │   │   │   ├── StatusLoader.swift
@@ -75,8 +76,9 @@ yaga/
 │   │   │   ├── CommitGraphUpkeep.swift decision 6
 │   │   │   └── Snapshots.swift
 │   │   ├── HistoryUI/                  AppKit
-│   │   │   ├── CommitTableController.swift
-│   │   │   ├── CommitRowView.swift
+│   │   │   ├── CommitTableController.swift the table, and loading text for the rows in view
+│   │   │   ├── CommitRowContent.swift  what a row shows
+│   │   │   ├── CommitRowView.swift     drawing rows and their selection
 │   │   │   ├── LaneRenderer.swift
 │   │   │   └── CommitRowAccessibility.swift
 │   │   ├── DiffUI/                     AppKit, TextKit 1
@@ -85,8 +87,8 @@ yaga/
 │   │   │   ├── LineNumberRuler.swift
 │   │   │   └── DiffTextBuilder.swift   attributed text and changed-word highlights
 │   │   ├── YagaUI/                     SwiftUI
-│   │   │   ├── Workspace/              windows, the tab strip, the tab container
-│   │   │   ├── Repository/             panels, the navigator, commit details
+│   │   │   ├── Workspace/              windows, finding git, the tab strip, the tab container
+│   │   │   ├── Repository/             the repository model, panels, the navigator, commit details
 │   │   │   ├── Commands/               menus and keyboard shortcuts
 │   │   │   ├── Settings/
 │   │   │   └── Onboarding/             missing or outdated git
@@ -132,6 +134,8 @@ These rules keep the layers apart:
 ## Windows and tabs
 
 Each window has an ordered list of tabs and a selected tab. A tab shows one repository. Inside the tab, the navigator lists the repository's worktrees, and choosing one changes what the tab shows. A worktree can also be opened in a tab of its own, so that two agents' work can sit in two tabs.
+
+Until the tabs are built, each window shows one repository. File > Open, or the button in an empty window, chooses its folder, and SwiftUI saves the folder with the window. Opening a repository from a window that already shows one opens a new window.
 
 yaga turns off macOS window tabbing (`NSWindow.allowsAutomaticWindowTabbing = false`) and draws its own tab strip. [docs/main-window.md](docs/main-window.md) describes how the window and its tabs look. The tabs need to support:
 
@@ -180,7 +184,13 @@ Views don't receive commit text or diffs as part of a snapshot. They ask the ses
 
 **Opening a repository.** yaga finds the repository's top level and common directory, gets a session from the registry, and then loads four things concurrently: refs with `git for-each-ref`, worktrees with `git worktree list --porcelain -z`, history, and the status of every worktree.
 
-**History.** The session maps the commit-graph file or chain and finds the position of each branch tip in it. Commits newer than the file come from `git rev-list`, and they're added after the file's commits. `HistoryOrder` hands out rows the way git's own walk does, a few at a time, in topological order unless the user switches to date order (decision 12). The generation numbers in the file tell it how far below those rows it has to look, so the first screen is ready before most of history has been read. On Linux, the first 100 rows took about 5 ms and the other 1.5 million about half a second, which runs in the background along with laying out the lanes. When git wouldn't use a commit-graph file, or there isn't one yet, the session streams `git log` instead and adds graph lines once the file exists (decisions 5 and 6). The commit list asks for the text of the rows it's about to draw, in batches, and the session answers from its cache or from `cat-file`.
+**History.** History starts from `HEAD` and every branch, remote branch and tag, which is what `git log HEAD --branches --remotes --tags` shows. The session lists the refs with `git for-each-ref`, maps the commit-graph file or chain, and finds each of those commits in it. Commits newer than the files come from `git rev-list`, which stops where they meet the commits the files have, and they're added after the files' commits. `HistoryOrder` hands out rows the way git's own walk does, a few at a time, in topological order unless the user switches to date order (decision 12). The generation numbers in the file tell it how far below those rows it has to look, so the first screen is ready before most of history has been read.
+
+git also counts down to its oldest starting point before it shows anything. With Linux's 952 tags, that's most of history, and git takes 1.2 seconds to print its first line. `HistoryOrder` waits until the walk reaches each starting point instead, and still gives git's order. On Linux, opening a session took about 15 ms, the first screen 37 ms more and its text 5 ms, and the other 1.5 million rows about half a second, which runs in the background along with laying out the lanes.
+
+git doesn't use the commit-graph files in a shallow clone, or when replace refs or grafts change commits' parents, and neither does yaga. yaga also skips files it can't read, as git does. Then, and when there's no file yet, `git rev-list` lists every commit with its parents and date. That's slow in a large repository, and without generation numbers all of history is counted before the first row, so yaga writes the file in the background (decisions 5 and 6).
+
+The commit list asks for the text of the rows it's about to draw, and of a screen above and below them, in one batch. The repository's model keeps the text it has, and the session reads the rest with `cat-file`.
 
 **Changes on disk.** FSEvents reports changed paths, and the session sorts them by what they affect:
 
@@ -238,11 +248,10 @@ Wherever `/usr/bin/git` comes up in the search, yaga runs it only if `xcode-sele
 - There are two so far. `basic` is a small repository. `history` builds one history five times, with its commit-graph stored as a single file, as a split chain, as a chain whose upper layers have no corrected commit dates, as a file that leaves out the newest commits, and in a SHA-256 repository. The history has merges, an octopus merge, a second root, commits with the same time on several branches, and dates out of order. Later repositories will cover:
   - renames
   - worktrees
-  - shallow clones and replace refs
   - reftable repositories
-- Engine tests run real git against those repositories. The commit-graph tests compare every commit's parents, dates and generation numbers, and the order of history from several sets of tips, with what git prints.
+- Engine tests run real git against those repositories. The commit-graph tests compare every commit's parents, dates and generation numbers, and the order of history from several sets of tips, with what git prints. The session tests compare the history a session loads with `git log`, in every repository and also in copies the tests change: a shallow one, one with replace refs, one with a damaged commit-graph file, a bare clone, and one with a detached `HEAD`.
 - CI runs everything against git 2.44 and the newest git.
-- `yaga-bench history` measures the first screen of history and ordering the rest, and `--verify` compares the order with `git log`. A clone of Linux with only its commits is enough for it. A CI job that runs it on a cached clone, and fails when a performance target from the roadmap is missed, is still to be added.
+- `yaga-bench history` measures the first screen of history and ordering the rest, first from `HEAD` with the reader alone, then through a session from every ref, as the app loads it. `--verify` compares both orders with `git log`. A clone of Linux with only its commits is enough for it. A CI job that runs it on a cached clone, and fails when a performance target from the roadmap is missed, is still to be added.
 
 ## Building and releasing
 
@@ -257,7 +266,7 @@ The app's bundle identifier is `build.yaga.app`, and the app is named yaga. It i
 - Whether a session stops watching the file system and closes its `cat-file` process while none of its tabs is visible.
 - Whether yaga runs the git that `/usr/bin/git` stands for directly. That stub looks up the developer tools every time it runs, which made a short command take 13 ms instead of 6.4 ms.
 - Whether yaga saves the login shell's `PATH` between launches, so that finding git doesn't wait for the user's shell to start.
-- How much commit text the cache keeps, and whether that depends on the size of the repository.
+- How much commit text yaga keeps. For now the repository's model keeps up to 20,000 commits. It could depend on the size of the repository, or move into the session so that windows showing the same repository share it.
 - What the tab strip does when the tabs don't fit. The [main window](docs/main-window.md#still-open) lists the other open questions about the layout.
 - Whether a command palette ships in release 1.
 - Reading commit-graph layers from alternate object folders. git looks for a chain's layers there, and yaga doesn't yet.
