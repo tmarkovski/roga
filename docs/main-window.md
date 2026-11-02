@@ -2,38 +2,62 @@
 
 This is the rough wireframe of yaga's main window for release 1. It settles the overall layout. Details will change as we build the real views.
 
-The layout follows the Claude and ChatGPT apps. A sidebar on the left lists repositories with their worktrees under them, the selected worktree's history and diffs fill the middle, and a panel on the right lists the repository's branches, remotes, tags and stashes. Every section in the middle is a plain rectangle with its own header. [Decision 13](decisions/0013-repositories-in-a-sidebar.md) explains why repositories moved out of tabs and into the sidebar. The [main window preview](../prototypes/main-window/README.md) still shows the earlier layout, with tabs on top and worktrees in a navigator on the right.
+The layout follows the Claude and ChatGPT apps. A sidebar on the left has a rail for picking an organization and lists its repositories with their worktrees under them, the selected worktree's history and diffs fill the middle, and a panel on the right lists the repository's branches, remotes, tags and stashes. Every section in the middle is a plain rectangle with its own header. [Decision 13](decisions/0013-repositories-in-a-sidebar.md) explains why repositories moved out of tabs and into the sidebar, and [decision 16](decisions/0016-a-rail-of-organizations-in-the-sidebar.md) explains the rail and what folds. The [main window preview](../prototypes/main-window/README.md) still shows the earlier layout, with tabs on top and worktrees in a navigator on the right.
 
 ```text
-┌─────────────────────┬──────────────────────────────────────────────────────────────────────────────┐
-│ ● ● ●  ◧            │ agents-demo / main                                                      ▤  ◨ │
-│ + Open repository   ├────────────────────────────────────────────────────┬─────────────────────────┤
-│ ⌕ Search            │ History  128 commits          ⑂ All branches  ≡  ⋯ │ Refs               ⇅  ⋯ │
-│                     ├────────────────────────────────────────────────────┼─────────────────────────┤
-│ Repositories        │ ○  3 uncommitted files                             │ ⌕ Filter                │
-│ agents-demo ▾       │ ●  agent/fix-login  Add login tests        48ba644 │ Branches ▾            4 │
-│   main              │ ●  ✓ main  Update the changelog            5405371 │   main                ✓ │
-│   agent/add-tests 4 │ ●  Add parser tests                        bb3b6b6 │   agent/add-tests    ↑1 │
-│   agent/fix-login 3 │ ●  v0.2  Show an error when …              86b3386 │   agent/fix-login ↑3 ↓2 │
-│   agent/refactor-…  ├──────────────────────┬─────────────────────────────┤   agent/refactor-…   ↑5 │
-│ yaga ▾              │ Commit 5405371  ⧉  ⋯ │ CHANGELOG.md        ⌕  ↗  ⋯ │ Remotes ▾             1 │
-│   gitrunner      19 ├──────────────────────┼─────────────────────────────┤   origin                │
-│ linux ▸             │ Update the changelog │ @@ -1,6 +1,10 @@            │ Tags ▾                2 │
-│ git ▸               │ Author, date, parent │   # Changelog               │ Stashes ▾             0 │
-│                     │ CHANGELOG.md  +4 −0  │ + ## 0.3                    │                         │
-└─────────────────────┴──────────────────────┴─────────────────────────────┴─────────────────────────┘
+┌──────────────────────────────┬─────────────────────────────────────────────────────────────────────────────┐
+│ ● ● ●  ◧                     │ agents-demo / main                                                     ▤  ◨ │
+├──────┬───────────────────────┼────────────────────────────────────────────────────┬────────────────────────┤
+│ [▣]  │ All repositories  19  │ History  128 commits          ⑂ All branches  ≡  ⋯ │ Refs              ⇅  ⋯ │
+│ AC   │ acme ▾              10├────────────────────────────────────────────────────┼────────────────────────┤
+│ NO   │ api ▾           7  ⧉ 4│ ○  3 uncommitted files                             │ ⌕ Filter               │
+│ TM   │   agent/add-tests    4│ ●  agent/fix-login  Add login tests        48ba644 │ Branches ▾           4 │
+│ …    │   agent/fix-login    3│ ●  ✓ main  Update the changelog            5405371 │   main               ✓ │
+│      │   2 quiet worktrees ▸ │ ●  Add parser tests                        bb3b6b6 │   agent/add-tests   ↑1 │
+│      │ auth  release/2.3     │ ●  v0.2  Show an error when …              86b3386 │   agent/fix-login ↑3 ↓2│
+│      │ billing              1├────────────────────┬───────────────────────────────┤ Remotes ▾            1 │
+│      │ web ▸          2  ⧉ 2 │ Commit 5405371  ⧉  │ CHANGELOG.md      ⌕  ↗  ⋯     │   origin               │
+│      │ 9 quiet repositories ▸├────────────────────┼───────────────────────────────┤ Tags ▾               2 │
+│      │ northwind ▸          3│ Update changelog   │ @@ -1,6 +1,10 @@              │ Stashes ▾            0 │
+│  +   │                       │ CHANGELOG.md +4 −0 │   # Changelog                 │                        │
+│      │                       │                    │ + ## 0.3                      │                        │
+└──────┴───────────────────────┴────────────────────┴───────────────────────────────┴────────────────────────┘
 ```
 
 ## The sidebar
 
-The sidebar runs the full height of the window on the left, with the traffic lights at its top. It's a shade darker than the panels, and a thin gray line separates it from them, from the top of the window to the bottom, as in the Claude app. It's the sidebar macOS provides, so the button next to the traffic lights, the View menu and the usual shortcut all hide it. That button is a plain icon that gets a gray square on hover, like the icon buttons in panel headers, rather than the glass button macOS draws. It stays next to the traffic lights while the sidebar is hidden.
+The sidebar runs the full height of the window on the left, with the traffic lights at its top. It's 312 points wide by default: the 56-point rail and the list beside it. It's a shade darker than the panels, and a thin gray line separates it from them, from the top of the window to the bottom, as in the Claude app. It's the sidebar macOS provides, so the button next to the traffic lights, the View menu and the usual shortcut all hide it. That button is a plain icon that gets a gray square on hover, like the icon buttons in panel headers, rather than the glass button macOS draws. It stays next to the traffic lights while the sidebar is hidden.
 
-Every row in the sidebar fills with gray while the pointer is over it, and the selected worktree's row keeps a slightly darker gray. The fill has 8-point corners and leaves 8 points on each side. Rows are 32 points tall, or 54 with a second line, with 2 points between them, as in the Claude app. A row's top right corner shows a label, which gives way to the row's commands on hover: 24-point buttons 4 points from the top and right edges, so they sit beside the first line of a two-line row. The sidebar draws these rows itself, because a macOS sidebar list can't, so it also handles the arrow keys: up and down move between worktrees, and right and left show and hide the worktrees of the selected one's repository.
+### The rail
 
-- Its top rows are actions. Release 1 has one, opening a repository. Cloning one joins it in release 2, and search after the release 1 cut line. An action's icon is the same color as its label, and its keyboard shortcut shows at the right in a secondary color on hover.
-- Below them, it lists every repository the user has added, until the user removes it ([decision 14](decisions/0014-the-sidebar-keeps-every-added-repository.md)). Each repository is a group: its name in bold, with a small triangle after the name that collapses or expands it. Under the name is the folder the repository is in, as in `~/git`, which tells apart clones with the same name and stays in view while the group is collapsed. Its label is the number of worktrees it has besides the main one, after an icon of two overlapping squares, and it has no label without any. While it's collapsed, the label adds the number of uncommitted files in all of its worktrees, in orange. On hover, buttons for Show in Finder, Open in Terminal and a menu with Remove from Sidebar take its place. A repository yaga can't find is dimmed, its label says so, and its menu can find it again or remove it.
-- Each of the repository's worktrees has a row under it. The first line is the worktree's branch. The second is its folder and how long ago something in it changed, as in `fix-login · writing now`. The number of uncommitted files sits at the right in orange.
-- Clicking a worktree row shows that worktree in the rest of the window. On hover, the count gives way to buttons that open the worktree in a new window or in Terminal, and its context menu has those and Show in Finder.
+The rail picks which repositories the list shows ([decision 16](decisions/0016-a-rail-of-organizations-in-the-sidebar.md)). A thin line separates it from the list, starting under the traffic lights.
+
+- From the top, it has **All**, then each organization from A to Z, then **Other** when it has any repositories. An organization shows two letters from its name, and its tooltip has the whole name. A button at the bottom adds repositories. Items are 38 points square with 9-point corners, and the selected one fills with gray.
+- An organization is the owner in a repository's `origin` URL, with at least two repositories listed. Other has the rest.
+- Clicking an organization shows the worktree last shown there, or the main worktree of its first repository. Clicking All keeps the window on what it shows. Each window remembers its own organization, and the last worktree in each.
+- View > All Repositories and the organizations after it have the shortcuts Command-1 to Command-9. View > Hide Organizations, Control-Command-O, hides the rail, which leaves All, and the button for adding repositories moves to the top of the list.
+
+### The list
+
+The list starts with the name of what the rail picked, in bold, and how many repositories it has. Every row in the list fills with gray while the pointer is over it, and the selected worktree's row keeps a slightly darker gray. The fill has 8-point corners and leaves 8 points on each side. Rows are 32 points tall with 2 points between them, as in the Claude app. A row's top right corner shows a label, which gives way to the row's commands on hover: 24-point buttons 4 points from the top and right edges. The sidebar draws these rows itself, because a macOS sidebar list can't, so it also handles the arrow keys: up and down move between the worktrees showing, and right and left show and hide the linked worktrees of the selected one's repository.
+
+- A repository's row is its main worktree. Clicking it selects that worktree. Its name is bold while any of its worktrees has uncommitted files. A small triangle after the name shows or hides its linked worktrees, and a repository without any has no triangle. After the triangle, in gray, comes the main worktree's branch unless it's `main` or `master`, or when two listed repositories have the same name, the folder it's in, as in `~/git`.
+- Its label is the number of uncommitted files, in orange, then the number of linked worktrees, after an icon of two overlapping squares. The number of uncommitted files is the main worktree's while the repository is expanded, and all of its worktrees' while it's collapsed. On hover, buttons for Show in Finder, Open in Terminal and a menu with those, Open in New Window and Remove from Sidebar take the label's place. A repository yaga can't find is dimmed, its label says so, its menu can find it again or remove it, and selecting it shows the same commands in the middle of the window.
+- Each linked worktree has a row under its repository, indented, with its branch and its number of uncommitted files in orange. Its tooltip has its folder. On hover, the count gives way to buttons that open the worktree in a new window or in Terminal, and its context menu has those and Show in Finder.
+- The selected worktree always shows, even when its repository is collapsed. Otherwise, worktrees with uncommitted files show, and two or more quiet ones fold into a row such as **3 quiet worktrees**, which shows them and then says **Show fewer**. A single quiet worktree just shows.
+- Repositories go from A to Z ([decision 16](decisions/0016-a-rail-of-organizations-in-the-sidebar.md)), and a new one starts collapsed. The list keeps every repository the user has added until they remove it ([decision 14](decisions/0014-the-sidebar-keeps-every-added-repository.md)).
+- With All selected, repositories are grouped under a header for each organization, with its two letters, its name, a triangle and how many repositories it has. Clicking the header shows or hides the group. Repositories that have uncommitted files, or the selected worktree, or that the user expanded, show, and two or more others fold into a row such as **11 quiet repositories**. Other comes last and starts collapsed. Without any organizations, All is a plain list with no headers.
+- With Other selected, the list has **Other owners**, with repositories named as `owner/name`, and **No remote**.
+
+### Adding repositories
+
+The button on the rail opens a popover, titled **Add to acme** with an organization selected and **Add Repositories** otherwise.
+
+- It lists the clones it finds in the folders the user has added repositories from, one level deep, leaving out what the sidebar lists. With an organization selected, it lists the ones with that owner, and with Other selected, the ones that don't belong to an organization on the rail. Each row has a checkbox, the clone's name, its folder and when it was last used, which is when its index last changed, and the latest come first.
+- A field at the top filters by name. The down arrow goes from it to the rows, where the up and down arrows move, Space checks a row and Return adds what's checked, or else the row the keyboard is on.
+- **Look in Another Folder…** lists the clones in a folder the user picks, or the folder itself if it's a clone, which starts checked. **Add Selected** adds them to the sidebar and shows the first.
+
+File > Open still asks for a folder and adds its repository, from anywhere.
 
 ## The title row
 
@@ -98,10 +122,10 @@ We sketched several ways to show uncommitted changes. [Decision 15](decisions/00
 
 ## Still open
 
-- How repositories are reordered in the sidebar: by dragging, or with commands that move one up or down.
+- Whether the rail's organizations can be dragged into another order, and whether they show avatars, which takes the network.
 - How often the sidebar updates the uncommitted counts of repositories that aren't showing.
 - What gives way after the refs panel when the window gets narrow, such as a sidebar someone dragged wide.
-- What Command-1 to Command-9 and Control-Tab do now that there are no tabs, such as selecting repositories in the sidebar.
+- What Control-Tab does now that there are no tabs, such as going back to the worktree shown before.
 - Which keyboard shortcut goes to the row for uncommitted changes, which can be scrolled out of view.
 - Whether a worktree with uncommitted changes opens with their row selected.
 - Whether untracked files show how many lines they have, which takes reading each one.

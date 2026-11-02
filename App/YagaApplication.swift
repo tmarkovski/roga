@@ -31,6 +31,9 @@ struct YagaApplication: App {
                 .environment(gitProvider)
                 .environment(repositories)
         }
+        // Wide enough for the sidebar, the refs panel and the panels between
+        // them.
+        .defaultSize(width: 1280, height: 800)
         .commands {
             CommandGroup(after: .appInfo) {
                 CheckForUpdatesButton(updater: updaterController.updater)

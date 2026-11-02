@@ -50,6 +50,9 @@ public final class RepositoryList {
 
     var isConnected: Bool { git != nil }
 
+    /// The repositories grouped the way the rail picks them.
+    var groups: RepositoryGroups { RepositoryGroups(repositories) }
+
     /// Opens every repository with `git`, the first time it's called. After
     /// that, whenever yaga becomes the active app, the list looks for
     /// worktrees that were added or removed, and for repositories it
@@ -94,8 +97,10 @@ public final class RepositoryList {
 
         let session = try RepositorySession(location: Self.gitDirectoryLocation(found), git: git)
         let worktrees: [Worktree]
+        let origin: String?
         do {
             worktrees = try await session.worktrees()
+            origin = try await session.originURL()
         } catch {
             await session.close()
             throw error
@@ -107,7 +112,9 @@ public final class RepositoryList {
         }
         let repository = ListedRepository(saved: RepositoryStore.SavedRepository(
             path: found.commonDirectory,
-            bookmark: Self.bookmark(for: found.commonDirectory)
+            bookmark: Self.bookmark(for: found.commonDirectory),
+            isExpanded: false,
+            owner: origin.flatMap(RemoteAddress.owner)
         ))
         repository.state = .open(session)
         repository.worktrees = worktrees
@@ -115,6 +122,31 @@ public final class RepositoryList {
         save()
         Task { await countUncommittedFiles(in: repository, session: session) }
         return selection
+    }
+
+    /// Lists the clones that could be added: the ones in the folders that
+    /// listed repositories are in, and in `folders`, leaving out what's listed.
+    func clonesToAdd(alsoLookingIn folders: [String] = []) async -> [LocalClone] {
+        guard let git else { return [] }
+        var seen: Set<String> = []
+        let searched = (repositories.map(\.parentFolder) + folders).filter { seen.insert($0).inserted }
+        let listed = Set(repositories.map(\.path))
+        return await LocalClones.find(in: searched, git: git).filter { !listed.contains($0.path + "/.git") }
+    }
+
+    /// The worktree a window should show after picking `scope`: the one it
+    /// showed there last, then `current` if it's there, then the first
+    /// repository's main worktree. Picking All leaves the window as it is, so
+    /// it's nil.
+    func selectionToShow(in scope: SidebarScope, place: SidebarPlace, current: WorktreeSelection?) -> WorktreeSelection? {
+        guard scope != .all else { return nil }
+        let repositories = groups.repositories(in: scope)
+        func isListed(_ selection: WorktreeSelection?) -> Bool {
+            repositories.contains { $0.path == selection?.repository }
+        }
+        if let last = resolve(place.lastSelections[scope]), isListed(last) { return last }
+        if isListed(current) { return current }
+        return repositories.first?.home
     }
 
     /// Takes the repository out of the list and closes its session.
@@ -191,6 +223,7 @@ public final class RepositoryList {
             do {
                 let worktrees = try await session.worktrees()
                 if worktrees != repository.worktrees { repository.worktrees = worktrees }
+                await updateOwner(of: repository, session: session)
                 await countUncommittedFiles(in: repository, session: session)
             } catch {
                 guard !FileManager.default.fileExists(atPath: repository.path) else { return }
@@ -199,6 +232,21 @@ public final class RepositoryList {
             }
         case .missing, .failed:
             await open(repository, git: git)
+        }
+    }
+
+    /// Reads who owns the repository, in case its `origin` changed. It keeps
+    /// what it knew when git can't say.
+    private func updateOwner(of repository: ListedRepository, session: RepositorySession) async {
+        let owner: String?
+        do {
+            owner = try await session.originURL().flatMap(RemoteAddress.owner)
+        } catch {
+            return
+        }
+        if owner != repository.owner {
+            repository.owner = owner
+            save()
         }
     }
 
@@ -248,6 +296,7 @@ public final class RepositoryList {
                 }
                 save()
             }
+            await updateOwner(of: repository, session: session)
             await countUncommittedFiles(in: repository, session: session)
         } catch {
             repository.state = .failed(String(describing: error))
@@ -303,6 +352,8 @@ public final class ListedRepository: Identifiable {
     fileprivate(set) var path: String
     fileprivate(set) var bookmark: Data?
     fileprivate(set) var isExpanded: Bool
+    /// Who owns the repository, from its `origin` URL, or nil without one.
+    fileprivate(set) var owner: String?
     fileprivate(set) var state = State.opening
     /// The main worktree first, then the linked ones.
     fileprivate(set) var worktrees: [Worktree] = []
@@ -313,16 +364,48 @@ public final class ListedRepository: Identifiable {
         path = saved.path
         bookmark = saved.bookmark
         isExpanded = saved.isExpanded
+        owner = saved.owner
+    }
+
+    /// A repository that isn't in a list, for checking how a sidebar lays out.
+    init(path: String, owner: String? = nil, isExpanded: Bool = false, state: State = .opening, worktrees: [Worktree] = [], uncommittedFiles: [String: Int] = [:]) {
+        self.path = path
+        self.owner = owner
+        self.isExpanded = isExpanded
+        self.state = state
+        self.worktrees = worktrees
+        self.uncommittedFiles = uncommittedFiles
     }
 
     var name: String { RepositoryLocation.name(gitDirectory: path) }
+
+    /// The repository's name with its owner in front, as in `git/git`, for
+    /// when the sidebar lists it among other owners' repositories.
+    var nameWithOwner: String { owner.map { $0 + "/" + name } ?? name }
+
+    /// The folder that holds the repository's files, or a bare repository's
+    /// git directory. It comes from the git directory, like the name, so it's
+    /// known for a repository that's missing.
+    var folder: String {
+        (path as NSString).lastPathComponent == ".git" ? (path as NSString).deletingLastPathComponent : path
+    }
+
+    /// The folder its `folder` is in.
+    var parentFolder: String { (folder as NSString).deletingLastPathComponent }
+
+    /// The main worktree, which is what the repository's row selects. A
+    /// repository that isn't open yet goes by its folder, and once it's open,
+    /// `RepositoryList.resolve(_:)` corrects that if it needs to.
+    var home: WorktreeSelection {
+        WorktreeSelection(repository: path, worktree: worktrees.first?.path ?? folder)
+    }
 
     var session: RepositorySession? {
         if case .open(let session) = state { session } else { nil }
     }
 
     fileprivate var saved: RepositoryStore.SavedRepository {
-        RepositoryStore.SavedRepository(path: path, bookmark: bookmark, isExpanded: isExpanded)
+        RepositoryStore.SavedRepository(path: path, bookmark: bookmark, isExpanded: isExpanded, owner: owner)
     }
 }
 

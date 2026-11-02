@@ -192,8 +192,78 @@ struct RepositoryListTests {
     @Test func remembersWhichRepositoriesAreExpanded() async throws {
         let list = try await makeList()
         _ = try await list.add(folder: try await Fixture.repository("basic"))
-        list.setExpanded(false, try #require(list.repositories.first))
-        #expect(try await makeList().repositories.first?.isExpanded == false)
+        #expect(list.repositories.first?.isExpanded == false)
+        list.setExpanded(true, try #require(list.repositories.first))
+        #expect(try await makeList().repositories.first?.isExpanded == true)
+    }
+
+    @Test func readsAndRemembersWhoOwnsARepository() async throws {
+        let repository = try await copyRepository(try await Fixture.repository("basic"), into: folder)
+        try await runGit("remote", "set-url", "origin", "git@github.com:acme/basic.git", in: repository)
+        let list = try await makeList()
+        _ = try await list.add(folder: repository)
+        #expect(list.repositories.first?.owner == "acme")
+
+        // It's known before the repository opens, so a repository that can't
+        // be opened stays in its organization.
+        let reopened = RepositoryList(store: store)
+        #expect(reopened.repositories.first?.owner == "acme")
+    }
+
+    @Test func seesThatOriginChanged() async throws {
+        let repository = try await copyRepository(try await Fixture.repository("basic"), into: folder)
+        try await runGit("remote", "set-url", "origin", "https://github.com/acme/basic.git", in: repository)
+        let list = try await makeList()
+        _ = try await list.add(folder: repository)
+        try await runGit("remote", "set-url", "origin", "https://github.com/northwind/basic.git", in: repository)
+        await list.refresh()
+        #expect(list.repositories.first?.owner == "northwind")
+        try await runGit("remote", "remove", "origin", in: repository)
+        await list.refresh()
+        #expect(list.repositories.first?.owner == nil)
+    }
+
+    @Test func findsClonesBesideTheListedOnes() async throws {
+        let repository = try await copyRepository(try await Fixture.repository("basic"), into: folder + "/git")
+        let other = try await copyRepository(try await Fixture.repository("history") + "/single", into: folder + "/git")
+        let elsewhere = try await copyRepository(try await Fixture.repository("history") + "/chain", into: folder + "/elsewhere")
+        let list = try await makeList()
+        #expect(await list.clonesToAdd().isEmpty)
+        _ = try await list.add(folder: repository)
+        #expect(await list.clonesToAdd().map(\.path) == [other])
+        #expect(Set(await list.clonesToAdd(alsoLookingIn: [folder + "/elsewhere"]).map(\.path)) == [other, elsewhere])
+        _ = try await list.add(folder: other)
+        #expect(await list.clonesToAdd().isEmpty)
+    }
+
+    @Test func picksTheWorktreeToShowInAnOrganization() async throws {
+        let first = try await copyRepository(try await Fixture.repository("basic"), into: folder)
+        let second = try await copyRepository(try await Fixture.repository("history") + "/single", into: folder)
+        try await runGit("worktree", "add", "--quiet", folder + "/notes", "feature", in: first)
+        for repository in [first, second] {
+            try await runGit("remote", "set-url", "origin", "git@github.com:acme/x.git", in: repository)
+        }
+        let list = try await makeList()
+        let main = try await list.add(folder: first)
+        _ = try await list.add(folder: second)
+        let scope = SidebarScope.organization("acme")
+        var place = SidebarPlace()
+
+        // The first time, it's the first repository's main worktree.
+        #expect(list.selectionToShow(in: scope, place: place, current: nil) == main)
+
+        // After that, it's where the window was, for as long as that's there.
+        let notes = WorktreeSelection(repository: first + "/.git", worktree: folder + "/notes")
+        place.record(notes, in: list.groups)
+        #expect(list.selectionToShow(in: scope, place: place, current: nil) == notes)
+        try await runGit("worktree", "remove", folder + "/notes", in: first)
+        await list.refresh()
+        #expect(list.selectionToShow(in: scope, place: place, current: nil) == main)
+
+        // A window that's already there stays, and All never moves a window.
+        let inSecond = WorktreeSelection(repository: second + "/.git", worktree: second)
+        #expect(list.selectionToShow(in: scope, place: SidebarPlace(), current: inSecond) == inSecond)
+        #expect(list.selectionToShow(in: .all, place: place, current: nil) == nil)
     }
 
     @Test func setsAsideAFileItCantRead() async throws {

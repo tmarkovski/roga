@@ -2,8 +2,8 @@ import AppKit
 import GitCore
 import SwiftUI
 
-/// The window's sidebar: actions such as opening a repository, then every
-/// repository with its worktrees under it (docs/main-window.md).
+/// The window's sidebar: the rail that picks an organization, and the list of
+/// its repositories with their worktrees (docs/main-window.md).
 ///
 /// It draws its own rows rather than using a `List`, because its rows fill
 /// with gray on hover and when selected, and swap a label for commands on
@@ -12,41 +12,80 @@ import SwiftUI
 struct Sidebar: View {
     let list: RepositoryList
     @Binding var selection: WorktreeSelection?
-    let open: () -> Void
+    /// What the rail has selected. Setting it picks a scope.
+    @Binding var scope: SidebarScope
+    @Binding var place: SidebarPlace
+    let showsRail: Bool
     let locate: (ListedRepository) -> Void
+    /// The folds opened in this window, which don't need to outlast it.
+    @State private var unfolded: Set<SidebarFold> = []
+    @State private var isAddingRepositories = false
+    @State private var adding = AddRepositoriesChoices()
     @FocusState private var isFocused: Bool
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        ScrollViewReader { scroller in
+        let groups = list.groups
+        HStack(spacing: 0) {
+            if showsRail {
+                OrganizationRail(groups: groups, scope: $scope) {
+                    addButton(edge: .trailing) { isPresented in
+                        RailButton(title: "Add Repositories", isSelected: isPresented, action: { isAddingRepositories = true }) {
+                            Image(systemName: "plus")
+                                .font(.system(size: 15, weight: .light))
+                        }
+                    }
+                }
+                Rectangle()
+                    .fill(Palette.separator)
+                    .frame(width: 1)
+            }
+            VStack(alignment: .leading, spacing: 0) {
+                ScopeHeader(title: scope == .all ? "All repositories" : groups.title(of: scope), count: groups.repositories(in: scope).count) {
+                    if !showsRail {
+                        addButton(edge: .bottom) { _ in
+                            Button("Add Repositories", systemImage: "plus") { isAddingRepositories = true }
+                                .labelStyle(.iconOnly)
+                                .buttonStyle(.icon(size: 24))
+                                .help("Add Repositories")
+                        }
+                    }
+                }
+                rows(groups: groups)
+            }
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    /// The button for adding repositories, with the popover it opens.
+    private func addButton<Label: View>(edge: Edge, @ViewBuilder label: (Bool) -> Label) -> some View {
+        label(isAddingRepositories)
+            .disabled(!list.isConnected)
+            .popover(isPresented: $isAddingRepositories, arrowEdge: edge) {
+                AddRepositories(list: list, scope: scope, choices: $adding, lookInAnotherFolder: lookInAnotherFolder) { selection = $0 }
+            }
+    }
+
+    /// Closes the popover while the open panel is up, because a popover can
+    /// close by itself when another window takes over, and reopens it after.
+    private func lookInAnotherFolder() {
+        isAddingRepositories = false
+        Task {
+            if let folder = chooseRepositoryFolder(message: "Choose a folder to look in, or a repository.") {
+                adding.pickedFolders.append(folder)
+            }
+            isAddingRepositories = true
+        }
+    }
+
+    private func rows(groups: RepositoryGroups) -> some View {
+        let layout = SidebarLayout(groups: groups, scope: scope, selection: selection, place: place, unfolded: unfolded)
+        let items = layout.items
+        return ScrollViewReader { scroller in
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
-                    ActionRow(title: "Open Repository…", systemImage: "plus", shortcut: RepositoryCommands.openShortcut, action: open)
-                        .disabled(!list.isConnected)
-                    Text("Repositories")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .padding(EdgeInsets(top: 14, leading: 8, bottom: 4, trailing: 8))
-                        .accessibilityAddTraits(.isHeader)
-                    ForEach(list.repositories) { repository in
-                        RepositoryRow(repository: repository, list: list) {
-                            isFocused = true
-                            list.setExpanded(!repository.isExpanded, repository)
-                        } locate: {
-                            locate(repository)
-                        }
-                        .padding(.top, repository === list.repositories.first ? 0 : 6)
-                        if repository.isExpanded {
-                            ForEach(repository.worktrees, id: \.path) { worktree in
-                                let row = WorktreeSelection(repository: repository.path, worktree: worktree.path)
-                                WorktreeRow(worktree: worktree, uncommittedFiles: repository.uncommittedFiles[worktree.path] ?? 0, isSelected: selection == row) {
-                                    select(row)
-                                } openInNewWindow: {
-                                    openWindow(value: WorkspaceWindow(selection: row))
-                                }
-                                .id(row)
-                            }
-                        }
+                    ForEach(items) { item in
+                        row(item)
                     }
                 }
                 .padding(.horizontal, 8)
@@ -56,7 +95,52 @@ struct Sidebar: View {
             .focused($isFocused)
             .focusEffectDisabled()
             .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow]) { press in
-                handle(press.key, scroller)
+                handle(press.key, items: items, scroller)
+            }
+            .onChange(of: scope) {
+                if let selection { scroller.scrollTo(selection) }
+            }
+        }
+    }
+
+    @ViewBuilder private func row(_ item: SidebarItem) -> some View {
+        switch item {
+        case .group(let scope, let title, let monogram, let count, let isShowing):
+            GroupRow(title: title, monogram: monogram, count: count, isShowing: isShowing) {
+                isFocused = true
+                place.shownGroups[scope] = !isShowing
+            }
+        case .label(let title):
+            Text(title)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+                .padding(EdgeInsets(top: 10, leading: 10, bottom: 4, trailing: 8))
+                .accessibilityAddTraits(.isHeader)
+        case .repository(let repository, let title, let detail):
+            let home = repository.home
+            RepositoryRow(repository: repository, list: list, title: title, detail: detail, isSelected: selection == home) {
+                select(home)
+            } toggle: {
+                isFocused = true
+                list.setExpanded(!repository.isExpanded, repository)
+            } openInNewWindow: {
+                openWindow(value: WorkspaceWindow(selection: home))
+            } locate: {
+                locate(repository)
+            }
+            .id(home)
+        case .worktree(let repository, let worktree):
+            let row = WorktreeSelection(repository: repository.path, worktree: worktree.path)
+            WorktreeRow(worktree: worktree, uncommittedFiles: repository.uncommittedFiles[worktree.path] ?? 0, isSelected: selection == row) {
+                select(row)
+            } openInNewWindow: {
+                openWindow(value: WorkspaceWindow(selection: row))
+            }
+            .id(row)
+        case .fold(let fold, let title, let isUnfolded):
+            FoldRow(title: title, isUnfolded: isUnfolded, isIndented: { if case .worktrees = fold { true } else { false } }()) {
+                isFocused = true
+                if isUnfolded { unfolded.remove(fold) } else { unfolded.insert(fold) }
             }
         }
     }
@@ -66,31 +150,27 @@ struct Sidebar: View {
         selection = row
     }
 
-    /// Every worktree row in the order the sidebar lists them, and whether
-    /// it's showing and can be selected.
-    private var rows: [(selection: WorktreeSelection, isSelectable: Bool)] {
-        list.repositories.flatMap { repository in
-            repository.worktrees.map { worktree in
-                (WorktreeSelection(repository: repository.path, worktree: worktree.path), repository.isExpanded && !worktree.isPrunable)
-            }
-        }
-    }
-
-    /// The up and down arrows move between worktrees, skipping the ones in
-    /// collapsed repositories. The right and left arrows show and hide the
-    /// worktrees of the selected one's repository.
-    private func handle(_ key: KeyEquivalent, _ scroller: ScrollViewProxy) -> KeyPress.Result {
+    /// The up and down arrows move between the worktrees showing. The right and
+    /// left arrows show and hide the linked worktrees of the selected one's
+    /// repository.
+    private func handle(_ key: KeyEquivalent, items: [SidebarItem], _ scroller: ScrollViewProxy) -> KeyPress.Result {
         switch key {
         case .upArrow, .downArrow:
+            let rows: [WorktreeSelection] = items.compactMap { item in
+                switch item {
+                case .repository(let repository, _, _):
+                    repository.home
+                case .worktree(let repository, let worktree) where !worktree.isPrunable:
+                    WorktreeSelection(repository: repository.path, worktree: worktree.path)
+                default:
+                    nil
+                }
+            }
             let step = key == .downArrow ? 1 : -1
-            let rows = rows
-            var index = rows.firstIndex { $0.selection == selection } ?? (step > 0 ? -1 : rows.count)
-            repeat {
-                index += step
-            } while rows.indices.contains(index) && !rows[index].isSelectable
+            let index = (rows.firstIndex { $0 == selection } ?? (step > 0 ? -1 : rows.count)) + step
             guard rows.indices.contains(index) else { return .handled }
-            select(rows[index].selection)
-            scroller.scrollTo(rows[index].selection)
+            select(rows[index])
+            scroller.scrollTo(rows[index])
             return .handled
         case .leftArrow, .rightArrow:
             guard let selection, let repository = list.repository(at: selection.repository) else { return .ignored }
@@ -102,12 +182,119 @@ struct Sidebar: View {
     }
 }
 
+/// The column that picks which repositories the list shows: All, each
+/// organization, Other, and a button for adding repositories at the bottom.
+private struct OrganizationRail<Add: View>: View {
+    let groups: RepositoryGroups
+    @Binding var scope: SidebarScope
+    @ViewBuilder var add: Add
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(spacing: 8) {
+                    RailButton(title: groups.title(of: .all), isSelected: scope == .all) { scope = .all } label: {
+                        Image(systemName: "tray")
+                            .font(.system(size: 15, weight: .light))
+                    }
+                    ForEach(groups.organizations) { organization in
+                        RailButton(title: organization.name, isSelected: scope == organization.scope) { scope = organization.scope } label: {
+                            Monogram(letters: organization.monogram, size: 28, isSelected: scope == organization.scope)
+                        }
+                    }
+                    if groups.hasOthers {
+                        RailButton(title: groups.title(of: .other), isSelected: scope == .other) { scope = .other } label: {
+                            Image(systemName: "ellipsis")
+                                .font(.system(size: 14))
+                        }
+                    }
+                }
+                .padding(.top, 2)
+                .frame(maxWidth: .infinity)
+            }
+            .scrollIndicators(.never)
+            add
+                .padding(.vertical, 10)
+        }
+        .frame(width: 55)
+    }
+}
+
+/// An item on the rail, which fills with gray while it's selected.
+private struct RailButton<Label: View>: View {
+    let title: String
+    let isSelected: Bool
+    let action: () -> Void
+    @ViewBuilder var label: Label
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            label
+                .foregroundStyle(isSelected || isHovering ? .primary : .secondary)
+                .frame(width: 38, height: 38)
+                .background {
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(isSelected ? Palette.selection : isHovering ? Palette.hover : .clear)
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .help(title)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+/// Two letters that stand for an organization.
+private struct Monogram: View {
+    let letters: String
+    let size: CGFloat
+    var isSelected = false
+
+    var body: some View {
+        Text(letters)
+            .font(.system(size: size * 0.4, weight: .bold))
+            .lineLimit(1)
+            .foregroundStyle(isSelected ? .primary : .secondary)
+            .frame(width: size, height: size)
+            .background {
+                RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
+                    .fill(isSelected ? AnyShapeStyle(Palette.surface) : AnyShapeStyle(Palette.selection))
+            }
+    }
+}
+
+/// The top of the list: what the rail picked, and how many repositories it has.
+private struct ScopeHeader<Trailing: View>: View {
+    let title: String
+    let count: Int
+    @ViewBuilder var trailing: Trailing
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(title)
+                .font(.system(size: 14, weight: .semibold))
+                .lineLimit(1)
+                .accessibilityAddTraits(.isHeader)
+            Text(count, format: .number)
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+            trailing
+        }
+        .padding(.leading, 18)
+        .padding(.trailing, 12)
+        .frame(height: 32)
+    }
+}
+
 /// A row in the sidebar. It fills with gray while the pointer is over it,
 /// and a little darker while it's selected. Its top right corner shows a
 /// label, which gives way to the row's commands while the pointer is over
 /// it. The commands are 24-point buttons 4 points from the row's top and
-/// right edges, so they're centered in a one-line row and beside the first
-/// line of a two-line row.
+/// right edges.
 private struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
     var isSelected = false
     var isEnabled = true
@@ -152,72 +339,109 @@ private struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
 /// The heights of sidebar rows, the same as in the Claude app's sidebar,
 /// which the wireframe follows.
 private enum SidebarRowHeight {
-    /// A row with one line of text.
-    static let oneLine: CGFloat = 32
-    /// A row with a second, smaller line under the first.
-    static let twoLines: CGFloat = 54
+    /// A repository or a worktree.
+    static let regular: CGFloat = 32
+    /// An organization's header.
+    static let group: CGFloat = 30
+    /// A row that folds others away.
+    static let fold: CGFloat = 28
 }
 
-/// An action at the top of the sidebar, such as opening a repository. Its
-/// keyboard shortcut shows on hover.
-private struct ActionRow: View {
+/// An organization's header in All, which shows or hides its repositories.
+private struct GroupRow: View {
     let title: String
-    let systemImage: String
-    let shortcut: KeyboardShortcut
-    let action: () -> Void
-    @Environment(\.isEnabled) private var isEnabled
+    let monogram: String?
+    let count: Int
+    let isShowing: Bool
+    let toggle: () -> Void
 
     var body: some View {
-        SidebarRow(isEnabled: isEnabled, height: SidebarRowHeight.oneLine, action: action) {
-            HStack(spacing: 11.5) {
-                // A light symbol at this size is 13 points across, as big
-                // as the label's capitals are tall, with a thin stroke.
-                Image(systemName: systemImage)
-                    .font(.system(size: 17, weight: .light))
-                    .frame(width: 16)
-                Text(title)
-                    .font(.system(size: 14))
-                    .lineLimit(1)
+        SidebarRow(height: SidebarRowHeight.group, action: toggle) {
+            HStack(spacing: 7) {
+                Group {
+                    if let monogram {
+                        Monogram(letters: monogram, size: 18)
+                    } else {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 18, height: 18)
+                    }
+                }
+                HStack(spacing: 5) {
+                    Text(title)
+                        .font(.system(size: 13, weight: .semibold))
+                        .lineLimit(1)
+                    Triangle(pointsDown: isShowing)
+                }
             }
         } trailing: {
-            EmptyView()
+            Text(count, format: .number)
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+                .padding(.trailing, 7)
         } commands: {
-            Text(shortcut.symbols)
+            Text(count, format: .number)
                 .font(.system(size: 13))
                 .foregroundStyle(.secondary)
                 .padding(.trailing, 7)
         }
+        .padding(.top, 8)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
-        .accessibilityAddTraits(.isButton)
-        .accessibilityAction(.default, action)
+        .accessibilityValue(count == 1 ? "1 repository" : "\(count) repositories")
+        .accessibilityHint(isShowing ? "Hides its repositories" : "Shows its repositories")
+        .accessibilityAddTraits([.isButton, .isHeader])
+        .accessibilityAction(.default, toggle)
     }
 }
 
-/// A repository's name, with a triangle after it. Clicking it shows or hides
-/// the repository's worktrees.
+/// The small triangle after a name that says whether what's under it shows.
+private struct Triangle: View {
+    let pointsDown: Bool
+
+    var body: some View {
+        Image(systemName: pointsDown ? "chevron.down" : "chevron.right")
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(.secondary)
+    }
+}
+
+/// A repository's row, which selects its main worktree. The triangle after its
+/// name shows or hides its linked worktrees.
 private struct RepositoryRow: View {
     let repository: ListedRepository
     let list: RepositoryList
+    let title: String
+    let detail: String?
+    let isSelected: Bool
+    let select: () -> Void
     let toggle: () -> Void
+    let openInNewWindow: () -> Void
     let locate: () -> Void
 
     var body: some View {
-        SidebarRow(height: SidebarRowHeight.twoLines, action: toggle) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 5) {
-                    Text(repository.name)
-                        .font(.system(size: 14, weight: .semibold))
-                        .lineLimit(1)
-                    Image(systemName: repository.isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                }
-                Text(location)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
+        SidebarRow(isSelected: isSelected, height: SidebarRowHeight.regular, action: select) {
+            HStack(spacing: 3) {
+                Text(title)
+                    .font(.system(size: 14, weight: totalUncommittedFiles > 0 ? .semibold : .regular))
                     .lineLimit(1)
-                    .truncationMode(.middle)
+                    .layoutPriority(1)
+                if linkedWorktrees > 0 {
+                    Button(action: toggle) {
+                        Triangle(pointsDown: repository.isExpanded)
+                    }
+                    .buttonStyle(.icon(size: 18))
+                    .help(repository.isExpanded ? "Hide Worktrees" : "Show Worktrees")
+                }
+                if let detail {
+                    Text(detail)
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .padding(.leading, 3)
+                }
             }
             .opacity(problem == nil ? 1 : 0.6)
         } trailing: {
@@ -228,16 +452,16 @@ private struct RepositoryRow: View {
                     .padding(.trailing, 7)
             } else {
                 HStack(spacing: 8) {
+                    if shownUncommittedFiles > 0 {
+                        Text(shownUncommittedFiles, format: .number)
+                            .foregroundStyle(.orange)
+                    }
                     if linkedWorktrees > 0 {
                         HStack(spacing: 4) {
                             Image(systemName: "square.on.square")
                             Text(linkedWorktrees, format: .number)
                         }
                         .foregroundStyle(.secondary)
-                    }
-                    if !repository.isExpanded, uncommittedFiles > 0 {
-                        Text(uncommittedFiles, format: .number)
-                            .foregroundStyle(.orange)
                     }
                 }
                 .font(.system(size: 13))
@@ -262,28 +486,23 @@ private struct RepositoryRow: View {
             .help("More")
         }
         .buttonStyle(.icon(size: 24))
-        .help(repository.path)
+        .help(repository.folder)
         .contextMenu { menuItems }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(repository.name)
+        .accessibilityLabel(title)
         .accessibilityValue(
-            [location, linkedWorktreesDescription, uncommittedFilesDescription(uncommittedFiles), repository.isExpanded ? "Expanded" : "Collapsed", problem]
+            [detail, linkedWorktreesDescription, uncommittedFilesDescription(shownUncommittedFiles), linkedWorktrees > 0 ? (repository.isExpanded ? "Expanded" : "Collapsed") : nil, problem]
                 .compactMap(\.self)
                 .joined(separator: ", ")
         )
-        .accessibilityHint("Shows or hides its worktrees")
-        .accessibilityAddTraits(.isButton)
-        .accessibilityAction(.default, toggle)
-        .accessibilityActions { menuItems }
-    }
-
-    /// The folder the repository is in, which tells apart repositories with
-    /// the same name. It comes from the git directory, like the name, so it
-    /// shows where a missing repository was.
-    private var location: String {
-        var folder = repository.path as NSString
-        if folder.lastPathComponent == ".git" { folder = folder.deletingLastPathComponent as NSString }
-        return (folder.deletingLastPathComponent as NSString).abbreviatingWithTildeInPath
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAction(.default, select)
+        .accessibilityActions {
+            if linkedWorktrees > 0 {
+                Button(repository.isExpanded ? "Hide Worktrees" : "Show Worktrees", action: toggle)
+            }
+            menuItems
+        }
     }
 
     /// How many worktrees the repository has besides the main one.
@@ -292,8 +511,15 @@ private struct RepositoryRow: View {
     }
 
     /// How many files have uncommitted changes in all of its worktrees.
-    private var uncommittedFiles: Int {
+    private var totalUncommittedFiles: Int {
         repository.uncommittedFiles.values.reduce(0, +)
+    }
+
+    /// The row counts its own files while the linked worktrees' rows count
+    /// theirs, and all of them while those rows are hidden.
+    private var shownUncommittedFiles: Int {
+        guard repository.isExpanded, let main = repository.worktrees.first else { return totalUncommittedFiles }
+        return repository.uncommittedFiles[main.path] ?? 0
     }
 
     private var linkedWorktreesDescription: String? {
@@ -320,6 +546,8 @@ private struct RepositoryRow: View {
 
     @ViewBuilder private var menuItems: some View {
         if let main {
+            Button("Open in New Window", action: openInNewWindow)
+            Divider()
             Button("Show in Finder") { reveal(main.path) }
             Button("Open in Terminal") { openInTerminal(main.path) }
         } else if problem != nil {
@@ -330,7 +558,8 @@ private struct RepositoryRow: View {
     }
 }
 
-/// A worktree's branch, and its folder under it.
+/// A linked worktree's branch, indented under its repository. Its tooltip has
+/// its folder.
 private struct WorktreeRow: View {
     let worktree: Worktree
     let uncommittedFiles: Int
@@ -339,10 +568,19 @@ private struct WorktreeRow: View {
     let openInNewWindow: () -> Void
 
     var body: some View {
-        SidebarRow(isSelected: isSelected, isEnabled: !worktree.isPrunable, height: SidebarRowHeight.twoLines, action: select) {
-            lines
+        SidebarRow(isSelected: isSelected, isEnabled: !worktree.isPrunable, height: SidebarRowHeight.regular, action: select) {
+            Text(worktree.title)
+                .font(.system(size: 14))
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .padding(.leading, 18)
         } trailing: {
-            if uncommittedFiles > 0 {
+            if worktree.isPrunable {
+                Text("Folder missing")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .padding(.trailing, 7)
+            } else if uncommittedFiles > 0 {
                 Text(uncommittedFiles, format: .number)
                     .font(.system(size: 13))
                     .foregroundStyle(.orange)
@@ -362,20 +600,6 @@ private struct WorktreeRow: View {
         .accessibilityActions { menuItems }
     }
 
-    private var lines: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(worktree.title)
-                .font(.system(size: 14))
-                .lineLimit(1)
-            Text(subtitle)
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-        }
-        .padding(.leading, 14)
-    }
-
     @ViewBuilder private var commands: some View {
         Button(action: openInNewWindow) { Image(systemName: "macwindow.badge.plus") }
             .help("Open in New Window")
@@ -392,6 +616,35 @@ private struct WorktreeRow: View {
         Divider()
         Button("Show in Finder") { reveal(worktree.path) }
         Button("Open in Terminal") { openInTerminal(worktree.path) }
+    }
+}
+
+/// A row that stands for the quiet worktrees or repositories, and shows them.
+private struct FoldRow: View {
+    let title: String
+    let isUnfolded: Bool
+    let isIndented: Bool
+    let toggle: () -> Void
+
+    var body: some View {
+        SidebarRow(height: SidebarRowHeight.fold, action: toggle) {
+            HStack(spacing: 5) {
+                Text(title)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Triangle(pointsDown: isUnfolded)
+            }
+            .padding(.leading, isIndented ? 18 : 0)
+        } trailing: {
+            EmptyView()
+        } commands: {
+            EmptyView()
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction(.default, toggle)
     }
 }
 

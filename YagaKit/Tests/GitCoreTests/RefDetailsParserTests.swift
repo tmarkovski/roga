@@ -141,4 +141,31 @@ struct RefDetailsParserTests {
         #expect(RefList(refs: [ref("refs/heads/master")]).mainBranch?.name == "refs/heads/master")
         #expect(RefList(refs: [ref("refs/heads/develop")]).mainBranch == nil)
     }
+
+    @Test(arguments: [
+        ("git@github.com:torvalds/linux.git", "torvalds"),
+        ("https://github.com/Acme/api.git", "Acme"),
+        ("https://user:secret@github.com/acme/api", "acme"),
+        ("ssh://git@github.com/acme/api.git", "acme"),
+        ("ssh://git@host:2222/acme/api.git", "acme"),
+        ("gh:acme/api", "acme"),
+        ("https://gitlab.com/group/subgroup/project.git", "group"),
+    ])
+    func ownerOfARemote(url: String, owner: String) {
+        #expect(RemoteAddress.owner(url) == owner)
+    }
+
+    @Test(arguments: [
+        "/Users/me/git/api.git",
+        "../api.git",
+        "some/relative/path",
+        "file:///Users/me/git/api.git",
+        "host:api.git",
+        "https://example.com/api.git",
+        "https://example.com",
+        "",
+    ])
+    func remotesWithoutAnOwner(url: String) {
+        #expect(RemoteAddress.owner(url) == nil)
+    }
 }

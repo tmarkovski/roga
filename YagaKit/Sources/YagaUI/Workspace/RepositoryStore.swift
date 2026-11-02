@@ -25,6 +25,10 @@ struct RepositoryStore {
         /// repository moves to another folder.
         var bookmark: Data?
         var isExpanded = true
+        /// Who owns the repository, from its `origin` URL. It's saved so that
+        /// the rail is in its usual order at launch, and so that a repository
+        /// on a disk that isn't mounted stays in its organization.
+        var owner: String?
     }
 
     let file: URL

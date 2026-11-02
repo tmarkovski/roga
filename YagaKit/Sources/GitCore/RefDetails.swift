@@ -191,4 +191,24 @@ public enum RemoteAddress {
         let path = url[url.index(after: colon)...]
         return host + (path.hasPrefix("/") ? "" : "/") + path
     }
+
+    /// Who owns the repository at a URL, which is the first segment of its
+    /// path, as in `torvalds` for `git@github.com:torvalds/linux.git`. A local
+    /// path has no owner, and neither does a URL with only the repository's
+    /// name in its path.
+    public static func owner(_ url: String) -> String? {
+        let path: Substring
+        if let scheme = url.firstRange(of: "://") {
+            guard url[..<scheme.lowerBound].lowercased() != "file" else { return nil }
+            let rest = url[scheme.upperBound...]
+            guard let slash = rest.firstIndex(of: "/") else { return nil }
+            path = rest[slash...]
+        } else {
+            // A slash before the colon makes it a local path, as in `shown(_:)`.
+            guard let colon = url.firstIndex(of: ":"), !url[..<colon].contains("/") else { return nil }
+            path = url[url.index(after: colon)...]
+        }
+        let segments = path.split(separator: "/")
+        return segments.count >= 2 ? String(segments[0]) : nil
+    }
 }

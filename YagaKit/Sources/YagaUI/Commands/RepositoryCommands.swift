@@ -7,6 +7,8 @@ public struct RepositoryCommands: Commands {
     @FocusedValue(\.selection) private var selection
     @FocusedValue(\.repository) private var repository
     @FocusedValue(\.sidebarVisibility) private var sidebarVisibility
+    @FocusedValue(\.sidebarScope) private var sidebarScope
+    @FocusedValue(\.showsOrganizationRail) private var showsOrganizationRail
     @FocusedValue(\.refsPanelVisibility) private var refsPanelVisibility
     @AppStorage(RefsPanelSettings.sort) private var refsSort = RefsModel.Sort.name
     @Environment(\.openWindow) private var openWindow
@@ -19,6 +21,8 @@ public struct RepositoryCommands: Commands {
     /// The shortcut for finding text in the diff, which the diff panel shows
     /// too.
     static let findShortcut = KeyboardShortcut("f")
+    /// The shortcut for hiding the rail of organizations.
+    static let organizationRailShortcut = KeyboardShortcut("o", modifiers: [.control, .command])
     /// The shortcut for hiding the refs panel, which is what macOS gives an
     /// inspector.
     static let refsPanelShortcut = KeyboardShortcut("i", modifiers: [.control, .command])
@@ -66,6 +70,11 @@ public struct RepositoryCommands: Commands {
             }
             .keyboardShortcut("s", modifiers: [.control, .command])
             .disabled(sidebarVisibility == nil)
+            Button(showsOrganizationRail?.wrappedValue == false ? "Show Organizations" : "Hide Organizations") {
+                showsOrganizationRail?.wrappedValue.toggle()
+            }
+            .keyboardShortcut(Self.organizationRailShortcut)
+            .disabled(showsOrganizationRail == nil)
             Button(refsPanelVisibility?.commandTitle ?? "Hide Refs") {
                 withAnimation { refsPanelVisibility?.isWanted.wrappedValue.toggle() }
             }
@@ -82,6 +91,19 @@ public struct RepositoryCommands: Commands {
                     Text(sort.title).tag(sort)
                 }
             }
+            Divider()
+            // Command-1 to Command-9 select what's on the rail.
+            let groups = list.groups
+            ForEach(Array(groups.scopes.prefix(9).enumerated()), id: \.element) { index, scope in
+                Toggle(groups.title(of: scope), isOn: Binding {
+                    sidebarScope?.wrappedValue == scope
+                } set: { _ in
+                    sidebarScope?.wrappedValue = scope
+                })
+                .keyboardShortcut(KeyEquivalent(Character(String(index + 1))))
+                .disabled(sidebarScope == nil)
+            }
+            Divider()
         }
         CommandGroup(before: .toolbar) {
             Picker("Order", selection: Binding(

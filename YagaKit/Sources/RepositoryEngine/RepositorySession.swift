@@ -83,6 +83,11 @@ public actor RepositorySession {
         }
     }
 
+    /// The URL of the `origin` remote, or nil for a repository without one.
+    public nonisolated func originURL() async throws -> String? {
+        try await LocalClones.originURL(in: location.commonDirectory, git: git)
+    }
+
     /// Reads commits with the session's `git cat-file`. The result has an
     /// entry for each ID, which is nil when the repository has no such
     /// commit.
