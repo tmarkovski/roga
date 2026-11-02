@@ -226,6 +226,14 @@ private struct RepositoryRow: View {
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
                     .padding(.trailing, 7)
+            } else if linkedWorktrees > 0 {
+                HStack(spacing: 4) {
+                    Image(systemName: "square.on.square")
+                    Text(linkedWorktrees, format: .number)
+                }
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+                .padding(.trailing, 7)
             }
         } commands: {
             if let main {
@@ -250,7 +258,11 @@ private struct RepositoryRow: View {
         .contextMenu { menuItems }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(repository.name)
-        .accessibilityValue([location, repository.isExpanded ? "Expanded" : "Collapsed", problem].compactMap(\.self).joined(separator: ", "))
+        .accessibilityValue(
+            [location, linkedWorktreesDescription, repository.isExpanded ? "Expanded" : "Collapsed", problem]
+                .compactMap(\.self)
+                .joined(separator: ", ")
+        )
         .accessibilityHint("Shows or hides its worktrees")
         .accessibilityAddTraits(.isButton)
         .accessibilityAction(.default, toggle)
@@ -264,6 +276,19 @@ private struct RepositoryRow: View {
         var folder = repository.path as NSString
         if folder.lastPathComponent == ".git" { folder = folder.deletingLastPathComponent as NSString }
         return (folder.deletingLastPathComponent as NSString).abbreviatingWithTildeInPath
+    }
+
+    /// How many worktrees the repository has besides the main one.
+    private var linkedWorktrees: Int {
+        repository.worktrees.count { !$0.isMain }
+    }
+
+    private var linkedWorktreesDescription: String? {
+        switch linkedWorktrees {
+        case 0: nil
+        case 1: "1 linked worktree"
+        case let count: "\(count) linked worktrees"
+        }
     }
 
     /// The main worktree, or the bare repository's entry, once the
