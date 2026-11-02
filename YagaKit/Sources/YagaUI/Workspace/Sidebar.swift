@@ -105,11 +105,6 @@ struct Sidebar: View {
 
     @ViewBuilder private func row(_ item: SidebarItem) -> some View {
         switch item {
-        case .group(let scope, let title, let monogram, let count, let isShowing):
-            GroupRow(title: title, monogram: monogram, count: count, isShowing: isShowing) {
-                isFocused = true
-                place.shownGroups[scope] = !isShowing
-            }
         case .label(let title):
             Text(title)
                 .font(.system(size: 12, weight: .medium))
@@ -341,59 +336,8 @@ private struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
 private enum SidebarRowHeight {
     /// A repository or a worktree.
     static let regular: CGFloat = 32
-    /// An organization's header.
-    static let group: CGFloat = 30
     /// A row that folds others away.
     static let fold: CGFloat = 28
-}
-
-/// An organization's header in All, which shows or hides its repositories.
-private struct GroupRow: View {
-    let title: String
-    let monogram: String?
-    let count: Int
-    let isShowing: Bool
-    let toggle: () -> Void
-
-    var body: some View {
-        SidebarRow(height: SidebarRowHeight.group, action: toggle) {
-            HStack(spacing: 7) {
-                Group {
-                    if let monogram {
-                        Monogram(letters: monogram, size: 18)
-                    } else {
-                        Image(systemName: "ellipsis")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 18, height: 18)
-                    }
-                }
-                HStack(spacing: 5) {
-                    Text(title)
-                        .font(.system(size: 13, weight: .semibold))
-                        .lineLimit(1)
-                    Triangle(pointsDown: isShowing)
-                }
-            }
-        } trailing: {
-            Text(count, format: .number)
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
-                .padding(.trailing, 7)
-        } commands: {
-            Text(count, format: .number)
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
-                .padding(.trailing, 7)
-        }
-        .padding(.top, 8)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(title)
-        .accessibilityValue(count == 1 ? "1 repository" : "\(count) repositories")
-        .accessibilityHint(isShowing ? "Hides its repositories" : "Shows its repositories")
-        .accessibilityAddTraits([.isButton, .isHeader])
-        .accessibilityAction(.default, toggle)
-    }
 }
 
 /// The small triangle after a name that says whether what's under it shows.

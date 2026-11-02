@@ -23,13 +23,12 @@ We drew the options on a design canvas: flat lists, dots for what's going on, fo
 
 - Clicking the row selects the main worktree, and the triangle after the name shows or hides the linked worktrees. A repository with no linked worktrees has no triangle.
 - Rows are one line, 32 points tall. A row no longer shows the repository's folder, except when two listed repositories have the same name, and a worktree's folder moves to its tooltip. A repository whose main worktree has a branch other than `main` or `master` shows the branch in gray.
-- A repository starts collapsed. The selected worktree always shows, even under a collapsed repository or organization.
+- A repository starts collapsed. The selected worktree always shows, even under a collapsed repository.
 
 **What's quiet folds.**
 
 - A worktree is quiet when it has no uncommitted files and isn't selected. When a repository is expanded, two or more quiet worktrees fold into one row, such as **3 quiet worktrees**, which unfolds them.
-- A repository is quiet when none of its worktrees has uncommitted files, none is selected, and the user hasn't expanded it. When All is selected, repositories are grouped under their organizations, and two or more quiet ones fold in the same way.
-- An organization's header in All collapses the whole group. Other starts collapsed.
+- All lists every repository, with no headers, and nothing folds there but worktrees. It started out grouped by organization, with quiet repositories folded into one row, but the rail already picks an organization, so All doesn't need to arrange them by one too.
 - Repositories go from A to Z, by name. They can't be reordered by hand, so a repository stays where the eye expects it as the list grows. Other lists owners' repositories as `owner/name`, under **Other owners**, and then the ones under **No remote**.
 
 **Adding repositories from this Mac.**

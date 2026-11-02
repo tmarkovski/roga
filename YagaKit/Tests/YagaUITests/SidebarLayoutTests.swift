@@ -29,7 +29,6 @@ struct SidebarLayoutTests {
     ) -> [String] {
         SidebarLayout(groups: RepositoryGroups(repositories), scope: scope, selection: selection, place: place, unfolded: unfolded).items.map { item in
             switch item {
-            case .group(_, let title, _, let count, let isShowing): "[\(title) \(count)\(isShowing ? "" : " hidden")]"
             case .label(let title): "<\(title)>"
             case .repository(_, let title, let detail): title + (detail.map { " (\($0))" } ?? "")
             case .worktree(_, let worktree): "  " + worktree.title
@@ -141,65 +140,24 @@ struct SidebarLayoutTests {
 
     // MARK: All
 
-    @Test func allGroupsRepositoriesUnderOrganizations() {
+    @Test func allListsEveryRepositoryFromAToZ() {
         let rows = rows([
-            repository("web", owner: "acme", uncommitted: ["web": 2]),
-            repository("api", owner: "acme", uncommitted: ["api": 1]),
-            repository("site", owner: "tmarkovski", uncommitted: ["site": 1]),
-            repository("yaga", owner: "tmarkovski", uncommitted: ["yaga": 1]),
+            repository("yaga", owner: "tmarkovski"),
+            repository("web", owner: "acme"),
+            repository("site", owner: "tmarkovski"),
+            repository("api", owner: "acme"),
+            repository("linux", owner: "torvalds"),
             repository("scratch"),
         ])
-        #expect(rows == ["[acme 2]", "api", "web", "[tmarkovski 2]", "site", "yaga", "[Other 1 hidden]"])
+        #expect(rows == ["api", "linux", "scratch", "site", "web", "yaga"])
     }
 
-    @Test func allFoldsQuietRepositories() {
-        let api = repository("api", owner: "acme")
-        let rows = rows(
-            [
-                api,
-                repository("billing", owner: "acme"),
-                repository("docs", owner: "acme"),
-                repository("web", owner: "acme", uncommitted: ["web": 2]),
-                repository("infra", owner: "acme", isExpanded: true),
-            ],
-            selection: select(api, "api")
-        )
-        #expect(rows == ["[acme 5]", "api", "infra", "web", "~ 2 quiet repositories"])
-    }
-
-    @Test func allOpensFoldedRepositories() {
-        let repositories = ["api", "billing", "docs"].map { repository($0, owner: "acme") }
-        let rows = rows(repositories, unfolded: [.repositories(.organization("acme"))])
-        #expect(rows == ["[acme 3]", "api", "billing", "docs", "~ Show fewer"])
-    }
-
-    @Test func aRepositoryThatCantBeFoundIsntQuiet() {
-        let missing = ListedRepository(path: "/git/gone/.git", owner: "acme", state: .missing)
-        let rows = rows([missing, repository("api", owner: "acme"), repository("web", owner: "acme")])
-        #expect(rows == ["[acme 3]", "gone", "~ 2 quiet repositories"])
-    }
-
-    @Test func aHiddenGroupStillShowsTheSelectedRepository() {
-        let api = repository("api", owner: "acme")
-        var place = SidebarPlace()
-        place.shownGroups[.organization("acme")] = false
-        let rows = rows([api, repository("web", owner: "acme")], selection: select(api, "api"), place: place)
-        #expect(rows == ["[acme 2 hidden]", "api"])
-    }
-
-    @Test func otherNamesOwnersInAll() {
-        var place = SidebarPlace()
-        place.shownGroups[.other] = true
-        let rows = rows(
-            [repository("api", owner: "acme"), repository("web", owner: "acme"), repository("linux", owner: "torvalds"), repository("scratch")],
-            place: place
-        )
-        #expect(rows == ["[acme 2]", "~ 2 quiet repositories", "[Other 2]", "torvalds/linux", "scratch"])
-    }
-
-    @Test func allIsAPlainListWithoutOrganizations() {
-        let rows = rows([repository("scratch"), repository("linux", owner: "torvalds")])
-        #expect(rows == ["torvalds/linux", "scratch"])
+    @Test func allStillShowsWorktreesUnderTheirRepository() {
+        let rows = rows([
+            repository("web", owner: "acme"),
+            repository("api", owner: "acme", linked: ["fix-login"], isExpanded: true),
+        ])
+        #expect(rows == ["api", "  fix-login", "web"])
     }
 
     // MARK: Where a window is
@@ -238,10 +196,14 @@ struct SidebarLayoutTests {
         var place = SidebarPlace()
         place.scope = .organization("acme")
         place.lastSelections[.organization("acme")] = WorktreeSelection(repository: "/r/.git", worktree: "/r")
-        place.shownGroups[.other] = true
         window.sidebar = place
         let decoded = try JSONDecoder().decode(WorkspaceWindow.self, from: JSONEncoder().encode(window))
         #expect(decoded == window)
+    }
+
+    @Test func aWindowThatSavedTheOldGroupsStillOpens() throws {
+        let saved = #"{"scope":{"all":{}},"lastSelections":[],"shownGroups":[]}"#
+        #expect(try JSONDecoder().decode(SidebarPlace.self, from: Data(saved.utf8)).scope == .all)
     }
 
     @Test func aWindowFromAnEarlierVersionStillOpens() throws {

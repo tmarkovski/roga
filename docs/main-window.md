@@ -6,19 +6,19 @@ The layout follows the Claude and ChatGPT apps. A sidebar on the left has a rail
 
 ```text
 ┌──────────────────────────────┬──────────────────────────────────────────────────┬────────────────────────┐
-│ ● ● ●  ◧                     │ agents-demo / main · 128 commits             ≡ ◨ │ ⌕ Filter          ⇅  ⋯ │
+│ ● ● ●  ◧                     │ agents-demo / main · 128 commits             ≡ ◨ │               ⌕  ⇅  ⋯  │
 ├──────┬───────────────────────┼──────────────────────────────────────────────────┤ Branches ▾           4 │
 │ [▣]  │ All repositories  19  │ ○  3 uncommitted files                           │   main               ✓ │
-│ AC   │ acme ▾              10│ ●  agent/fix-login  Add login tests      48ba644 │   agent/add-tests   ↑1 │
-│ NO   │ api ▾           7  ⧉ 4│ ●  ✓ main  Update the changelog          5405371 │   agent/fix-login ↑3 ↓2│
-│ TM   │   agent/add-tests    4│ ●  Add parser tests                      bb3b6b6 │ Remotes ▾            1 │
-│ …    │   agent/fix-login    3│ ●  v0.2  Show an error when …            86b3386 │   origin               │
-│      │   2 quiet worktrees ▸ ├───────────────────┬──────────────────────────────┤ Tags ▾               2 │
-│      │ auth  release/2.3     │ Commit 5405371  ⧉ │ CHANGELOG.md     ⌕  ↗  ⋯     │   v0.2                 │
-│      │ billing              1├───────────────────┼──────────────────────────────┤   v0.1                 │
-│      │ web ▸          2  ⧉ 2 │ Update changelog  │ @@ -1,6 +1,10 @@             │ Stashes              0 │
-│  +   │ 9 quiet repositories ▸│ CHANGELOG.md +4 −0│   # Changelog                │                        │
-│      │ northwind ▸          3│                   │ + ## 0.3                     │                        │
+│ AC   │ api ▾           7  ⧉ 4│ ●  agent/fix-login  Add login tests      48ba644 │   agent/add-tests   ↑1 │
+│ NO   │   agent/add-tests    4│ ●  ✓ main  Update the changelog          5405371 │   agent/fix-login ↑3 ↓2│
+│ TM   │   agent/fix-login    3│ ●  Add parser tests                      bb3b6b6 │ Remotes ▾            1 │
+│ …    │   2 quiet worktrees ▸ │ ●  v0.2  Show an error when …            86b3386 │   origin               │
+│      │ auth  release/2.3     ├───────────────────┬──────────────────────────────┤ Tags ▾               2 │
+│      │ billing              1│ Commit 5405371  ⧉ │ CHANGELOG.md     ⌕  ↗  ⋯     │   v0.2                 │
+│      │ docs                  ├───────────────────┼──────────────────────────────┤   v0.1                 │
+│      │ infra                 │ Update changelog  │ @@ -1,6 +1,10 @@             │ Stashes              0 │
+│  +   │ web ▸          2  ⧉ 2 │ CHANGELOG.md +4 −0│   # Changelog                │                        │
+│      │ yaga ▸               3│                   │ + ## 0.3                     │                        │
 └──────┴───────────────────────┴───────────────────┴──────────────────────────────┴────────────────────────┘
 ```
 
@@ -44,7 +44,7 @@ The list starts with the name of what the rail picked, in bold, and how many rep
 - Each linked worktree has a row under its repository, indented, with its branch and its number of uncommitted files in orange. Its tooltip has its folder. On hover, the count gives way to buttons that open the worktree in a new window or in Terminal, and its context menu has those and Show in Finder.
 - The selected worktree always shows, even when its repository is collapsed. Otherwise, worktrees with uncommitted files show, and two or more quiet ones fold into a row such as **3 quiet worktrees**, which shows them and then says **Show fewer**. A single quiet worktree just shows.
 - Repositories go from A to Z ([decision 16](decisions/0016-a-rail-of-organizations-in-the-sidebar.md)), and a new one starts collapsed. The list keeps every repository the user has added until they remove it ([decision 14](decisions/0014-the-sidebar-keeps-every-added-repository.md)).
-- With All selected, repositories are grouped under a header for each organization, with its two letters, its name, a triangle and how many repositories it has. Clicking the header shows or hides the group. Repositories that have uncommitted files, or the selected worktree, or that the user expanded, show, and two or more others fold into a row such as **11 quiet repositories**. Other comes last and starts collapsed. Without any organizations, All is a plain list with no headers.
+- With All selected, the list has every repository from A to Z, with no headers, and only worktrees fold.
 - With Other selected, the list has **Other owners**, with repositories named as `owner/name`, and **No remote**.
 
 ### Adding repositories
@@ -95,7 +95,8 @@ The refs panel runs the full height of the window on the right, with a thin line
 
 As the window gets narrower, the panel narrows to keep 400 points for the middle, down to 288. After that it gives way, and its button and menu command are disabled until there's room. It comes back by itself when the window is wide enough again, unless the user had closed it. Decision 13 expected the panel to be what gives way first.
 
-- Its top row is level with the title row, and has a filter field, a button that sorts by name or by date, and a menu with every command the panel has. They're items in the window's toolbar, whose empty parts still move the window. The field narrows every section at once, by the names of branches, remotes and tags and the messages of stashes, and it opens any section that's collapsed. View > Filter Refs and Option-Command-F go to it, showing the panel first if it's hidden. The down arrow goes from the field to the first row, and Escape clears it.
+- Its top row is level with the title row, and has buttons for filtering and for sorting by name or by date, and a menu with every command the panel has. They're items in the window's toolbar, whose empty parts still move the window.
+- The button for filtering opens a field at the top of the panel, as the diff panel's button for finding text does, and so do View > Filter Refs and Option-Command-F, showing the panel first if it's hidden. The field narrows every section at once, by the names of branches, remotes and tags and the messages of stashes, and it opens any section that's collapsed. The down arrow goes from the field to the first row. Escape or the button in the field clears the filter and closes the field.
 - Its sections are **Branches**, **Remotes**, **Tags** and **Stashes**. A section's header shows its title with a small triangle after it, and clicking the header collapses or expands the section, which is one setting for every repository. A section with nothing in it has no triangle and nothing to click, and shows only its title and `0`. The header shows how many items the section has, stays in view while its rows scroll, and on hover it will show the section's commands, such as creating a branch or tag in release 2.
 - Clicking a branch, remote branch or tag selects its commit in history, whichever worktree has it checked out. After that the up and down arrows move through the rows, skipping remotes, stashes and anything else with no commit to select.
 - A branch row shows the branch's name. Its second line says which worktree has it checked out and how far it is ahead of or behind the branch it's compared with, as in `in fix-login · 3 ahead, 2 behind main`, or when it last changed if neither applies, and the same counts sit beside the name as arrows. A branch is compared with its upstream, or without one, with the repository's main branch: the one `origin/HEAD` names, or a local `main` or `master`. The branch checked out in the window's worktree comes first and has a checkmark. On hover, a branch that another worktree has checked out shows a button that switches the window to that worktree. The buttons that hide a branch from history and review it against its base come with those features.

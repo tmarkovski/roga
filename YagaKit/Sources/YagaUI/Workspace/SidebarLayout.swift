@@ -16,18 +16,11 @@ struct SidebarPlace: Codable, Hashable, Sendable {
     var scope = SidebarScope.all
     /// The worktree the window showed last in each organization.
     var lastSelections: [SidebarScope: WorktreeSelection] = [:]
-    /// The groups in All whose headers were clicked, and whether they show.
-    var shownGroups: [SidebarScope: Bool] = [:]
 
     /// What the rail shows as selected, which is All while the rail is hidden
     /// or when the organization it was on has gone.
     func effectiveScope(in groups: RepositoryGroups, showsRail: Bool) -> SidebarScope {
         showsRail && groups.scopes.contains(scope) ? scope : .all
-    }
-
-    /// Other starts collapsed, because it can hold anything.
-    func isShowing(_ group: SidebarScope) -> Bool {
-        shownGroups[group] ?? (group != .other)
     }
 
     /// Remembers that the window shows `selection`, and moves the sidebar to
@@ -141,14 +134,10 @@ struct RepositoryGroups {
 enum SidebarFold: Hashable {
     /// A repository's quiet worktrees, by its git directory.
     case worktrees(String)
-    /// An organization's quiet repositories, in All.
-    case repositories(SidebarScope)
 }
 
 /// One row of the sidebar's list.
 enum SidebarItem: Identifiable {
-    /// An organization's header, in All.
-    case group(SidebarScope, title: String, monogram: String?, count: Int, isShowing: Bool)
     case label(String)
     /// A repository's row, which is its main worktree. `detail` is what follows
     /// its name in gray.
@@ -159,7 +148,6 @@ enum SidebarItem: Identifiable {
 
     var id: String {
         switch self {
-        case .group(let scope, _, _, _, _): "group \(scope)"
         case .label(let title): "label \(title)"
         case .repository(let repository, _, _): "repository \(repository.path)"
         case .worktree(_, let worktree): "worktree \(worktree.path)"
@@ -184,66 +172,15 @@ struct SidebarLayout {
     var items: [SidebarItem] {
         var items: [SidebarItem] = []
         switch scope {
-        case .all where groups.organizations.isEmpty:
-            appendOthers(to: &items, withLabels: false)
-        case .all:
-            for organization in groups.organizations { appendGroup(organization, to: &items) }
-            if groups.hasOthers { appendOtherGroup(to: &items) }
-        case .organization:
+        case .all, .organization:
             for repository in groups.repositories(in: scope) { append(repository, to: &items) }
         case .other:
-            appendOthers(to: &items, withLabels: true)
+            if !groups.otherOwners.isEmpty { items.append(.label("Other owners")) }
+            for repository in groups.otherOwners { append(repository, title: repository.nameWithOwner, to: &items) }
+            if !groups.noRemote.isEmpty { items.append(.label("No remote")) }
+            for repository in groups.noRemote { append(repository, to: &items) }
         }
         return items
-    }
-
-    private func appendGroup(_ organization: RepositoryOrganization, to items: inout [SidebarItem]) {
-        let isShowing = place.isShowing(organization.scope)
-        items.append(.group(organization.scope, title: organization.name, monogram: organization.monogram, count: organization.repositories.count, isShowing: isShowing))
-        guard isShowing else {
-            appendSelected(in: organization.repositories, to: &items)
-            return
-        }
-        let fold = SidebarFold.repositories(organization.scope)
-        let quiet = organization.repositories.filter(isQuiet)
-        if quiet.count < Self.fewestToFold {
-            for repository in organization.repositories { append(repository, to: &items) }
-        } else if unfolded.contains(fold) {
-            for repository in organization.repositories { append(repository, to: &items) }
-            items.append(.fold(fold, title: "Show fewer", isUnfolded: true))
-        } else {
-            for repository in organization.repositories where !isQuiet(repository) { append(repository, to: &items) }
-            items.append(.fold(fold, title: "\(quiet.count) quiet repositories", isUnfolded: false))
-        }
-    }
-
-    private func appendOtherGroup(to items: inout [SidebarItem]) {
-        let isShowing = place.isShowing(.other)
-        let others = groups.repositories(in: .other)
-        items.append(.group(.other, title: "Other", monogram: nil, count: others.count, isShowing: isShowing))
-        if isShowing {
-            appendOthers(to: &items, withLabels: false)
-        } else {
-            appendSelected(in: others, to: &items)
-        }
-    }
-
-    private func appendOthers(to items: inout [SidebarItem], withLabels: Bool) {
-        if withLabels, !groups.otherOwners.isEmpty { items.append(.label("Other owners")) }
-        for repository in groups.otherOwners { append(repository, title: repository.nameWithOwner, to: &items) }
-        if withLabels, !groups.noRemote.isEmpty { items.append(.label("No remote")) }
-        for repository in groups.noRemote { append(repository, to: &items) }
-    }
-
-    /// Under a collapsed group, the selected worktree's repository still shows.
-    private func appendSelected(in repositories: [ListedRepository], to items: inout [SidebarItem]) {
-        for repository in repositories where repository.path == selection?.repository {
-            append(repository, title: isAmongOthers(repository) ? repository.nameWithOwner : repository.name, to: &items)
-        }
-    }
-
-    private func isAmongOthers(_ repository: ListedRepository) -> Bool {
-        groups.otherOwners.contains { $0 === repository }
     }
 
     private func append(_ repository: ListedRepository, title: String? = nil, to items: inout [SidebarItem]) {
@@ -288,16 +225,5 @@ struct SidebarLayout {
     /// that will count too.
     private func isQuiet(_ worktree: Worktree, in repository: ListedRepository) -> Bool {
         repository.uncommittedFiles[worktree.path, default: 0] == 0 && !isSelected(worktree, in: repository)
-    }
-
-    /// A repository with a problem isn't quiet, so that it doesn't go unnoticed.
-    private func isQuiet(_ repository: ListedRepository) -> Bool {
-        switch repository.state {
-        case .missing, .failed: return false
-        case .opening, .open: break
-        }
-        return !repository.isExpanded
-            && repository.path != selection?.repository
-            && repository.uncommittedFiles.values.allSatisfy { $0 == 0 }
     }
 }
