@@ -20,3 +20,4 @@ Records aren't rewritten when a decision changes. Instead, a new record explains
 | [12](0012-history-in-topological-order.md) | Show history in topological order by default | Accepted |
 | [13](0013-repositories-in-a-sidebar.md) | List repositories and their worktrees in a sidebar | Accepted |
 | [14](0014-the-sidebar-keeps-every-added-repository.md) | Keep every added repository in the sidebar, and save the list in Application Support | Accepted |
+| [15](0015-uncommitted-changes-as-a-row-in-history.md) | Show uncommitted changes as a row at the top of history | Accepted |

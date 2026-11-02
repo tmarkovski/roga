@@ -39,7 +39,7 @@ struct Sidebar: View {
                         if repository.isExpanded {
                             ForEach(repository.worktrees, id: \.path) { worktree in
                                 let row = WorktreeSelection(repository: repository.path, worktree: worktree.path)
-                                WorktreeRow(worktree: worktree, isSelected: selection == row) {
+                                WorktreeRow(worktree: worktree, uncommittedFiles: repository.uncommittedFiles[worktree.path] ?? 0, isSelected: selection == row) {
                                     select(row)
                                 } openInNewWindow: {
                                     openWindow(value: WorkspaceWindow(selection: row))
@@ -226,13 +226,21 @@ private struct RepositoryRow: View {
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
                     .padding(.trailing, 7)
-            } else if linkedWorktrees > 0 {
-                HStack(spacing: 4) {
-                    Image(systemName: "square.on.square")
-                    Text(linkedWorktrees, format: .number)
+            } else {
+                HStack(spacing: 8) {
+                    if linkedWorktrees > 0 {
+                        HStack(spacing: 4) {
+                            Image(systemName: "square.on.square")
+                            Text(linkedWorktrees, format: .number)
+                        }
+                        .foregroundStyle(.secondary)
+                    }
+                    if !repository.isExpanded, uncommittedFiles > 0 {
+                        Text(uncommittedFiles, format: .number)
+                            .foregroundStyle(.orange)
+                    }
                 }
                 .font(.system(size: 13))
-                .foregroundStyle(.secondary)
                 .padding(.trailing, 7)
             }
         } commands: {
@@ -259,7 +267,7 @@ private struct RepositoryRow: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(repository.name)
         .accessibilityValue(
-            [location, linkedWorktreesDescription, repository.isExpanded ? "Expanded" : "Collapsed", problem]
+            [location, linkedWorktreesDescription, uncommittedFilesDescription(uncommittedFiles), repository.isExpanded ? "Expanded" : "Collapsed", problem]
                 .compactMap(\.self)
                 .joined(separator: ", ")
         )
@@ -281,6 +289,11 @@ private struct RepositoryRow: View {
     /// How many worktrees the repository has besides the main one.
     private var linkedWorktrees: Int {
         repository.worktrees.count { !$0.isMain }
+    }
+
+    /// How many files have uncommitted changes in all of its worktrees.
+    private var uncommittedFiles: Int {
+        repository.uncommittedFiles.values.reduce(0, +)
     }
 
     private var linkedWorktreesDescription: String? {
@@ -320,6 +333,7 @@ private struct RepositoryRow: View {
 /// A worktree's branch, and its folder under it.
 private struct WorktreeRow: View {
     let worktree: Worktree
+    let uncommittedFiles: Int
     let isSelected: Bool
     let select: () -> Void
     let openInNewWindow: () -> Void
@@ -328,8 +342,12 @@ private struct WorktreeRow: View {
         SidebarRow(isSelected: isSelected, isEnabled: !worktree.isPrunable, height: SidebarRowHeight.twoLines, action: select) {
             lines
         } trailing: {
-            // The count of uncommitted files goes here.
-            EmptyView()
+            if uncommittedFiles > 0 {
+                Text(uncommittedFiles, format: .number)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.orange)
+                    .padding(.trailing, 7)
+            }
         } commands: {
             commands
         }
@@ -338,7 +356,7 @@ private struct WorktreeRow: View {
         .contextMenu { menuItems }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(worktree.title)
-        .accessibilityValue(subtitle)
+        .accessibilityValue([subtitle, uncommittedFilesDescription(uncommittedFiles)].compactMap(\.self).joined(separator: ", "))
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction(.default, select)
         .accessibilityActions { menuItems }
@@ -412,6 +430,14 @@ extension NavigationSplitViewVisibility {
 extension FocusedValues {
     /// Whether the focused window shows its sidebar, for the View menu.
     @Entry var sidebarVisibility: Binding<NavigationSplitViewVisibility>?
+}
+
+private func uncommittedFilesDescription(_ count: Int) -> String? {
+    switch count {
+    case 0: nil
+    case 1: "1 uncommitted file"
+    default: "\(count) uncommitted files"
+    }
 }
 
 private func reveal(_ path: String) {

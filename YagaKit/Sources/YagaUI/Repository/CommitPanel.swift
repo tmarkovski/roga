@@ -212,10 +212,10 @@ private struct FilesSummary: View {
     }
 }
 
-/// One file a commit changed: its status, name and folder, and its line counts.
-/// It fills with gray while the pointer is over it, and a little darker while
-/// it's selected.
-private struct ChangedFileRow: View {
+/// One file that changed: its status, name and folder, and its line counts. It
+/// fills with gray while the pointer is over it, and a little darker while it's
+/// selected.
+struct ChangedFileRow: View {
     let file: DiffFile
     let isSelected: Bool
     let select: () -> Void
@@ -290,15 +290,18 @@ private struct ChangedFileRow: View {
         case .renamed: "Renamed \(file.oldPath ?? "") to \(file.path)"
         case .copied: "Copied \(file.oldPath ?? "") to \(file.path)"
         case .typeChanged: "Changed the kind of \(file.path)"
+        case .untracked: "Untracked \(file.path)"
+        case .conflicted: "Conflict in \(file.path)"
         case .other(let letter): "\(letter) \(file.path)"
         }
+        guard file.status != .untracked, file.status != .conflicted else { return change }
         guard let lines = file.lines else { return change + ", a binary file" }
         return change + ", \(lines.added) lines added and \(lines.removed) removed"
     }
 }
 
 /// Lines added in green and removed in red.
-private struct LineCounts: View {
+struct LineCounts: View {
     let added: Int
     let removed: Int
 

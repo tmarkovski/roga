@@ -53,8 +53,13 @@ final class RepositoryModel {
     private(set) var commitGraphState = CommitGraphState.unknown
     /// The commit selected in history, and what the commit panel shows of it.
     let selectedCommit: SelectedCommit
-    /// The row of the selected commit. It's nil while the history being
-    /// loaded hasn't reached the commit yet, and the commit stays selected.
+    /// The worktree's uncommitted changes, when their row is selected.
+    let selectedChanges: SelectedChanges
+    /// How many files have uncommitted changes. While there are any, a row for
+    /// them comes before the first commit.
+    private(set) var uncommittedFiles = 0
+    /// The selected row. It's nil while the history being loaded hasn't reached
+    /// the selected commit yet, and the commit stays selected.
     private(set) var selectedRow: Int?
 
     /// The request whose history has loaded completely.
@@ -67,6 +72,12 @@ final class RepositoryModel {
     @ObservationIgnored private let now = Date()
     /// Whether the user wants commit-graph files kept up to date.
     @ObservationIgnored private let keepsCommitGraphCurrent: () -> Bool
+    /// Says how many files are uncommitted, whenever that's been checked.
+    @ObservationIgnored private let reportUncommittedFiles: (Int) -> Void
+    /// The line from the row for uncommitted changes down to `HEAD`.
+    @ObservationIgnored private var workingTreeLine: WorkingTreeLine?
+    /// The check that yaga becoming active started, which a newer one replaces.
+    @ObservationIgnored private(set) var check: Task<Void, Never>?
     /// The running update of the commit-graph files, which isn't tied to any
     /// view, so that it carries on when the window shows another worktree.
     @ObservationIgnored private(set) var commitGraphUpdate: Task<Void, Never>?
@@ -85,12 +96,29 @@ final class RepositoryModel {
     init(
         session: RepositorySession,
         worktree: String,
-        keepsCommitGraphCurrent: @escaping () -> Bool = { UserDefaults.standard.keepsCommitGraphCurrent }
+        keepsCommitGraphCurrent: @escaping () -> Bool = { UserDefaults.standard.keepsCommitGraphCurrent },
+        reportUncommittedFiles: @escaping (Int) -> Void = { _ in }
     ) {
         self.session = session
         self.worktree = worktree
         self.keepsCommitGraphCurrent = keepsCommitGraphCurrent
+        self.reportUncommittedFiles = reportUncommittedFiles
         selectedCommit = SelectedCommit(session: session)
+        selectedChanges = SelectedChanges(session: session, worktree: worktree, selectedFile: selectedCommit.selectedFile)
+        selectedChanges.onLoad = { [weak self] count in self?.show(uncommittedFiles: count) }
+    }
+
+    /// The file selected in whichever panel is showing, which the diff panel
+    /// shows.
+    var selectedFile: SelectedFile { selectedCommit.selectedFile }
+
+    /// Selects the file `step` places from the selected one.
+    func selectFile(by step: Int) {
+        if selectedChanges.isSelected {
+            selectedChanges.selectFile(by: step)
+        } else {
+            selectedCommit.selectFile(by: step)
+        }
     }
 
     var loadRequest: LoadRequest { LoadRequest(sort: sort, reloads: reloads) }
@@ -156,9 +184,61 @@ final class RepositoryModel {
         return !history.readCommitGraphFiles && history.rows.count >= Self.largeHistory
     }
 
+    /// Loads what the window shows of the worktree. It returns when that's
+    /// done, or when the task is cancelled, as it is when the order changes or
+    /// the window shows another worktree. A worktree that was showing before
+    /// has its history already, so it only needs checking.
+    func appear() async {
+        guard loadRequest != loaded else { return await checkForChanges() }
+        async let status: Void = updateUncommittedFiles()
+        await load()
+        await status
+    }
+
+    /// Looks at the worktree again, because yaga became active and whatever
+    /// the user was doing elsewhere may have changed it.
+    func becameActive() {
+        check?.cancel()
+        check = Task { await checkForChanges() }
+    }
+
+    /// Updates the uncommitted files, and loads history again if a ref moved,
+    /// such as after a commit. History has to change then too, because a row
+    /// for uncommitted changes leads to `HEAD`.
+    private func checkForChanges() async {
+        await updateUncommittedFiles()
+        guard let history, let refs = try? await session.refs(in: worktree), !Task.isCancelled, refs != history.refs else { return }
+        reload()
+    }
+
+    private func updateUncommittedFiles() async {
+        // A failure is usually a bare repository, which has no files to list.
+        let status = try? await session.status(in: worktree)
+        guard !Task.isCancelled else { return }
+        show(uncommittedFiles: status?.fileCount ?? 0)
+        selectedChanges.refresh()
+    }
+
+    /// Adds or removes the row for uncommitted changes, which moves the rows
+    /// below it.
+    private func show(uncommittedFiles count: Int) {
+        reportUncommittedFiles(count)
+        guard count != uncommittedFiles else { return }
+        let hadRow = hasWorkingTreeRow
+        uncommittedFiles = count
+        if hasWorkingTreeRow != hadRow {
+            workingTreeLine = history.map { WorkingTreeLine(layout: $0.lanes, head: $0.head) }
+            if selectedChanges.isSelected {
+                selectRow(nil)
+            } else if let row = selectedRow {
+                selectedRow = row + (hasWorkingTreeRow ? 1 : -1)
+            }
+        }
+        historyVersion += 1
+    }
+
     /// Loads history in the current order, unless it has loaded already. It
-    /// returns once history is loaded, or when the task is cancelled, as it
-    /// is when the order changes or the window shows another worktree.
+    /// returns once history is loaded, or when the task is cancelled.
     func load() async {
         let request = loadRequest
         guard request != loaded else { return }
@@ -173,6 +253,7 @@ final class RepositoryModel {
                     badges = Self.badges(history)
                 }
                 self.history = history
+                if hasWorkingTreeRow { workingTreeLine = WorkingTreeLine(layout: history.lanes, head: history.head) }
                 findSelectedRow(in: history)
                 historyVersion += 1
                 phase = .ready
@@ -190,13 +271,23 @@ final class RepositoryModel {
     func selectRow(_ row: Int?) {
         guard row != selectedRow else { return }
         selectedRow = row
-        guard let row, let history else { return selectedCommit.show(nil) }
-        selectedCommit.show(history.graph.id(at: history.rows[row]))
+        if hasWorkingTreeRow, row == 0 {
+            selectedCommit.show(nil, keepingFile: true)
+            selectedChanges.select()
+            return
+        }
+        selectedChanges.deselect()
+        guard let row, let history else {
+            selectedCommit.show(nil)
+            selectedFile.show(nil, in: nil)
+            return
+        }
+        selectedCommit.show(history.graph.id(at: history.rows[row - rowOffset]))
     }
 
     /// Selects a commit, if history has it.
     func select(commit id: ObjectID) {
-        if let row = history.flatMap({ Self.row(of: id, in: $0) }) { selectRow(row) }
+        if let row = history.flatMap({ Self.row(of: id, in: $0) }) { selectRow(row + rowOffset) }
     }
 
     /// Whether history has a commit. A shallow clone doesn't have the parents
@@ -210,7 +301,7 @@ final class RepositoryModel {
     /// it is gone, such as after deleting its branch.
     private func findSelectedRow(in history: History) {
         guard let id = selectedCommit.id else { return }
-        selectedRow = Self.row(of: id, in: history)
+        selectedRow = Self.row(of: id, in: history).map { $0 + rowOffset }
         if selectedRow == nil, history.isComplete { selectedCommit.show(nil) }
     }
 
@@ -221,11 +312,25 @@ final class RepositoryModel {
         history.graph.position(of: id).flatMap { history.rows.firstIndex(of: $0) }
     }
 
-    var rowCount: Int { history?.rows.count ?? 0 }
+    var hasWorkingTreeRow: Bool { uncommittedFiles > 0 }
+
+    /// How many rows come before the first commit.
+    private var rowOffset: Int { hasWorkingTreeRow ? 1 : 0 }
+
+    var rowCount: Int { (history?.rows.count ?? 0) + rowOffset }
 
     /// What a row shows, with whatever text has loaded.
     func rowContent(_ row: Int) -> CommitRowContent {
-        guard let history, row < history.rows.count else { return CommitRowContent(shortID: "") }
+        if hasWorkingTreeRow, row == 0 {
+            return CommitRowContent(
+                shortID: "",
+                subject: uncommittedFiles == 1 ? "1 uncommitted file" : "\(uncommittedFiles.formatted()) uncommitted files",
+                lanes: workingTreeLine?.row,
+                isWorkingTree: true
+            )
+        }
+        let row = row - rowOffset
+        guard let history, row >= 0, row < history.rows.count else { return CommitRowContent(shortID: "") }
         let position = history.rows[row]
         let text = texts[position]
         return CommitRowContent(
@@ -234,7 +339,9 @@ final class RepositoryModel {
             subject: text?.subject,
             author: text?.author,
             date: text?.date,
-            lanes: history.lanes.row(row)
+            lanes: hasWorkingTreeRow
+                ? workingTreeLine?.adding(to: history.lanes.row(row), at: row)
+                : history.lanes.row(row)
         )
     }
 
@@ -243,7 +350,8 @@ final class RepositoryModel {
     func loadText(for rows: Range<Int>) async -> IndexSet {
         guard let history else { return [] }
         let generation = graphGeneration
-        let rows = rows.clamped(to: 0..<history.rows.count)
+        let offset = rowOffset
+        let rows = (rows.lowerBound - offset..<rows.upperBound - offset).clamped(to: 0..<history.rows.count)
         let wanted = rows.filter { texts[history.rows[$0]] == nil }
         guard !wanted.isEmpty else { return [] }
 
@@ -265,7 +373,7 @@ final class RepositoryModel {
                 RowText(subject: commit.subject, author: commit.author.name, date: Self.format(commit.author.time, now: now))
             } ?? RowText(subject: "This commit is missing from the repository.", author: "", date: "")
         }
-        return IndexSet(wanted)
+        return IndexSet(wanted.map { $0 + offset })
     }
 
     private static func badges(_ history: History) -> [CommitGraph.Position: [CommitRowContent.Badge]] {

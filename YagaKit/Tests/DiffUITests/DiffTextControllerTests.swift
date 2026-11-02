@@ -51,6 +51,25 @@ struct DiffTextControllerTests {
         #expect(text(of: controller).string == "@@ -1 +1 @@\nold\nnew\n")
     }
 
+    @Test func keepsItsPlaceInANewerCopyOfADocument() throws {
+        let lines = (1...200).map { " line \($0)\n" }.joined()
+        let one = try document("@@ -1,200 +1,200 @@\n" + lines)
+        let two = try document("@@ -1,200 +1,200 @@\n" + lines)
+        let three = try document("@@ -1,200 +1,200 @@\n" + lines)
+        let controller = DiffTextController()
+        controller.view.frame = NSRect(x: 0, y: 0, width: 400, height: 200)
+        controller.view.layoutSubtreeIfNeeded()
+        controller.show(one)
+        let textView = text(of: controller)
+        textView.scroll(NSPoint(x: 0, y: 300))
+        let position = textView.visibleRect.origin
+
+        controller.show(two, keepingPosition: true)
+        #expect(textView.visibleRect.origin == position)
+        controller.show(three)
+        #expect(textView.visibleRect.origin.y == 0)
+    }
+
     @Test func usesTextKit1() throws {
         // Asking for the layout manager of a text view on TextKit 2 quietly
         // moves it to TextKit 1, so this looks at the other one first.

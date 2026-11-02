@@ -46,11 +46,15 @@ enum DiffLoader {
         )
         // These are names rather than patterns, and a name can hold a `*`.
         command.environment["GIT_LITERAL_PATHSPECS"] = "1"
+        return try await readPatch(command, path: file.path, git: git, limit: limit)
+    }
 
+    /// Runs a command that prints a file's patch, and stops it at `limit` bytes.
+    static func readPatch(_ command: GitCommand, path: String, git: Git, limit: Int) async throws -> FilePatch {
         var output: [UInt8] = []
         for try await chunk in git.stream(command) {
             output.append(contentsOf: chunk)
-            guard output.count <= limit else { throw RepositoryError.patchTooLarge(path: file.path, limit: limit) }
+            guard output.count <= limit else { throw RepositoryError.patchTooLarge(path: path, limit: limit) }
         }
         do {
             return try PatchParser.parse(output)

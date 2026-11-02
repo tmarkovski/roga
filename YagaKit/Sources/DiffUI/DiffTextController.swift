@@ -81,8 +81,12 @@ public final class DiffTextController: NSObject {
     }
 
     /// Shows a patch from its start.
-    public func show(_ document: DiffDocument) {
+    ///
+    /// - Parameter keepingPosition: Whether the text stays scrolled to the same
+    ///   place, for a newer copy of the document showing.
+    public func show(_ document: DiffDocument, keepingPosition: Bool = false) {
         guard document !== self.document else { return }
+        let position = scrollView.contentView.bounds.origin
         // The selection is a place in the old text, which the new one may not have.
         textView.setSelectedRange(NSRange(location: 0, length: 0))
         letGoOfDocument()
@@ -101,7 +105,7 @@ public final class DiffTextController: NSObject {
         textView.sizeToFit()
         updateTextSize()
         textView.needsDisplay = true
-        textView.scroll(NSPoint(x: 0, y: 0))
+        textView.scroll(keepingPosition ? position : NSPoint(x: 0, y: 0))
     }
 
     /// A text view that's going away takes its text container with it, so it

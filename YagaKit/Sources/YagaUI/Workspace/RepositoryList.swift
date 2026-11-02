@@ -113,6 +113,7 @@ public final class RepositoryList {
         repository.worktrees = worktrees
         repositories.append(repository)
         save()
+        Task { await countUncommittedFiles(in: repository, session: session) }
         return selection
     }
 
@@ -142,6 +143,15 @@ public final class RepositoryList {
             remove(repository)
         }
         return selection
+    }
+
+    /// Records how many uncommitted files a window found in the worktree it
+    /// shows, which may be newer than what the list last counted.
+    func setUncommittedFiles(_ count: Int, in selection: WorktreeSelection) {
+        guard let repository = repository(at: selection.repository) else { return }
+        if repository.uncommittedFiles[selection.worktree] != count {
+            repository.uncommittedFiles[selection.worktree] = count
+        }
     }
 
     func setExpanded(_ isExpanded: Bool, _ repository: ListedRepository) {
@@ -181,6 +191,7 @@ public final class RepositoryList {
             do {
                 let worktrees = try await session.worktrees()
                 if worktrees != repository.worktrees { repository.worktrees = worktrees }
+                await countUncommittedFiles(in: repository, session: session)
             } catch {
                 guard !FileManager.default.fileExists(atPath: repository.path) else { return }
                 await session.close()
@@ -189,6 +200,17 @@ public final class RepositoryList {
         case .missing, .failed:
             await open(repository, git: git)
         }
+    }
+
+    /// Counts the uncommitted files of each of a repository's worktrees, one
+    /// worktree at a time and at low priority, because each one looks at every
+    /// file in the worktree. One that git can't look at has no count.
+    private func countUncommittedFiles(in repository: ListedRepository, session: RepositorySession) async {
+        var counts: [String: Int] = [:]
+        for worktree in repository.worktrees where !worktree.isBare && !worktree.isPrunable {
+            if let status = try? await session.status(in: worktree.path, isUpkeep: true) { counts[worktree.path] = status.fileCount }
+        }
+        if counts != repository.uncommittedFiles { repository.uncommittedFiles = counts }
     }
 
     /// Opens a session for the repository at its path, or where its bookmark
@@ -226,6 +248,7 @@ public final class RepositoryList {
                 }
                 save()
             }
+            await countUncommittedFiles(in: repository, session: session)
         } catch {
             repository.state = .failed(String(describing: error))
         }
@@ -283,6 +306,8 @@ public final class ListedRepository: Identifiable {
     fileprivate(set) var state = State.opening
     /// The main worktree first, then the linked ones.
     fileprivate(set) var worktrees: [Worktree] = []
+    /// How many files have uncommitted changes in each worktree, by its folder.
+    fileprivate(set) var uncommittedFiles: [String: Int] = [:]
 
     fileprivate init(saved: RepositoryStore.SavedRepository) {
         path = saved.path

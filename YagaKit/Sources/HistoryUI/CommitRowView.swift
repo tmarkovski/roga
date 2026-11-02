@@ -69,7 +69,7 @@ final class CommitCellView: NSView {
         if graphColumns > 0 {
             let graphX = inset - LaneRenderer.spacing / 2
             if let lanes = content.lanes {
-                LaneRenderer.draw(lanes, columns: graphColumns, at: graphX, height: bounds.height)
+                LaneRenderer.draw(lanes, columns: graphColumns, at: graphX, height: bounds.height, isHollow: content.isWorkingTree)
             }
             left = graphX + LaneRenderer.width(columns: graphColumns) + 6
         }

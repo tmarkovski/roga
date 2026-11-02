@@ -14,6 +14,15 @@ public enum ObjectFormat: String, Sendable, CaseIterable {
 
     /// The number of hexadecimal digits in a full object ID.
     public var hexLength: Int { byteCount * 2 }
+
+    /// The ID of a tree with nothing in it, which is what a repository without
+    /// commits compares its index with. git knows it without having it stored.
+    public var emptyTree: ObjectID {
+        switch self {
+        case .sha1: ObjectID(hex: "4b825dc642cb6eb9a060e54bf8d69288fbee4904")!
+        case .sha256: ObjectID(hex: "6ef19b41225c5369f1c104d45d8d85efa9b057b53b14b4b9b939dd74decc5321")!
+        }
+    }
 }
 
 /// The ID of a git object, either a 20-byte SHA-1 hash or a 32-byte SHA-256

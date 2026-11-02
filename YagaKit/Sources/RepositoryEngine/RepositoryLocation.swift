@@ -104,6 +104,8 @@ public enum RepositoryError: Error, Sendable, Hashable, CustomStringConvertible 
     case unexpectedOutput(GitCommand, String)
     /// A file's patch has more text than yaga reads.
     case patchTooLarge(path: String, limit: Int)
+    /// A worktree's list of changed files has more text than yaga reads.
+    case tooManyChanges(limit: Int)
 
     public var description: String {
         switch self {
@@ -113,6 +115,8 @@ public enum RepositoryError: Error, Sendable, Hashable, CustomStringConvertible 
             "\(command) printed \(output.prefix(200).debugDescription), which yaga didn't expect."
         case .patchTooLarge(let path, let limit):
             "The changes to \(path) take more than \(limit >> 20) MB of text, which is too much to show."
+        case .tooManyChanges(let limit):
+            "The list of files that changed takes more than \(limit >> 20) MB of text, which is too much to show. A folder of generated files may need to be ignored."
         }
     }
 }

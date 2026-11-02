@@ -159,6 +159,36 @@ struct RepositoryListTests {
         #expect(list.resolve(WorktreeSelection(repository: folder + "/other/.git", worktree: folder + "/other")) == nil)
     }
 
+    @Test func countsUncommittedFilesInEachWorktree() async throws {
+        let repository = try await copyRepository(try await Fixture.repository("basic"), into: folder)
+        try await runGit("worktree", "add", "--quiet", folder + "/notes", "feature", in: repository)
+        let list = try await makeList()
+        _ = try await list.add(folder: repository)
+        let listed = try #require(list.repositories.first)
+
+        try Data("new\n".utf8).write(to: URL(filePath: repository + "/new.txt"))
+        try Data("a\n".utf8).write(to: URL(filePath: folder + "/notes/a.txt"))
+        try Data("b\n".utf8).write(to: URL(filePath: folder + "/notes/b.txt"))
+        await list.refresh()
+        #expect(listed.uncommittedFiles == [repository: 1, folder + "/notes": 2])
+
+        // A window's newer count takes over until the list counts again.
+        let selection = WorktreeSelection(repository: listed.path, worktree: repository)
+        list.setUncommittedFiles(5, in: selection)
+        #expect(listed.uncommittedFiles[repository] == 5)
+        await list.refresh()
+        #expect(listed.uncommittedFiles[repository] == 1)
+    }
+
+    @Test func countsNothingForABareRepository() async throws {
+        let repository = folder + "/bare.git"
+        try await TestGit.make().run(GitCommand("init", "--quiet", "--bare", repository))
+        let list = try await makeList()
+        _ = try await list.add(folder: repository)
+        await list.refresh()
+        #expect(list.repositories.first?.uncommittedFiles == [:])
+    }
+
     @Test func remembersWhichRepositoriesAreExpanded() async throws {
         let list = try await makeList()
         _ = try await list.add(folder: try await Fixture.repository("basic"))

@@ -8,13 +8,13 @@ The layout follows the Claude and ChatGPT apps. A sidebar on the left lists repo
 ┌─────────────────────┬──────────────────────────────────────────────────────────────────────────────┐
 │ ● ● ●  ◧            │ agents-demo / main                                                      ▤  ◨ │
 │ + Open repository   ├────────────────────────────────────────────────────┬─────────────────────────┤
-│ ⌕ Search            │ ( History | Changes )         ⑂ All branches  ≡  ⋯ │ Refs               ⇅  ⋯ │
+│ ⌕ Search            │ History  128 commits          ⑂ All branches  ≡  ⋯ │ Refs               ⇅  ⋯ │
 │                     ├────────────────────────────────────────────────────┼─────────────────────────┤
-│ Repositories        │ ●  agent/fix-login  Add login tests        48ba644 │ ⌕ Filter                │
-│ agents-demo ▾       │ ●  ✓ main  Update the changelog            5405371 │ Branches ▾            4 │
-│   main              │ ●  Add parser tests                        bb3b6b6 │   main                ✓ │
-│   agent/add-tests 4 │ ●  v0.2  Show an error when …              86b3386 │   agent/add-tests    ↑1 │
-│   agent/fix-login 3 │ …                                                  │   agent/fix-login ↑3 ↓2 │
+│ Repositories        │ ○  3 uncommitted files                             │ ⌕ Filter                │
+│ agents-demo ▾       │ ●  agent/fix-login  Add login tests        48ba644 │ Branches ▾            4 │
+│   main              │ ●  ✓ main  Update the changelog            5405371 │   main                ✓ │
+│   agent/add-tests 4 │ ●  Add parser tests                        bb3b6b6 │   agent/add-tests    ↑1 │
+│   agent/fix-login 3 │ ●  v0.2  Show an error when …              86b3386 │   agent/fix-login ↑3 ↓2 │
 │   agent/refactor-…  ├──────────────────────┬─────────────────────────────┤   agent/refactor-…   ↑5 │
 │ yaga ▾              │ Commit 5405371  ⧉  ⋯ │ CHANGELOG.md        ⌕  ↗  ⋯ │ Remotes ▾             1 │
 │   gitrunner      19 ├──────────────────────┼─────────────────────────────┤   origin                │
@@ -43,7 +43,7 @@ The top row of the middle and right columns names what the window shows, as in `
 
 Every section in the middle is a panel: a plain rectangle with a 40-point header, separated from its neighbors by thin lines rather than cards or shadows. A header reads from left to right, from what the panel shows to what you can do with it:
 
-- The left side says what the panel shows: a title, a segmented switch, or a file's path.
+- The left side says what the panel shows: a title or a file's path.
 - Any state the panel depends on comes next, as a chip with a small triangle, such as which branches the history includes or which two commits a diff compares.
 - The panel's commands follow as icon buttons with tooltips. An icon button is a thin, dark glyph that gets a rounded gray square when the pointer is over it, like the Claude app's.
 - A menu for more commands comes last. It lists every command the panel has, including the ones shown as buttons, with their keyboard shortcuts. Every command is also in the menu bar.
@@ -54,10 +54,9 @@ Every section in the middle is a panel: a plain rectangle with a 40-point header
 
 The history panel fills the top of the middle column.
 
-- A segmented switch, styled like the Claude app's switch between chat and code, chooses between **History** and **Changes**. The selected segment is raised in white on a gray track, and Changes shows how many uncommitted files the current worktree has. A segmented switch suits two or three views of the same panel. If more views join them, sub-tabs would scale better.
 - The right side of its header shows which branches the history includes, a switch between topological order and date order (decision 12), and a menu for more commands.
-- **History** lists commits with the graph, then the commit's refs as colored badges, its subject, author, date and short hash. The current branch is green with a checkmark, local branches are blue, remote branches are purple, and tags are orange.
-- **Changes** lists the current worktree's uncommitted files, each with a status letter, its name and its folder. [Options we're keeping open](#options-were-keeping-open) has other ways to show them.
+- It lists commits with the graph, then the commit's refs as colored badges, its subject, author, date and short hash. The current branch is green with a checkmark, local branches are blue, remote branches are purple, and tags are orange.
+- While the worktree has uncommitted files, a row for them comes first, with a hollow dot and how many files there are ([decision 15](decisions/0015-uncommitted-changes-as-a-row-in-history.md)). A line runs from it to the commit `HEAD` points to, past any commits above `HEAD`, and past 100 rows it's cut into two arrows, as other long lines are. A worktree with no changes has no row. The row appears, goes and updates when yaga becomes the active app, when the window shows the worktree again, and on View > Reload. A ref that moved loads history again at the same moments.
 - When history takes more than a second to load, the panel says under the spinner why, if it's because the repository has no commit-graph file that yaga can use, and what yaga is doing about it ([decision 6](decisions/0006-keep-the-commit-graph-up-to-date.md)). Once history shows, a repository with at least 50,000 commits keeps a note after the commit count: **Writing commit-graph file…** while git writes it, or **Opens slowly** with a tortoise when yaga won't or can't write one. The note's tooltip gives the reason.
 
 ## The commit and diff panels
@@ -66,7 +65,7 @@ Two panels sit under the history panel.
 
 - **The commit panel** shows the selected commit: its subject and message, author, date and parents, and the files it changed with the lines added and removed in each. Its header shows the short hash and a button that copies the full hash, which Edit > Copy Commit Hash and Shift-Command-C do too. It shows the committer as well when that differs from the author. Clicking a parent's hash selects the parent in history. A merge lists what changed compared with its first parent, and says so. With nothing selected, which is how a worktree opens, the panel asks you to select a commit. Selecting a commit selects its first file. Clicking a file selects it, and then the up and down arrows move through the list. View > Next File and Previous File, Option-Command-Down Arrow and Option-Command-Up Arrow, do the same while the keyboard is in history.
 - **The diff panel** shows the selected file's changes as a unified diff without wrapping, with backgrounds for added lines, removed lines and hunk headers. A strip on the left has each line's numbers in the old and new file and its `+` or `−`, which stay put as the text scrolls sideways, and which a selection doesn't copy. Its header shows the file's path, with the folders in gray and the file name in full color, then where a moved file came from and how its mode changed, and a button for finding text, which Edit > Find in Diff and Command-F do too. A file with no lines to compare, such as a binary file, gets a sentence saying what changed. The header will have buttons for opening the file in an editor, and more, and changed words will be highlighted.
-- In **Changes**, the commit panel is hidden and the diff panel takes the full width.
+- **With the row for uncommitted changes selected**, a panel titled Uncommitted Changes takes the commit panel's place. It lists the files under the headings Conflicts, Unstaged, Untracked and Staged, each with how many files it has and how many lines they change, in the same rows as a commit's files. A file with both staged and unstaged changes is listed under both, and each row selects its own diff. An untracked file shows no line counts. The diff panel's header says which heading the file is under, and a conflicted file's diff compares the worktree with `HEAD`, so its conflict markers show as added lines. Selecting the row selects the first file. When the files are read again, the selected file stays selected and its text stays at the same place, even if the file changed. Once it has no changes, the first file is selected, and once there are no uncommitted files, nothing is.
 
 ## The refs panel
 
@@ -85,9 +84,8 @@ The refs panel is on the right. It's a shade darker than the panels, like the si
 
 ## Options we're keeping open
 
-We sketched several ways to show history and uncommitted changes, and they're worth revisiting once the real views exist. The wireframe above uses the History and Changes switch for now.
+We sketched several ways to show uncommitted changes. [Decision 15](decisions/0015-uncommitted-changes-as-a-row-in-history.md) chose the row at the top of history for release 1, and these others are worth revisiting now that the real views exist.
 
-- **Uncommitted changes as the first row of history.** The working tree appears above `HEAD` as a hollow node, the way Fork, GitKraken and Tower draw it. Selecting it lists unstaged, untracked and staged files in one list with a header for each group, in the same rows a commit's files use, so the History and Changes switch goes away. A file with both staged and unstaged changes appears in both groups, and a switch in the diff panel's header chooses which diff it shows. This is the favorite so far.
 - **Changes as its own view**, the way Fork does it: unstaged files on top, staged files below, and in release 2 the commit message under them, so files move down toward the commit. Each list is a panel with its own title, count and commands. This earns its place once staging arrives in release 2.
 - **One review pane for every set of changes**, like the diff panes in the Claude and ChatGPT apps. Chips in the header choose what to compare, such as uncommitted changes, a branch against its base, one commit or a stash, and show the lines added and removed. Every file is a collapsible block in one scrolling diff, with a check for marking it viewed, and a tree of files on the right jumps between them. This could be where branch review and stashes appear. Showing many files in one scrolling diff needs a prototype first, because decision 9's text view shows one file at a time.
 - **Tabs in a panel's header**, from the ChatGPT app's pane for changes, so that several comparisons can stay open at once.
@@ -101,7 +99,10 @@ We sketched several ways to show history and uncommitted changes, and they're wo
 - What collapses first when the window gets narrow. Decision 13 expects the refs panel to go first.
 - What clicking a branch does when a worktree has it checked out: select its tip in history, or switch the window to that worktree.
 - Which branch each branch is compared with in the refs panel: its upstream, or the repository's main branch.
-- What Command-1 to Command-9 and Control-Tab do now that there are no tabs, such as selecting repositories in the sidebar or switching between History and Changes.
+- What Command-1 to Command-9 and Control-Tab do now that there are no tabs, such as selecting repositories in the sidebar.
+- Which keyboard shortcut goes to the row for uncommitted changes, which can be scrolled out of view.
+- Whether a worktree with uncommitted changes opens with their row selected.
+- Whether untracked files show how many lines they have, which takes reading each one.
 - Where branch review, file history and the contents of a stash appear. The review pane above is one answer.
 - How wide the commit panel is by default, and whether it can be hidden.
 - Whether a worktree opens with `HEAD` selected, rather than with nothing selected.

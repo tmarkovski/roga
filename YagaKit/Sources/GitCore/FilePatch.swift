@@ -37,10 +37,13 @@ public struct FilePatch: Sendable, Hashable {
     /// The lines of every hunk. It's empty when git has no lines to show, as
     /// for a binary file or a file whose mode is all that changed.
     public var lines: [Line]
+    /// Whether git said the file is binary rather than comparing its lines.
+    public var isBinary: Bool
 
-    public init(bytes: [UInt8], lines: [Line]) {
+    public init(bytes: [UInt8], lines: [Line], isBinary: Bool = false) {
         self.bytes = bytes
         self.lines = lines
+        self.isBinary = isBinary
     }
 
     /// The text of a line.

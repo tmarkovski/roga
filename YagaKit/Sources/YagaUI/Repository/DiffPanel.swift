@@ -1,16 +1,17 @@
 import AppKit
 import DiffUI
 import GitCore
+import RepositoryEngine
 import SwiftUI
 
-/// Shows what the selected commit changed in the selected file.
+/// Shows what changed in the selected file, in a commit or a worktree.
 struct DiffPanel: View {
     let selection: SelectedFile
 
     var body: some View {
         Panel {
-            if let file = selection.shown?.file {
-                FileTitle(file: file)
+            if let shown = selection.shown {
+                FileTitle(file: shown.file, source: shown.source)
             } else {
                 Text("Diff")
                     .font(.system(size: 13, weight: .medium))
@@ -28,7 +29,7 @@ struct DiffPanel: View {
             ZStack {
                 switch selection.shown?.content {
                 case .patch(let document):
-                    DiffText(document: document, findRequests: selection.findRequests)
+                    DiffText(document: document, isUpdate: selection.shown?.isUpdate == true, findRequests: selection.findRequests)
                 case .note(let text):
                     note(text)
                 case .failed(let message):
@@ -57,9 +58,11 @@ struct DiffPanel: View {
 }
 
 /// A file's path, with the folders in gray and its name in full color, then
-/// where it came from and how its mode changed, if they did.
+/// which group of a worktree's changes it's from, where it came from and how
+/// its mode changed, if they did.
 private struct FileTitle: View {
     let file: DiffFile
+    let source: PatchSource
 
     var body: some View {
         HStack(spacing: 8) {
@@ -87,6 +90,7 @@ private struct FileTitle: View {
 
     private var details: String {
         var details: [String] = []
+        if case .worktree(_, let group, _) = source { details.append(group.title) }
         if let oldPath = file.oldPath { details.append("from " + oldPath) }
         if file.oldMode != file.newMode, file.oldMode != 0, file.newMode != 0 {
             details.append("mode \(String(file.oldMode, radix: 8)) → \(String(file.newMode, radix: 8))")
@@ -98,6 +102,8 @@ private struct FileTitle: View {
 /// Places the AppKit text view in SwiftUI (decision 9).
 private struct DiffText: NSViewRepresentable {
     let document: DiffDocument
+    /// Whether the document is a newer copy of the one showing.
+    let isUpdate: Bool
     let findRequests: Int
 
     func makeCoordinator() -> Coordinator {
@@ -109,7 +115,7 @@ private struct DiffText: NSViewRepresentable {
     }
 
     func updateNSView(_ view: NSView, context: Context) {
-        context.coordinator.controller.show(document)
+        context.coordinator.controller.show(document, keepingPosition: isUpdate)
         context.coordinator.update(findRequests: findRequests)
     }
 

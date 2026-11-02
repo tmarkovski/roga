@@ -13,8 +13,11 @@ public struct DiffFile: Sendable, Hashable {
         /// Changed from one kind of file to another, such as to a symbolic
         /// link.
         case typeChanged
-        /// A letter yaga doesn't expect from a diff between commits, such as
-        /// `U` for a file with conflicts.
+        /// Not in the index, and only in the worktree.
+        case untracked
+        /// Left with conflicts by a merge that hasn't finished.
+        case conflicted
+        /// A letter yaga doesn't expect from a diff.
         case other(String)
 
         /// The letter git uses for the status.
@@ -26,6 +29,8 @@ public struct DiffFile: Sendable, Hashable {
             case .renamed: "R"
             case .copied: "C"
             case .typeChanged: "T"
+            case .untracked: "?"
+            case .conflicted: "U"
             case .other(let letter): letter
             }
         }

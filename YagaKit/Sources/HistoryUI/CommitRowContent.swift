@@ -31,6 +31,9 @@ public struct CommitRowContent: Hashable {
     public var date: String?
     /// The graph's lines in this row.
     public var lanes: LaneLayout.Row?
+    /// Whether the row stands for a worktree's uncommitted changes rather than
+    /// a commit, which its hollow dot shows.
+    public var isWorkingTree: Bool
 
     public init(
         shortID: String,
@@ -38,7 +41,8 @@ public struct CommitRowContent: Hashable {
         subject: String? = nil,
         author: String? = nil,
         date: String? = nil,
-        lanes: LaneLayout.Row? = nil
+        lanes: LaneLayout.Row? = nil,
+        isWorkingTree: Bool = false
     ) {
         self.shortID = shortID
         self.badges = badges
@@ -46,6 +50,7 @@ public struct CommitRowContent: Hashable {
         self.author = author
         self.date = date
         self.lanes = lanes
+        self.isWorkingTree = isWorkingTree
     }
 
     /// What VoiceOver reads for the row.
@@ -55,7 +60,7 @@ public struct CommitRowContent: Hashable {
         parts += badges.map(\.title)
         if let author { parts.append(author) }
         if let date { parts.append(date) }
-        parts.append(shortID)
+        if !shortID.isEmpty { parts.append(shortID) }
         return parts.joined(separator: ", ")
     }
 }

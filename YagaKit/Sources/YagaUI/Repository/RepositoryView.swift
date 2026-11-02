@@ -1,3 +1,4 @@
+import AppKit
 import CommitGraph
 import GitRunner
 import RepositoryEngine
@@ -13,7 +14,10 @@ struct RepositoryView: View {
         content
             .task(id: model.loadRequest) {
                 model.updateCommitGraph()
-                await model.load()
+                await model.appear()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                model.becameActive()
             }
             .focusedSceneValue(\.repository, model)
     }
@@ -35,9 +39,13 @@ struct RepositoryView: View {
                 HistoryPanel(model: model)
             } lower: {
                 PanelColumns(leadingWidth: $commitPanelWidth) {
-                    CommitPanel(model: model)
+                    if model.selectedChanges.isSelected {
+                        ChangesPanel(selection: model.selectedChanges)
+                    } else {
+                        CommitPanel(model: model)
+                    }
                 } trailing: {
-                    DiffPanel(selection: model.selectedCommit.selectedFile)
+                    DiffPanel(selection: model.selectedFile)
                 }
             }
         }
@@ -123,7 +131,7 @@ struct HistoryPanel: View {
             .fixedSize()
             .help("Order of History")
         } content: {
-            if let history = model.history, history.isComplete, history.rows.isEmpty {
+            if let history = model.history, history.isComplete, history.rows.isEmpty, !model.hasWorkingTreeRow {
                 ContentUnavailableView("No Commits Yet", systemImage: "clock", description: Text("Commits appear here once there are some."))
             } else {
                 CommitList(model: model, version: model.historyVersion, selectedRow: model.selectedRow)

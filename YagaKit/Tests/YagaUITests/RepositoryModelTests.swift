@@ -3,9 +3,11 @@ import CommitGraph
 import Foundation
 import GitCore
 import GitRunner
+import HistoryUI
 import RepositoryEngine
 import TestSupport
 import Testing
+@testable import DiffUI
 @testable import YagaUI
 
 /// The models a window keeps for the worktrees it showed, and how they load
@@ -60,6 +62,264 @@ struct RepositoryModelTests {
         _ = try await TestGit.make().run(GitCommand("clone", "--quiet", "--no-local", try await Fixture.repository("basic"), repository))
         let session = try await RepositorySession.open(containing: repository, git: try await TestGit.make())
         return (RepositoryModel(session: session, worktree: repository, keepsCommitGraphCurrent: { keepsCommitGraphCurrent }), repository)
+    }
+
+    typealias TestError = SelectedFileTests.TestError
+
+    func write(_ text: String, to path: String, in repository: String) throws {
+        try Data(text.utf8).write(to: URL(filePath: repository + "/" + path))
+    }
+
+    /// Lets the panel's loads finish.
+    func settled(_ model: RepositoryModel) async {
+        await model.selectedChanges.loading?.value
+        await model.selectedCommit.loading?.value
+        await model.selectedFile.loading?.value
+    }
+
+    func shownLines(_ model: RepositoryModel) -> [String]? {
+        guard case .patch(let document) = model.selectedFile.shown?.content else { return nil }
+        return document.storage.string.split(separator: "\n").map(String.init)
+    }
+
+    @Test func aCleanWorktreeHasNoRowForChanges() async throws {
+        let (model, repository) = try await modelOfACopy()
+        #expect(FileManager.default.fileExists(atPath: repository))
+        await model.appear()
+        #expect(!model.hasWorkingTreeRow)
+        #expect(model.rowCount == model.history?.rows.count)
+        #expect(!model.rowContent(0).isWorkingTree)
+    }
+
+    @Test func putsARowForChangesBeforeTheFirstCommit() async throws {
+        let (model, repository) = try await modelOfACopy()
+        try write("changed\n", to: "app.txt", in: repository)
+        try write("new\n", to: "new.txt", in: repository)
+        await model.appear()
+        let history = try #require(model.history)
+        #expect(model.uncommittedFiles == 2)
+        #expect(model.rowCount == history.rows.count + 1)
+
+        let row = model.rowContent(0)
+        #expect(row.isWorkingTree)
+        #expect(row.subject == "2 uncommitted files")
+        #expect(row.shortID.isEmpty)
+        let lanes = try #require(row.lanes)
+        #expect(lanes.lines.count == 1)
+
+        // The rest of the rows move down one.
+        #expect(model.rowContent(1).shortID == String(history.graph.id(at: history.rows[0]).hex.prefix(8)))
+        #expect(!model.rowContent(1).isWorkingTree)
+        let loaded = await model.loadText(for: 0..<3)
+        #expect(loaded == IndexSet([1, 2]))
+        #expect(model.rowContent(1).subject != nil)
+    }
+
+    @Test func saysOneFile() async throws {
+        let (model, repository) = try await modelOfACopy()
+        try write("new\n", to: "new.txt", in: repository)
+        await model.appear()
+        #expect(model.rowContent(0).subject == "1 uncommitted file")
+    }
+
+    @Test func selectingTheRowShowsItsFiles() async throws {
+        let (model, repository) = try await modelOfACopy()
+        try write("new\n", to: "new.txt", in: repository)
+        await model.appear()
+        model.selectRow(1)
+        await settled(model)
+        #expect(model.selectedCommit.id != nil)
+
+        model.selectRow(0)
+        #expect(model.selectedChanges.isSelected)
+        #expect(model.selectedCommit.id == nil)
+        await settled(model)
+        guard case .loaded(let changes) = model.selectedChanges.files else {
+            throw TestError("Files aren't loaded: \(model.selectedChanges.files)")
+        }
+        #expect(changes.untracked.map(\.path) == ["new.txt"])
+        #expect(model.selectedFile.file?.path == "new.txt")
+        #expect(model.selectedFile.group == .untracked)
+        #expect(shownLines(model)?.contains("new") == true)
+
+        model.selectRow(1)
+        #expect(!model.selectedChanges.isSelected)
+        #expect(model.selectedCommit.id != nil)
+        await settled(model)
+        #expect(model.selectedFile.group == nil)
+    }
+
+    @Test func selectingACommitFindsTheRightRow() async throws {
+        let (model, repository) = try await modelOfACopy()
+        try write("new\n", to: "new.txt", in: repository)
+        await model.appear()
+        let history = try #require(model.history)
+        model.select(commit: history.graph.id(at: history.rows[2]))
+        #expect(model.selectedRow == 3)
+        #expect(model.selectedCommit.id == history.graph.id(at: history.rows[2]))
+    }
+
+    @Test func theSelectedCommitStaysSelectedWhenTheRowComesAndGoes() async throws {
+        let (model, repository) = try await modelOfACopy()
+        await model.appear()
+        let history = try #require(model.history)
+        model.selectRow(2)
+        let selected = model.selectedCommit.id
+        await settled(model)
+
+        try write("new\n", to: "new.txt", in: repository)
+        model.becameActive()
+        await model.check?.value
+        #expect(model.hasWorkingTreeRow)
+        #expect(model.selectedRow == 3)
+        #expect(model.selectedCommit.id == selected)
+        #expect(selected == history.graph.id(at: history.rows[2]))
+
+        try FileManager.default.removeItem(atPath: repository + "/new.txt")
+        model.becameActive()
+        await model.check?.value
+        #expect(!model.hasWorkingTreeRow)
+        #expect(model.selectedRow == 2)
+        #expect(model.selectedCommit.id == selected)
+    }
+
+    @Test func nothingIsSelectedOnceTheSelectedChangesAreGone() async throws {
+        let (model, repository) = try await modelOfACopy()
+        try write("new\n", to: "new.txt", in: repository)
+        await model.appear()
+        model.selectRow(0)
+        await settled(model)
+
+        try FileManager.default.removeItem(atPath: repository + "/new.txt")
+        model.becameActive()
+        await model.check?.value
+        await settled(model)
+        #expect(!model.hasWorkingTreeRow)
+        #expect(model.selectedRow == nil)
+        #expect(!model.selectedChanges.isSelected)
+        #expect(model.selectedFile.file == nil)
+    }
+
+    @Test func aFileWithBothKindsOfChangesHasTwoRowsToSelect() async throws {
+        let (model, repository) = try await modelOfACopy()
+        try write("staged\n", to: "README.md", in: repository)
+        try await runGit("add", "README.md", in: repository)
+        try write("staged\nunstaged\n", to: "README.md", in: repository)
+        try write("new\n", to: "new.txt", in: repository)
+        await model.appear()
+        model.selectRow(0)
+        await settled(model)
+
+        func selected() -> String { "\(model.selectedFile.group.map { $0.title } ?? "") \(model.selectedFile.file?.path ?? "")" }
+        #expect(selected() == "Unstaged README.md")
+        #expect(shownLines(model)?.contains("unstaged") == true)
+        model.selectFile(by: 1)
+        await settled(model)
+        #expect(selected() == "Untracked new.txt")
+        model.selectFile(by: 1)
+        await settled(model)
+        #expect(selected() == "Staged README.md")
+        #expect(shownLines(model)?.contains("unstaged") == false)
+        #expect(shownLines(model)?.contains("staged") == true)
+        // It stops at the end of the list.
+        model.selectFile(by: 1)
+        await settled(model)
+        #expect(selected() == "Staged README.md")
+    }
+
+    @Test func lookingAgainKeepsTheSameTextUnlessTheFileChanged() async throws {
+        let (model, repository) = try await modelOfACopy()
+        try write("one\n", to: "new.txt", in: repository)
+        await model.appear()
+        model.selectRow(0)
+        await settled(model)
+        guard case .patch(let first) = model.selectedFile.shown?.content else { throw TestError("No patch") }
+
+        model.becameActive()
+        await model.check?.value
+        await settled(model)
+        guard case .patch(let second) = model.selectedFile.shown?.content else { throw TestError("No patch") }
+        #expect(second === first)
+
+        try write("two\n", to: "new.txt", in: repository)
+        model.becameActive()
+        await model.check?.value
+        await settled(model)
+        guard case .patch(let third) = model.selectedFile.shown?.content else { throw TestError("No patch") }
+        #expect(third !== first)
+        #expect(model.selectedFile.shown?.isUpdate == true)
+        #expect(shownLines(model)?.contains("two") == true)
+        #expect(model.selectedFile.isWaiting == false)
+    }
+
+    @Test func selectsTheFirstFileOnceTheSelectedOneIsGone() async throws {
+        let (model, repository) = try await modelOfACopy()
+        try write("a\n", to: "a-new.txt", in: repository)
+        try write("b\n", to: "b-new.txt", in: repository)
+        await model.appear()
+        model.selectRow(0)
+        await settled(model)
+        model.selectFile(by: 1)
+        await settled(model)
+        #expect(model.selectedFile.file?.path == "b-new.txt")
+
+        try FileManager.default.removeItem(atPath: repository + "/b-new.txt")
+        model.becameActive()
+        await model.check?.value
+        await settled(model)
+        #expect(model.selectedFile.file?.path == "a-new.txt")
+    }
+
+    @Test func saysWhyAFileHasNoLinesToShow() async throws {
+        let (model, repository) = try await modelOfACopy()
+        try write("", to: "empty.txt", in: repository)
+        await model.appear()
+        model.selectRow(0)
+        await settled(model)
+        guard case .note(let note) = model.selectedFile.shown?.content else { throw TestError("No note") }
+        #expect(note == "This file is empty.")
+    }
+
+    @Test func loadsHistoryAgainWhenARefMoved() async throws {
+        let (model, repository) = try await modelOfACopy()
+        await model.appear()
+        let reloads = model.reloads
+        model.becameActive()
+        await model.check?.value
+        #expect(model.reloads == reloads)
+
+        try await runGit("commit", "--quiet", "--allow-empty", "--message=New", "--author=Ana <ana@example.com>", in: repository)
+        model.becameActive()
+        await model.check?.value
+        #expect(model.reloads == reloads + 1)
+        let count = try #require(model.history?.rows.count)
+        await model.appear()
+        #expect(model.history?.rows.count == count + 1)
+    }
+
+    @Test func aRepositoryWithoutCommitsStillShowsItsChanges() async throws {
+        let repository = try makeTemporaryFolder() + "/empty"
+        try FileManager.default.createDirectory(atPath: repository, withIntermediateDirectories: true)
+        try await runGit("init", "--quiet", in: repository)
+        try write("new\n", to: "new.txt", in: repository)
+        let session = try await RepositorySession.open(containing: repository, git: try await TestGit.make())
+        let model = RepositoryModel(session: session, worktree: repository, keepsCommitGraphCurrent: { false })
+        await model.appear()
+        #expect(model.rowCount == 1)
+        #expect(model.rowContent(0).lanes?.lines == [])
+        model.selectRow(0)
+        await settled(model)
+        #expect(model.selectedFile.file?.path == "new.txt")
+    }
+
+    @Test func reportsHowManyFilesAreUncommitted() async throws {
+        let (_, repository) = try await modelOfACopy()
+        try write("new\n", to: "new.txt", in: repository)
+        let session = try await RepositorySession.open(containing: repository, git: try await TestGit.make())
+        var reported: [Int] = []
+        let model = RepositoryModel(session: session, worktree: repository, keepsCommitGraphCurrent: { false }) { reported.append($0) }
+        await model.appear()
+        #expect(reported.last == 1)
     }
 
     func chainExists(in repository: String) -> Bool {

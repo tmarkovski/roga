@@ -10,6 +10,7 @@ public enum PatchParser {
     /// became another kind of file as one file deleted and another added.
     public static func parse(_ output: [UInt8]) throws(ParseError) -> FilePatch {
         var lines: [FilePatch.Line] = []
+        var isBinary = false
         var oldNumber = 0
         var newNumber = 0
         // How many of the current hunk's lines are still to come. Inside a
@@ -61,13 +62,15 @@ public enum PatchParser {
                     }
                     (oldNumber, oldLeft, newNumber, newLeft) = hunk
                     lines.append(.init(kind: .hunkHeader, text: start..<end))
+                } else if first == UInt8(ascii: "B"), bytes[start..<end].starts(with: "Binary files ".utf8) {
+                    isBinary = true
                 }
             }
         }
         guard oldLeft == 0, newLeft == 0 else {
             throw ParseError("git diff-tree stopped in the middle of a hunk.")
         }
-        return FilePatch(bytes: output, lines: lines)
+        return FilePatch(bytes: output, lines: lines, isBinary: isBinary)
     }
 
     /// Reads `@@ -12,5 +12,6 @@`, where a count of 1 can be left out.

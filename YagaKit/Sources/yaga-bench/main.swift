@@ -5,6 +5,7 @@
 //   yaga-bench history <repository> [--sort date|topological] [--runs N] [--verify] [--cold [--parts]]
 //   yaga-bench commit-graph <repository>
 //   yaga-bench diff [--lines N] [--line-length N] [--jumps N]
+//   yaga-bench status <worktree> [--runs N]
 //
 // The history benchmark orders history from HEAD with the commit-graph reader
 // alone, then through a repository session from every branch, remote branch
@@ -30,6 +31,10 @@
 //
 // The diff benchmark needs no repository, because it generates a patch. It
 // opens a window for a few seconds, without taking the keyboard.
+//
+// The status benchmark lists a worktree's uncommitted files the way the app
+// does. It only reads the worktree, and it needs one with its files checked
+// out, which the clone for the history benchmark doesn't have.
 
 import Foundation
 
@@ -42,10 +47,13 @@ do {
         try await CommitGraphBenchmark(arguments: Array(arguments.dropFirst())).run()
     case "diff":
         try await DiffBenchmark(arguments: Array(arguments.dropFirst())).run()
+    case "status":
+        try await StatusBenchmark(arguments: Array(arguments.dropFirst())).run()
     default:
         print("Usage: yaga-bench history <repository> [--sort date|topological] [--runs N] [--verify] [--cold [--parts]]")
         print("       yaga-bench commit-graph <repository>")
         print("       yaga-bench diff [--lines N] [--line-length N] [--jumps N]")
+        print("       yaga-bench status <worktree> [--runs N]")
         exit(2)
     }
 } catch {

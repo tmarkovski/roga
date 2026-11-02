@@ -140,7 +140,9 @@ public struct WorkspaceView: View {
             }
         case .open(let session):
             if repository.worktrees.contains(where: { $0.path == selected.worktree }) {
-                RepositoryView(model: recent.model(for: selected, session: session))
+                RepositoryView(model: recent.model(for: selected, session: session) { [list] count in
+                    list.setUncommittedFiles(count, in: selected)
+                })
                     .id(selected)
             } else {
                 // The worktree is gone, and resolving the selection moves the
@@ -178,12 +180,18 @@ final class RecentWorktrees {
     /// The selections, from the one shown longest ago to the latest.
     private var order: [WorktreeSelection] = []
 
-    func model(for selection: WorktreeSelection, session: RepositorySession) -> RepositoryModel {
+    /// - Parameter reportUncommittedFiles: What a new model calls with how many
+    ///   uncommitted files it finds.
+    func model(
+        for selection: WorktreeSelection,
+        session: RepositorySession,
+        reportUncommittedFiles: @escaping (Int) -> Void = { _ in }
+    ) -> RepositoryModel {
         order.removeAll { $0 == selection }
         order.append(selection)
         // A repository that was removed and added again has a new session.
         if let model = models[selection], model.session === session { return model }
-        let model = RepositoryModel(session: session, worktree: selection.worktree)
+        let model = RepositoryModel(session: session, worktree: selection.worktree, reportUncommittedFiles: reportUncommittedFiles)
         models[selection] = model
         while order.count > Self.limit {
             models[order.removeFirst()] = nil

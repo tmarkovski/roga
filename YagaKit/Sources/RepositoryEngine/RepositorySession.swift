@@ -6,9 +6,9 @@ import GitRunner
 /// keeps running for it. All of the repository's worktrees share it.
 ///
 /// For now a session lists worktrees, reads history, the text of commits, the
-/// files they changed and their patches, and keeps the commit-graph files up
-/// to date. Status and watching for changes come later, as ARCHITECTURE.md
-/// describes.
+/// files they changed and their patches, reads what's uncommitted in a
+/// worktree, and keeps the commit-graph files up to date. Watching for changes
+/// comes later, as ARCHITECTURE.md describes.
 public actor RepositorySession {
     public nonisolated let location: RepositoryLocation
     public nonisolated let git: Git
@@ -88,6 +88,39 @@ public actor RepositorySession {
         try await DiffLoader.patch(of: file, in: commit, git: git, directory: location.commonDirectory)
     }
 
+    /// Lists a worktree's uncommitted files, without their line counts, which
+    /// is enough for saying how many there are.
+    ///
+    /// - Parameters:
+    ///   - worktree: The worktree's folder.
+    ///   - isUpkeep: Whether nobody is waiting for the answer, which runs git
+    ///     at low priority.
+    /// - Throws: `RepositoryError.tooManyChanges` for a list too long to read.
+    public nonisolated func status(in worktree: String, isUpkeep: Bool = false) async throws -> WorktreeChanges {
+        try await ChangesLoader.status(in: worktree, git: git, isUpkeep: isUpkeep)
+    }
+
+    /// Lists a worktree's uncommitted files, with the lines added and removed
+    /// in each that's in the index. It takes longer than `status`, so it waits
+    /// until someone looks at the files.
+    ///
+    /// - Parameter worktree: The worktree's folder.
+    public nonisolated func changes(in worktree: String) async throws -> WorktreeChanges {
+        try await ChangesLoader.changes(in: worktree, format: location.format, git: git)
+    }
+
+    /// Reads the patch of a file from a commit or a worktree.
+    ///
+    /// - Throws: `RepositoryError.patchTooLarge` for a patch too long to show.
+    public nonisolated func patch(of file: DiffFile, from source: PatchSource) async throws -> FilePatch {
+        switch source {
+        case .commit(let commit):
+            try await patch(of: file, in: commit)
+        case .worktree(let path, let group, let head):
+            try await ChangesLoader.patch(of: file, in: group, head: head, directory: path, format: location.format, git: git)
+        }
+    }
+
     /// Writes what the repository's commit-graph files are missing, at low
     /// priority (decision 6). History reads the files when it loads, so the
     /// next load is the one that gets faster.
@@ -113,4 +146,12 @@ public actor RepositorySession {
         commitGraphUpdate?.cancel()
         catFile.close()
     }
+}
+
+/// Where a file's changes are, which says how to read its patch.
+public enum PatchSource: Sendable, Hashable {
+    case commit(ObjectID)
+    /// A group of a worktree's uncommitted files. `head` is the commit that
+    /// the worktree's staged changes compare with, or nil when there's none yet.
+    case worktree(path: String, group: WorktreeChanges.Group, head: ObjectID?)
 }

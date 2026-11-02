@@ -44,7 +44,10 @@ final class SelectedCommit {
     }
 
     /// Selects a commit, or none, and loads what the panel shows about it.
-    func show(_ id: ObjectID?) {
+    ///
+    /// - Parameter keepingFile: Whether to leave the diff panel as it is when
+    ///   no commit is selected, because the next thing to fill it is on its way.
+    func show(_ id: ObjectID?, keepingFile: Bool = false) {
         guard id != self.id else { return }
         self.id = id
         loading?.cancel()
@@ -55,7 +58,7 @@ final class SelectedCommit {
             info = nil
             files = .loading
             problem = nil
-            selectedFile.show(nil, in: nil)
+            if !keepingFile { selectedFile.show(nil, in: nil) }
             return
         }
         loading = Task { await load(id) }
@@ -106,6 +109,7 @@ final class SelectedCommit {
 
         patience = Task {
             try await Task.sleep(for: SelectedFile.patience)
+            try Task.checkCancellation()
             files = .loading
             selectedFile.wait()
         }

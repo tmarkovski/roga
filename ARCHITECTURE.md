@@ -37,7 +37,7 @@ yaga/
 │   │   │   ├── Refs.swift              refs, and what HEAD points to
 │   │   │   ├── Worktree.swift          a worktree's folder, HEAD and branch
 │   │   │   ├── CommitInfo.swift        a commit's parents, author, committer and message
-│   │   │   ├── StatusEntry.swift
+│   │   │   ├── WorktreeChanges.swift   what's uncommitted in a worktree, in groups
 │   │   │   ├── DiffFile.swift          a file a diff changes, and the lines added and removed
 │   │   │   ├── FilePatch.swift         what a patch changes in a file, line by line
 │   │   │   └── Parsing/                one parser per git output format
@@ -46,7 +46,7 @@ yaga/
 │   │   │       ├── RefListParser.swift     for-each-ref
 │   │   │       ├── ShowRefParser.swift     show-ref, for HEAD and what annotated tags lead to
 │   │   │       ├── WorktreeListParser.swift worktree list --porcelain -z
-│   │   │       ├── StatusParser.swift      status --porcelain=v2 -z
+│   │   │       ├── StatusParser.swift      status --porcelain=v2 -z, and --numstat -z
 │   │   │       ├── RawDiffParser.swift     diff-tree --raw --numstat -z
 │   │   │       └── PatchParser.swift       the hunks that diff-tree -p prints
 │   │   ├── GitRunner/
@@ -65,13 +65,14 @@ yaga/
 │   │   │   ├── CommitGraphFile.swift   one mapped commit-graph file
 │   │   │   ├── CommitGraphChain.swift  finding the single file or the split chain
 │   │   │   ├── HistoryOrder.swift      date order and topological order, a few rows at a time
-│   │   │   └── LaneLayout.swift        the graph's lines in each row, with long ones cut
+│   │   │   ├── LaneLayout.swift        the graph's lines in each row, with long ones cut
+│   │   │   └── WorkingTreeLine.swift   the line from uncommitted changes down to HEAD
 │   │   ├── RepositoryEngine/
 │   │   │   ├── RepositoryLocation.swift where a repository's files are, and its hash
 │   │   │   ├── RepositorySession.swift one actor per repository, which its worktrees share
 │   │   │   ├── HistoryLoader.swift     commit-graph, newer commits, fallbacks
 │   │   │   ├── RefsLoader.swift
-│   │   │   ├── StatusLoader.swift
+│   │   │   ├── ChangesLoader.swift     a worktree's uncommitted files, and their patches
 │   │   │   ├── DiffLoader.swift        the files a commit changed, and their patches
 │   │   │   ├── RepositoryWatcher.swift FSEvents
 │   │   │   ├── CommitGraphUpkeep.swift decision 6
@@ -219,6 +220,14 @@ The commit panel gets the commit's message from `cat-file`, and then its files f
 
 On a Release build, a commit that changes one file showed its files about 30 ms after being selected, most of it starting git. A generated commit that changes 20,000 files took about 450 ms, nearly all of it git counting lines, and git took about 75 ms to list those files without counting. Going through those commits and scrolling their lists, the main thread never stalled for more than about 30 ms, which is two frames at 60 Hz but not at 120 Hz. That was measured in an off-screen window. Only the rows of the file list are in a lazy stack, because they're all the same height, so it knows how tall it is. With the commit's message in the stack too, it guessed too tall, and jumping to the end of the list left the panel blank.
 
+**Uncommitted changes.** `git status --porcelain=v2 -z` says which files have changes, and it runs in the worktree's folder, because each worktree has its own index and files. While there are any, the model adds a row before the first commit (decision 15). Selecting the row lists the files again with their line counts, which come from `git diff-index --cached --numstat` and `git diff-files --numstat`. `git diff-files` also lists a file that was only touched, because yaga never writes the index, so those lists only add counts to what status listed. Patches come from the same two commands with `-p`, from `git diff-index` against `HEAD` for a conflicted file, and from `git diff --no-index` against `/dev/null` for an untracked one. A test checks that the index stays exactly as it was. In a repository without commits, the staged files compare with the empty tree.
+
+Status never downloads anything, because it runs for every worktree in the sidebar without anyone asking. In a partial clone with no files checked out, like a clone of Linux for measuring history, git would otherwise fetch every tree in `HEAD`, so yaga would download them just by opening. `GIT_NO_LAZY_FETCH` makes git fail instead, and that worktree has no row or count. Selecting a file can still download what it needs, as selecting a commit does, because someone asked for it.
+
+The line from the row to `HEAD` is drawn over the graph's layout, and the row's number is added to every row below it at one place in the model, so the graph doesn't change when the row comes and goes. For now, yaga looks again when it becomes the active app, when a window shows the worktree again, and on View > Reload, and it loads history again if a ref moved. A selected file is read again too. If its patch is the same, nothing changes on screen, and otherwise the new text stays at the same place. The sidebar counts each worktree's files the same way, one worktree at a time and at low priority, and a window's newer count for its own worktree replaces the list's. That means two `git status` commands for the window's worktree when yaga becomes active, until live refresh replaces all of this.
+
+`yaga-bench status` measures this. On an M1 Max, on a generated worktree with about as many files and folders as Linux (88,000 and 6,000), the count took about 370 ms, against the roadmap's target of 300 ms. git took about 330 ms of that, and about 230 ms of git's time goes on looking for untracked files, whether it lists folders or every file. `git config` takes 14 ms and the rest is starting processes. The prototype measured 251 ms for the same command on a real checkout of Linux, so a real one may just make the target, but it hasn't been measured with yaga. git's untracked cache made it about two and a half times faster in the prototype. The roadmap leaves whether to use it to release 2, and it needs writing to the index once. Listing the files with line counts took about 410 ms with 15 files changed.
+
 **Changes on disk.** FSEvents reports changed paths, and the session sorts them by what they affect:
 
 - refs, `packed-refs` and `reftable/` affect refs and history
@@ -291,6 +300,7 @@ Wherever `/usr/bin/git` comes up in the search, yaga runs it only if `xcode-sele
 - There are three so far. `basic` is a small repository. `changes` has commits that change files in every way a commit can: adding, deleting, renaming, changing a mode or a file's kind, binary files, a merge and an empty commit. `history` builds one history five times, with its commit-graph stored as a single file, as a split chain, as a chain whose upper layers have no corrected commit dates, as a file that leaves out the newest commits, and in a SHA-256 repository. The history has merges, an octopus merge, a second root, commits with the same time on several branches, and dates out of order. Later repositories will cover reftable repositories.
 - Engine tests run real git against those repositories. The commit-graph tests compare every commit's parents, dates and generation numbers, and the order of history from several sets of tips, with what git prints. The lane tests follow every line down from each commit's dot, and check that it reaches the commit's parents, through arrows when it's cut. The session tests compare the history a session loads with `git log`, in every repository and also in copies the tests change: a shallow one, one with replace refs, one with a damaged commit-graph file, one with `core.commitGraph` set to false, a bare clone, one with a detached `HEAD`, and ones with linked worktrees, including one whose folder was removed. The upkeep tests write commit-graph files in copies of the test repositories, and check that history then reads them and still matches `git log`. They also cover each reason to skip a repository, a lock another git holds, damaged files, and closing the session during a write.
 - The YagaUI tests check the saved list of repositories against real git: adding a repository twice, adding one from a linked worktree, a folder outside any repository, removing one, one that moved, one that's gone, worktrees that were added or removed, and a file that can't be read. They also check the models a window keeps, when those load history again, when they update the commit-graph file or say why they won't, and how a selected commit follows history as it loads. The commit list's tests check that it reports only what the user selects.
+- The uncommitted changes tests run real git against small repositories that each test makes: every kind of change, a file both staged and unstaged, renames, untracked, binary and empty files, a conflict, a repository without commits, SHA-256, a file that was only touched, the setting that turns off untracked files, and settings that would change a patch or run a command. The model's tests check how the row and the selection move as files come and go.
 - CI runs everything against git 2.44 and the newest git.
 - `yaga-bench history` measures the first screen of history and ordering and laying out the rest, first from `HEAD` with the reader alone, then through a session from every ref, as the app loads it, and reports how wide the graph's rows are. `--verify` compares both orders with `git log`. `--cold`, run right after `sudo purge`, loads history once and reports how many pages each step read from disk, and `--parts` takes the steps one at a time instead of the way the app overlaps them. A clone of Linux with only its commits is enough for it. `yaga-bench commit-graph` times bringing a repository's commit-graph files up to date, and writes to the repository, so it takes a copy. A CI job that runs it on a cached clone, and fails when a performance target from the roadmap is missed, is still to be added.
 
@@ -319,4 +329,7 @@ The app's bundle identifier is `build.yaga.app`, and the app is named yaga. It i
 - The open questions about the layout, which the [main window](docs/main-window.md#still-open) lists.
 - Whether a command palette ships in release 1.
 - Reading commit-graph layers from alternate object folders. git looks for a chain's layers there, and yaga doesn't yet.
-- Which keyboard shortcuts switch between History and Changes, and what Command-1 to Command-9 do now that there are no tabs.
+- What Command-1 to Command-9 do now that there are no tabs.
+- Whether git 2.44 knows `GIT_NO_LAZY_FETCH`. A git that doesn't would ignore it, and status would download what it's missing in a partial clone. The test for it only runs on git 2.45 and newer, because that hasn't been checked on 2.44.
+- Whether listing a worktree's uncommitted files meets the 300 ms target on a real checkout of Linux, and whether yaga should use git's untracked cache if not.
+- Whether yaga should stop reading `status.showUntrackedFiles` before every `git status`, for example by remembering it for a while. It takes 14 ms each time.

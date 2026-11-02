@@ -155,3 +155,27 @@ struct PatchParserTests {
         #expect(throws: ParseError.self) { try parse(text) }
     }
 }
+
+struct BinaryPatchTests {
+    @Test func saysWhenGitCalledAFileBinary() throws {
+        let patch = try PatchParser.parse(Array("""
+        diff --git a/picture.png b/picture.png
+        index 0000000..87ae6b6
+        Binary files /dev/null and b/picture.png differ
+
+        """.utf8))
+        #expect(patch.isBinary)
+        #expect(patch.lines.isEmpty)
+    }
+
+    @Test func aLineInAHunkDoesntMakeAFileBinary() throws {
+        let patch = try PatchParser.parse(Array("""
+        @@ -1 +1 @@
+        -Binary files differ
+        +Binary files /dev/null and b/picture.png differ
+
+        """.utf8))
+        #expect(!patch.isBinary)
+        #expect(patch.lines.count == 3)
+    }
+}

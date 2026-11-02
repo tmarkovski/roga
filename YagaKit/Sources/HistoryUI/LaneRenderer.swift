@@ -28,7 +28,10 @@ enum LaneRenderer {
 
     /// Draws `row` in a graph that shows `columns` columns and starts at
     /// `x`, in a flipped view of the row's height.
-    static func draw(_ row: LaneLayout.Row, columns: Int, at x: CGFloat, height: CGFloat) {
+    ///
+    /// - Parameter isHollow: Whether the dot is a ring, for a row that isn't a
+    ///   commit. Lines start at its edge, so that it stays empty.
+    static func draw(_ row: LaneLayout.Row, columns: Int, at x: CGFloat, height: CGFloat, isHollow: Bool = false) {
         let width = width(columns: columns)
         guard width > 0, let context = NSGraphicsContext.current else { return }
         context.saveGraphicsState()
@@ -48,7 +51,7 @@ enum LaneRenderer {
             path.lineJoinStyle = .round
             let start: NSPoint = switch line.top {
             case .column(let column): NSPoint(x: center(column), y: 0)
-            case .commit: dot
+            case .commit: isHollow ? NSPoint(x: dot.x, y: dot.y + dotRadius) : dot
             case .cut(let column): NSPoint(x: center(column), y: middle)
             }
             let end: NSPoint = switch line.bottom {
@@ -79,10 +82,16 @@ enum LaneRenderer {
             path.stroke()
         }
 
-        color(row.column).setFill()
-        NSBezierPath(ovalIn: NSRect(
-            x: dot.x - dotRadius, y: dot.y - dotRadius, width: dotRadius * 2, height: dotRadius * 2
-        )).fill()
+        let circle = NSRect(x: dot.x - dotRadius, y: dot.y - dotRadius, width: dotRadius * 2, height: dotRadius * 2)
+        if isHollow {
+            let ring = NSBezierPath(ovalIn: circle.insetBy(dx: lineWidth / 2, dy: lineWidth / 2))
+            ring.lineWidth = lineWidth
+            color(row.column).setStroke()
+            ring.stroke()
+        } else {
+            color(row.column).setFill()
+            NSBezierPath(ovalIn: circle).fill()
+        }
     }
 
     private static func color(_ column: Int) -> NSColor {
