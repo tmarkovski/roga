@@ -2,26 +2,24 @@
 
 This is the rough wireframe of yaga's main window for release 1. It settles the overall layout. Details will change as we build the real views.
 
-The layout follows the Claude and ChatGPT apps. A sidebar on the left has a rail for picking an organization and lists its repositories with their worktrees under them, the selected worktree's history and diffs fill the middle, and a panel on the right lists the repository's branches, remotes, tags and stashes. Every section in the middle is a plain rectangle with its own header. [Decision 13](decisions/0013-repositories-in-a-sidebar.md) explains why repositories moved out of tabs and into the sidebar, and [decision 16](decisions/0016-a-rail-of-organizations-in-the-sidebar.md) explains the rail and what folds. The [main window preview](../prototypes/main-window/README.md) still shows the earlier layout, with tabs on top and worktrees in a navigator on the right.
+The layout follows the Claude and ChatGPT apps. A sidebar on the left has a rail for picking an organization and lists its repositories with their worktrees under them, the selected worktree's history and diffs fill the middle, and a panel on the right lists the repository's branches, remotes, tags and stashes. The sections in the middle are plain rectangles, and the ones under history have their own headers. [Decision 13](decisions/0013-repositories-in-a-sidebar.md) explains why repositories moved out of tabs and into the sidebar, and [decision 16](decisions/0016-a-rail-of-organizations-in-the-sidebar.md) explains the rail and what folds. The [main window preview](../prototypes/main-window/README.md) still shows the earlier layout, with tabs on top and worktrees in a navigator on the right.
 
 ```text
-┌──────────────────────────────┬─────────────────────────────────────────────────────────────────────────────┐
-│ ● ● ●  ◧                     │ agents-demo / main                                                     ▤  ◨ │
-├──────┬───────────────────────┼────────────────────────────────────────────────────┬────────────────────────┤
-│ [▣]  │ All repositories  19  │ History  128 commits          ⑂ All branches  ≡  ⋯ │ Refs              ⇅  ⋯ │
-│ AC   │ acme ▾              10├────────────────────────────────────────────────────┼────────────────────────┤
-│ NO   │ api ▾           7  ⧉ 4│ ○  3 uncommitted files                             │ ⌕ Filter               │
-│ TM   │   agent/add-tests    4│ ●  agent/fix-login  Add login tests        48ba644 │ Branches ▾           4 │
-│ …    │   agent/fix-login    3│ ●  ✓ main  Update the changelog            5405371 │   main               ✓ │
-│      │   2 quiet worktrees ▸ │ ●  Add parser tests                        bb3b6b6 │   agent/add-tests   ↑1 │
-│      │ auth  release/2.3     │ ●  v0.2  Show an error when …              86b3386 │   agent/fix-login ↑3 ↓2│
-│      │ billing              1├────────────────────┬───────────────────────────────┤ Remotes ▾            1 │
-│      │ web ▸          2  ⧉ 2 │ Commit 5405371  ⧉  │ CHANGELOG.md      ⌕  ↗  ⋯     │   origin               │
-│      │ 9 quiet repositories ▸├────────────────────┼───────────────────────────────┤ Tags ▾               2 │
-│      │ northwind ▸          3│ Update changelog   │ @@ -1,6 +1,10 @@              │ Stashes ▾            0 │
-│  +   │                       │ CHANGELOG.md +4 −0 │   # Changelog                 │                        │
-│      │                       │                    │ + ## 0.3                      │                        │
-└──────┴───────────────────────┴────────────────────┴───────────────────────────────┴────────────────────────┘
+┌──────────────────────────────┬──────────────────────────────────────────────────┬────────────────────────┐
+│ ● ● ●  ◧                     │ agents-demo / main · 128 commits             ≡ ◨ │ ⌕ Filter          ⇅  ⋯ │
+├──────┬───────────────────────┼──────────────────────────────────────────────────┤ Branches ▾           4 │
+│ [▣]  │ All repositories  19  │ ○  3 uncommitted files                           │   main               ✓ │
+│ AC   │ acme ▾              10│ ●  agent/fix-login  Add login tests      48ba644 │   agent/add-tests   ↑1 │
+│ NO   │ api ▾           7  ⧉ 4│ ●  ✓ main  Update the changelog          5405371 │   agent/fix-login ↑3 ↓2│
+│ TM   │   agent/add-tests    4│ ●  Add parser tests                      bb3b6b6 │ Remotes ▾            1 │
+│ …    │   agent/fix-login    3│ ●  v0.2  Show an error when …            86b3386 │   origin               │
+│      │   2 quiet worktrees ▸ ├───────────────────┬──────────────────────────────┤ Tags ▾               2 │
+│      │ auth  release/2.3     │ Commit 5405371  ⧉ │ CHANGELOG.md     ⌕  ↗  ⋯     │   v0.2                 │
+│      │ billing              1├───────────────────┼──────────────────────────────┤   v0.1                 │
+│      │ web ▸          2  ⧉ 2 │ Update changelog  │ @@ -1,6 +1,10 @@             │ Stashes              0 │
+│  +   │ 9 quiet repositories ▸│ CHANGELOG.md +4 −0│   # Changelog                │                        │
+│      │ northwind ▸          3│                   │ + ## 0.3                     │                        │
+└──────┴───────────────────────┴───────────────────┴──────────────────────────────┴────────────────────────┘
 ```
 
 ## The sidebar
@@ -61,11 +59,11 @@ File > Open still asks for a folder and adds its repository, from anywhere.
 
 ## The title row
 
-The top row of the middle and right columns names what the window shows, as in `agents-demo / main`. Its right end holds buttons that apply to the whole window: the log of git commands yaga ran (later), and showing or hiding the refs panel. Dragging the empty part of the row moves the window, and double-clicking it does what the user chose in System Settings.
+The top row of the middle column names what the window shows: the repository, and under it the branch and how many commits history has, as in `main · 128 commits`. A thin line runs under the row, from the sidebar to the refs panel. The right end of the row holds the commands for history, then the button that shows or hides the refs panel, which moves to the edge of the window while the panel is hidden. It'll also hold the log of git commands yaga ran. Dragging the empty part of the row moves the window, and double-clicking it does what the user chose in System Settings.
 
 ## Panels
 
-Every section in the middle is a panel: a plain rectangle with a 40-point header, separated from its neighbors by thin lines rather than cards or shadows. A header reads from left to right, from what the panel shows to what you can do with it:
+The sections under history are panels: plain rectangles with a 40-point header, separated from their neighbors by thin lines rather than cards or shadows. History has no header, because the title row says what it would. A header reads from left to right, from what the panel shows to what you can do with it:
 
 - The left side says what the panel shows: a title or a file's path.
 - Any state the panel depends on comes next, as a chip with a small triangle, such as which branches the history includes or which two commits a diff compares.
@@ -78,10 +76,10 @@ Every section in the middle is a panel: a plain rectangle with a 40-point header
 
 The history panel fills the top of the middle column.
 
-- The right side of its header shows which branches the history includes, a switch between topological order and date order (decision 12), and a menu for more commands.
+- Its commands are at the right end of the title row: a switch between topological order and date order (decision 12), and later which branches the history includes and a menu for more commands.
 - It lists commits with the graph, then the commit's refs as colored badges, its subject, author, date and short hash. The current branch is green with a checkmark, local branches are blue, remote branches are purple, and tags are orange.
 - While the worktree has uncommitted files, a row for them comes first, with a hollow dot and how many files there are ([decision 15](decisions/0015-uncommitted-changes-as-a-row-in-history.md)). A line runs from it to the commit `HEAD` points to, past any commits above `HEAD`, and past 100 rows it's cut into two arrows, as other long lines are. A worktree with no changes has no row. The row appears, goes and updates when yaga becomes the active app, when the window shows the worktree again, and on View > Reload. A ref that moved loads history again at the same moments.
-- When history takes more than a second to load, the panel says under the spinner why, if it's because the repository has no commit-graph file that yaga can use, and what yaga is doing about it ([decision 6](decisions/0006-keep-the-commit-graph-up-to-date.md)). Once history shows, a repository with at least 50,000 commits keeps a note after the commit count: **Writing commit-graph file…** while git writes it, or **Opens slowly** with a tortoise when yaga won't or can't write one. The note's tooltip gives the reason.
+- When history takes more than a second to load, the panel says under the spinner why, if it's because the repository has no commit-graph file that yaga can use, and what yaga is doing about it ([decision 6](decisions/0006-keep-the-commit-graph-up-to-date.md)). Once history shows, a repository with at least 50,000 commits keeps a note in the title row, before history's commands: **Writing commit-graph file…** while git writes it, or **Opens slowly** with a tortoise when yaga won't or can't write one. The note's tooltip gives the reason.
 
 ## The commit and diff panels
 
@@ -93,12 +91,12 @@ Two panels sit under the history panel.
 
 ## The refs panel
 
-The refs panel is on the right. It's a shade darker than the panels, like the sidebar. It's the inspector macOS provides, and the button at the right end of the title row hides it, as View > Hide Refs and Control-Command-I do. It's 288 points wide, and it can be dragged up to 400. It shows and hides at once, because its animation stutters while it's wider than 288 ([issue 7](https://github.com/tmarkovski/yaga/issues/7)).
+The refs panel runs the full height of the window on the right, with a thin line between it and the middle from the top of the window to the bottom, like the sidebar's. It has the same background as the panels. It's a plain panel of ours rather than the inspector macOS provides, which animated by itself, stuttered, lost a dragged width and made the window wider ([issue 7](https://github.com/tmarkovski/yaga/issues/7)). The button at the right end of the title row hides it, as View > Hide Refs and Control-Command-I do. It shows and hides at once. It's 288 points wide and can be dragged up to 400, which is one setting for every window, and it keeps that width while it's hidden.
 
-When the window gets too narrow to keep 400 points for the middle, the panel gives way, and its button and menu command are disabled until there's room. It comes back by itself when the window is wide enough again, unless the user had closed it. Decision 13 expected the panel to be what gives way first.
+As the window gets narrower, the panel narrows to keep 400 points for the middle, down to 288. After that it gives way, and its button and menu command are disabled until there's room. It comes back by itself when the window is wide enough again, unless the user had closed it. Decision 13 expected the panel to be what gives way first.
 
-- Its header has the title **Refs**, a button that sorts by name or by date, and a menu with every command the panel has. A filter field below the header narrows every section at once, by the names of branches, remotes and tags and the messages of stashes, and it opens any section that's collapsed. View > Filter Refs and Option-Command-F go to it, showing the panel first if it's hidden. The down arrow goes from the field to the first row, and Escape clears it.
-- Its sections are **Branches**, **Remotes**, **Tags** and **Stashes**. A section's header shows its title with a small triangle after it, and clicking the header collapses or expands the section, which is one setting for every repository. The header shows how many items the section has, stays in view while its rows scroll, and on hover it will show the section's commands, such as creating a branch or tag in release 2.
+- Its top row is level with the title row, and has a filter field, a button that sorts by name or by date, and a menu with every command the panel has. They're items in the window's toolbar, whose empty parts still move the window. The field narrows every section at once, by the names of branches, remotes and tags and the messages of stashes, and it opens any section that's collapsed. View > Filter Refs and Option-Command-F go to it, showing the panel first if it's hidden. The down arrow goes from the field to the first row, and Escape clears it.
+- Its sections are **Branches**, **Remotes**, **Tags** and **Stashes**. A section's header shows its title with a small triangle after it, and clicking the header collapses or expands the section, which is one setting for every repository. A section with nothing in it has no triangle and nothing to click, and shows only its title and `0`. The header shows how many items the section has, stays in view while its rows scroll, and on hover it will show the section's commands, such as creating a branch or tag in release 2.
 - Clicking a branch, remote branch or tag selects its commit in history, whichever worktree has it checked out. After that the up and down arrows move through the rows, skipping remotes, stashes and anything else with no commit to select.
 - A branch row shows the branch's name. Its second line says which worktree has it checked out and how far it is ahead of or behind the branch it's compared with, as in `in fix-login · 3 ahead, 2 behind main`, or when it last changed if neither applies, and the same counts sit beside the name as arrows. A branch is compared with its upstream, or without one, with the repository's main branch: the one `origin/HEAD` names, or a local `main` or `master`. The branch checked out in the window's worktree comes first and has a checkmark. On hover, a branch that another worktree has checked out shows a button that switches the window to that worktree. The buttons that hide a branch from history and review it against its base come with those features.
 - A remote shows its address, without the user name or password in its URL, with its branches under it and each one's date. A remote that has branches left but isn't configured any more says so. A tag shows the subject of the commit it points to. A stash shows its message, what git calls it and when it was made, and clicking one doesn't do anything until the panels can show what's in it.
@@ -106,7 +104,7 @@ When the window gets too narrow to keep 400 points for the middle, the panel giv
 
 ## Colors and type
 
-- Surfaces are plain, with thin gray lines between sections. The sidebar and the refs panel are a shade darker. Dark mode keeps the same structure in dark grays.
+- Surfaces are plain, with thin gray lines between sections. The sidebar is a shade darker. Dark mode keeps the same structure in dark grays.
 - Selection is a soft gray fill, not the accent color. The accent color is kept for the graph.
 - Text uses the system font at 12.5 to 13 points. The sidebar's rows use 14 points, with 13 for a second line and for shortcuts, as the Claude app's sidebar does. Hashes and diffs use the monospaced system font.
 

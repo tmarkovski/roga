@@ -77,42 +77,50 @@ private struct LoadingHistory: View {
     }
 }
 
+/// The list of commits. It has no header, because what it would say is in the
+/// title row: how many commits there are after the branch, and its commands at
+/// the right end.
 struct HistoryPanel: View {
-    @Bindable var model: RepositoryModel
+    let model: RepositoryModel
 
     var body: some View {
-        Panel {
-            Text("History")
-                .font(.system(size: 13, weight: .medium))
-                .padding(.leading, 4)
-            if let history = model.history, history.isComplete {
-                Text(history.rows.count == 1 ? "1 commit" : "\(history.rows.count.formatted()) commits")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .padding(.leading, 4)
+        Group {
+            if let history = model.history, history.isComplete, history.rows.isEmpty, !model.hasWorkingTreeRow {
+                ContentUnavailableView("No Commits Yet", systemImage: "clock", description: Text("Commits appear here once there are some."))
+            } else {
+                CommitList(model: model, version: model.historyVersion, selectedRow: model.selectedRow)
             }
-            if model.historyWasSlowToLoad, let explanation = model.slowHistoryExplanation {
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Palette.surface)
+    }
+}
+
+/// History's part of the title row. The window declares it, because macOS puts
+/// the items of a view inside another after that view's, and the button for the
+/// refs panel has to come last.
+struct HistoryCommands: ToolbarContent {
+    @Bindable var model: RepositoryModel
+
+    var body: some ToolbarContent {
+        if model.historyWasSlowToLoad, let explanation = model.slowHistoryExplanation {
+            ToolbarItem {
                 Group {
                     if model.commitGraphState == .updating {
                         Text("Writing commit-graph file…")
                     } else {
                         Label("Opens slowly", systemImage: "tortoise")
+                            .labelStyle(.titleAndIcon)
                     }
                 }
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
-                .padding(.leading, 8)
                 .help(explanation)
             }
-        } trailing: {
-            if let head = model.headDescription {
-                Label(head, systemImage: "arrow.triangle.branch")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .padding(.trailing, 6)
-            }
+            .sharedBackgroundVisibility(.hidden)
+        }
+        ToolbarItem {
             Menu {
                 Picker("Order", selection: $model.sort) {
                     Text("Topological Order").tag(HistoryOrder.Sort.topological)
@@ -120,23 +128,16 @@ struct HistoryPanel: View {
                 }
                 .pickerStyle(.inline)
             } label: {
-                Image(systemName: "arrow.up.arrow.down")
-                    .font(.system(size: 13))
-                    .frame(width: 28, height: 28)
-                    .contentShape(Rectangle())
+                HoverIcon { Image(systemName: "line.3.horizontal.decrease") }
             }
             .menuStyle(.button)
             .buttonStyle(.plain)
             .menuIndicator(.hidden)
             .fixedSize()
             .help("Order of History")
-        } content: {
-            if let history = model.history, history.isComplete, history.rows.isEmpty, !model.hasWorkingTreeRow {
-                ContentUnavailableView("No Commits Yet", systemImage: "clock", description: Text("Commits appear here once there are some."))
-            } else {
-                CommitList(model: model, version: model.historyVersion, selectedRow: model.selectedRow)
-            }
+            .accessibilityLabel("Order of History")
         }
+        .sharedBackgroundVisibility(.hidden)
     }
 }
 

@@ -7,8 +7,6 @@ import SwiftUI
 enum Palette {
     static let surface = gray(light: 1.0, dark: 0.135)
     static let separator = gray(light: 0.885, dark: 0.225)
-    /// The background of the refs panel, a shade darker than the other panels.
-    static let sideColumn = gray(light: 0.96, dark: 0.098)
     /// The fill under a row or an icon button while the pointer is over it.
     /// It darkens whatever is behind it, such as the sidebar's material.
     static let hover = Color.primary.opacity(0.075)
@@ -112,6 +110,48 @@ struct PanelColumns<Leading: View, Trailing: View>: View {
                 }
                 trailing
                     .frame(maxWidth: .infinity)
+            }
+        }
+    }
+}
+
+/// The main content, and a panel beside it that shows and hides, with a thin
+/// line between them that drags to resize the panel. The panel gets narrower
+/// as the window does, to leave the main content its minimum, and goes back to
+/// its width when there's room.
+struct SidePanelColumns<Main: View, Side: View>: View {
+    let isShown: Bool
+    @Binding var width: Double
+    let minimumWidth: Double
+    let maximumWidth: Double
+    let minimumMainWidth: Double
+    @ViewBuilder var main: Main
+    /// The panel, given how wide it is.
+    @ViewBuilder var side: (Double) -> Side
+    /// The panel's width when the current drag started.
+    @State private var widthAtStart: Double?
+
+    var body: some View {
+        GeometryReader { geometry in
+            let widest = max(minimumWidth, min(maximumWidth, geometry.size.width - minimumMainWidth - 1))
+            let shownWidth = min(max(width, minimumWidth), widest)
+            HStack(spacing: 0) {
+                main
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                if isShown {
+                    PanelDivider(axis: .horizontal) { moved in
+                        let start = widthAtStart ?? shownWidth
+                        widthAtStart = start
+                        width = min(max(start - moved, minimumWidth), widest)
+                    } ended: {
+                        widthAtStart = nil
+                    }
+                    // Like the line after the sidebar, it goes up to the top of
+                    // the window.
+                    .ignoresSafeArea(edges: .top)
+                    side(shownWidth)
+                        .frame(width: shownWidth)
+                }
             }
         }
     }

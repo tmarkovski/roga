@@ -104,18 +104,13 @@ struct RefsModelTests {
     }
 
     @Test(arguments: [
-        // The middle keeps 400 points.
-        (1440.0, 250.0, true),
-        (938.0, 250.0, true),
-        (937.0, 250.0, false),
-        // A wider sidebar takes more of the window.
-        (1088.0, 400.0, true),
-        (1087.0, 400.0, false),
-        // A hidden sidebar leaves more room.
-        (720.0, 0.0, true),
+        (1128.0, true),
+        // The middle keeps 400 points beside a panel at its narrowest.
+        (688.0, true),
+        (687.5, false),
     ])
-    func thePanelGivesWayWhenTheMiddleWouldGetTooNarrow(window: Double, sidebar: Double, fits: Bool) {
-        #expect(RefsPanelVisibility.fits(window: window, sidebar: sidebar) == fits)
+    func thePanelGivesWayWhenTheMiddleWouldGetTooNarrow(column: Double, fits: Bool) {
+        #expect(RefsPanelVisibility.fits(column: column) == fits)
     }
 
     @Test func aPanelThatDoesntFitStaysWanted() {

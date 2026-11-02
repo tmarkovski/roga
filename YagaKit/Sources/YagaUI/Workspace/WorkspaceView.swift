@@ -1,4 +1,3 @@
-import AppKit
 import Foundation
 import GitCore
 import GitRunner
@@ -30,10 +29,10 @@ public struct WorkspaceView: View {
     @State private var columns = NavigationSplitViewVisibility.all
     @SceneStorage("showsRefsPanel") private var wantsRefsPanel = true
     @SceneStorage("showsOrganizationRail") private var showsRail = true
-    /// The width of the window, once it's in one.
-    @State private var windowWidth: Double?
-    /// The width of the sidebar, once it's been laid out.
-    @State private var sidebarWidth: Double?
+    @AppStorage("refsPanelWidth") private var refsPanelWidth = RefsPanelVisibility.defaultWidth
+    /// The width of the column that holds the worktree and the refs panel, once
+    /// it's been laid out.
+    @State private var columnWidth: Double?
 
     public init(window: Binding<WorkspaceWindow?>) {
         _window = window
@@ -86,7 +85,6 @@ public struct WorkspaceView: View {
     public var body: some View {
         NavigationSplitView(columnVisibility: $columns) {
             Sidebar(list: list, selection: selection, scope: scope, place: place, showsRail: showsRail, locate: locate)
-                .onGeometryChange(for: Double.self) { $0.size.width } action: { sidebarWidth = $0 }
                 .overlay(alignment: .trailing) {
                     // A line between the sidebar and the worktree, from the
                     // top of the window to the bottom.
@@ -108,28 +106,38 @@ public struct WorkspaceView: View {
                 // window with a sidebar 144 points wide.
                 .navigationSplitViewColumnWidth(min: 256, ideal: 312, max: 400)
         } detail: {
-            detail
-                .inspector(isPresented: refsPanelIsPresented) {
-                    refsPanel
-                        .inspectorColumnWidth(
-                            min: RefsPanelVisibility.defaultWidth,
-                            ideal: RefsPanelVisibility.defaultWidth,
-                            max: RefsPanelVisibility.maximumWidth
-                        )
-                }
-                // macOS animates the inspector even without withAnimation, and
-                // that stutters while the panel is wider than its minimum. See
-                // https://github.com/tmarkovski/yaga/issues/7.
-                .transaction { $0.disablesAnimations = true }
-                .toolbar {
-                    ToolbarItem(placement: .primaryAction) {
-                        RefsPanelToggle(visibility: refsPanelVisibility)
+            SidePanelColumns(
+                isShown: refsPanelVisibility.isShowing,
+                width: $refsPanelWidth,
+                minimumWidth: RefsPanelVisibility.defaultWidth,
+                maximumWidth: RefsPanelVisibility.maximumWidth,
+                minimumMainWidth: RefsPanelVisibility.minimumMiddleWidth
+            ) {
+                detail
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    // A line under the title row, from the sidebar to the refs
+                    // panel, like the lines between panels. It replaces macOS's
+                    // own, which is thinner and goes all the way across.
+                    .safeAreaInset(edge: .top, spacing: 0) {
+                        Rectangle()
+                            .fill(Palette.separator)
+                            .frame(height: 1)
                     }
-                    .sharedBackgroundVisibility(.hidden)
+            } side: { width in
+                refsPanel(width: width)
+            }
+            .background(Palette.surface)
+            .onGeometryChange(for: Double.self) { $0.size.width } action: { columnWidth = $0 }
+            .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
+            .toolbar {
+                if let model = shownModel, case .ready = model.phase {
+                    HistoryCommands(model: model)
                 }
-        }
-        .background {
-            WindowWidthReader { windowWidth = $0 }
+                ToolbarItem {
+                    RefsPanelToggle(visibility: refsPanelVisibility)
+                }
+                .sharedBackgroundVisibility(.hidden)
+            }
         }
         .navigationTitle(title)
         .navigationSubtitle(subtitle)
@@ -155,41 +163,22 @@ public struct WorkspaceView: View {
         .focusedSceneValue(\.refsPanelVisibility, refsPanelVisibility)
     }
 
-    /// Whether the panel fits, or nil until the window and the sidebar have
-    /// been measured. It stays closed until then, because closing it during the
-    /// window's first layout makes AppKit give up on the layout and crash.
-    private var refsPanelFits: Bool? {
-        guard let windowWidth else { return nil }
-        if columns == .detailOnly { return RefsPanelVisibility.fits(window: windowWidth, sidebar: 0) }
-        return sidebarWidth.map { RefsPanelVisibility.fits(window: windowWidth, sidebar: $0) }
-    }
-
     private var refsPanelVisibility: RefsPanelVisibility {
-        RefsPanelVisibility(isWanted: $wantsRefsPanel, fits: refsPanelFits ?? true)
-    }
-
-    /// Whether the panel shows. It only says the user closed it while it fits,
-    /// because hiding it for a narrow window doesn't change what they want.
-    private var refsPanelIsPresented: Binding<Bool> {
-        Binding {
-            wantsRefsPanel && refsPanelFits == true
-        } set: { isPresented in
-            if refsPanelFits == true { wantsRefsPanel = isPresented }
-        }
+        RefsPanelVisibility(isWanted: $wantsRefsPanel, fits: columnWidth.map(RefsPanelVisibility.fits) ?? true)
     }
 
     /// The refs of the repository whose worktree the window shows.
-    @ViewBuilder private var refsPanel: some View {
+    @ViewBuilder private func refsPanel(width: Double) -> some View {
         if let selected = window?.selection,
            let repository = list.repository(at: selected.repository),
            case .open(let session) = repository.state,
            repository.worktrees.contains(where: { $0.path == selected.worktree }) {
-            RefsPanel(model: model(for: selected, session: session), isShown: $wantsRefsPanel) { worktree in
+            RefsPanel(model: model(for: selected, session: session), width: width, isShown: $wantsRefsPanel) { worktree in
                 selection.wrappedValue = WorktreeSelection(repository: selected.repository, worktree: worktree)
             }
             .id(selected)
         } else {
-            RefsPanelPlaceholder()
+            RefsPanelPlaceholder(width: width)
         }
     }
 
@@ -272,7 +261,20 @@ public struct WorkspaceView: View {
     }
 
     private var title: String { shown?.0.name ?? "yaga" }
-    private var subtitle: String { shown?.1?.title ?? "" }
+
+    /// The model of the worktree the window shows, once its repository is open.
+    private var shownModel: RepositoryModel? {
+        guard let selected = window?.selection, let (repository, worktree) = shown, worktree != nil,
+              case .open(let session) = repository.state else { return nil }
+        return model(for: selected, session: session)
+    }
+
+    /// The worktree's branch, and how many commits it has once they've been read.
+    private var subtitle: String {
+        guard let worktree = shown?.1 else { return "" }
+        guard let commits = shownModel?.commitCountDescription else { return worktree.title }
+        return "\(worktree.title) · \(commits)"
+    }
 
     private func open() {
         openRepository(list: list) { selection.wrappedValue = $0 }
@@ -280,45 +282,6 @@ public struct WorkspaceView: View {
 
     private func locate(_ repository: ListedRepository) {
         locateRepository(repository, list: list) { selection.wrappedValue = $0 }
-    }
-}
-
-/// Says how wide the window is, whenever that changes.
-///
-/// It reads the window rather than the size SwiftUI gives a view, because that
-/// size depends on the columns. When they don't fit, it's what they need rather
-/// than what the window has, so hiding the refs panel changes it, which would
-/// show the panel again, and so on forever.
-private struct WindowWidthReader: NSViewRepresentable {
-    let changed: (Double) -> Void
-
-    func makeNSView(context: Context) -> ReaderView {
-        ReaderView()
-    }
-
-    func updateNSView(_ view: ReaderView, context: Context) {
-        view.changed = changed
-    }
-
-    final class ReaderView: NSView {
-        var changed: ((Double) -> Void)?
-        private var observation: (any NSObjectProtocol)?
-
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            observation.map(NotificationCenter.default.removeObserver)
-            observation = nil
-            guard let window else { return }
-            observation = NotificationCenter.default.addObserver(forName: NSWindow.didResizeNotification, object: window, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.report() }
-            }
-            // SwiftUI is in the middle of an update here.
-            DispatchQueue.main.async { [weak self] in self?.report() }
-        }
-
-        private func report() {
-            if let window { changed?(window.frame.width) }
-        }
     }
 }
 

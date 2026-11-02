@@ -42,16 +42,6 @@ final class RefsModel {
             case .stashes: "Stashes"
             }
         }
-
-        /// What the section says when it has nothing to list.
-        var emptyNote: String {
-            switch self {
-            case .branches: "No branches"
-            case .remotes: "No remotes"
-            case .tags: "No tags"
-            case .stashes: "No stashes"
-            }
-        }
     }
 
     private(set) var content = Content.loading

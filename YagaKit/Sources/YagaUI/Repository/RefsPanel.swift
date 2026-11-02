@@ -11,6 +11,8 @@ import SwiftUI
 /// arrow keys itself.
 struct RefsPanel: View {
     let model: RepositoryModel
+    /// How wide the panel is, which its row in the toolbar has to match.
+    let width: Double
     @Binding var isShown: Bool
     /// Shows one of the repository's worktrees in the window, by its folder.
     let showWorktree: (String) -> Void
@@ -18,18 +20,37 @@ struct RefsPanel: View {
     /// The sections that are collapsed, separated by commas. It's one setting
     /// for every repository, like the sizes of the panels.
     @AppStorage("collapsedRefSections") private var collapsedSections = ""
-    @FocusState private var isFilterFocused: Bool
     @FocusState private var isListFocused: Bool
 
     private var refs: RefsModel { model.refs }
 
     var body: some View {
+        content
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .toolbar {
+                // The panel goes up to the top of the window, and this is what
+                // it has there. A view's items come after those of the views
+                // around it, so this one follows the button that hides the panel.
+                ToolbarItem {
+                    topRow
+                        .frame(width: RefsPanelVisibility.toolbarItemWidth(panel: width))
+                }
+                .sharedBackgroundVisibility(.hidden)
+            }
+        .task(id: model.refsChecks) {
+            await refs.load()
+        }
+    }
+
+    /// The filter field and the panel's commands.
+    private var topRow: some View {
         @Bindable var refs = refs
-        Panel {
-            Text("Refs")
-                .font(.system(size: 13, weight: .medium))
-                .padding(.leading, 4)
-        } trailing: {
+        return HStack(spacing: 4) {
+            RefFilterField(text: $refs.filter, wantsFocus: $refs.wantsFilterFocus) {
+                isListFocused = true
+                step(by: 1)
+            }
+            .padding(.trailing, 4)
             Menu {
                 sortPicker
             } label: {
@@ -50,31 +71,8 @@ struct RefsPanel: View {
             .menuIndicator(.hidden)
             .fixedSize()
             .help("More")
-        } content: {
-            VStack(spacing: 0) {
-                RefFilterField(text: $refs.filter, isFocused: $isFilterFocused) {
-                    isListFocused = true
-                    step(by: 1)
-                }
-                content
-            }
-            .background(Palette.sideColumn)
         }
-        .task(id: model.refsChecks) {
-            await refs.load()
-        }
-        .onChange(of: refs.wantsFilterFocus, initial: true) {
-            guard refs.wantsFilterFocus else { return }
-            refs.wantsFilterFocus = false
-            // The field can't take the keyboard until it's in the window, which
-            // takes a moment when the command has just shown the panel.
-            Task {
-                for _ in 0..<20 where !isFilterFocused {
-                    isFilterFocused = true
-                    try? await Task.sleep(for: .milliseconds(50))
-                }
-            }
-        }
+        .padding(.leading, 4)
     }
 
     @ViewBuilder private var content: some View {
@@ -156,15 +154,7 @@ struct RefsPanel: View {
             LazyVStack(alignment: .leading, spacing: 0, pinnedViews: .sectionHeaders) {
                 Section {
                     if !isCollapsed {
-                        if count == 0 {
-                            Text(section.emptyNote)
-                                .font(.system(size: 12.5))
-                                .foregroundStyle(.secondary)
-                                .padding(.horizontal, 16)
-                                .frame(height: 28)
-                        } else {
-                            rows()
-                        }
+                        rows()
                     }
                 } header: {
                     RefSectionHeader(section: section, count: count, isCollapsed: isCollapsed) {
@@ -305,7 +295,7 @@ struct RefsPanel: View {
     @ViewBuilder private var moreCommands: some View {
         sortPicker
         Divider()
-        Button("Filter Refs") { isFilterFocused = true }
+        Button("Filter Refs") { refs.wantsFilterFocus = true }
             .keyboardShortcut(RepositoryCommands.filterRefsShortcut)
         Button("Collapse All Sections") {
             collapsedSections = RefsModel.Section.allCases.map(\.rawValue).joined(separator: ",")
@@ -373,35 +363,40 @@ private struct RefsNote: View {
 
 /// What the panel shows when the window isn't showing a worktree.
 struct RefsPanelPlaceholder: View {
+    let width: Double
+
     var body: some View {
-        Panel {
-            Text("Refs")
-                .font(.system(size: 13, weight: .medium))
-                .padding(.leading, 4)
-        } trailing: {
-        } content: {
-            RefsNote("Choose a worktree to see its repository's refs.")
-                .background(Palette.sideColumn)
-        }
+        RefsNote("Choose a worktree to see its repository's refs.")
+            .toolbar {
+                // Holds the place of the panel's row, so that the button that
+                // hides the panel stays next to it.
+                ToolbarItem {
+                    Color.clear
+                        .frame(width: RefsPanelVisibility.toolbarItemWidth(panel: width), height: 1)
+                }
+                .sharedBackgroundVisibility(.hidden)
+            }
     }
 }
 
 /// The field that narrows every section at once. The down arrow goes to the
-/// list, and Escape clears the field.
+/// list, and Escape clears the field. It keeps its own focus, because focus set
+/// from outside a toolbar item doesn't reach what's in it.
 private struct RefFilterField: View {
     @Binding var text: String
-    var isFocused: FocusState<Bool>.Binding
+    @Binding var wantsFocus: Bool
     let moveToList: () -> Void
+    @FocusState private var isFocused: Bool
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 5) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 12))
+                .font(.system(size: 11))
                 .foregroundStyle(.secondary)
-            TextField("Filter branches, tags and stashes", text: $text)
+            TextField("Filter", text: $text)
                 .textFieldStyle(.plain)
-                .font(.system(size: 12.5))
-                .focused(isFocused)
+                .font(.system(size: 12))
+                .focused($isFocused)
                 .onKeyPress(.downArrow) {
                     moveToList()
                     return .handled
@@ -412,25 +407,34 @@ private struct RefFilterField: View {
                 Button("Clear the Filter", systemImage: "xmark.circle.fill") { text = "" }
                     .labelStyle(.iconOnly)
                     .buttonStyle(.plain)
-                    .font(.system(size: 12))
+                    .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .help("Clear the Filter")
             }
         }
-        .padding(.horizontal, 8)
-        .frame(height: 28)
-        .background(Palette.surface, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .padding(.horizontal, 7)
+        .frame(height: 24)
+        .background(Palette.surface, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .strokeBorder(isFocused.wrappedValue ? Color.primary.opacity(0.35) : Palette.separator)
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .strokeBorder(isFocused ? Color.primary.opacity(0.35) : Palette.separator)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .onChange(of: wantsFocus, initial: true) {
+            guard wantsFocus else { return }
+            wantsFocus = false
+            // The field can't take the keyboard until it's in the window, which
+            // takes a moment when the command has just shown the panel.
+            Task {
+                try? await Task.sleep(for: .milliseconds(100))
+                isFocused = true
+            }
+        }
     }
 }
 
 /// A section's title with a triangle after it, and how many items it has.
-/// Clicking it collapses or expands the section. It stays in place as the
+/// Clicking it collapses or expands the section, unless it has nothing to show,
+/// which leaves no triangle and nothing to click. It stays in place as the
 /// section's rows scroll under it, so it has a background of its own.
 private struct RefSectionHeader: View {
     let section: RefsModel.Section
@@ -442,8 +446,10 @@ private struct RefSectionHeader: View {
         HStack(spacing: 4) {
             Text(section.title)
                 .font(.system(size: 12, weight: .semibold))
-            Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
-                .font(.system(size: 9, weight: .semibold))
+            if count > 0 {
+                Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+            }
             Spacer(minLength: 8)
             Text(count, format: .number)
                 .font(.system(size: 11.5))
@@ -452,15 +458,19 @@ private struct RefSectionHeader: View {
         .padding(.leading, 16)
         .padding(.trailing, 14)
         .frame(height: 28)
-        .background(Palette.sideColumn)
+        .background(Palette.surface)
         .contentShape(Rectangle())
-        .onTapGesture(perform: toggle)
+        .onTapGesture {
+            if count > 0 { toggle() }
+        }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(section.title)
-        .accessibilityValue("\(count), \(isCollapsed ? "Collapsed" : "Expanded")")
-        .accessibilityHint("Shows or hides its rows")
-        .accessibilityAddTraits([.isHeader, .isButton])
-        .accessibilityAction(.default, toggle)
+        .accessibilityValue(count > 0 ? "\(count), \(isCollapsed ? "Collapsed" : "Expanded")" : "\(count)")
+        .accessibilityHint(count > 0 ? "Shows or hides its rows" : "")
+        .accessibilityAddTraits(count > 0 ? [.isHeader, .isButton] : .isHeader)
+        .accessibilityAction(.default) {
+            if count > 0 { toggle() }
+        }
     }
 }
 
@@ -579,10 +589,8 @@ struct RefsPanelVisibility {
     /// The panel's width until someone drags it wider, from the wireframe.
     static let defaultWidth = 288.0
     static let maximumWidth = 400.0
-    /// How wide the middle of the window has to stay. macOS keeps the middle at
-    /// least as wide as the sidebar, and clips the columns rather than making
-    /// the window wider, so this is as wide as the sidebar can get. The panels
-    /// under history need 361 points of it.
+    /// How wide the middle of the window has to stay. The panels under history
+    /// need 361 points of it.
     static let minimumMiddleWidth = 400.0
 
     var isWanted: Binding<Bool>
@@ -591,12 +599,20 @@ struct RefsPanelVisibility {
     var isShowing: Bool { isWanted.wrappedValue && fits }
     var commandTitle: String { isShowing ? "Hide Refs" : "Show Refs" }
 
-    /// It goes by the panel's usual width rather than measuring the panel,
-    /// which measures wider than it is while it opens, and it only depends on
-    /// what showing the panel doesn't change. Otherwise the panel could show
-    /// and hide forever.
-    static func fits(window: Double, sidebar: Double) -> Bool {
-        window - sidebar - defaultWidth >= minimumMiddleWidth
+    /// How much narrower than the panel its row in the toolbar is: the toolbar's
+    /// margin at the edge of the window, measured on macOS 27, and what keeps the
+    /// button before the row off the line between the panel and the middle.
+    static let toolbarMargins = 14.0
+
+    /// How wide the panel's row in the toolbar is.
+    static func toolbarItemWidth(panel: Double) -> Double {
+        panel - toolbarMargins
+    }
+
+    /// Whether the panel fits in the column it shares with the middle of the
+    /// window, at its narrowest.
+    static func fits(column: Double) -> Bool {
+        column - defaultWidth >= minimumMiddleWidth
     }
 }
 

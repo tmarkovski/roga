@@ -136,6 +136,12 @@ final class RepositoryModel {
         return "detached at " + head.hex.prefix(8)
     }
 
+    /// How many commits history has, once it has read them all.
+    var commitCountDescription: String? {
+        guard let history, history.isComplete else { return nil }
+        return history.rows.count == 1 ? "1 commit" : "\(history.rows.count.formatted()) commits"
+    }
+
     func reload() {
         reloads += 1
         refsChecks += 1

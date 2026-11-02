@@ -56,6 +56,15 @@ struct RepositoryModelTests {
         #expect(model.history?.sort == .date)
     }
 
+    @Test func saysHowManyCommitsOnceItHasReadThemAll() async throws {
+        let repository = try await Fixture.repository("basic")
+        let model = RepositoryModel(session: try await openSession(), worktree: repository)
+        #expect(model.commitCountDescription == nil)
+        await model.load()
+        let count = try #require(model.history?.rows.count)
+        #expect(model.commitCountDescription == (count == 1 ? "1 commit" : "\(count.formatted()) commits"))
+    }
+
     /// A model of a copy of the `basic` repository, which can be changed.
     func modelOfACopy(keepsCommitGraphCurrent: Bool = true) async throws -> (RepositoryModel, repository: String) {
         let repository = try makeTemporaryFolder() + "/basic"
