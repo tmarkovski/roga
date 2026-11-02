@@ -84,8 +84,13 @@ let package = Package(
             swiftSettings: settings
         ),
         .testTarget(
+            name: "DiffUITests",
+            dependencies: ["DiffUI", "GitCore"],
+            swiftSettings: viewSettings
+        ),
+        .testTarget(
             name: "YagaUITests",
-            dependencies: ["YagaUI", "HistoryUI", "RepositoryEngine", "CommitGraph", "GitCore", "GitRunner", "TestSupport"],
+            dependencies: ["YagaUI", "HistoryUI", "DiffUI", "RepositoryEngine", "CommitGraph", "GitCore", "GitRunner", "TestSupport"],
             swiftSettings: viewSettings
         ),
         // Shared by the test targets: the git the tests run, and the test

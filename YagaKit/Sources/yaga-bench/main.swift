@@ -4,6 +4,7 @@
 // Usage:
 //   yaga-bench history <repository> [--sort date|topological] [--runs N] [--verify] [--cold [--parts]]
 //   yaga-bench commit-graph <repository>
+//   yaga-bench diff [--lines N] [--line-length N] [--jumps N]
 //
 // The history benchmark orders history from HEAD with the commit-graph reader
 // alone, then through a repository session from every branch, remote branch
@@ -26,6 +27,9 @@
 // The commit-graph benchmark brings the repository's commit-graph files up to
 // date the way the app does, and writes to the repository, so give it a copy.
 // On APFS, cp -c makes one without using much disk.
+//
+// The diff benchmark needs no repository, because it generates a patch. It
+// opens a window for a few seconds, without taking the keyboard.
 
 import Foundation
 
@@ -36,9 +40,12 @@ do {
         try await HistoryBenchmark(arguments: Array(arguments.dropFirst())).run()
     case "commit-graph":
         try await CommitGraphBenchmark(arguments: Array(arguments.dropFirst())).run()
+    case "diff":
+        try await DiffBenchmark(arguments: Array(arguments.dropFirst())).run()
     default:
         print("Usage: yaga-bench history <repository> [--sort date|topological] [--runs N] [--verify] [--cold [--parts]]")
         print("       yaga-bench commit-graph <repository>")
+        print("       yaga-bench diff [--lines N] [--line-length N] [--jumps N]")
         exit(2)
     }
 } catch {

@@ -3,10 +3,11 @@ import GitRunner
 import RepositoryEngine
 import SwiftUI
 
-/// One worktree: its history, and the commit selected in it.
+/// One worktree: its history, and the commit and file selected in it.
 struct RepositoryView: View {
     let model: RepositoryModel
-    @AppStorage("commitPanelHeight") private var commitPanelHeight = 280.0
+    @AppStorage("commitPanelHeight") private var commitPanelHeight = 340.0
+    @AppStorage("commitPanelWidth") private var commitPanelWidth = 320.0
 
     var body: some View {
         content
@@ -33,7 +34,11 @@ struct RepositoryView: View {
             PanelSplit(lowerHeight: $commitPanelHeight) {
                 HistoryPanel(model: model)
             } lower: {
-                CommitPanel(model: model)
+                PanelColumns(leadingWidth: $commitPanelWidth) {
+                    CommitPanel(model: model)
+                } trailing: {
+                    DiffPanel(selection: model.selectedCommit.selectedFile)
+                }
             }
         }
     }

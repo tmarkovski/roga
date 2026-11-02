@@ -5,9 +5,10 @@ import GitRunner
 /// Everything yaga knows about one repository, and the git processes it
 /// keeps running for it. All of the repository's worktrees share it.
 ///
-/// For now a session lists worktrees, reads history, the text of commits and
-/// the files they changed, and keeps the commit-graph files up to date. Status,
-/// patches and watching for changes come later, as ARCHITECTURE.md describes.
+/// For now a session lists worktrees, reads history, the text of commits, the
+/// files they changed and their patches, and keeps the commit-graph files up
+/// to date. Status and watching for changes come later, as ARCHITECTURE.md
+/// describes.
 public actor RepositorySession {
     public nonisolated let location: RepositoryLocation
     public nonisolated let git: Git
@@ -77,6 +78,14 @@ public actor RepositorySession {
     /// each. A merge is compared with its first parent.
     public nonisolated func changedFiles(in commit: ObjectID) async throws -> [DiffFile] {
         try await DiffLoader.changedFiles(in: commit, git: git, directory: location.commonDirectory)
+    }
+
+    /// Reads what a commit changed in one of its files, which is the slower
+    /// half of showing a commit, so it waits until someone looks at the file.
+    ///
+    /// - Throws: `RepositoryError.patchTooLarge` for a patch too long to show.
+    public nonisolated func patch(of file: DiffFile, in commit: ObjectID) async throws -> FilePatch {
+        try await DiffLoader.patch(of: file, in: commit, git: git, directory: location.commonDirectory)
     }
 
     /// Writes what the repository's commit-graph files are missing, at low

@@ -68,31 +68,80 @@ struct PanelSplit<Upper: View, Lower: View>: View {
             VStack(spacing: 0) {
                 upper
                     .frame(maxHeight: .infinity)
-                Rectangle()
-                    .fill(Palette.separator)
-                    .frame(height: 1)
-                    .overlay {
-                        // Easier to grab than the line, and over both panels.
-                        Color.clear
-                            .frame(height: 9)
-                            .contentShape(Rectangle())
-                            .pointerStyle(.rowResize)
-                            .gesture(
-                                // The line moves during the drag, so measure from the window.
-                                DragGesture(minimumDistance: 0, coordinateSpace: .global)
-                                    .onChanged { drag in
-                                        let start = heightAtStart ?? height
-                                        heightAtStart = start
-                                        lowerHeight = min(max(start - drag.translation.height, Self.minimumHeight), tallest)
-                                    }
-                                    .onEnded { _ in heightAtStart = nil }
-                            )
-                    }
-                    .zIndex(1)
+                PanelDivider(axis: .vertical) { moved in
+                    let start = heightAtStart ?? height
+                    heightAtStart = start
+                    lowerHeight = min(max(start - moved, Self.minimumHeight), tallest)
+                } ended: {
+                    heightAtStart = nil
+                }
                 lower
                     .frame(height: height)
             }
         }
+    }
+}
+
+/// Two panels, side by side, with a thin line between them that drags to resize
+/// them. The leading one keeps its width as the window changes size, unless
+/// that would make the trailing one too narrow.
+struct PanelColumns<Leading: View, Trailing: View>: View {
+    @Binding var leadingWidth: Double
+    @ViewBuilder var leading: Leading
+    @ViewBuilder var trailing: Trailing
+    /// The leading panel's width when the current drag started.
+    @State private var widthAtStart: Double?
+
+    private static var minimumWidth: Double { 180 }
+
+    var body: some View {
+        GeometryReader { geometry in
+            let widest = max(Self.minimumWidth, geometry.size.width - Self.minimumWidth - 1)
+            let width = min(max(leadingWidth, Self.minimumWidth), widest)
+            HStack(spacing: 0) {
+                leading
+                    .frame(width: width)
+                PanelDivider(axis: .horizontal) { moved in
+                    let start = widthAtStart ?? width
+                    widthAtStart = start
+                    leadingWidth = min(max(start + moved, Self.minimumWidth), widest)
+                } ended: {
+                    widthAtStart = nil
+                }
+                trailing
+                    .frame(maxWidth: .infinity)
+            }
+        }
+    }
+}
+
+/// The thin line between two panels, and the wider area around it that drags
+/// it.
+private struct PanelDivider: View {
+    /// The direction the line moves in.
+    let axis: Axis
+    /// Says how far the line has moved during a drag.
+    let moved: (Double) -> Void
+    let ended: () -> Void
+
+    var body: some View {
+        Rectangle()
+            .fill(Palette.separator)
+            .frame(width: axis == .horizontal ? 1 : nil, height: axis == .vertical ? 1 : nil)
+            .overlay {
+                // Easier to grab than the line, and over both panels.
+                Color.clear
+                    .frame(width: axis == .horizontal ? 9 : nil, height: axis == .vertical ? 9 : nil)
+                    .contentShape(Rectangle())
+                    .pointerStyle(axis == .vertical ? .rowResize : .columnResize)
+                    .gesture(
+                        // The line moves during the drag, so measure from the window.
+                        DragGesture(minimumDistance: 0, coordinateSpace: .global)
+                            .onChanged { moved(axis == .vertical ? $0.translation.height : $0.translation.width) }
+                            .onEnded { _ in ended() }
+                    )
+            }
+            .zIndex(1)
     }
 }
 

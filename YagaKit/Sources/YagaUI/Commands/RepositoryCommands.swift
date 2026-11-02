@@ -14,6 +14,9 @@ public struct RepositoryCommands: Commands {
     /// The shortcut for copying the selected commit's hash, which the commit
     /// panel shows too.
     static let copyHashShortcut = KeyboardShortcut("c", modifiers: [.shift, .command])
+    /// The shortcut for finding text in the diff, which the diff panel shows
+    /// too.
+    static let findShortcut = KeyboardShortcut("f")
 
     public init(list: RepositoryList) {
         self.list = list
@@ -43,6 +46,13 @@ public struct RepositoryCommands: Commands {
             .keyboardShortcut(Self.copyHashShortcut)
             .disabled(repository?.selectedCommit.id == nil)
         }
+        CommandGroup(after: .textEditing) {
+            Button("Find in Diff…") {
+                repository?.selectedCommit.selectedFile.find()
+            }
+            .keyboardShortcut(Self.findShortcut)
+            .disabled(repository?.selectedCommit.selectedFile.canFind != true)
+        }
         CommandGroup(replacing: .sidebar) {
             Button(sidebarVisibility?.wrappedValue.sidebarCommandTitle ?? "Hide Sidebar") {
                 sidebarVisibility?.wrappedValue.toggleSidebar()
@@ -66,6 +76,19 @@ public struct RepositoryCommands: Commands {
             }
             .keyboardShortcut("r")
             .disabled(!list.isConnected)
+            Divider()
+            // These work while the keyboard is in history, for going through a
+            // commit's files without leaving it.
+            Button("Next File") {
+                repository?.selectedCommit.selectFile(by: 1)
+            }
+            .keyboardShortcut(.downArrow, modifiers: [.option, .command])
+            .disabled(repository?.selectedCommit.selectedFile.file == nil)
+            Button("Previous File") {
+                repository?.selectedCommit.selectFile(by: -1)
+            }
+            .keyboardShortcut(.upArrow, modifiers: [.option, .command])
+            .disabled(repository?.selectedCommit.selectedFile.file == nil)
             Divider()
         }
     }

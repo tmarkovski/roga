@@ -39,6 +39,7 @@ yaga/
 │   │   │   ├── CommitInfo.swift        a commit's parents, author, committer and message
 │   │   │   ├── StatusEntry.swift
 │   │   │   ├── DiffFile.swift          a file a diff changes, and the lines added and removed
+│   │   │   ├── FilePatch.swift         what a patch changes in a file, line by line
 │   │   │   └── Parsing/                one parser per git output format
 │   │   │       ├── ParseError.swift
 │   │   │       ├── CommitParser.swift      commit objects from cat-file
@@ -47,7 +48,7 @@ yaga/
 │   │   │       ├── WorktreeListParser.swift worktree list --porcelain -z
 │   │   │       ├── StatusParser.swift      status --porcelain=v2 -z
 │   │   │       ├── RawDiffParser.swift     diff-tree --raw --numstat -z
-│   │   │       └── PatchParser.swift       unified patches
+│   │   │       └── PatchParser.swift       the hunks that diff-tree -p prints
 │   │   ├── GitRunner/
 │   │   │   ├── Git.swift               running a command, which every git command goes through
 │   │   │   ├── GitInstallation.swift   finding git and checking its version
@@ -71,7 +72,7 @@ yaga/
 │   │   │   ├── HistoryLoader.swift     commit-graph, newer commits, fallbacks
 │   │   │   ├── RefsLoader.swift
 │   │   │   ├── StatusLoader.swift
-│   │   │   ├── DiffLoader.swift        the files a commit changed
+│   │   │   ├── DiffLoader.swift        the files a commit changed, and their patches
 │   │   │   ├── RepositoryWatcher.swift FSEvents
 │   │   │   ├── CommitGraphUpkeep.swift decision 6
 │   │   │   └── Snapshots.swift
@@ -82,10 +83,11 @@ yaga/
 │   │   │   ├── LaneRenderer.swift      drawing the graph in a row
 │   │   │   └── CommitRowAccessibility.swift
 │   │   ├── DiffUI/                     AppKit, TextKit 1
-│   │   │   ├── DiffTextView.swift
+│   │   │   ├── DiffTextController.swift the text view and what's beside it, and handing documents over
+│   │   │   ├── DiffTextView.swift      text that can be selected but not edited
 │   │   │   ├── DiffLayoutManager.swift full-width line backgrounds
-│   │   │   ├── LineNumberRuler.swift
-│   │   │   └── DiffTextBuilder.swift   attributed text and changed-word highlights
+│   │   │   ├── LineNumberGutter.swift  line numbers and signs
+│   │   │   └── DiffTextBuilder.swift   attributed text, laid out ahead of time
 │   │   ├── YagaUI/                     SwiftUI
 │   │   │   ├── Workspace/              windows, finding git, the sidebar and the saved list of repositories
 │   │   │   ├── Repository/             the repository model, panels, the refs panel, commit details
@@ -98,7 +100,8 @@ yaga/
 │       ├── GitRunnerTests/
 │       ├── CommitGraphTests/
 │       ├── RepositoryEngineTests/
-│       ├── YagaUITests/                the list of repositories, the models windows keep, and selecting commits
+│       ├── DiffUITests/                the text a patch shows, and handing documents between text views
+│       ├── YagaUITests/                the list of repositories, the models windows keep, and selecting commits and files
 │       ├── TestSupport/                the git the tests run, and the test repositories
 │       └── Fixtures/                   scripts that build test repositories
 ├── Scripts/
@@ -225,7 +228,23 @@ On a Release build, a commit that changes one file showed its files about 30 ms 
 
 The session waits about 100 ms for related changes to arrive together, reloads only what changed, and publishes a new snapshot. On the main actor, yaga applies the difference: new commits are inserted at the top of the table, and badges and status update in place.
 
-**Diffs.** The list of changed files comes from `git diff --raw -z -M` (or `git diff-tree` for a single commit, which the commit panel already uses). The patch for the selected files is loaded on demand and parsed in the background. `DiffTextBuilder` builds the attributed text off the main actor, and only setting it on the text view happens on the main actor.
+**Diffs.** The commit panel's list of changed files comes from `git diff-tree --raw --numstat -z -M`. Selecting a commit selects its first file, and the diff panel shows that file's patch, which comes from `git diff-tree -p -M` limited to the file. For a renamed file it's limited to both paths, because git finds a rename only when it sees both sides, and the file would otherwise look new. `GIT_LITERAL_PATHSPECS` makes git read the paths as names, since a name can hold a `*`. `diff-tree` doesn't read `diff.noprefix`, `diff.context` or `diff.algorithm`, so the user's settings don't change what yaga shows.
+
+The list already says when a file has no lines to compare, such as a binary file or one whose mode is all that changed, so yaga doesn't run git for those and says what changed instead. git stops when a patch passes 64 MB, because a file like a data dump could take gigabytes, and the panel says the patch is too large. All 12,914 files that a release of Linux changes come to 45 MB.
+
+As with commits, what's showing stays until the next file's patch is ready, and after 150 ms the panel shows a spinner. Selecting another file or commit cancels the load, which stops git. The patience timers are separate tasks that stop at the same moment, because a cancelled load can take a while to finish, and the next file may already be showing when its timer would go off.
+
+**The diff's text.** `PatchParser` keeps the hunks and skips the lines that describe the file, which yaga knows already. `DiffTextBuilder` makes the text and lays all of it out on a background task, which TextKit allows while no view is attached, and the text view only has to draw it. That has two results. The main thread never waits for layout. And the text view knows the exact height, where non-contiguous layout would estimate it, 30% short on a long patch, and the scroller would drift as the estimate changed. Layout takes about 15 microseconds a line, so a patch over 50,000 lines isn't laid out ahead of time. It shows at once with an estimated height, and lays out as it's looked at. The longest patch of a file in a Linux release has 40,325 lines.
+
+Each line of a patch is one row, which the rest of the diff view relies on. Every row has the same height, whatever fonts its characters fall back on, and nothing wraps. Control characters and the characters that end a line show as symbols. A form feed, which old C code has, would otherwise end the text container. A carriage return at the end of a line stays, because with the newline after it, it still ends one row, and it's there when the text is copied. A line that isn't valid UTF-8 is read as Latin-1, and a line over 10,000 bytes is cut off and says so. Drawing takes time for all of a line, even the part out of view, so a window of lines a megabyte long took between 0.2 and 1 second to draw each time the text moved.
+
+The line numbers and the `+` and `−` signs are in a view beside the scroll view, so that a selection copies only the code. They aren't in the scroll view's ruler, because AppKit lays out the text under a ruler on the macOS this was built with. Three more things about TextKit 1 took finding out, and `DiffTextController` has them in comments:
+
+- A text view made with `init(frame:)` uses TextKit 2, and believes it owns its text system, so it takes the text with it when it goes away. `init(frame:textContainer:)` does neither. This matters because a document outlives its view when a window goes to another worktree and back.
+- Most of a text view's settings, such as whether it can be edited, are kept with its layout manager, and each document has its own. So they're set again for each document.
+- The find bar reads the text once. Nothing tells it when a text view goes on to another document, except turning `usesFindBar` off and on. The bar floats over the text too, so the text starts lower while it's open, or the first rows would stay hidden.
+
+On a Release build, a small file's patch showed about 25 ms after being selected, and a patch of 44,005 lines took about 620 ms, nearly all of it layout. While they loaded, the main thread didn't stall for more than 11 ms, and usually about 4 ms, measured in an off-screen window. `yaga-bench diff` times each step from moving the text until the window has drawn. With 40,368 generated lines, no step of scrolling took longer than 11 ms, and no jump longer than 8 ms, which is within one frame at 60 Hz and within two at 120 Hz. With 400,000 lines, which have an estimated height, one jump took 161 ms and scrolling stayed under 11 ms.
 
 ## Concurrency
 
@@ -289,6 +308,10 @@ The app's bundle identifier is `build.yaga.app`, and the app is named yaga. It i
 - Whether a window keeps each worktree's commit list as well as its history, so that switching back keeps the scroll position.
 - Whether the commit panel shows a very large commit's files before git has counted their lines. git can list 20,000 files in about 75 ms, and counting their lines takes about 450 ms.
 - Whether a merge can be compared with its other parents, or show only what its conflict resolutions changed.
+- Whether a patch should follow the user's `diff.algorithm` and `diff.context`, as `git diff` in their terminal does. Going by `git show` would, and it also brings in settings that change the output's shape, such as `log.showSignature`.
+- How VoiceOver tells added lines from removed ones in the diff. The signs aren't in the text, so that they aren't copied, so it reads only the code.
+- Which editor opening a file should use. Opening a file with its default app could run it, as a `.command` file does, so this needs a setting rather than `NSWorkspace.open`.
+- Whether a very long patch should wait to be laid out, for the exact height. A patch of 400,000 lines would take six seconds.
 - Whether yaga runs the git that `/usr/bin/git` stands for directly. That stub looks up the developer tools every time it runs, which made a short command take 13 ms instead of 6.4 ms.
 - Whether yaga saves the login shell's `PATH` between launches, so that finding git doesn't wait for the user's shell to start.
 - Whether clicking an arrow on a cut line jumps to the commit at its other end, and whether the lanes' colors should follow branches rather than columns.

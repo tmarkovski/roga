@@ -181,6 +181,82 @@ struct RepositorySessionTests {
         }
     }
 
+    func patch(of path: String, at tag: String) async throws -> FilePatch {
+        let repository = try await Fixture.repository("changes")
+        let session = try await openSession(repository)
+        let commit = try #require(ObjectID(hex: try await runGit("rev-parse", tag + "^{commit}", in: repository)))
+        let file = try #require(try await session.changedFiles(in: commit).first { $0.path == path })
+        return try await session.patch(of: file, in: commit)
+    }
+
+    func summary(_ patch: FilePatch) -> [String] {
+        patch.lines.map { String(decoding: patch.text(of: $0), as: UTF8.self) }
+    }
+
+    @Test func readsThePatchOfAFile() async throws {
+        let patch = try await patch(of: "with space.txt", at: "every-way")
+        #expect(summary(patch) == ["@@ -1 +1,2 @@", "keep", "more"])
+        #expect(patch.lines.map(\.kind) == [.hunkHeader, .context, .added])
+        #expect(patch.lines[2].newNumber == 2)
+    }
+
+    @Test func comparesARenamedFileWithItsOldPath() async throws {
+        // Without the old path, git would show all of the file as new.
+        let patch = try await patch(of: "lib/moved.txt", at: "every-way")
+        #expect(patch.lines.filter { $0.kind == .added }.count == 1)
+        #expect(patch.lines.filter { $0.kind == .added }.first?.newNumber == 7)
+        #expect(patch.lines.first { $0.kind == .removed } == nil)
+    }
+
+    @Test func readsBothSidesOfAFileThatBecameAnotherKindOfFile() async throws {
+        let patch = try await patch(of: "kind.txt", at: "every-way")
+        #expect(summary(patch) == [
+            "@@ -1 +0,0 @@", "link target",
+            "@@ -0,0 +1 @@", "run.sh", "No newline at end of file",
+        ])
+    }
+
+    @Test func readsNoLinesWhenOnlyTheModeChanged() async throws {
+        #expect(try await patch(of: "run.sh", at: "every-way").lines.isEmpty)
+    }
+
+    @Test func readsNoLinesOfABinaryFile() async throws {
+        #expect(try await patch(of: "image.bin", at: "every-way").lines.isEmpty)
+        #expect(try await patch(of: "notes.opaque", at: "every-way").lines.isEmpty)
+    }
+
+    @Test func comparesAMergesFileWithItsFirstParent() async throws {
+        #expect(summary(try await patch(of: "side.txt", at: "merge")) == ["@@ -0,0 +1 @@", "side"])
+    }
+
+    @Test func readsAFileOfACommitWithoutParents() async throws {
+        #expect(summary(try await patch(of: "src/a\ttab.txt", at: "root")) == ["@@ -0,0 +1 @@", "tab"])
+    }
+
+    @Test func treatsAPathAsANameRatherThanAPattern() async throws {
+        // As a pattern, this would match starry.txt too.
+        #expect(summary(try await patch(of: "star*.txt", at: "root")) == ["@@ -0,0 +1 @@", "star"])
+    }
+
+    @Test func stopsReadingAPatchThatsTooLong() async throws {
+        let repository = try await Fixture.repository("changes")
+        let session = try await openSession(repository)
+        let commit = try #require(ObjectID(hex: try await runGit("rev-parse", "root^{commit}", in: repository)))
+        let file = try #require(try await session.changedFiles(in: commit).first { $0.path == "moved.txt" })
+        await #expect(throws: RepositoryError.patchTooLarge(path: "moved.txt", limit: 10)) {
+            try await DiffLoader.patch(of: file, in: commit, git: session.git, directory: repository, limit: 10)
+        }
+    }
+
+    @Test func failsOnAPatchOfACommitTheRepositoryDoesntHave() async throws {
+        let session = try await openSession(try await Fixture.repository("basic"))
+        let unknown = ObjectID(hex: String(repeating: "1", count: 40))!
+        let file = DiffFile(status: .added, path: "README.md", oldMode: 0, newMode: 0o100644)
+        await #expect(throws: GitError.self) {
+            try await session.patch(of: file, in: unknown)
+        }
+    }
+
     @Test func refusesCommitsOnceClosed() async throws {
         let session = try await openSession(try await Fixture.repository("basic"))
         await session.close()

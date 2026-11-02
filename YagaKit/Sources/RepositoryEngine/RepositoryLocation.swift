@@ -102,6 +102,8 @@ public enum RepositoryError: Error, Sendable, Hashable, CustomStringConvertible 
     case cannotOpen(path: String, message: String)
     /// git printed something yaga didn't expect.
     case unexpectedOutput(GitCommand, String)
+    /// A file's patch has more text than yaga reads.
+    case patchTooLarge(path: String, limit: Int)
 
     public var description: String {
         switch self {
@@ -109,6 +111,8 @@ public enum RepositoryError: Error, Sendable, Hashable, CustomStringConvertible 
             "yaga couldn't open \(path) as a repository: \(message)"
         case .unexpectedOutput(let command, let output):
             "\(command) printed \(output.prefix(200).debugDescription), which yaga didn't expect."
+        case .patchTooLarge(let path, let limit):
+            "The changes to \(path) take more than \(limit >> 20) MB of text, which is too much to show."
         }
     }
 }

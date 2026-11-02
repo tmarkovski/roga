@@ -5,6 +5,7 @@ import SwiftUI
 /// its parents, and the files it changed.
 struct CommitPanel: View {
     let model: RepositoryModel
+    @FocusState private var isFocused: Bool
 
     private var commit: SelectedCommit { model.selectedCommit }
 
@@ -32,11 +33,26 @@ struct CommitPanel: View {
             } else if let problem = commit.problem {
                 note(problem)
             } else if let info = commit.info {
-                ScrollView {
-                    CommitDetails(info: info, files: commit.files, model: model)
+                ScrollViewReader { scroller in
+                    ScrollView {
+                        CommitDetails(info: info, files: commit.files, model: model) { file in
+                            isFocused = true
+                            commit.select(file)
+                        }
+                    }
+                    // Each commit starts at the top of its message.
+                    .id(info.id)
+                    .focusable()
+                    .focused($isFocused)
+                    .focusEffectDisabled()
+                    .onKeyPress(keys: [.upArrow, .downArrow]) { press in
+                        commit.selectFile(by: press.key == .downArrow ? 1 : -1)
+                        return .handled
+                    }
+                    .onChange(of: commit.fileSteps) {
+                        if let path = commit.selectedFile.file?.path { scroller.scrollTo(path) }
+                    }
                 }
-                // Each commit starts at the top of its message.
-                .id(info.id)
             }
         }
     }
@@ -56,6 +72,7 @@ private struct CommitDetails: View {
     let info: CommitInfo
     let files: SelectedCommit.Files
     let model: RepositoryModel
+    let select: (DiffFile) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -89,7 +106,9 @@ private struct CommitDetails: View {
                 // is without having laid them all out.
                 LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(files, id: \.path) { file in
-                        ChangedFileRow(file: file)
+                        ChangedFileRow(file: file, isSelected: model.selectedCommit.selectedFile.file?.path == file.path) {
+                            select(file)
+                        }
                     }
                 }
                 .padding(.bottom, 6)
@@ -194,10 +213,34 @@ private struct FilesSummary: View {
 }
 
 /// One file a commit changed: its status, name and folder, and its line counts.
+/// It fills with gray while the pointer is over it, and a little darker while
+/// it's selected.
 private struct ChangedFileRow: View {
     let file: DiffFile
+    let isSelected: Bool
+    let select: () -> Void
+    @State private var isHovering = false
 
     var body: some View {
+        Button(action: select) {
+            content
+                .padding(.horizontal, 8)
+                .frame(height: 24)
+                .background {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(isSelected ? Palette.selection : isHovering ? Palette.hover : .clear)
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 6)
+        .onHover { isHovering = $0 }
+        .help(description)
+        .accessibilityLabel(description)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private var content: some View {
         HStack(spacing: 8) {
             Text(file.status.letter)
                 .font(.system(size: 11.5, weight: .medium, design: .monospaced))
@@ -225,11 +268,6 @@ private struct ChangedFileRow: View {
                 change("binary")
             }
         }
-        .padding(.horizontal, 14)
-        .frame(height: 24)
-        .help(description)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(description)
     }
 
     private func change(_ text: String) -> some View {

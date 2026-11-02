@@ -33,6 +33,8 @@ mkdir src
 printf 'gone\n' > src/gone.txt
 printf 'link target\n' > kind.txt
 printf 'tab\n' > "src/a	tab.txt"
+printf 'star\n' > 'star*.txt'
+printf 'starry\n' > starry.txt
 git add .
 git commit --quiet --message "Add the files"
 git tag root
