@@ -123,6 +123,20 @@ struct RefsModelTests {
         #expect(wanted)
     }
 
+    @Test func closingTheFilterListsEverythingAgain() async throws {
+        let (model, _) = try await makeModel()
+        #expect(!model.refs.isFilterShown)
+
+        model.refs.showFilter()
+        #expect(model.refs.isFilterShown)
+        #expect(model.refs.wantsFilterFocus)
+
+        model.refs.filter = "login"
+        model.refs.closeFilter()
+        #expect(!model.refs.isFilterShown)
+        #expect(model.refs.filter.isEmpty)
+    }
+
     func makeModel() async throws -> (RepositoryModel, String) {
         let repository = try await Fixture.repository("basic")
         let session = try await RepositorySession.open(containing: repository, git: try await TestGit.make())

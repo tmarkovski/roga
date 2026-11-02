@@ -56,6 +56,8 @@ final class RefsModel {
     /// Whether a menu command asked for the keyboard to go to the filter, which
     /// the panel does once it's showing.
     var wantsFilterFocus = false
+    /// Whether the filter field shows, which it doesn't until someone asks for it.
+    private(set) var isFilterShown = false
 
     @ObservationIgnored private let session: RepositorySession
     @ObservationIgnored private let worktree: String
@@ -66,6 +68,18 @@ final class RefsModel {
     init(session: RepositorySession, worktree: String) {
         self.session = session
         self.worktree = worktree
+    }
+
+    /// Shows the filter field, or goes back to it if it's showing.
+    func showFilter() {
+        isFilterShown = true
+        wantsFilterFocus = true
+    }
+
+    /// Hides the filter field, and lists everything again.
+    func closeFilter() {
+        filter = ""
+        isFilterShown = false
     }
 
     /// Reads the lists again. It returns when that's done, or when the task is

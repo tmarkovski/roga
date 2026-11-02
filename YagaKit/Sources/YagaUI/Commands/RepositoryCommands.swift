@@ -82,7 +82,7 @@ public struct RepositoryCommands: Commands {
             .disabled(refsPanelVisibility?.fits != true)
             Button("Filter Refs") {
                 refsPanelVisibility?.isWanted.wrappedValue = true
-                repository?.refs.wantsFilterFocus = true
+                repository?.refs.showFilter()
             }
             .keyboardShortcut(Self.filterRefsShortcut)
             .disabled(repository == nil || refsPanelVisibility?.fits != true)

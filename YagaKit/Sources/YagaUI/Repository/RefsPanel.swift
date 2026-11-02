@@ -25,32 +25,47 @@ struct RefsPanel: View {
     private var refs: RefsModel { model.refs }
 
     var body: some View {
-        content
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .toolbar {
-                // The panel goes up to the top of the window, and this is what
-                // it has there. A view's items come after those of the views
-                // around it, so this one follows the button that hides the panel.
-                ToolbarItem {
-                    topRow
-                        .frame(width: RefsPanelVisibility.toolbarItemWidth(panel: width))
+        @Bindable var refs = refs
+        VStack(spacing: 0) {
+            if refs.isFilterShown {
+                RefFilterField(text: $refs.filter, wantsFocus: $refs.wantsFilterFocus) {
+                    isListFocused = true
+                    step(by: 1)
+                } close: {
+                    refs.closeFilter()
+                    isListFocused = true
                 }
-                .sharedBackgroundVisibility(.hidden)
+                .padding(.horizontal, 10)
+                .padding(.bottom, 6)
             }
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .toolbar {
+            // The panel goes up to the top of the window, and this is what it
+            // has there. A view's items come after those of the views around
+            // it, so this one follows the button that hides the panel, and it's
+            // as wide as the panel to keep that button at the panel's edge.
+            ToolbarItem {
+                commands
+                    .frame(width: RefsPanelVisibility.toolbarItemWidth(panel: width), alignment: .trailing)
+            }
+            .sharedBackgroundVisibility(.hidden)
+        }
         .task(id: model.refsChecks) {
             await refs.load()
         }
     }
 
-    /// The filter field and the panel's commands.
-    private var topRow: some View {
-        @Bindable var refs = refs
-        return HStack(spacing: 4) {
-            RefFilterField(text: $refs.filter, wantsFocus: $refs.wantsFilterFocus) {
-                isListFocused = true
-                step(by: 1)
+    /// The panel's commands.
+    private var commands: some View {
+        HStack(spacing: 4) {
+            Button("Filter Refs", systemImage: "magnifyingglass") {
+                refs.showFilter()
             }
-            .padding(.trailing, 4)
+            .labelStyle(.iconOnly)
+            .buttonStyle(.icon)
+            .help("Filter Refs (\(RepositoryCommands.filterRefsShortcut.symbols))")
             Menu {
                 sortPicker
             } label: {
@@ -72,7 +87,6 @@ struct RefsPanel: View {
             .fixedSize()
             .help("More")
         }
-        .padding(.leading, 4)
     }
 
     @ViewBuilder private var content: some View {
@@ -295,7 +309,7 @@ struct RefsPanel: View {
     @ViewBuilder private var moreCommands: some View {
         sortPicker
         Divider()
-        Button("Filter Refs") { refs.wantsFilterFocus = true }
+        Button("Filter Refs") { refs.showFilter() }
             .keyboardShortcut(RepositoryCommands.filterRefsShortcut)
         Button("Collapse All Sections") {
             collapsedSections = RefsModel.Section.allCases.map(\.rawValue).joined(separator: ",")
@@ -379,13 +393,13 @@ struct RefsPanelPlaceholder: View {
     }
 }
 
-/// The field that narrows every section at once. The down arrow goes to the
-/// list, and Escape clears the field. It keeps its own focus, because focus set
-/// from outside a toolbar item doesn't reach what's in it.
+/// The field that narrows every section at once, which shows when someone asks
+/// for it. The down arrow goes to the list, and Escape closes the field.
 private struct RefFilterField: View {
     @Binding var text: String
     @Binding var wantsFocus: Bool
     let moveToList: () -> Void
+    let close: () -> Void
     @FocusState private var isFocused: Bool
 
     var body: some View {
@@ -401,16 +415,14 @@ private struct RefFilterField: View {
                     moveToList()
                     return .handled
                 }
-                .onExitCommand { text = "" }
+                .onExitCommand(perform: close)
                 .accessibilityLabel("Filter Refs")
-            if !text.isEmpty {
-                Button("Clear the Filter", systemImage: "xmark.circle.fill") { text = "" }
-                    .labelStyle(.iconOnly)
-                    .buttonStyle(.plain)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .help("Clear the Filter")
-            }
+            Button("Close the Filter", systemImage: "xmark.circle.fill", action: close)
+                .labelStyle(.iconOnly)
+                .buttonStyle(.plain)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .help("Close the Filter")
         }
         .padding(.horizontal, 7)
         .frame(height: 24)
@@ -423,7 +435,7 @@ private struct RefFilterField: View {
             guard wantsFocus else { return }
             wantsFocus = false
             // The field can't take the keyboard until it's in the window, which
-            // takes a moment when the command has just shown the panel.
+            // takes a moment when the command has just shown it.
             Task {
                 try? await Task.sleep(for: .milliseconds(100))
                 isFocused = true
