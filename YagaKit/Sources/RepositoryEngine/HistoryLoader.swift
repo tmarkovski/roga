@@ -11,8 +11,10 @@ public struct History: Sendable {
     public var graph: CommitGraph
     public var refs: RefList
     public var sort: HistoryOrder.Sort
+    /// The lines of the graph, and the rows they're laid out for.
+    public var lanes: LaneLayout
     /// The commits from top to bottom, each one as its position in `graph`.
-    public var rows: [Position]
+    public var rows: [Position] { lanes.rows }
     /// Whether `rows` has every commit yet, or only the first ones.
     public var isComplete: Bool
     /// Whether the commits came from the commit-graph files. When they
@@ -27,7 +29,8 @@ public struct History: Sendable {
 
 /// Loads a repository's history: its refs, the commits in its commit-graph
 /// files, and the commits newer than those, which `git rev-list` lists. Then
-/// it puts the commits in order with `HistoryOrder`.
+/// it puts the commits in order with `HistoryOrder`, and lays out the graph
+/// with `LaneLayout`.
 ///
 /// History shows the commits reachable from `HEAD` and from every branch,
 /// remote branch and tag, which is what `git log HEAD --branches --remotes
@@ -38,9 +41,9 @@ struct HistoryLoader: Sendable {
     /// The session's `git cat-file`, for checking whether objects the
     /// commit-graph files don't have are commits.
     let catFile: CatFileSession
-    /// How many rows to put in order before the rest, so that the first
-    /// screen can be drawn sooner.
-    var firstRows = 200
+    /// How many rows to lay out before the rest, so that the first screen
+    /// can be drawn sooner. A tall window shows about 60.
+    var firstRows = 100
     /// How many rows to put in order between checks for cancellation.
     var rowsPerStep = 65_536
 
@@ -93,24 +96,28 @@ struct HistoryLoader: Sendable {
 
         let tipPositions = tips.compactMap { graph.position(of: $0) }
         var order = try HistoryOrder(graph: graph, tips: tipPositions, sort: sort)
+        // The lanes of a row depend on the rows below it, as far as the
+        // longest line drawn.
+        let top = try order.next(firstRows + LaneLayout.longestLine)
+        var lanes = LaneLayout(graph: graph)
+        try lanes.append(top, isComplete: order.isFinished)
         var history = History(
             graph: graph,
             refs: refs,
             sort: sort,
-            rows: try order.next(firstRows),
-            isComplete: false,
+            lanes: lanes,
+            isComplete: order.isFinished,
             readCommitGraphFiles: stored != nil,
             refsByCommit: Self.refsByCommit(refs, in: graph),
             head: refs.head.flatMap { graph.position(of: $0) }
         )
-        history.isComplete = order.isFinished
         yield(history)
         guard !history.isComplete else { return }
 
-        history.rows.reserveCapacity(graph.count)
         while !order.isFinished {
             try Task.checkCancellation()
-            history.rows += try order.next(rowsPerStep)
+            let rows = try order.next(rowsPerStep)
+            try history.lanes.append(rows, isComplete: order.isFinished)
         }
         history.isComplete = true
         yield(history)

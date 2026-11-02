@@ -67,6 +67,7 @@ struct HistoryBenchmark {
         var rows: [CommitGraph.Position] = []
         var graph: CommitGraph?
         var countedForFirstScreen = 0
+        var lanes: LaneLayout?
         let clock = ContinuousClock()
         for _ in 0..<runs {
             var start = clock.now
@@ -84,21 +85,34 @@ struct HistoryBenchmark {
             }
             lap("open the commit-graph and find HEAD")
             var order = try HistoryOrder(graph: opened, tips: [headPosition], sort: sort)
-            rows = try order.next(screenRows)
+            // Laying out a row takes the rows below it, as far as the longest
+            // line drawn.
+            rows = try order.next(screenRows + LaneLayout.longestLine)
             lap("order the first screen")
+            var layout = LaneLayout(graph: opened)
+            try layout.append(rows, isComplete: order.isFinished)
+            lap("lay out the first screen")
             timings["first screen", default: []].append(clock.now - firstStart)
             countedForFirstScreen = order.countedCommitsSoFar
-            rows += try order.next(Int.max)
+            let rest = try order.next(Int.max)
+            rows += rest
             lap("order the rest")
+            try layout.append(rest, isComplete: true)
+            lap("lay out the rest")
             graph = opened
+            lanes = layout
         }
 
-        for name in ["open the commit-graph and find HEAD", "order the first screen", "first screen", "order the rest"] {
+        for name in [
+            "open the commit-graph and find HEAD", "order the first screen", "lay out the first screen", "first screen",
+            "order the rest", "lay out the rest",
+        ] {
             let sorted = timings[name, default: []].sorted()
             let median = sorted[sorted.count / 2]
             print("  \(name): median \(milliseconds(median)), min \(milliseconds(sorted[0])), max \(milliseconds(sorted[sorted.count - 1]))")
         }
         print("  \(rows.count) commits of \(graph?.count ?? 0) in the graph; the first screen counted \(countedForFirstScreen)")
+        if let lanes { describe(lanes) }
 
         let history = try await measureSession(git: git)
 
@@ -259,7 +273,24 @@ struct HistoryBenchmark {
         }
         guard let loaded else { throw UsageError(description: "The session loaded no history") }
         print("  \(loaded.rows.count) commits")
+        describe(loaded.lanes)
         return loaded
+    }
+
+    /// Prints how wide the graph is: its widest row, and how wide most rows
+    /// are, counting the columns up to the rightmost line or dot in each.
+    private func describe(_ lanes: LaneLayout) {
+        var widths: [Int] = []
+        widths.reserveCapacity(lanes.count)
+        for index in 0..<lanes.count {
+            widths.append(lanes.row(index).width)
+        }
+        widths.sort()
+        guard !widths.isEmpty else { return }
+        let percentiles = [50, 90, 99, 99.9].map { percentile in
+            "\(percentile.formatted())%: \(widths[min(widths.count - 1, Int(Double(widths.count) * percentile / 100))])"
+        }
+        print("  the graph is \(lanes.width) columns wide; rows are at most \(percentiles.joined(separator: ", "))")
     }
 
     private func milliseconds(_ duration: Duration) -> String {

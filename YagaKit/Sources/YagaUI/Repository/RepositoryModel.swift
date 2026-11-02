@@ -104,7 +104,8 @@ final class RepositoryModel {
             badges: badges[position] ?? [],
             subject: text?.subject,
             author: text?.author,
-            date: text?.date
+            date: text?.date,
+            lanes: history.lanes.row(row)
         )
     }
 

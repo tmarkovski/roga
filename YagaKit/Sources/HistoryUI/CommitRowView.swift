@@ -25,8 +25,8 @@ final class CommitRowView: NSTableRowView {
     }
 }
 
-/// The contents of a row: badges for refs and the subject on the left, then
-/// the author, the date and the short ID in columns on the right. It draws the
+/// The contents of a row: the graph, badges for refs and the subject on the
+/// left, then the author, the date and the short ID in columns on the right. It draws the
 /// text itself instead of using text fields, which keeps scrolling fast.
 final class CommitCellView: NSView {
     static let identifier = NSUserInterfaceItemIdentifier("CommitCellView")
@@ -35,6 +35,14 @@ final class CommitCellView: NSView {
     var content: CommitRowContent? {
         didSet {
             if content != oldValue { needsDisplay = true }
+        }
+    }
+
+    /// How many columns of the graph to show, which is the same in every
+    /// row.
+    var graphColumns = 0 {
+        didSet {
+            if graphColumns != oldValue { needsDisplay = true }
         }
     }
 
@@ -55,6 +63,16 @@ final class CommitCellView: NSView {
         let gap: CGFloat = 10
         var left = inset
         var right = bounds.width - inset
+
+        // The graph starts so that its first column lines up with the text
+        // in rows without one.
+        if graphColumns > 0 {
+            let graphX = inset - LaneRenderer.spacing / 2
+            if let lanes = content.lanes {
+                LaneRenderer.draw(lanes, columns: graphColumns, at: graphX, height: bounds.height)
+            }
+            left = graphX + LaneRenderer.width(columns: graphColumns) + 6
+        }
 
         // The columns on the right give way, starting from the author, when
         // the row is too narrow for them and some of the subject.

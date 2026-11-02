@@ -1,4 +1,5 @@
 import AppKit
+import CommitGraph
 
 /// The commit list: a view-based `NSTableView` whose rows have a fixed
 /// height and draw themselves (decision 7).
@@ -7,6 +8,13 @@ import AppKit
 /// are and what each one shows, and as rows scroll into view it asks for the
 /// text of those rows and the ones around them, then redraws the rows that
 /// got their text.
+///
+/// The graph is as wide as the rows in view need, up to
+/// `LaneRenderer.maxColumns`. While scrolling it only widens, as wider rows
+/// come into view, so the text doesn't move back and forth. Once scrolling
+/// stops, it fits the rows in view again. When the rows are reloaded with
+/// the same ones in view, such as when the rest of history arrives, it stays
+/// as it was.
 public final class CommitTableController: NSObject, NSTableViewDataSource, NSTableViewDelegate {
     public struct Source {
         /// The number of rows.
@@ -36,6 +44,8 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
     private let tableView = CommitTableView()
     private var textTask: Task<Void, Never>?
     private var requestedRows: Range<Int>?
+    private var graphColumns = 0
+    private var fitGraphTask: Task<Void, Never>?
 
     public init(source: Source) {
         self.source = source
@@ -77,6 +87,7 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
 
     isolated deinit {
         textTask?.cancel()
+        fitGraphTask?.cancel()
     }
 
     /// Shows new rows, such as when history is loaded again. The selection
@@ -84,11 +95,36 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
     public func reloadData() {
         tableView.reloadData()
         requestedRows = nil
+        sizeGraph(canNarrow: true)
         loadVisibleText()
     }
 
     @objc private func visibleRowsMayHaveChanged(_ notification: Notification) {
+        sizeGraph(canNarrow: false)
         loadVisibleText()
+
+        fitGraphTask?.cancel()
+        fitGraphTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(400))
+            guard !Task.isCancelled else { return }
+            self?.sizeGraph(canNarrow: true)
+        }
+    }
+
+    /// Makes the graph as wide as the rows in view need. Unless it can
+    /// narrow, it only gets wider.
+    private func sizeGraph(canNarrow: Bool) {
+        let visible = tableView.rows(in: tableView.visibleRect)
+        var needed = canNarrow ? 0 : graphColumns
+        for row in visible.location..<visible.location + visible.length {
+            needed = max(needed, source.content(row).lanes?.width ?? 0)
+        }
+        needed = min(needed, LaneRenderer.maxColumns)
+        guard needed != graphColumns else { return }
+        graphColumns = needed
+        for row in visible.location..<visible.location + visible.length {
+            (tableView.view(atColumn: 0, row: row, makeIfNecessary: false) as? CommitCellView)?.graphColumns = needed
+        }
     }
 
     /// Asks for the text of the visible rows, and a screen's worth above and
@@ -119,6 +155,7 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
         let view = tableView.makeView(withIdentifier: CommitCellView.identifier, owner: nil) as? CommitCellView
             ?? CommitCellView()
         view.content = source.content(row)
+        view.graphColumns = graphColumns
         return view
     }
 

@@ -1,3 +1,5 @@
+import CommitGraph
+
 /// What one row of the commit list shows. The short ID is always there, and
 /// the rest of the text is nil until it's loaded.
 public struct CommitRowContent: Hashable {
@@ -27,13 +29,23 @@ public struct CommitRowContent: Hashable {
     public var subject: String?
     public var author: String?
     public var date: String?
+    /// The graph's lines in this row.
+    public var lanes: LaneLayout.Row?
 
-    public init(shortID: String, badges: [Badge] = [], subject: String? = nil, author: String? = nil, date: String? = nil) {
+    public init(
+        shortID: String,
+        badges: [Badge] = [],
+        subject: String? = nil,
+        author: String? = nil,
+        date: String? = nil,
+        lanes: LaneLayout.Row? = nil
+    ) {
         self.shortID = shortID
         self.badges = badges
         self.subject = subject
         self.author = author
         self.date = date
+        self.lanes = lanes
     }
 
     /// What VoiceOver reads for the row.

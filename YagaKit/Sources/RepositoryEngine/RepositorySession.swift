@@ -25,9 +25,9 @@ public actor RepositorySession {
     }
 
     /// Loads history in `sort` order. The stream yields the history once its
-    /// first `firstRows` rows are in order, and again with every row. Ending
+    /// first `firstRows` rows are laid out, and again with every row. Ending
     /// the iteration early, or cancelling its task, stops loading.
-    public nonisolated func history(sort: HistoryOrder.Sort, firstRows: Int = 200) -> AsyncThrowingStream<History, any Error> {
+    public nonisolated func history(sort: HistoryOrder.Sort, firstRows: Int = 100) -> AsyncThrowingStream<History, any Error> {
         HistoryLoader(git: git, location: location, catFile: catFile, firstRows: firstRows).load(sort: sort)
     }
 

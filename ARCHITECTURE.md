@@ -63,7 +63,7 @@ yaga/
 │   │   │   ├── CommitGraphFile.swift   one mapped commit-graph file
 │   │   │   ├── CommitGraphChain.swift  finding the single file or the split chain
 │   │   │   ├── HistoryOrder.swift      date order and topological order, a few rows at a time
-│   │   │   └── LaneLayout.swift        graph lines for each row
+│   │   │   └── LaneLayout.swift        the graph's lines in each row, with long ones cut
 │   │   ├── RepositoryEngine/
 │   │   │   ├── RepositoryLocation.swift where a repository's files are, and its hash
 │   │   │   ├── RepositorySession.swift one actor per repository
@@ -80,7 +80,7 @@ yaga/
 │   │   │   ├── CommitTableController.swift the table, and loading text for the rows in view
 │   │   │   ├── CommitRowContent.swift  what a row shows
 │   │   │   ├── CommitRowView.swift     drawing rows and their selection
-│   │   │   ├── LaneRenderer.swift
+│   │   │   ├── LaneRenderer.swift      drawing the graph in a row
 │   │   │   └── CommitRowAccessibility.swift
 │   │   ├── DiffUI/                     AppKit, TextKit 1
 │   │   │   ├── DiffTextView.swift
@@ -189,9 +189,17 @@ Views don't receive commit text or diffs as part of a snapshot. They ask the ses
 
 **History.** History starts from `HEAD` and every branch, remote branch and tag, which is what `git log HEAD --branches --remotes --tags` shows. The session lists the refs with `git for-each-ref`, and gets `HEAD` and what annotated tags lead to from `git show-ref -d`, which uses what git recorded when it packed the refs rather than reading the tags. While git lists them, the session maps the commit-graph file or chain and finds each of those commits in it. Commits newer than the files come from `git rev-list`, which stops where they meet the commits the files have, and they're added after the files' commits. `HistoryOrder` hands out rows the way git's own walk does, a few at a time, in topological order unless the user switches to date order (decision 12). The generation numbers in the file tell it how far below those rows it has to look, so the first screen is ready before most of history has been read.
 
-git also counts down to its oldest starting point before it shows anything. With Linux's 952 tags, that's most of history, and git takes 1.2 seconds to print its first line. `HistoryOrder` waits until the walk reaches each starting point instead, and still gives git's order. On Linux, opening a session took about 15 ms, the first screen 28 ms more and its text 3 ms, and the other 1.5 million rows about half a second, which runs in the background along with laying out the lanes.
+git also counts down to its oldest starting point before it shows anything. With Linux's 952 tags, that's most of history, and git takes 1.2 seconds to print its first line. `HistoryOrder` waits until the walk reaches each starting point instead, and still gives git's order. On Linux, opening a session took about 15 ms, the first screen 36 ms more and its text 3 ms. Ordering the other 1.5 million rows and laying out their lanes took about a second, in the background.
 
-From a cold disk cache, right after `sudo purge`, Linux's first screen with its text took about 124 ms. Commits in the commit-graph file are sorted by ID, so even the first screen reads pages from all over the 90 MB file. Waiting for each page as the walk reached it took 0.4 seconds, so the session asks macOS to read the whole file ahead as soon as it's mapped, which takes about 20 ms. Most of the rest is git listing the refs, about 95 ms, during which it reads 27 MB from disk. Asking `for-each-ref` for what tags lead to made it read 955 objects from the pack, which took longer still.
+From a cold disk cache, right after `sudo purge`, Linux's first screen with its text took about 124 ms, before lanes were added. Commits in the commit-graph file are sorted by ID, so even the first screen reads pages from all over the 90 MB file. Waiting for each page as the walk reached it took 0.4 seconds, so the session asks macOS to read the whole file ahead as soon as it's mapped, which takes about 20 ms. Most of the rest is git listing the refs, about 95 ms, during which it reads 27 MB from disk. Asking `for-each-ref` for what tags lead to made it read 955 objects from the pack, which took longer still.
+
+**Lanes.** `LaneLayout` gives each row's commit a column, and the lines that join it to its parents. Each column holds a lane that waits for one commit, the next one down the line it draws. A commit takes the lane that waits for it, or the leftmost free column. Its lane then waits for its first parent, and each other parent gets the lane that already waits for it or a new one. Two lanes that would wait for the same commit join as soon as they meet, into the one on the left, and a lane steps left, one column a row, when the column next to it frees up. So lines only ever move left, and the main line stays in the first column unless it's cut.
+
+Long lines are what make a large graph wide. Linux has about a hundred crossing a typical row, from merges whose other parents are far below. So `LaneLayout` cuts lines longer than 100 rows, the way gitk does: the line from the child ends in an arrow two rows below it, and the line to the parent starts with an arrow two rows above it, leaving the column free in between. With that, half of Linux's rows need 2 columns and 99% need 7 in topological order, or 4 and 12 in date order. Whether a line is cut depends on the rows below it, so a row is laid out once the 100 rows after it are in order, and the first screen orders twice as many rows. That's most of why it takes 36 ms rather than 28 ms. Laying out all of Linux takes about half a second in topological order and 0.7 seconds in date order.
+
+Storing every line of every row would take too much memory, so the layout stores each row's column and the lines that change column or end at an arrow. Every 64 rows, it also stores which columns have a line crossing into the row. The commit list asks for the lines of the rows it draws, and the layout works out the straight ones from the nearest of those.
+
+The graph is as wide as the rows in view need, up to 10 columns. While the user scrolls, it only widens, so the text doesn't move back and forth, and once scrolling stops it fits the rows in view again. Each column has a color, and the first, where the main line usually runs, has the accent color.
 
 git doesn't use the commit-graph files in a shallow clone, or when replace refs or grafts change commits' parents, and neither does yaga. yaga also skips files it can't read, as git does. Then, and when there's no file yet, `git rev-list` lists every commit with its parents and date. That's slow in a large repository, and without generation numbers all of history is counted before the first row, so yaga writes the file in the background (decisions 5 and 6).
 
@@ -254,9 +262,9 @@ Wherever `/usr/bin/git` comes up in the search, yaga runs it only if `xcode-sele
   - renames
   - worktrees
   - reftable repositories
-- Engine tests run real git against those repositories. The commit-graph tests compare every commit's parents, dates and generation numbers, and the order of history from several sets of tips, with what git prints. The session tests compare the history a session loads with `git log`, in every repository and also in copies the tests change: a shallow one, one with replace refs, one with a damaged commit-graph file, a bare clone, and one with a detached `HEAD`.
+- Engine tests run real git against those repositories. The commit-graph tests compare every commit's parents, dates and generation numbers, and the order of history from several sets of tips, with what git prints. The lane tests follow every line down from each commit's dot, and check that it reaches the commit's parents, through arrows when it's cut. The session tests compare the history a session loads with `git log`, in every repository and also in copies the tests change: a shallow one, one with replace refs, one with a damaged commit-graph file, a bare clone, and one with a detached `HEAD`.
 - CI runs everything against git 2.44 and the newest git.
-- `yaga-bench history` measures the first screen of history and ordering the rest, first from `HEAD` with the reader alone, then through a session from every ref, as the app loads it. `--verify` compares both orders with `git log`. `--cold`, run right after `sudo purge`, loads history once and reports how many pages each step read from disk, and `--parts` takes the steps one at a time instead of the way the app overlaps them. A clone of Linux with only its commits is enough for it. A CI job that runs it on a cached clone, and fails when a performance target from the roadmap is missed, is still to be added.
+- `yaga-bench history` measures the first screen of history and ordering and laying out the rest, first from `HEAD` with the reader alone, then through a session from every ref, as the app loads it, and reports how wide the graph's rows are. `--verify` compares both orders with `git log`. `--cold`, run right after `sudo purge`, loads history once and reports how many pages each step read from disk, and `--parts` takes the steps one at a time instead of the way the app overlaps them. A clone of Linux with only its commits is enough for it. A CI job that runs it on a cached clone, and fails when a performance target from the roadmap is missed, is still to be added.
 
 ## Building and releasing
 
@@ -271,6 +279,7 @@ The app's bundle identifier is `build.yaga.app`, and the app is named yaga. It i
 - What a session does while none of its worktrees is showing. It could close its `cat-file` process and watch only enough to keep the sidebar's counts of uncommitted files current.
 - Whether yaga runs the git that `/usr/bin/git` stands for directly. That stub looks up the developer tools every time it runs, which made a short command take 13 ms instead of 6.4 ms.
 - Whether yaga saves the login shell's `PATH` between launches, so that finding git doesn't wait for the user's shell to start.
+- Whether clicking an arrow on a cut line jumps to the commit at its other end, and whether the lanes' colors should follow branches rather than columns.
 - How much commit text yaga keeps. For now the repository's model keeps up to 20,000 commits. It could depend on the size of the repository, or move into the session so that windows showing the same repository share it.
 - The open questions about the layout, which the [main window](docs/main-window.md#still-open) lists.
 - Whether a command palette ships in release 1.
