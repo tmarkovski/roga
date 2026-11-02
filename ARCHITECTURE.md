@@ -6,14 +6,14 @@ This document describes how yaga is put together: how the code is organized, whi
 
 yaga is a Swift app for macOS 26 and later (decision 2). It runs the user's own git (decisions 3 and 8) and reads git's commit-graph file directly to order history (decisions 5 and 6). The window is SwiftUI, except for the two views that have to handle very large amounts of data: the commit list is an AppKit `NSTableView` (decision 7), and the diff is a TextKit 1 `NSTextView` (decision 9).
 
-A window holds tabs that yaga draws itself, one tab for each open repository, and there can be several windows (decision 10). Each repository has one session, which owns everything yaga knows about it, such as its git processes, its file watcher and its caches. Sessions don't depend on windows or tabs, so two tabs that show the same repository share one session.
+A window has a sidebar that lists repositories with their worktrees under them, and there can be several windows (decisions 10 and 13). Each repository has one session, which owns everything yaga knows about it, such as its git processes, its file watcher and its caches. Sessions don't depend on windows, so two windows that show the same repository share one session.
 
 From the bottom up, the code is in these layers:
 
 1. **Git itself.** This layer covers the object IDs, refs, commits, status entries and diffs that yaga works with, and parsers for the git output that describes them.
 2. **Running git and reading its files.** One module starts git processes, and another reads commit-graph files and lays out history.
 3. **Repository sessions.** This layer loads and caches what each repository contains, watches it for changes, and publishes snapshots.
-4. **Views.** The commit list and the diff view are AppKit. The window, tabs, navigator, details and settings are SwiftUI.
+4. **Views.** The commit list and the diff view are AppKit. The window, the sidebar, the refs panel, details and settings are SwiftUI.
 5. **The app target.** This holds the entry point, Sparkle, and the resources that only an app bundle can have.
 
 ## Project layout
@@ -87,8 +87,8 @@ yaga/
 │   │   │   ├── LineNumberRuler.swift
 │   │   │   └── DiffTextBuilder.swift   attributed text and changed-word highlights
 │   │   ├── YagaUI/                     SwiftUI
-│   │   │   ├── Workspace/              windows, finding git, the tab strip, the tab container
-│   │   │   ├── Repository/             the repository model, panels, the navigator, commit details
+│   │   │   ├── Workspace/              windows, finding git, the sidebar, the container for worktree views
+│   │   │   ├── Repository/             the repository model, panels, the refs panel, commit details
 │   │   │   ├── Commands/               menus and keyboard shortcuts
 │   │   │   ├── Settings/
 │   │   │   └── Onboarding/             missing or outdated git
@@ -120,7 +120,7 @@ yaga/
 | `RepositoryEngine` | One session per repository: loading and caching history, refs, worktrees, status and diffs, watching the file system, keeping the commit-graph file current, and publishing snapshots | `GitCore`, `GitRunner`, `CommitGraph` | Foundation, CoreServices |
 | `HistoryUI` | The commit list: the table, drawing rows and graph lanes, keyboard handling and accessibility | `GitCore`, `CommitGraph` | AppKit |
 | `DiffUI` | The diff view: the TextKit 1 text view, line numbers, line backgrounds, and building attributed text | `GitCore` | AppKit |
-| `YagaUI` | Windows, tabs, the navigator, details, settings, menus and onboarding, and the main-actor models that connect sessions to views | all of the above | SwiftUI, AppKit |
+| `YagaUI` | Windows, the sidebar, the refs panel, details, settings, menus and onboarding, and the main-actor models that connect sessions to views | all of the above | SwiftUI, AppKit |
 | App target | The entry point, Sparkle, the Info.plist and assets | `YagaUI`, Sparkle | SwiftUI |
 | `yaga-bench` | Benchmarks for the performance targets in the roadmap | `GitCore`, `GitRunner`, `CommitGraph`, `RepositoryEngine`, `HistoryUI`, `DiffUI` | AppKit |
 
@@ -131,37 +131,39 @@ These rules keep the layers apart:
 - `HistoryUI` and `DiffUI` don't know about sessions. They take plain data and closures, so the benchmark tool can drive them with real data and no app around them.
 - Sparkle is linked only into the app target.
 
-## Windows and tabs
+<a id="windows-and-tabs"></a>
 
-Each window has an ordered list of tabs and a selected tab. A tab shows one repository. Inside the tab, the navigator lists the repository's worktrees, and choosing one changes what the tab shows. A worktree can also be opened in a tab of its own, so that two agents' work can sit in two tabs.
+## Windows and the sidebar
 
-Until the tabs are built, each window shows one repository. File > Open, or the button in an empty window, chooses its folder, and SwiftUI saves the folder with the window. Opening a repository from a window that already shows one opens a new window.
+Each window has a sidebar that lists repositories, each with its worktrees under it, and a selected worktree that the rest of the window shows (decision 13). A panel on the right lists the selected repository's branches, remotes, tags and stashes. The sidebar and that panel are the sidebar and inspector that macOS provides, so hiding them, their keyboard shortcuts, VoiceOver and their saved widths come from the system. A worktree can also be opened in a window of its own, so that two agents' work can sit side by side.
 
-yaga turns off macOS window tabbing (`NSWindow.allowsAutomaticWindowTabbing = false`) and draws its own tab strip. [docs/main-window.md](docs/main-window.md) describes how the window and its tabs look. The tabs need to support:
+Until the sidebar is built, each window shows one repository. File > Open, or the button in an empty window, chooses its folder, and SwiftUI saves the folder with the window. Opening a repository from a window that already shows one opens a new window.
 
-- selecting, closing and reordering tabs, and moving a tab to a new window
-- keyboard shortcuts: Control-Tab and Control-Shift-Tab, Command-1 to Command-9, Command-T for a new tab, and Command-W to close the tab rather than the window
-- VoiceOver, with the tab strip reported as a tab group and each tab offering a press action that selects it
-- a small status mark on a tab, for example when a worktree has uncommitted changes
+yaga turns off macOS window tabbing (`NSWindow.allowsAutomaticWindowTabbing = false`), because repositories are switched in the sidebar. [docs/main-window.md](docs/main-window.md) describes how the window looks. The sidebar needs to support:
 
-The window keeps the views of hidden tabs alive. A container view controller holds one child view controller per tab and swaps which one is in the window, so a hidden tab keeps its scroll position and selection, draws nothing, and comes back instantly.
+- selecting a worktree, opening it in a new window or in Terminal, and adding, removing and reordering repositories
+- moving between rows with the arrow keys, and Command-W closing the window
+- VoiceOver, with each repository reported as a group that expands to show its worktrees
+- each worktree's count of uncommitted files, and a mark on a repository when any of its worktrees has changes
 
-Each window saves its list of tabs, with the repository and selected worktree for each, and restores them when yaga relaunches. When yaga launches with nothing to restore, it opens a window that shows recent repositories. The previews showed that launching needs to be designed on purpose:
+The window keeps the views of worktrees it isn't showing alive. A container view controller holds one child view controller for each recently shown worktree and swaps which one is in the window, so a worktree that isn't showing keeps its scroll position and selection, draws nothing, and comes back instantly.
+
+Each window saves the repositories in its sidebar, which of them are expanded, and the selected worktree, and restores them when yaga relaunches. When yaga launches with nothing to restore, it opens a window that shows recent repositories. The previews showed that launching needs to be designed on purpose:
 
 - SwiftUI doesn't reopen a single welcome window that was closed at the last quit ([window tabs preview](prototypes/window-tabs/README.md)).
 - When a launch comes with paths to open, AppKit treats it as a request to open files, and SwiftUI doesn't open its first window ([main window preview](prototypes/main-window/README.md)). yaga has to handle open requests itself, both from Finder and from any command-line launcher such as `yaga .`.
 
 ## Commands
 
-Every command is defined once, in `YagaUI/Commands`. A definition gives the command's name, its icon, its keyboard shortcut, when it's available, and what it does. The menu bar, the buttons in panel headers, context menus, the buttons that appear on hover in the navigator, and a command palette if yaga gets one all show commands from those definitions instead of defining their own. That way a command has the same name and shortcut wherever it appears, and it's always in the menu bar. It also means the roadmap's requirement that every action has a keyboard shortcut can be checked in one place.
+Every command is defined once, in `YagaUI/Commands`. A definition gives the command's name, its icon, its keyboard shortcut, when it's available, and what it does. The menu bar, the buttons in panel headers, context menus, the buttons that appear on hover in the sidebar and the refs panel, and a command palette if yaga gets one all show commands from those definitions instead of defining their own. That way a command has the same name and shortcut wherever it appears, and it's always in the menu bar. It also means the roadmap's requirement that every action has a keyboard shortcut can be checked in one place.
 
-A command that isn't available is disabled in menus, and its buttons are disabled or hidden. Commands act on the selected tab of the key window. Each window publishes its selected tab through SwiftUI's focused values, and the menus read it from there.
+A command that isn't available is disabled in menus, and its buttons are disabled or hidden. Commands act on the selected worktree of the key window. Each window publishes its selected worktree through SwiftUI's focused values, and the menus read it from there.
 
 Which commands each panel shows is decided as each feature is built, and [docs/main-window.md](docs/main-window.md) records where they go.
 
 ## Repository sessions
 
-A repository is identified by its common git directory, the one `git rev-parse --git-common-dir` prints, resolved to a real path. All worktrees of a repository share one session, because they share objects, refs and the commit-graph file. A registry hands out sessions, and a session closes when the last tab that shows it closes.
+A repository is identified by its common git directory, the one `git rev-parse --git-common-dir` prints, resolved to a real path. All worktrees of a repository share one session, because they share objects, refs and the commit-graph file. A registry hands out sessions. A session stays open while any window's sidebar lists its repository, because the sidebar shows how many uncommitted files each of its worktrees has.
 
 A session owns:
 
@@ -263,11 +265,11 @@ The app's bundle identifier is `build.yaga.app`, and the app is named yaga. It i
 
 ## Still open
 
-- Whether a session stops watching the file system and closes its `cat-file` process while none of its tabs is visible.
+- What a session does while none of its worktrees is showing. It could close its `cat-file` process and watch only enough to keep the sidebar's counts of uncommitted files current.
 - Whether yaga runs the git that `/usr/bin/git` stands for directly. That stub looks up the developer tools every time it runs, which made a short command take 13 ms instead of 6.4 ms.
 - Whether yaga saves the login shell's `PATH` between launches, so that finding git doesn't wait for the user's shell to start.
 - How much commit text yaga keeps. For now the repository's model keeps up to 20,000 commits. It could depend on the size of the repository, or move into the session so that windows showing the same repository share it.
-- What the tab strip does when the tabs don't fit. The [main window](docs/main-window.md#still-open) lists the other open questions about the layout.
+- The open questions about the layout, which the [main window](docs/main-window.md#still-open) lists.
 - Whether a command palette ships in release 1.
 - Reading commit-graph layers from alternate object folders. git looks for a chain's layers there, and yaga doesn't yet.
-- Which keyboard shortcuts switch between History and Changes, since Command-1 to Command-9 already switch tabs.
+- Which keyboard shortcuts switch between History and Changes, and what Command-1 to Command-9 do now that there are no tabs.

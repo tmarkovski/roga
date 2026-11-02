@@ -4,11 +4,11 @@ This roadmap splits yaga's first releases into phases. Each release should be so
 
 ## Before release 1
 
-So far we have written the [vision](VISION.md) and the [architecture](ARCHITECTURE.md), sketched the [main window](docs/main-window.md), recorded decisions 1 to 12, and built prototypes for:
+So far we have written the [vision](VISION.md) and the [architecture](ARCHITECTURE.md), sketched the [main window](docs/main-window.md), recorded decisions 1 to 13, and built prototypes for:
 
 - [Git access, drawing the history, and the diff view](prototypes/git-access/RESULTS.md)
 - [native window tabs](prototypes/window-tabs/README.md), which we decided against
-- [the main window](prototypes/main-window/README.md) with yaga's own tabs
+- [the main window](prototypes/main-window/README.md) with yaga's own tabs, which a sidebar later replaced (decision 13)
 
 The project is set up, so the next step is release 1. It has:
 
@@ -34,7 +34,7 @@ The work happens in this order:
    - The commit graph comes from the commit-graph reader. That includes split chains, commits newer than the file, and the fallbacks to git that decision 5 lists.
    - yaga writes and updates the commit-graph file in the background (decision 6).
    - The commit list is an `NSTableView` (decision 7). It loads the text for visible rows from a long-running `git cat-file` process.
-   - The window follows the [main window](docs/main-window.md) wireframe. Tabs hold repositories, a navigator on the right shows worktrees, branches, remotes, tags and stashes, and panels below the history show the selected commit and its diff.
+   - The window follows the [main window](docs/main-window.md) wireframe. A sidebar on the left lists repositories and their worktrees, a panel on the right shows branches, remotes, tags and stashes, and panels below the history show the selected commit and its diff.
 2. **Diffs.** yaga shows unified diffs with changed words highlighted, for a single commit or between any two commits. It shows the list of changed files first and loads each file's patch when it's needed, into a TextKit 1 text view (decision 9). Rename detection is on.
 3. **Worktrees and uncommitted changes.** yaga lists every worktree with its branch, its path, and whether it has uncommitted changes, and lets the user switch between them. For any worktree, it shows the staged, unstaged and untracked changes, without changing them.
 4. **Branch review.** yaga shows everything a branch changed since it left its base, the way a pull request does. That means the branch's commits and one combined diff against the merge base.

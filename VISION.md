@@ -18,7 +18,7 @@ Opening a repository with hundreds of thousands of commits should feel as quick 
 
 ### 2. It feels like a first-party Mac app
 
-yaga is written in Swift and uses the platform's own frameworks, so it behaves the way Mac users expect. That means standard menus, windows, and text handling; full keyboard navigation; correct behavior with system settings such as appearance, accent color, and accessibility; and no web views standing in for native UI. When the platform has a convention, we follow it. Where a design of our own serves people better, such as yaga's tabs, we draw that part ourselves, but it still behaves the way Mac users expect, with the usual keyboard shortcuts, VoiceOver support, and restored windows.
+yaga is written in Swift and uses the platform's own frameworks, so it behaves the way Mac users expect. That means standard menus, windows, and text handling; full keyboard navigation; correct behavior with system settings such as appearance, accent color, and accessibility; and no web views standing in for native UI. When the platform has a convention, we follow it. Where a design of our own serves people better, such as the commit graph, we draw that part ourselves, but it still behaves the way Mac users expect, with the usual keyboard shortcuts, VoiceOver support, and restored windows.
 
 ### 3. It understands how people work with coding agents
 

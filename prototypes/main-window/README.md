@@ -1,6 +1,6 @@
 # Main window preview
 
-This is a throwaway preview of yaga's main window with the tabs that yaga draws itself ([decision 10](../../docs/decisions/0010-our-own-tabs-in-one-window.md)). It isn't part of the app. [docs/main-window.md](../../docs/main-window.md) describes the layout it settled. The layout follows the Claude app:
+This is a throwaway preview of yaga's main window with the tabs that yaga draws itself ([decision 10](../../docs/decisions/0010-our-own-tabs-in-one-window.md)). It isn't part of the app. [Decision 13](../../docs/decisions/0013-repositories-in-a-sidebar.md) later replaced the tabs with a sidebar, so this preview shows the earlier layout, and [docs/main-window.md](../../docs/main-window.md) describes the current one. The layout here follows the Claude app:
 
 - The repository tabs share the top row with the traffic lights, and nothing sits above them.
 - Every section below is a plain rectangle with its own header. A segmented switch or a title goes on the left of the header, and commands go on the right.

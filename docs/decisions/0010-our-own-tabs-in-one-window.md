@@ -1,6 +1,6 @@
 # 10. Show repositories as tabs that yaga draws itself
 
-Accepted on 2026-11-01.
+Accepted on 2026-11-01. Partly superseded by [decision 13](0013-repositories-in-a-sidebar.md), which replaces the tab strip with a sidebar. The rest of this decision still holds.
 
 ## Context
 
