@@ -43,6 +43,14 @@ public struct WorkspaceView: View {
         NavigationSplitView(columnVisibility: $columns) {
             Sidebar(list: list, selection: selection, open: open, locate: locate)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 400)
+                .overlay(alignment: .trailing) {
+                    // A line between the sidebar and the worktree, from the
+                    // top of the window to the bottom.
+                    Rectangle()
+                        .fill(Palette.separator)
+                        .frame(width: 1)
+                        .ignoresSafeArea()
+                }
                 .toolbar(removing: .sidebarToggle)
                 .toolbar {
                     // macOS keeps the sidebar's toolbar items next to the

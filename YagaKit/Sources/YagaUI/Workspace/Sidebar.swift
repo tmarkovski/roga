@@ -203,14 +203,21 @@ private struct RepositoryRow: View {
     let locate: () -> Void
 
     var body: some View {
-        SidebarRow(height: SidebarRowHeight.oneLine, action: toggle) {
-            HStack(spacing: 5) {
-                Text(repository.name)
-                    .font(.system(size: 14, weight: .semibold))
-                    .lineLimit(1)
-                Image(systemName: repository.isExpanded ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
+        SidebarRow(height: SidebarRowHeight.twoLines, action: toggle) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 5) {
+                    Text(repository.name)
+                        .font(.system(size: 14, weight: .semibold))
+                        .lineLimit(1)
+                    Image(systemName: repository.isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+                Text(location)
+                    .font(.system(size: 13))
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
             }
             .opacity(problem == nil ? 1 : 0.6)
         } trailing: {
@@ -243,11 +250,20 @@ private struct RepositoryRow: View {
         .contextMenu { menuItems }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(repository.name)
-        .accessibilityValue([repository.isExpanded ? "Expanded" : "Collapsed", problem].compactMap(\.self).joined(separator: ", "))
+        .accessibilityValue([location, repository.isExpanded ? "Expanded" : "Collapsed", problem].compactMap(\.self).joined(separator: ", "))
         .accessibilityHint("Shows or hides its worktrees")
         .accessibilityAddTraits(.isButton)
         .accessibilityAction(.default, toggle)
         .accessibilityActions { menuItems }
+    }
+
+    /// The folder the repository is in, which tells apart repositories with
+    /// the same name. It comes from the git directory, like the name, so it
+    /// shows where a missing repository was.
+    private var location: String {
+        var folder = repository.path as NSString
+        if folder.lastPathComponent == ".git" { folder = folder.deletingLastPathComponent as NSString }
+        return (folder.deletingLastPathComponent as NSString).abbreviatingWithTildeInPath
     }
 
     /// The main worktree, or the bare repository's entry, once the
