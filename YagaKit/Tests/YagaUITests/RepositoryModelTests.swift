@@ -52,24 +52,25 @@ struct RepositoryModelTests {
         #expect(model.history?.sort == .date)
     }
 
-    /// A model of a copy of the `basic` repository, whose settings start
-    /// out empty, and which can be changed.
-    func modelOfACopy(keepsCommitGraphCurrent: Bool? = nil) async throws -> (RepositoryModel, repository: String) {
+    /// A model of a copy of the `basic` repository, which can be changed.
+    func modelOfACopy(keepsCommitGraphCurrent: Bool = true) async throws -> (RepositoryModel, repository: String) {
         let repository = try makeTemporaryFolder() + "/basic"
         _ = try await TestGit.make().run(GitCommand("clone", "--quiet", "--no-local", try await Fixture.repository("basic"), repository))
         let session = try await RepositorySession.open(containing: repository, git: try await TestGit.make())
-        let defaults = try #require(UserDefaults(suiteName: "yaga-tests-\(UUID().uuidString)"))
-        if let keepsCommitGraphCurrent {
-            defaults.set(keepsCommitGraphCurrent, forKey: UserDefaults.keepsCommitGraphCurrentKey)
-        }
-        return (RepositoryModel(session: session, worktree: repository, defaults: defaults), repository)
+        return (RepositoryModel(session: session, worktree: repository, keepsCommitGraphCurrent: { keepsCommitGraphCurrent }), repository)
     }
 
     func chainExists(in repository: String) -> Bool {
         FileManager.default.fileExists(atPath: repository + "/.git/objects/info/commit-graphs/commit-graph-chain")
     }
 
-    @Test func keepsTheCommitGraphUpToDateByDefault() async throws {
+    @Test func keepingTheCommitGraphUpToDateIsOnByDefault() throws {
+        // Nothing writes to these settings, so they leave no file behind.
+        let settings = try #require(UserDefaults(suiteName: "yaga-tests-never-written"))
+        #expect(settings.keepsCommitGraphCurrent)
+    }
+
+    @Test func keepsTheCommitGraphUpToDate() async throws {
         let (model, repository) = try await modelOfACopy()
         model.updateCommitGraph()
         #expect(model.commitGraphState == .updating)

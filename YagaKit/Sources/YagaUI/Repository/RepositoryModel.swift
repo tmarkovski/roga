@@ -60,7 +60,8 @@ final class RepositoryModel {
     @ObservationIgnored private var graphGeneration = 0
     @ObservationIgnored private var badges: [CommitGraph.Position: [CommitRowContent.Badge]] = [:]
     @ObservationIgnored private let now = Date()
-    @ObservationIgnored private let defaults: UserDefaults
+    /// Whether the user wants commit-graph files kept up to date.
+    @ObservationIgnored private let keepsCommitGraphCurrent: () -> Bool
     /// The running update of the commit-graph files, which isn't tied to any
     /// view, so that it carries on when the window shows another worktree.
     @ObservationIgnored private(set) var commitGraphUpdate: Task<Void, Never>?
@@ -76,10 +77,14 @@ final class RepositoryModel {
     /// a screen.
     private static let textLimit = 20_000
 
-    init(session: RepositorySession, worktree: String, defaults: UserDefaults = .standard) {
+    init(
+        session: RepositorySession,
+        worktree: String,
+        keepsCommitGraphCurrent: @escaping () -> Bool = { UserDefaults.standard.keepsCommitGraphCurrent }
+    ) {
         self.session = session
         self.worktree = worktree
-        self.defaults = defaults
+        self.keepsCommitGraphCurrent = keepsCommitGraphCurrent
     }
 
     var loadRequest: LoadRequest { LoadRequest(sort: sort, reloads: reloads) }
@@ -100,7 +105,7 @@ final class RepositoryModel {
     /// background, unless the user turned that off. History on screen stays
     /// as it is, because the files would only change how quickly it loads.
     func updateCommitGraph() {
-        guard defaults.keepsCommitGraphCurrent else {
+        guard keepsCommitGraphCurrent() else {
             commitGraphState = .turnedOff
             return
         }
