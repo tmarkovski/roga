@@ -6,7 +6,7 @@ This document describes how yaga is put together: how the code is organized, whi
 
 yaga is a Swift app for macOS 26 and later (decision 2). It runs the user's own git (decisions 3 and 8) and reads git's commit-graph file directly to order history (decisions 5 and 6). The window is SwiftUI, except for the two views that have to handle very large amounts of data: the commit list is an AppKit `NSTableView` (decision 7), and the diff is a TextKit 1 `NSTextView` (decision 9).
 
-A window has a sidebar that lists repositories with their worktrees under them, and there can be several windows (decisions 10 and 13). Each repository has one session, which owns everything yaga knows about it, such as its git processes, its file watcher and its caches. Sessions don't depend on windows, so two windows that show the same repository share one session.
+A window has a sidebar that lists every repository the user has added, with its worktrees under it, and there can be several windows (decisions 10, 13 and 14). Each repository has one session, which owns everything yaga knows about it, such as its git processes, its file watcher and its caches. Sessions don't depend on windows, so two windows that show the same repository share one session.
 
 From the bottom up, the code is in these layers:
 
@@ -35,6 +35,7 @@ yaga/
 │   │   │   ├── ObjectID.swift          SHA-1 and SHA-256 object IDs
 │   │   │   ├── ObjectType.swift        commit, tree, blob and tag
 │   │   │   ├── Refs.swift              refs, and what HEAD points to
+│   │   │   ├── Worktree.swift          a worktree's folder, HEAD and branch
 │   │   │   ├── CommitInfo.swift        a commit's parents, author, committer and message
 │   │   │   ├── StatusEntry.swift
 │   │   │   ├── DiffFile.swift
@@ -43,7 +44,7 @@ yaga/
 │   │   │       ├── CommitParser.swift      commit objects from cat-file
 │   │   │       ├── RefListParser.swift     for-each-ref
 │   │   │       ├── ShowRefParser.swift     show-ref, for HEAD and what annotated tags lead to
-│   │   │       ├── WorktreeListParser.swift
+│   │   │       ├── WorktreeListParser.swift worktree list --porcelain -z
 │   │   │       ├── StatusParser.swift      status --porcelain=v2 -z
 │   │   │       ├── RawDiffParser.swift     diff --raw -z
 │   │   │       └── PatchParser.swift       unified patches
@@ -66,11 +67,9 @@ yaga/
 │   │   │   └── LaneLayout.swift        the graph's lines in each row, with long ones cut
 │   │   ├── RepositoryEngine/
 │   │   │   ├── RepositoryLocation.swift where a repository's files are, and its hash
-│   │   │   ├── RepositorySession.swift one actor per repository
-│   │   │   ├── SessionRegistry.swift
+│   │   │   ├── RepositorySession.swift one actor per repository, which its worktrees share
 │   │   │   ├── HistoryLoader.swift     commit-graph, newer commits, fallbacks
 │   │   │   ├── RefsLoader.swift
-│   │   │   ├── WorktreeLoader.swift
 │   │   │   ├── StatusLoader.swift
 │   │   │   ├── DiffLoader.swift
 │   │   │   ├── RepositoryWatcher.swift FSEvents
@@ -88,7 +87,7 @@ yaga/
 │   │   │   ├── LineNumberRuler.swift
 │   │   │   └── DiffTextBuilder.swift   attributed text and changed-word highlights
 │   │   ├── YagaUI/                     SwiftUI
-│   │   │   ├── Workspace/              windows, finding git, the sidebar, the container for worktree views
+│   │   │   ├── Workspace/              windows, finding git, the sidebar and the saved list of repositories
 │   │   │   ├── Repository/             the repository model, panels, the refs panel, commit details
 │   │   │   ├── Commands/               menus and keyboard shortcuts
 │   │   │   ├── Settings/
@@ -99,6 +98,7 @@ yaga/
 │       ├── GitRunnerTests/
 │       ├── CommitGraphTests/
 │       ├── RepositoryEngineTests/
+│       ├── YagaUITests/                the list of repositories, and the models windows keep
 │       ├── TestSupport/                the git the tests run, and the test repositories
 │       └── Fixtures/                   scripts that build test repositories
 ├── Scripts/
@@ -136,9 +136,11 @@ These rules keep the layers apart:
 
 ## Windows and the sidebar
 
-Each window has a sidebar that lists repositories, each with its worktrees under it, and a selected worktree that the rest of the window shows (decision 13). A panel on the right lists the selected repository's branches, remotes, tags and stashes. The sidebar and that panel are the sidebar and inspector that macOS provides, so hiding them, their keyboard shortcuts, VoiceOver and their saved widths come from the system. A worktree can also be opened in a window of its own, so that two agents' work can sit side by side.
+Each window has a sidebar that lists repositories, each with its worktrees under it, and a selected worktree that the rest of the window shows (decision 13). A panel on the right lists the selected repository's branches, remotes, tags and stashes. The sidebar and that panel are the sidebar and inspector that macOS provides, so collapsing them and their saved widths come from the system. The sidebar draws its own rows and its own button for hiding it, though, because a macOS sidebar list can't fill a row on hover or swap a row's label for its commands. So the sidebar handles the arrow keys and describes its rows to VoiceOver itself. The View menu's Hide Sidebar command, with Control-Command-S, is yaga's too. SwiftUI's own command collapses the sidebar without telling the window, which left the button and the menu each showing the wrong state. A worktree can also be opened in a window of its own, so that two agents' work can sit side by side.
 
-Until the sidebar is built, each window shows one repository. File > Open, or the button in an empty window, chooses its folder, and SwiftUI saves the folder with the window. Opening a repository from a window that already shows one opens a new window.
+The sidebar lists every repository the user has added, and every window lists the same ones (decision 14). `RepositoryList` holds them, opens a session for each one, and saves the list in Application Support whenever it changes. File > Open, or the row at the top of the sidebar, adds the repository that the chosen folder is in, unless it's listed already, and selects the worktree that the folder is in. git lists each repository's worktrees when the repository opens and whenever yaga becomes the active app, until yaga watches the file system. A window that shows a worktree that's gone moves to its repository's main worktree.
+
+Each window keeps its selected worktree in the value that SwiftUI saves with the window, together with an ID of its own. Without the ID, opening a worktree in a new window would only bring forward the window that already shows it.
 
 yaga turns off macOS window tabbing (`NSWindow.allowsAutomaticWindowTabbing = false`), because repositories are switched in the sidebar. [docs/main-window.md](docs/main-window.md) describes how the window looks. The sidebar needs to support:
 
@@ -147,12 +149,11 @@ yaga turns off macOS window tabbing (`NSWindow.allowsAutomaticWindowTabbing = fa
 - VoiceOver, with each repository reported as a group that expands to show its worktrees
 - each worktree's count of uncommitted files, and a mark on a repository when any of its worktrees has changes
 
-The window keeps the views of worktrees it isn't showing alive. A container view controller holds one child view controller for each recently shown worktree and swaps which one is in the window, so a worktree that isn't showing keeps its scroll position and selection, draws nothing, and comes back instantly.
+A window keeps the models of the eight worktrees it showed most recently, with their history and the commit text it has read, so going back to one shows its history at once. Switching back to Linux takes no time instead of about a second. The window builds a new commit list each time, though, so the list starts at the top again. Keeping the views too, with a container view controller that holds a child for each recently shown worktree and swaps which one is in the window, would also keep each worktree's scroll position and selection.
 
-Each window saves the repositories in its sidebar, which of them are expanded, and the selected worktree, and restores them when yaga relaunches. When yaga launches with nothing to restore, it opens a window that shows recent repositories. The previews showed that launching needs to be designed on purpose:
+The list of repositories doesn't depend on window restoration, which macOS skips after a normal quit unless the user turned off "Close windows when quitting an application". When macOS does restore windows, each one comes back with its worktree. Otherwise yaga opens one window, which shows the worktree selected last. With no repositories yet, it's the same window with an empty list and a button that opens one, so there's no separate welcome window to bring back.
 
-- SwiftUI doesn't reopen a single welcome window that was closed at the last quit ([window tabs preview](prototypes/window-tabs/README.md)).
-- When a launch comes with paths to open, AppKit treats it as a request to open files, and SwiftUI doesn't open its first window ([main window preview](prototypes/main-window/README.md)). yaga has to handle open requests itself, both from Finder and from any command-line launcher such as `yaga .`.
+When a launch comes with paths to open, AppKit treats it as a request to open files, and SwiftUI doesn't open its first window ([main window preview](prototypes/main-window/README.md)). yaga still has to handle those requests itself, both from Finder and from any command-line launcher such as `yaga .`.
 
 ## Commands
 
@@ -164,7 +165,7 @@ Which commands each panel shows is decided as each feature is built, and [docs/m
 
 ## Repository sessions
 
-A repository is identified by its common git directory, the one `git rev-parse --git-common-dir` prints, resolved to a real path. All worktrees of a repository share one session, because they share objects, refs and the commit-graph file. A registry hands out sessions. A session stays open while any window's sidebar lists its repository, because the sidebar shows how many uncommitted files each of its worktrees has.
+A repository is identified by its common git directory, the one `git rev-parse --git-common-dir` prints, resolved to a real path. All worktrees of a repository share one session, because they share objects, refs and the commit-graph file. The list of repositories in the sidebar is the registry that hands out sessions. It opens one for each repository and keeps it open while the repository is listed, because the sidebar shows how many uncommitted files each of its worktrees has, and windows that show the same repository share it. A session runs git in the git directory, except for commands about one worktree, such as listing refs with that worktree's `HEAD`, which run in the worktree's folder.
 
 A session owns:
 
@@ -260,9 +261,9 @@ Wherever `/usr/bin/git` comes up in the search, yaga runs it only if `xcode-sele
 - The `TestSupport` target builds each test repository once per test run, and finds the git the tests use, which is the first supported git on the `PATH`. CI puts the git it's testing first.
 - There are two so far. `basic` is a small repository. `history` builds one history five times, with its commit-graph stored as a single file, as a split chain, as a chain whose upper layers have no corrected commit dates, as a file that leaves out the newest commits, and in a SHA-256 repository. The history has merges, an octopus merge, a second root, commits with the same time on several branches, and dates out of order. Later repositories will cover:
   - renames
-  - worktrees
   - reftable repositories
-- Engine tests run real git against those repositories. The commit-graph tests compare every commit's parents, dates and generation numbers, and the order of history from several sets of tips, with what git prints. The lane tests follow every line down from each commit's dot, and check that it reaches the commit's parents, through arrows when it's cut. The session tests compare the history a session loads with `git log`, in every repository and also in copies the tests change: a shallow one, one with replace refs, one with a damaged commit-graph file, a bare clone, and one with a detached `HEAD`.
+- Engine tests run real git against those repositories. The commit-graph tests compare every commit's parents, dates and generation numbers, and the order of history from several sets of tips, with what git prints. The lane tests follow every line down from each commit's dot, and check that it reaches the commit's parents, through arrows when it's cut. The session tests compare the history a session loads with `git log`, in every repository and also in copies the tests change: a shallow one, one with replace refs, one with a damaged commit-graph file, a bare clone, one with a detached `HEAD`, and ones with linked worktrees, including one whose folder was removed.
+- The YagaUI tests check the saved list of repositories against real git: adding a repository twice, adding one from a linked worktree, a folder outside any repository, removing one, one that moved, one that's gone, worktrees that were added or removed, and a file that can't be read. They also check the models a window keeps, and when those load history again.
 - CI runs everything against git 2.44 and the newest git.
 - `yaga-bench history` measures the first screen of history and ordering and laying out the rest, first from `HEAD` with the reader alone, then through a session from every ref, as the app loads it, and reports how wide the graph's rows are. `--verify` compares both orders with `git log`. `--cold`, run right after `sudo purge`, loads history once and reports how many pages each step read from disk, and `--parts` takes the steps one at a time instead of the way the app overlaps them. A clone of Linux with only its commits is enough for it. A CI job that runs it on a cached clone, and fails when a performance target from the roadmap is missed, is still to be added.
 
@@ -276,7 +277,8 @@ The app's bundle identifier is `build.yaga.app`, and the app is named yaga. It i
 
 ## Still open
 
-- What a session does while none of its worktrees is showing. It could close its `cat-file` process and watch only enough to keep the sidebar's counts of uncommitted files current.
+- What a session does while none of its worktrees is showing. Every repository in the sidebar keeps a session open (decision 14), so this matters as soon as someone lists a few. A session could close its `cat-file` process and watch only enough to keep the sidebar's counts of uncommitted files current.
+- Whether a window keeps each worktree's commit list as well as its history, so that switching back keeps the scroll position and selection.
 - Whether yaga runs the git that `/usr/bin/git` stands for directly. That stub looks up the developer tools every time it runs, which made a short command take 13 ms instead of 6.4 ms.
 - Whether yaga saves the login shell's `PATH` between launches, so that finding git doesn't wait for the user's shell to start.
 - Whether clicking an arrow on a cut line jumps to the commit at its other end, and whether the lanes' colors should follow branches rather than columns.

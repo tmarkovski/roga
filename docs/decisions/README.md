@@ -19,3 +19,4 @@ Records aren't rewritten when a decision changes. Instead, a new record explains
 | [11](0011-thin-xcode-project-and-a-local-package.md) | Keep the Xcode project thin and the code in a local Swift package | Accepted |
 | [12](0012-history-in-topological-order.md) | Show history in topological order by default | Accepted |
 | [13](0013-repositories-in-a-sidebar.md) | List repositories and their worktrees in a sidebar | Accepted |
+| [14](0014-the-sidebar-keeps-every-added-repository.md) | Keep every added repository in the sidebar, and save the list in Application Support | Accepted |

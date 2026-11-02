@@ -6,32 +6,34 @@ The layout follows the Claude and ChatGPT apps. A sidebar on the left lists repo
 
 ```text
 ┌─────────────────────┬──────────────────────────────────────────────────────────────────────────────┐
-│ ● ● ●             ◧ │ A agents-demo / main                                                    ▤  ◨ │
+│ ● ● ●  ◧            │ agents-demo / main                                                      ▤  ◨ │
 │ + Open repository   ├────────────────────────────────────────────────────┬─────────────────────────┤
 │ ⌕ Search            │ ( History | Changes )         ⑂ All branches  ≡  ⋯ │ Refs               ⇅  ⋯ │
 │                     ├────────────────────────────────────────────────────┼─────────────────────────┤
 │ Repositories        │ ●  agent/fix-login  Add login tests        48ba644 │ ⌕ Filter                │
-│ A agents-demo ▾     │ ●  ✓ main  Update the changelog            5405371 │ Branches ▾            4 │
+│ agents-demo ▾       │ ●  ✓ main  Update the changelog            5405371 │ Branches ▾            4 │
 │   main              │ ●  Add parser tests                        bb3b6b6 │   main                ✓ │
 │   agent/add-tests 4 │ ●  v0.2  Show an error when …              86b3386 │   agent/add-tests    ↑1 │
 │   agent/fix-login 3 │ …                                                  │   agent/fix-login ↑3 ↓2 │
 │   agent/refactor-…  ├──────────────────────┬─────────────────────────────┤   agent/refactor-…   ↑5 │
-│ Y yaga ▾            │ Commit 5405371  ⧉  ⋯ │ CHANGELOG.md        ⌕  ↗  ⋯ │ Remotes ▾             1 │
+│ yaga ▾              │ Commit 5405371  ⧉  ⋯ │ CHANGELOG.md        ⌕  ↗  ⋯ │ Remotes ▾             1 │
 │   gitrunner      19 ├──────────────────────┼─────────────────────────────┤   origin                │
-│ L linux ▸           │ Update the changelog │ @@ -1,6 +1,10 @@            │ Tags ▾                2 │
-│ G git ▸             │ Author, date, parent │   # Changelog               │ Stashes ▾             0 │
+│ linux ▸             │ Update the changelog │ @@ -1,6 +1,10 @@            │ Tags ▾                2 │
+│ git ▸               │ Author, date, parent │   # Changelog               │ Stashes ▾             0 │
 │                     │ CHANGELOG.md  +4 −0  │ + ## 0.3                    │                         │
 └─────────────────────┴──────────────────────┴─────────────────────────────┴─────────────────────────┘
 ```
 
 ## The sidebar
 
-The sidebar runs the full height of the window on the left, with the traffic lights at its top. It's a shade darker than the panels. It's the sidebar macOS provides, so the button next to the traffic lights, the View menu and the usual shortcut all hide it.
+The sidebar runs the full height of the window on the left, with the traffic lights at its top. It's a shade darker than the panels. It's the sidebar macOS provides, so the button next to the traffic lights, the View menu and the usual shortcut all hide it. That button is a plain icon that gets a gray square on hover, like the icon buttons in panel headers, rather than the glass button macOS draws. It stays next to the traffic lights while the sidebar is hidden.
 
-- Its top rows open a repository and, after the release 1 cut line, search.
-- Below them, each repository is a group: its icon and name, with a small triangle after the name that collapses or expands it. The icon gets an orange dot when any of the repository's worktrees has uncommitted changes.
+Every row in the sidebar fills with gray while the pointer is over it, and the selected worktree's row keeps a slightly darker gray. The fill has 8-point corners and leaves 8 points on each side. Rows are 32 points tall, or 54 with a second line, with 2 points between them, as in the Claude app. A row's top right corner shows a label, which gives way to the row's commands on hover: 24-point buttons 4 points from the top and right edges, so they sit beside the first line of a two-line row. The sidebar draws these rows itself, because a macOS sidebar list can't, so it also handles the arrow keys: up and down move between worktrees, and right and left show and hide the worktrees of the selected one's repository.
+
+- Its top rows are actions. Release 1 has one, opening a repository. Cloning one joins it in release 2, and search after the release 1 cut line. An action's icon is the same color as its label, and its keyboard shortcut shows at the right in a secondary color on hover.
+- Below them, it lists every repository the user has added, until the user removes it ([decision 14](decisions/0014-the-sidebar-keeps-every-added-repository.md)). Each repository is a group: its name in bold, with a small triangle after the name that collapses or expands it. Its label is the number of uncommitted files in all of its worktrees, in orange, while it's collapsed. On hover, buttons for Show in Finder, Open in Terminal and a menu with Remove from Sidebar take its place. A repository yaga can't find is dimmed, its label says so, and its menu can find it again or remove it.
 - Each of the repository's worktrees has a row under it. The first line is the worktree's branch. The second is its folder and how long ago something in it changed, as in `fix-login · writing now`. The number of uncommitted files sits at the right in orange.
-- Clicking a worktree row shows that worktree in the rest of the window, and the row gets a soft gray fill. On hover, the count gives way to buttons that open the worktree in a new window or in Terminal.
+- Clicking a worktree row shows that worktree in the rest of the window. On hover, the count gives way to buttons that open the worktree in a new window or in Terminal, and its context menu has those and Show in Finder.
 
 ## The title row
 
@@ -78,7 +80,7 @@ The refs panel is on the right. It's a shade darker than the panels, like the si
 
 - Surfaces are plain, with thin gray lines between sections. The sidebar and the refs panel are a shade darker. Dark mode keeps the same structure in dark grays.
 - Selection is a soft gray fill, not the accent color. The accent color is kept for the graph.
-- Text uses the system font at 12.5 to 13 points. Hashes and diffs use the monospaced system font.
+- Text uses the system font at 12.5 to 13 points. The sidebar's rows use 14 points, with 13 for a second line and for shortcuts, as the Claude app's sidebar does. Hashes and diffs use the monospaced system font.
 
 ## Options we're keeping open
 
@@ -93,12 +95,11 @@ We sketched several ways to show history and uncommitted changes, and they're wo
 
 ## Still open
 
-- Whether the sidebar lists only the repositories that are open, which close the way tabs did, or every repository the user has added, like the projects in Claude's sidebar.
+- How repositories are reordered in the sidebar: by dragging, or with commands that move one up or down.
 - How often the sidebar updates the uncommitted counts of repositories that aren't showing.
 - What collapses first when the window gets narrow. Decision 13 expects the refs panel to go first.
 - What clicking a branch does when a worktree has it checked out: select its tip in history, or switch the window to that worktree.
 - Which branch each branch is compared with in the refs panel: its upstream, or the repository's main branch.
 - What Command-1 to Command-9 and Control-Tab do now that there are no tabs, such as selecting repositories in the sidebar or switching between History and Changes.
 - Where branch review, file history and the contents of a stash appear. The review pane above is one answer.
-- The repository icon. The sketches use a colored square with the repository's initial.
 - How wide the commit panel is by default, and whether it can be hidden.

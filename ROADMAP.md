@@ -69,6 +69,7 @@ Release 1 can ship without the next two items. They're built last, and if they a
 - Commit and amend. The user's git runs their hooks and signs their commits.
 - Create, switch, rename and delete branches, and create and remove worktrees.
 - Fetch, pull and push, using the user's own credential helpers and SSH setup.
+- Clone a repository into a folder the user chooses, with the same credential helpers and SSH setup, and add it to the sidebar. Its action goes under opening a repository at the top of the sidebar.
 - Create, apply and drop stashes.
 - Decide whether yaga turns on the untracked cache or the filesystem monitor for large repositories.
 

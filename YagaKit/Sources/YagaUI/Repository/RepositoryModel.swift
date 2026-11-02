@@ -6,18 +6,27 @@ import HistoryUI
 import Observation
 import RepositoryEngine
 
-/// Connects one repository's session to the views that show it.
+/// Connects a worktree's history, from its repository's session, to the
+/// views that show it.
 @Observable
 final class RepositoryModel {
     enum Phase {
-        case opening
+        case loading
         case ready
         case failed(String)
     }
 
-    let path: String
-    private(set) var phase = Phase.opening
-    private(set) var location: RepositoryLocation?
+    /// What history to load: in which order, and how many times the user
+    /// asked to load it again.
+    struct LoadRequest: Equatable {
+        var sort: HistoryOrder.Sort
+        var reloads: Int
+    }
+
+    let session: RepositorySession
+    /// The worktree's folder.
+    let worktree: String
+    private(set) var phase = Phase.loading
     private(set) var history: History?
     /// Goes up each time `history` changes, so the commit list knows to show
     /// the new rows.
@@ -26,7 +35,8 @@ final class RepositoryModel {
     /// Goes up when the user asks to load history again.
     private(set) var reloads = 0
 
-    @ObservationIgnored private var session: RepositorySession?
+    /// The request whose history has loaded completely.
+    @ObservationIgnored private var loaded: LoadRequest?
     /// The text of commits the list has drawn, by position. Positions belong
     /// to one loaded graph, so the text goes when another graph arrives.
     @ObservationIgnored private var texts: [CommitGraph.Position: RowText] = [:]
@@ -45,9 +55,12 @@ final class RepositoryModel {
     /// a screen.
     private static let textLimit = 20_000
 
-    init(path: String) {
-        self.path = path
+    init(session: RepositorySession, worktree: String) {
+        self.session = session
+        self.worktree = worktree
     }
+
+    var loadRequest: LoadRequest { LoadRequest(sort: sort, reloads: reloads) }
 
     /// The name of the current branch, or a short ID for a detached `HEAD`.
     var headDescription: String? {
@@ -61,21 +74,16 @@ final class RepositoryModel {
         reloads += 1
     }
 
-    /// Opens the repository if it isn't open yet, and loads its history in
-    /// the current order. It returns once history is loaded, or when the task
-    /// is cancelled, as it is when the order changes.
-    func load(git: Git) async {
+    /// Loads history in the current order, unless it has loaded already. It
+    /// returns once history is loaded, or when the task is cancelled, as it
+    /// is when the order changes or the window shows another worktree.
+    func load() async {
+        let request = loadRequest
+        guard request != loaded else { return }
         do {
-            let session: RepositorySession
-            if let open = self.session {
-                session = open
-            } else {
-                session = try await RepositorySession.open(containing: path, git: git)
-                self.session = session
-                location = session.location
-            }
             var firstSnapshot = true
-            for try await history in session.history(sort: sort) {
+            var isComplete = false
+            for try await history in session.history(in: worktree, sort: request.sort) {
                 if firstSnapshot {
                     firstSnapshot = false
                     graphGeneration += 1
@@ -85,7 +93,10 @@ final class RepositoryModel {
                 self.history = history
                 historyVersion += 1
                 phase = .ready
+                isComplete = history.isComplete
             }
+            // The stream ends early when the task is cancelled.
+            if isComplete { loaded = request }
         } catch is CancellationError {
         } catch {
             phase = .failed(String(describing: error))
@@ -112,7 +123,7 @@ final class RepositoryModel {
     /// Reads the text of the rows that don't have it yet, and returns the
     /// rows that got it.
     func loadText(for rows: Range<Int>) async -> IndexSet {
-        guard let history, let session else { return [] }
+        guard let history else { return [] }
         let generation = graphGeneration
         let rows = rows.clamped(to: 0..<history.rows.count)
         let wanted = rows.filter { texts[history.rows[$0]] == nil }

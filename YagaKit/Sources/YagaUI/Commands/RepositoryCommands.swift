@@ -3,25 +3,42 @@ import SwiftUI
 
 /// The menu commands for opening repositories and for their history.
 public struct RepositoryCommands: Commands {
-    @FocusedBinding(\.emptyWindowPath) private var emptyWindowPath
+    let list: RepositoryList
+    @FocusedValue(\.selection) private var selection
     @FocusedValue(\.repository) private var repository
+    @FocusedValue(\.sidebarVisibility) private var sidebarVisibility
     @Environment(\.openWindow) private var openWindow
 
-    public init() {}
+    /// The shortcut for opening a repository, which the sidebar shows too.
+    static let openShortcut = KeyboardShortcut("o")
+
+    public init(list: RepositoryList) {
+        self.list = list
+    }
 
     public var body: some Commands {
         CommandGroup(after: .newItem) {
             Button("Open…") {
-                guard let folder = chooseRepositoryFolder() else { return }
-                // The value is nil when the focused window isn't empty, and
-                // nil inside when it is.
-                if emptyWindowPath != nil {
-                    emptyWindowPath = folder
-                } else {
-                    openWindow(value: folder)
+                let selection = selection
+                openRepository(list: list) { selected in
+                    // The repository shows in the focused window, or in a new
+                    // one when no window is open.
+                    if let selection {
+                        selection.wrappedValue = selected
+                    } else {
+                        openWindow(value: WorkspaceWindow(selection: selected))
+                    }
                 }
             }
-            .keyboardShortcut("o")
+            .keyboardShortcut(Self.openShortcut)
+            .disabled(!list.isConnected)
+        }
+        CommandGroup(replacing: .sidebar) {
+            Button(sidebarVisibility?.wrappedValue.sidebarCommandTitle ?? "Hide Sidebar") {
+                sidebarVisibility?.wrappedValue.toggleSidebar()
+            }
+            .keyboardShortcut("s", modifiers: [.control, .command])
+            .disabled(sidebarVisibility == nil)
         }
         CommandGroup(before: .toolbar) {
             Picker("Order", selection: Binding(
@@ -33,9 +50,12 @@ public struct RepositoryCommands: Commands {
             }
             .pickerStyle(.inline)
             .disabled(repository == nil)
-            Button("Reload History") { repository?.reload() }
-                .keyboardShortcut("r")
-                .disabled(repository == nil)
+            Button("Reload") {
+                repository?.reload()
+                Task { await list.refresh() }
+            }
+            .keyboardShortcut("r")
+            .disabled(!list.isConnected)
             Divider()
         }
     }

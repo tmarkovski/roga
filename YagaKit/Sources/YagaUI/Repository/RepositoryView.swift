@@ -3,29 +3,21 @@ import GitRunner
 import RepositoryEngine
 import SwiftUI
 
-/// One repository: for now, its history.
+/// One worktree: for now, its history.
 struct RepositoryView: View {
-    let git: Git
-    @State private var model: RepositoryModel
-
-    init(path: String, git: Git) {
-        self.git = git
-        _model = State(initialValue: RepositoryModel(path: path))
-    }
+    let model: RepositoryModel
 
     var body: some View {
         content
-            .navigationTitle(model.location?.name ?? (model.path as NSString).lastPathComponent)
-            .navigationSubtitle(model.headDescription ?? "")
-            .task(id: LoadRequest(sort: model.sort, reloads: model.reloads)) {
-                await model.load(git: git)
+            .task(id: model.loadRequest) {
+                await model.load()
             }
             .focusedSceneValue(\.repository, model)
     }
 
     @ViewBuilder private var content: some View {
         switch model.phase {
-        case .opening:
+        case .loading:
             ProgressView()
                 .controlSize(.small)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -40,11 +32,6 @@ struct RepositoryView: View {
         case .ready:
             HistoryPanel(model: model)
         }
-    }
-
-    private struct LoadRequest: Equatable {
-        var sort: HistoryOrder.Sort
-        var reloads: Int
     }
 }
 

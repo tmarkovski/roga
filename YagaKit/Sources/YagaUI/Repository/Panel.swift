@@ -7,6 +7,11 @@ import SwiftUI
 enum Palette {
     static let surface = gray(light: 1.0, dark: 0.135)
     static let separator = gray(light: 0.885, dark: 0.225)
+    /// The fill under a row or an icon button while the pointer is over it.
+    /// It darkens whatever is behind it, such as the sidebar's material.
+    static let hover = Color.primary.opacity(0.075)
+    /// The fill under a selected row.
+    static let selection = Color.primary.opacity(0.11)
 
     static func gray(light: CGFloat, dark: CGFloat) -> Color {
         Color(nsColor: NSColor(name: nil) { appearance in
@@ -41,5 +46,60 @@ struct Panel<Leading: View, Trailing: View, Content: View>: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(Palette.surface)
+    }
+}
+
+/// A thin icon that gets a rounded gray square while the pointer is over it,
+/// for the commands in panel headers and the sidebar (docs/main-window.md).
+struct IconButtonStyle: ButtonStyle {
+    var size: CGFloat = 28
+
+    func makeBody(configuration: Configuration) -> some View {
+        HoverIcon(isPressed: configuration.isPressed, size: size) {
+            configuration.label
+        }
+    }
+}
+
+extension ButtonStyle where Self == IconButtonStyle {
+    static var icon: IconButtonStyle { IconButtonStyle() }
+    static func icon(size: CGFloat) -> IconButtonStyle { IconButtonStyle(size: size) }
+}
+
+/// An icon in a square that fills with gray while the pointer is over it.
+/// Menus use it as their label, because they don't take a button style.
+struct HoverIcon<Icon: View>: View {
+    var isPressed = false
+    var size: CGFloat = 28
+    @ViewBuilder var icon: Icon
+    @State private var isHovering = false
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        icon
+            .font(.system(size: size >= 28 ? 14 : 12.5))
+            .foregroundStyle(isHovering ? .primary : .secondary)
+            .frame(width: size, height: size)
+            .background {
+                RoundedRectangle(cornerRadius: size >= 28 ? 8 : 7, style: .continuous)
+                    .fill(isPressed ? Palette.selection : isHovering ? Palette.hover : .clear)
+            }
+            .contentShape(Rectangle())
+            .opacity(isEnabled ? 1 : 0.4)
+            .onHover { isHovering = $0 && isEnabled }
+    }
+}
+
+extension KeyboardShortcut {
+    /// The shortcut's symbols in the order menus show them, such as ⇧ ⌘ O,
+    /// with a thin space between each, which reads better outside a menu.
+    var symbols: String {
+        var symbols: [String] = []
+        if modifiers.contains(.control) { symbols.append("⌃") }
+        if modifiers.contains(.option) { symbols.append("⌥") }
+        if modifiers.contains(.shift) { symbols.append("⇧") }
+        if modifiers.contains(.command) { symbols.append("⌘") }
+        symbols.append(String(key.character).uppercased())
+        return symbols.joined(separator: "\u{2009}")
     }
 }

@@ -38,6 +38,8 @@ public struct History: Sendable {
 struct HistoryLoader: Sendable {
     let git: Git
     let location: RepositoryLocation
+    /// The worktree whose history to load. Each worktree has its own `HEAD`.
+    let directory: String
     /// The session's `git cat-file`, for checking whether objects the
     /// commit-graph files don't have are commits.
     let catFile: CatFileSession
@@ -65,7 +67,7 @@ struct HistoryLoader: Sendable {
 
     @concurrent
     private func load(sort: HistoryOrder.Sort, yield: @Sendable (History) -> Void) async throws {
-        async let listedRefs = RefsLoader.load(git: git, location: location)
+        async let listedRefs = RefsLoader.load(git: git, in: directory)
         // Map the commit-graph files while git lists the refs, so that reading
         // them from disk overlaps git's work. git ignores files it can't read,
         // and so does yaga. It then lists every commit, which is slower but
@@ -161,7 +163,7 @@ struct HistoryLoader: Sendable {
 
         // Each line is the commit date, the commit and its parents. A list of
         // tips on standard input can't run into the limit on arguments.
-        let command = GitCommand("rev-list", "--parents", "--timestamp", "--stdin", in: location.directory)
+        let command = GitCommand("rev-list", "--parents", "--timestamp", "--stdin", in: directory)
         var commits: [CommitGraph.NewerCommit] = []
         for try await line in git.stream(command, input: Array(input.utf8)).records(separatedBy: UInt8(ascii: "\n")) {
             guard let commit = Self.newerCommit(line) else {

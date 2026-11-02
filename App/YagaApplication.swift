@@ -15,24 +15,27 @@ struct YagaApplication: App {
 
     /// The git every window uses, which yaga finds once at launch.
     @State private var gitProvider = GitProvider()
+    /// The repositories in the sidebar, which every window lists.
+    @State private var repositories = RepositoryList()
 
     init() {
-        // yaga draws its own tabs (decision 10).
+        // Repositories are switched in the sidebar (decision 13).
         NSWindow.allowsAutomaticWindowTabbing = false
     }
 
     var body: some Scene {
-        // Each window shows the repository in the folder it's given, and
-        // SwiftUI restores it with the window when yaga launches again.
-        WindowGroup(id: "workspace", for: String.self) { $path in
-            WorkspaceView(path: $path)
+        // SwiftUI saves the worktree each window shows, and restores it with
+        // the window when macOS restores windows.
+        WindowGroup(id: "workspace", for: WorkspaceWindow.self) { $window in
+            WorkspaceView(window: $window)
                 .environment(gitProvider)
+                .environment(repositories)
         }
         .commands {
             CommandGroup(after: .appInfo) {
                 CheckForUpdatesButton(updater: updaterController.updater)
             }
-            RepositoryCommands()
+            RepositoryCommands(list: repositories)
         }
     }
 }

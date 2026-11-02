@@ -32,7 +32,14 @@ public struct RepositoryLocation: Sendable, Hashable {
     /// git directory's folder without `.git` when there's no worktree.
     public var name: String {
         if let worktree { return (worktree as NSString).lastPathComponent }
-        var folder = commonDirectory as NSString
+        return Self.name(gitDirectory: commonDirectory)
+    }
+
+    /// The name to show for the repository whose git directory is `path`:
+    /// the folder that holds `.git`, or the git directory's own folder
+    /// without `.git`, as for a bare repository.
+    public static func name(gitDirectory path: String) -> String {
+        var folder = path as NSString
         if folder.lastPathComponent == ".git" {
             folder = folder.deletingLastPathComponent as NSString
         }
