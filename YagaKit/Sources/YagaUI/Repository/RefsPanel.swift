@@ -607,7 +607,7 @@ struct RefsPanelToggle: View {
 
     var body: some View {
         Button {
-            withAnimation { visibility.isWanted.wrappedValue.toggle() }
+            visibility.isWanted.wrappedValue.toggle()
         } label: {
             Image(systemName: "sidebar.right")
         }

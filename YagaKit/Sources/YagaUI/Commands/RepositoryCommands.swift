@@ -76,7 +76,7 @@ public struct RepositoryCommands: Commands {
             .keyboardShortcut(Self.organizationRailShortcut)
             .disabled(showsOrganizationRail == nil)
             Button(refsPanelVisibility?.commandTitle ?? "Hide Refs") {
-                withAnimation { refsPanelVisibility?.isWanted.wrappedValue.toggle() }
+                refsPanelVisibility?.isWanted.wrappedValue.toggle()
             }
             .keyboardShortcut(Self.refsPanelShortcut)
             .disabled(refsPanelVisibility?.fits != true)

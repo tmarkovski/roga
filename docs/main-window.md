@@ -93,7 +93,7 @@ Two panels sit under the history panel.
 
 ## The refs panel
 
-The refs panel is on the right. It's a shade darker than the panels, like the sidebar. It's the inspector macOS provides, and the button at the right end of the title row hides it, as View > Hide Refs and Control-Command-I do. It's 288 points wide, and it can be dragged up to 400.
+The refs panel is on the right. It's a shade darker than the panels, like the sidebar. It's the inspector macOS provides, and the button at the right end of the title row hides it, as View > Hide Refs and Control-Command-I do. It's 288 points wide, and it can be dragged up to 400. It shows and hides at once, because its animation stutters while it's wider than 288 ([issue 7](https://github.com/tmarkovski/yaga/issues/7)).
 
 When the window gets too narrow to keep 400 points for the middle, the panel gives way, and its button and menu command are disabled until there's room. It comes back by itself when the window is wide enough again, unless the user had closed it. Decision 13 expected the panel to be what gives way first.
 

@@ -117,6 +117,10 @@ public struct WorkspaceView: View {
                             max: RefsPanelVisibility.maximumWidth
                         )
                 }
+                // macOS animates the inspector even without withAnimation, and
+                // that stutters while the panel is wider than its minimum. See
+                // https://github.com/tmarkovski/yaga/issues/7.
+                .transaction { $0.disablesAnimations = true }
                 .toolbar {
                     ToolbarItem(placement: .primaryAction) {
                         RefsPanelToggle(visibility: refsPanelVisibility)
