@@ -32,6 +32,15 @@ public enum CommitGraphUpdate: Sendable, Hashable {
             return nil
         }
 
+        /// Whether `core.commitGraph` is false, which also makes git ignore
+        /// the files. git fails on a value that isn't a boolean, here and in
+        /// every command that reads history.
+        static func isTurnedOffInGit(git: Git, in directory: String, lowPriority: Bool = false) async throws -> Bool {
+            var read = GitCommand("config", "--type=bool", "--default", "true", "core.commitGraph", in: directory)
+            read.runsAtLowPriority = lowPriority
+            return try await git.text(read) == "false"
+        }
+
         public var description: String {
             switch self {
             case .shallowClone: "git doesn't use commit-graph files in a shallow clone."
@@ -63,7 +72,11 @@ struct CommitGraphUpkeep: Sendable {
     func update() async throws -> CommitGraphUpdate {
         let refs = try await RefsLoader.load(git: git, in: location.commonDirectory, lowPriority: true)
         if let reason = CommitGraphUpdate.Reason.gitIgnoresFiles(in: location, refs: refs) { return .skipped(reason) }
-        guard try await isOnInGit() else { return .skipped(.turnedOffInGit) }
+        // git prints a warning and writes nothing when the setting is false,
+        // so yaga asks first to be able to say why.
+        if try await CommitGraphUpdate.Reason.isTurnedOffInGit(git: git, in: location.commonDirectory, lowPriority: true) {
+            return .skipped(.turnedOffInGit)
+        }
         guard try await needsWriting(refs) else { return .upToDate }
         if let folder = readOnlyFolder() { return .skipped(.cannotWrite(folder: folder)) }
 
@@ -71,14 +84,6 @@ struct CommitGraphUpkeep: Sendable {
         write.runsAtLowPriority = true
         _ = try await git.run(write)
         return .written
-    }
-
-    /// git prints a warning and writes nothing when `core.commitGraph` is
-    /// false, so yaga asks first to be able to say why.
-    private func isOnInGit() async throws -> Bool {
-        var read = GitCommand("config", "--type=bool", "--default", "true", "core.commitGraph", in: location.commonDirectory)
-        read.runsAtLowPriority = true
-        return try await git.text(read) == "true"
     }
 
     /// Whether the files are missing a commit that a branch, remote branch or

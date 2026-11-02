@@ -67,6 +67,7 @@ struct HistoryLoader: Sendable {
     @concurrent
     private func load(sort: HistoryOrder.Sort, yield: @Sendable (History) -> Void) async throws {
         async let listedRefs = RefsLoader.load(git: git, in: directory)
+        async let turnedOff = CommitGraphUpdate.Reason.isTurnedOffInGit(git: git, in: directory)
         // Map the commit-graph files while git lists the refs, so that reading
         // them from disk overlaps git's work. git ignores files it can't read,
         // and so does yaga. It then lists every commit, which is slower but
@@ -75,7 +76,7 @@ struct HistoryLoader: Sendable {
             ? nil
             : try? CommitGraph(objectsFolder: location.objectsFolder, format: location.format)
         let refs = try await listedRefs
-        guard let files, CommitGraphUpdate.Reason.gitIgnoresFiles(in: location, refs: refs) == nil else {
+        guard try await !turnedOff, let files, CommitGraphUpdate.Reason.gitIgnoresFiles(in: location, refs: refs) == nil else {
             return try await load(sort: sort, refs: refs, files: nil, yield: yield)
         }
         do {

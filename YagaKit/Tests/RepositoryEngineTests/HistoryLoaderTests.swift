@@ -73,6 +73,25 @@ struct HistoryLoaderTests {
         #expect(history.ids == (try await gitOrder(.topological, in: repository)))
     }
 
+    @Test func ignoresTheFilesWhenTheyreTurnedOffInGit() async throws {
+        let repository = try await copyRepository(try await Fixture.History.single.repository())
+        try await runGit("commit-graph", "write", "--reachable", in: repository)
+        try await runGit("config", "core.commitGraph", "false", in: repository)
+
+        let history = try #require(try await loadHistory(try await openSession(repository)).last)
+        #expect(!history.readCommitGraphFiles)
+        #expect(history.ids == (try await gitOrder(.topological, in: repository)))
+    }
+
+    @Test func failsLikeGitOnABadValueForTheSetting() async throws {
+        let repository = try await copyRepository(try await Fixture.repository("basic"))
+        // git refuses to open a repository with this value, so set it after.
+        let session = try await openSession(repository)
+        try await runGit("config", "core.commitGraph", "maybe", in: repository)
+
+        await #expect(throws: GitError.self) { try await loadHistory(session) }
+    }
+
     @Test func ignoresDamagedFiles() async throws {
         let repository = try await copyRepository(try await Fixture.History.single.repository())
         try await runGit("commit-graph", "write", "--reachable", in: repository)

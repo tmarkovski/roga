@@ -35,7 +35,8 @@ final class RepositoryModel {
     }
 
     /// How many commits it takes for loading history without commit-graph
-    /// files to be slow enough to mention. git lists about 100,000 a second.
+    /// files to be slow enough to mention. Linux's 1.5 million take about 21
+    /// seconds, so this many take about 0.7.
     static let largeHistory = 50_000
 
     let session: RepositorySession
