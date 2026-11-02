@@ -37,5 +37,8 @@ struct YagaApplication: App {
             }
             RepositoryCommands(list: repositories)
         }
+        Settings {
+            SettingsView()
+        }
     }
 }

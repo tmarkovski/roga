@@ -5,14 +5,18 @@ import GitRunner
 enum RefsLoader {
     /// - Parameter directory: The worktree whose `HEAD` and current branch
     ///   to read, or the git directory for the main worktree's.
-    static func load(git: Git, in directory: String) async throws -> RefList {
+    /// - Parameter lowPriority: Whether nobody is waiting for the refs, as in
+    ///   upkeep that runs alongside loading history.
+    static func load(git: Git, in directory: String, lowPriority: Bool = false) async throws -> RefList {
         // for-each-ref names every ref and marks the current branch, and
         // show-ref gives HEAD and what annotated tags lead to, without
         // reading any objects. show-ref exits with status 1 when there's
         // nothing to show, as in a repository without commits.
-        let list = GitCommand("for-each-ref", "--format=" + RefListParser.format, in: directory)
+        var list = GitCommand("for-each-ref", "--format=" + RefListParser.format, in: directory)
+        list.runsAtLowPriority = lowPriority
         var tags = GitCommand(ShowRefParser.arguments, in: directory)
         tags.successStatuses = [0, 1]
+        tags.runsAtLowPriority = lowPriority
         async let tagOutput = git.run(tags)
 
         let listed: RefListParser.Result

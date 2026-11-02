@@ -5,13 +5,14 @@ import GitRunner
 /// Everything yaga knows about one repository, and the git processes it
 /// keeps running for it. All of the repository's worktrees share it.
 ///
-/// For now a session lists worktrees and reads history and the text of
-/// commits. Status, diffs and watching for changes come later, as
-/// ARCHITECTURE.md describes.
+/// For now a session lists worktrees, reads history and the text of commits,
+/// and keeps the commit-graph files up to date. Status, diffs and watching for
+/// changes come later, as ARCHITECTURE.md describes.
 public actor RepositorySession {
     public nonisolated let location: RepositoryLocation
     public nonisolated let git: Git
     private nonisolated let catFile: CatFileSession
+    private var commitGraphUpdate: Task<CommitGraphUpdate, any Error>?
 
     public init(location: RepositoryLocation, git: Git) throws {
         self.location = location
@@ -72,8 +73,29 @@ public actor RepositorySession {
         }
     }
 
-    /// Ends the session's git processes. Dropping the session does the same.
+    /// Writes what the repository's commit-graph files are missing, at low
+    /// priority (decision 6). History reads the files when it loads, so the
+    /// next load is the one that gets faster.
+    ///
+    /// Only one update runs at a time, and a call during one waits for it.
+    /// Cancelling the caller doesn't stop the update, but closing the session
+    /// does.
+    ///
+    /// - Throws: `GitError` when git can't write the files, which is often
+    ///   because another git process is writing them.
+    public func updateCommitGraph() async throws -> CommitGraphUpdate {
+        if let running = commitGraphUpdate { return try await running.value }
+        let upkeep = CommitGraphUpkeep(git: git, location: location, catFile: catFile)
+        let update = Task(priority: .background) { try await upkeep.update() }
+        commitGraphUpdate = update
+        defer { commitGraphUpdate = nil }
+        return try await update.value
+    }
+
+    /// Ends the session's git processes. Dropping the session does the same,
+    /// except that an update of the commit-graph files runs to its end.
     public func close() {
+        commitGraphUpdate?.cancel()
         catFile.close()
     }
 }

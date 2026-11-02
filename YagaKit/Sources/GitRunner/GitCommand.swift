@@ -34,6 +34,11 @@ public struct GitCommand: Sendable, Hashable, CustomStringConvertible {
     /// `git merge-base --is-ancestor`.
     public var successStatuses: Set<Int32> = [0]
 
+    /// Whether the command is upkeep that nobody is waiting for. macOS then
+    /// runs it at background priority, which keeps it on the efficiency cores
+    /// and holds back its disk use while anything else needs the disk.
+    public var runsAtLowPriority = false
+
     public init(_ arguments: [String], in directory: String? = nil) {
         self.arguments = arguments
         self.directory = directory

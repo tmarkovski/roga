@@ -58,6 +58,7 @@ The history panel fills the top of the middle column.
 - The right side of its header shows which branches the history includes, a switch between topological order and date order (decision 12), and a menu for more commands.
 - **History** lists commits with the graph, then the commit's refs as colored badges, its subject, author, date and short hash. The current branch is green with a checkmark, local branches are blue, remote branches are purple, and tags are orange.
 - **Changes** lists the current worktree's uncommitted files, each with a status letter, its name and its folder. [Options we're keeping open](#options-were-keeping-open) has other ways to show them.
+- When history takes more than a second to load, the panel says under the spinner why, if it's because the repository has no commit-graph file that yaga can use, and what yaga is doing about it ([decision 6](decisions/0006-keep-the-commit-graph-up-to-date.md)). Once history shows, a repository with at least 50,000 commits keeps a note after the commit count: **Writing commit-graph file…** while git writes it, or **Opens slowly** with a tortoise when yaga won't or can't write one. The note's tooltip gives the reason.
 
 ## The commit and diff panels
 

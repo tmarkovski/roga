@@ -23,6 +23,21 @@ final class RepositoryModel {
         var reloads: Int
     }
 
+    /// Where the repository's commit-graph files stand (decision 6).
+    enum CommitGraphState: Equatable {
+        case unknown
+        case updating
+        case finished(CommitGraphUpdate)
+        /// The user turned off keeping the files up to date.
+        case turnedOff
+        /// git couldn't write the files. The message says why.
+        case failed(String)
+    }
+
+    /// How many commits it takes for loading history without commit-graph
+    /// files to be slow enough to mention. git lists about 100,000 a second.
+    static let largeHistory = 50_000
+
     let session: RepositorySession
     /// The worktree's folder.
     let worktree: String
@@ -34,6 +49,7 @@ final class RepositoryModel {
     var sort = HistoryOrder.Sort.topological
     /// Goes up when the user asks to load history again.
     private(set) var reloads = 0
+    private(set) var commitGraphState = CommitGraphState.unknown
 
     /// The request whose history has loaded completely.
     @ObservationIgnored private var loaded: LoadRequest?
@@ -43,6 +59,10 @@ final class RepositoryModel {
     @ObservationIgnored private var graphGeneration = 0
     @ObservationIgnored private var badges: [CommitGraph.Position: [CommitRowContent.Badge]] = [:]
     @ObservationIgnored private let now = Date()
+    @ObservationIgnored private let defaults: UserDefaults
+    /// The running update of the commit-graph files, which isn't tied to any
+    /// view, so that it carries on when the window shows another worktree.
+    @ObservationIgnored private(set) var commitGraphUpdate: Task<Void, Never>?
 
     private struct RowText {
         var subject: String
@@ -55,9 +75,10 @@ final class RepositoryModel {
     /// a screen.
     private static let textLimit = 20_000
 
-    init(session: RepositorySession, worktree: String) {
+    init(session: RepositorySession, worktree: String, defaults: UserDefaults = .standard) {
         self.session = session
         self.worktree = worktree
+        self.defaults = defaults
     }
 
     var loadRequest: LoadRequest { LoadRequest(sort: sort, reloads: reloads) }
@@ -72,6 +93,55 @@ final class RepositoryModel {
 
     func reload() {
         reloads += 1
+    }
+
+    /// Writes what the repository's commit-graph files are missing, in the
+    /// background, unless the user turned that off. History on screen stays
+    /// as it is, because the files would only change how quickly it loads.
+    func updateCommitGraph() {
+        guard defaults.keepsCommitGraphCurrent else {
+            commitGraphState = .turnedOff
+            return
+        }
+        guard commitGraphUpdate == nil else { return }
+        // An answer stays until there's a new one, which usually takes a
+        // moment, so that what the panel says about it doesn't flicker.
+        if case .finished = commitGraphState {} else { commitGraphState = .updating }
+        commitGraphUpdate = Task {
+            do {
+                commitGraphState = .finished(try await session.updateCommitGraph())
+            } catch is CancellationError {
+                commitGraphState = .unknown
+            } catch {
+                commitGraphState = .failed(String(describing: error))
+            }
+            commitGraphUpdate = nil
+        }
+    }
+
+    /// Why history takes long to load without commit-graph files, and what
+    /// yaga is doing about it, or nil when there's nothing to say.
+    var slowHistoryExplanation: String? {
+        let slow = "History loads slowly without a commit-graph file"
+        switch commitGraphState {
+        case .unknown, .finished(.upToDate), .finished(.written):
+            return nil
+        case .updating:
+            return slow + ". yaga is writing one in the background, so this repository opens faster next time."
+        case .turnedOff:
+            return slow + ". To have yaga write one, turn on Keep commit-graph files up to date in Settings."
+        case .finished(.skipped(let reason)):
+            return slow + ", and yaga doesn't write one here. " + reason.description
+        case .failed(let message):
+            return slow + ", and git couldn't write one. " + message
+        }
+    }
+
+    /// Whether the history on screen was slow to load because it didn't come
+    /// from commit-graph files.
+    var historyWasSlowToLoad: Bool {
+        guard let history else { return false }
+        return !history.readCommitGraphFiles && history.rows.count >= Self.largeHistory
     }
 
     /// Loads history in the current order, unless it has loaded already. It

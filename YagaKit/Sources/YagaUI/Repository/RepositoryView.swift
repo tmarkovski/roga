@@ -10,6 +10,7 @@ struct RepositoryView: View {
     var body: some View {
         content
             .task(id: model.loadRequest) {
+                model.updateCommitGraph()
                 await model.load()
             }
             .focusedSceneValue(\.repository, model)
@@ -18,9 +19,7 @@ struct RepositoryView: View {
     @ViewBuilder private var content: some View {
         switch model.phase {
         case .loading:
-            ProgressView()
-                .controlSize(.small)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            LoadingHistory(explanation: model.slowHistoryExplanation)
         case .failed(let message):
             ContentUnavailableView {
                 Label("Can't Show This Repository", systemImage: "exclamationmark.triangle")
@@ -31,6 +30,31 @@ struct RepositoryView: View {
             }
         case .ready:
             HistoryPanel(model: model)
+        }
+    }
+}
+
+/// A spinner that says why, once history has taken a moment to load.
+private struct LoadingHistory: View {
+    var explanation: String?
+    @State private var isTakingLong = false
+
+    var body: some View {
+        VStack(spacing: 10) {
+            ProgressView()
+                .controlSize(.small)
+            if isTakingLong, let explanation {
+                Text(explanation)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 360)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .task {
+            guard (try? await Task.sleep(for: .seconds(1))) != nil else { return }
+            isTakingLong = true
         }
     }
 }
@@ -48,6 +72,20 @@ struct HistoryPanel: View {
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .padding(.leading, 4)
+            }
+            if model.historyWasSlowToLoad, let explanation = model.slowHistoryExplanation {
+                Group {
+                    if model.commitGraphState == .updating {
+                        Text("Writing commit-graph file…")
+                    } else {
+                        Label("Opens slowly", systemImage: "tortoise")
+                    }
+                }
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .padding(.leading, 8)
+                .help(explanation)
             }
         } trailing: {
             if let head = model.headDescription {

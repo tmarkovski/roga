@@ -109,6 +109,7 @@ public struct Git: Sendable {
                 environment: environment.merging(command.environment) { $1 },
                 directory: command.directory,
                 withInput: withInput,
+                lowPriority: command.runsAtLowPriority,
                 onExit: { [log] status in log.finish(entry, .finished(status)) }
             )
             return RunningGit(command: command, process: process)

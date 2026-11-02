@@ -1,5 +1,4 @@
 import CommitGraph
-import Foundation
 import GitCore
 import GitRunner
 
@@ -76,7 +75,7 @@ struct HistoryLoader: Sendable {
             ? nil
             : try? CommitGraph(objectsFolder: location.objectsFolder, format: location.format)
         let refs = try await listedRefs
-        guard let files, canUseCommitGraphFiles(refs) else {
+        guard let files, CommitGraphUpdate.Reason.gitIgnoresFiles(in: location, refs: refs) == nil else {
             return try await load(sort: sort, refs: refs, files: nil, yield: yield)
         }
         do {
@@ -125,15 +124,6 @@ struct HistoryLoader: Sendable {
         yield(history)
     }
 
-    /// Whether git would use the commit-graph files. It doesn't in a shallow
-    /// clone, or when replace refs or grafts change commits' parents, because
-    /// the files have the parents the commits were made with.
-    private func canUseCommitGraphFiles(_ refs: RefList) -> Bool {
-        guard !location.isShallow else { return false }
-        guard !refs.refs.contains(where: { $0.name.hasPrefix("refs/replace/") }) else { return false }
-        return !FileManager.default.fileExists(atPath: location.commonDirectory + "/info/grafts")
-    }
-
     /// Lists the commits reachable from `tips` that the commit-graph files
     /// don't have, with `git rev-list`. Tips the files have are excluded, so
     /// git stops where the newer commits meet the stored ones. Without files,
@@ -141,13 +131,10 @@ struct HistoryLoader: Sendable {
     private func newerCommits(tips: [ObjectID], graph: CommitGraph?) async throws -> [CommitGraph.NewerCommit] {
         var seen: Set<ObjectID> = []
         let unique = tips.filter { seen.insert($0).inserted }
-        var missing = unique.filter { graph?.position(of: $0) == nil }
-        if graph != nil, !missing.isEmpty {
-            // A tag can lead to a tree or a blob, which the files don't have
-            // either. Asking git about those few is quicker than starting
-            // rev-list for nothing, which would ignore them anyway.
-            let objects = try await catFile.info(missing.map(\.hex))
-            missing = zip(missing, objects).compactMap { tip, object in object?.type == .commit ? tip : nil }
+        let missing = if let graph {
+            try await Self.commitsMissing(from: graph, tips: unique, catFile: catFile)
+        } else {
+            unique
         }
         guard !missing.isEmpty else { return [] }
 
@@ -172,6 +159,17 @@ struct HistoryLoader: Sendable {
             commits.append(commit)
         }
         return commits
+    }
+
+    /// The commits among `tips` that the files don't have. A tag can lead to a
+    /// tree or a blob, which the files don't have either. Asking git about
+    /// those few is quicker than starting rev-list for nothing, which would
+    /// ignore them anyway.
+    static func commitsMissing(from graph: CommitGraph, tips: [ObjectID], catFile: CatFileSession) async throws -> [ObjectID] {
+        let missing = tips.filter { graph.position(of: $0) == nil }
+        guard !missing.isEmpty else { return [] }
+        let objects = try await catFile.info(missing.map(\.hex))
+        return zip(missing, objects).compactMap { tip, object in object?.type == .commit ? tip : nil }
     }
 
     static func newerCommit(_ line: ArraySlice<UInt8>) -> CommitGraph.NewerCommit? {
