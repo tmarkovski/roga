@@ -2,7 +2,7 @@
 // modules. Each benchmark is added with the code it measures.
 //
 // Usage:
-//   yaga-bench history <repository> [--sort date|topological] [--runs N] [--verify]
+//   yaga-bench history <repository> [--sort date|topological] [--runs N] [--verify] [--cold [--parts]]
 //
 // The history benchmark orders history from HEAD with the commit-graph reader
 // alone, then through a repository session from every branch, remote branch
@@ -12,6 +12,15 @@
 //
 //   git clone --filter=tree:0 --no-checkout https://github.com/torvalds/linux.git bench-repos/linux-commits
 //   git -C bench-repos/linux-commits commit-graph write --reachable
+//
+// With --cold, it loads history once through a session and reports how many
+// pages each step read from disk. Only the first load after emptying the disk
+// cache is cold, so run it right after `sudo purge`:
+//
+//   sudo purge && YagaKit/.build/release/yaga-bench history bench-repos/linux-commits --cold
+//
+// With --parts as well, it takes the steps one at a time instead of the way
+// the app overlaps them, to show what each one costs.
 
 import Foundation
 
@@ -21,7 +30,7 @@ do {
     case "history":
         try await HistoryBenchmark(arguments: Array(arguments.dropFirst())).run()
     default:
-        print("Usage: yaga-bench history <repository> [--sort date|topological] [--runs N] [--verify]")
+        print("Usage: yaga-bench history <repository> [--sort date|topological] [--runs N] [--verify] [--cold [--parts]]")
         exit(2)
     }
 } catch {

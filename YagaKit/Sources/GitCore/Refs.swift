@@ -16,18 +16,20 @@ public struct Ref: Sendable, Hashable {
     /// The object the ref points to, which is a tag object for an annotated
     /// tag.
     public var target: ObjectID
-    /// The commit the ref leads to, after following annotated tags, or nil
-    /// when it leads to a tree or a blob.
-    public var commit: ObjectID?
+    /// The object the ref leads to after following annotated tags. It's
+    /// almost always a commit, but a tag can lead to a tree or a blob.
+    public var peeled: ObjectID
     /// The full name of the ref this one stands for, such as
     /// `refs/remotes/origin/main` for `refs/remotes/origin/HEAD`, or nil when
     /// it isn't symbolic.
     public var symbolicTarget: String?
 
-    public init(name: String, target: ObjectID, commit: ObjectID?, symbolicTarget: String? = nil) {
+    /// - Parameter peeled: What an annotated tag leads to, or nil for any
+    ///   other ref, which leads to its target.
+    public init(name: String, target: ObjectID, peeled: ObjectID? = nil, symbolicTarget: String? = nil) {
         self.name = name
         self.target = target
-        self.commit = commit
+        self.peeled = peeled ?? target
         self.symbolicTarget = symbolicTarget
     }
 

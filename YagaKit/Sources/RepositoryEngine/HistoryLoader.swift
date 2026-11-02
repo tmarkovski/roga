@@ -35,6 +35,9 @@ public struct History: Sendable {
 struct HistoryLoader: Sendable {
     let git: Git
     let location: RepositoryLocation
+    /// The session's `git cat-file`, for checking whether objects the
+    /// commit-graph files don't have are commits.
+    let catFile: CatFileSession
     /// How many rows to put in order before the rest, so that the first
     /// screen can be drawn sooner.
     var firstRows = 200
@@ -59,26 +62,31 @@ struct HistoryLoader: Sendable {
 
     @concurrent
     private func load(sort: HistoryOrder.Sort, yield: @Sendable (History) -> Void) async throws {
-        let refs = try await RefsLoader.load(git: git, location: location)
-        guard canUseCommitGraphFiles(refs) else {
-            return try await load(sort: sort, refs: refs, readingFiles: false, yield: yield)
+        async let listedRefs = RefsLoader.load(git: git, location: location)
+        // Map the commit-graph files while git lists the refs, so that reading
+        // them from disk overlaps git's work. git ignores files it can't read,
+        // and so does yaga. It then lists every commit, which is slower but
+        // still right.
+        let files = location.isShallow
+            ? nil
+            : try? CommitGraph(objectsFolder: location.objectsFolder, format: location.format)
+        let refs = try await listedRefs
+        guard let files, canUseCommitGraphFiles(refs) else {
+            return try await load(sort: sort, refs: refs, files: nil, yield: yield)
         }
         do {
-            try await load(sort: sort, refs: refs, readingFiles: true, yield: yield)
+            try await load(sort: sort, refs: refs, files: files, yield: yield)
         } catch is CommitGraphError {
-            // git ignores commit-graph files it can't read, and so does yaga.
-            // It then lists every commit, which is slower but still right.
-            try await load(sort: sort, refs: refs, readingFiles: false, yield: yield)
+            try await load(sort: sort, refs: refs, files: nil, yield: yield)
         }
     }
 
     private func load(
         sort: HistoryOrder.Sort,
         refs: RefList,
-        readingFiles: Bool,
+        files stored: CommitGraph?,
         yield: @Sendable (History) -> Void
     ) async throws {
-        let stored = readingFiles ? try CommitGraph(objectsFolder: location.objectsFolder, format: location.format) : nil
         let tips = Self.tips(refs)
         let newer = try await newerCommits(tips: tips, graph: stored)
         let graph = try (stored ?? CommitGraph(format: location.format)).adding(newer)
@@ -122,18 +130,27 @@ struct HistoryLoader: Sendable {
     /// git stops where the newer commits meet the stored ones. Without files,
     /// that's every commit.
     private func newerCommits(tips: [ObjectID], graph: CommitGraph?) async throws -> [CommitGraph.NewerCommit] {
-        var input = ""
         var seen: Set<ObjectID> = []
-        var anyMissing = false
-        for tip in tips where seen.insert(tip).inserted {
-            if graph?.position(of: tip) == nil {
-                input += tip.hex + "\n"
-                anyMissing = true
-            } else {
+        let unique = tips.filter { seen.insert($0).inserted }
+        var missing = unique.filter { graph?.position(of: $0) == nil }
+        if graph != nil, !missing.isEmpty {
+            // A tag can lead to a tree or a blob, which the files don't have
+            // either. Asking git about those few is quicker than starting
+            // rev-list for nothing, which would ignore them anyway.
+            let objects = try await catFile.info(missing.map(\.hex))
+            missing = zip(missing, objects).compactMap { tip, object in object?.type == .commit ? tip : nil }
+        }
+        guard !missing.isEmpty else { return [] }
+
+        var input = ""
+        for tip in missing {
+            input += tip.hex + "\n"
+        }
+        if let graph {
+            for tip in unique where graph.position(of: tip) != nil {
                 input += "^" + tip.hex + "\n"
             }
         }
-        guard anyMissing else { return [] }
 
         // Each line is the commit date, the commit and its parents. A list of
         // tips on standard input can't run into the limit on arguments.
@@ -172,14 +189,15 @@ struct HistoryLoader: Sendable {
         return value
     }
 
-    /// The commits history starts from: `HEAD`, then every branch, remote
-    /// branch and tag that leads to a commit, in the order of their names, as
-    /// git orders them for `git log HEAD --branches --remotes --tags`.
+    /// The commits history starts from: `HEAD`, then what every branch,
+    /// remote branch and tag leads to, in the order of their names, as git
+    /// orders them for `git log HEAD --branches --remotes --tags`. Anything
+    /// that isn't a commit is left out later, because it has no position.
     static func tips(_ refs: RefList) -> [ObjectID] {
         var tips: [ObjectID] = []
         if let head = refs.head { tips.append(head) }
         for ref in refs.refs where ref.kind != .other {
-            if let commit = ref.commit { tips.append(commit) }
+            tips.append(ref.peeled)
         }
         return tips
     }
@@ -189,7 +207,7 @@ struct HistoryLoader: Sendable {
     static func refsByCommit(_ refs: RefList, in graph: CommitGraph) -> [CommitGraph.Position: [Ref]] {
         var result: [CommitGraph.Position: [Ref]] = [:]
         for ref in refs.refs where ref.kind != .other && ref.symbolicTarget == nil {
-            guard let commit = ref.commit, let position = graph.position(of: commit) else { continue }
+            guard let position = graph.position(of: ref.peeled) else { continue }
             result[position, default: []].append(ref)
         }
         func rank(_ ref: Ref) -> Int {

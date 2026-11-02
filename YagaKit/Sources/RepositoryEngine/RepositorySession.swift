@@ -11,7 +11,7 @@ import GitRunner
 public actor RepositorySession {
     public nonisolated let location: RepositoryLocation
     public nonisolated let git: Git
-    private let catFile: CatFileSession
+    private nonisolated let catFile: CatFileSession
 
     public init(location: RepositoryLocation, git: Git) throws {
         self.location = location
@@ -28,7 +28,12 @@ public actor RepositorySession {
     /// first `firstRows` rows are in order, and again with every row. Ending
     /// the iteration early, or cancelling its task, stops loading.
     public nonisolated func history(sort: HistoryOrder.Sort, firstRows: Int = 200) -> AsyncThrowingStream<History, any Error> {
-        HistoryLoader(git: git, location: location, firstRows: firstRows).load(sort: sort)
+        HistoryLoader(git: git, location: location, catFile: catFile, firstRows: firstRows).load(sort: sort)
+    }
+
+    /// Lists every ref, and the commit `HEAD` points to.
+    public nonisolated func refs() async throws -> RefList {
+        try await RefsLoader.load(git: git, location: location)
     }
 
     /// Reads commits with the session's `git cat-file`. The result has an

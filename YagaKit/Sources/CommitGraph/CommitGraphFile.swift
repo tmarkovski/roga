@@ -65,6 +65,12 @@ final class CommitGraphFile: Sendable {
             throw .cannotRead(path: path, errorNumber: errno)
         }
         let base = UnsafeRawPointer(mapping)
+        // Commits are sorted by ID, so walking even a little history reads
+        // pages from all over the file. From a cold disk cache, waiting for
+        // each page as the walk reaches it took 0.4 seconds for Linux's first
+        // screen, so ask for the whole file now, in the background.
+        var readAhead = radvisory(ra_offset: 0, ra_count: Int32(clamping: size))
+        _ = fcntl(descriptor, F_RDADVISE, &readAhead)
 
         func fail(_ reason: String) -> CommitGraphError {
             munmap(mapping, size)

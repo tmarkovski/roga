@@ -1,24 +1,35 @@
 import GitCore
 import GitRunner
 
-/// Loads every ref with `git for-each-ref`, and the commit `HEAD` points to.
+/// Loads every ref, and the commit `HEAD` points to.
 enum RefsLoader {
     static func load(git: Git, location: RepositoryLocation) async throws -> RefList {
+        // for-each-ref names every ref and marks the current branch, and
+        // show-ref gives HEAD and what annotated tags lead to, without
+        // reading any objects. show-ref exits with status 1 when there's
+        // nothing to show, as in a repository without commits.
         let list = GitCommand("for-each-ref", "--format=" + RefListParser.format, in: location.directory)
-        // git marks the current branch in the list, but a detached HEAD needs
-        // asking about. A repository without commits has nothing for it to
-        // point to, and git exits with status 1.
-        var head = GitCommand("rev-parse", "--verify", "--quiet", "HEAD^{commit}", in: location.directory)
-        head.successStatuses = [0, 1]
-        async let headText = git.text(head)
+        var tags = GitCommand(ShowRefParser.arguments, in: location.directory)
+        tags.successStatuses = [0, 1]
+        async let tagOutput = git.run(tags)
 
-        let output = try await git.run(list).output
-        let parsed: RefListParser.Result
+        let listed: RefListParser.Result
         do {
-            parsed = try RefListParser.parse(output)
-        } catch {
+            listed = try RefListParser.parse(try await git.run(list).output)
+        } catch let error as ParseError {
             throw RepositoryError.unexpectedOutput(list, error.description)
         }
-        return RefList(refs: parsed.refs, currentBranch: parsed.currentBranch, head: ObjectID(hex: try await headText))
+        let shown: ShowRefParser.Result
+        do {
+            shown = try ShowRefParser.parse(try await tagOutput.output)
+        } catch let error as ParseError {
+            throw RepositoryError.unexpectedOutput(tags, error.description)
+        }
+
+        var refs = listed.refs
+        for index in refs.indices {
+            if let peeled = shown.peeled[refs[index].name] { refs[index].peeled = peeled }
+        }
+        return RefList(refs: refs, currentBranch: listed.currentBranch, head: shown.head)
     }
 }

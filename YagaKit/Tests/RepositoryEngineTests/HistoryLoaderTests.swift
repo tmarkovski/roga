@@ -1,6 +1,7 @@
 import CommitGraph
 import Foundation
 import GitCore
+import GitRunner
 import TestSupport
 import Testing
 @testable import RepositoryEngine
@@ -111,6 +112,33 @@ struct HistoryLoaderTests {
         #expect(history.refsByCommit[head]?.map(\.name) == [
             "refs/heads/main", "refs/heads/a-branch", "refs/remotes/origin/main", "refs/tags/v9",
         ])
+    }
+
+    @Test func leavesOutTagsThatLeadToTrees() async throws {
+        let repository = try await copyRepository(try await Fixture.repository("basic"))
+        try await runGit("commit-graph", "write", "--reachable", in: repository)
+        try await runGit("tag", "light-tree", "main^{tree}", in: repository)
+        try await runGit("tag", "--annotate", "--message=A tree", "annotated-tree", "main^{tree}", in: repository)
+        try await runGit("pack-refs", "--all", in: repository)
+
+        let log = CommandLog()
+        let session = try await RepositorySession.open(containing: repository, git: try await TestGit.make(log: log))
+        let history = try #require(try await loadHistory(session).last)
+        #expect(history.readCommitGraphFiles)
+        #expect(history.ids == (try await gitOrder(.topological, in: repository)))
+        #expect(!history.refsByCommit.values.joined().contains { $0.name.hasSuffix("-tree") })
+        // Every commit is in the file, so git rev-list has nothing to list.
+        #expect(!log.entries.contains { $0.arguments.contains("rev-list") })
+    }
+
+    @Test func findsWhatAnnotatedTagsLeadTo() async throws {
+        let session = try await openSession(try await Fixture.repository("basic"))
+        let refs = try await session.refs()
+        let tag = try #require(refs.refs.first { $0.name == "refs/tags/v0.1" })
+        #expect(tag.target == ObjectID(hex: Fixture.Basic.tag))
+        #expect(tag.peeled == ObjectID(hex: Fixture.Basic.mainHistory[2]))
+        #expect(refs.head == ObjectID(hex: Fixture.Basic.main))
+        #expect(refs.currentBranch == "refs/heads/main")
     }
 
     @Test func findsADetachedHead() async throws {
