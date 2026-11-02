@@ -5,9 +5,9 @@ import GitRunner
 /// Everything yaga knows about one repository, and the git processes it
 /// keeps running for it. All of the repository's worktrees share it.
 ///
-/// For now a session lists worktrees, reads history, the text of commits, the
-/// files they changed and their patches, reads what's uncommitted in a
-/// worktree, and keeps the commit-graph files up to date. Watching for changes
+/// For now a session lists worktrees and refs, reads history, the text of
+/// commits, the files they changed and their patches, reads what's uncommitted
+/// in a worktree, and keeps the commit-graph files up to date. Watching for changes
 /// comes later, as ARCHITECTURE.md describes.
 public actor RepositorySession {
     public nonisolated let location: RepositoryLocation

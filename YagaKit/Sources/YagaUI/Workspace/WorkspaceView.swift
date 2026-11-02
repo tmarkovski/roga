@@ -28,7 +28,8 @@ public struct WorkspaceView: View {
     @SceneStorage("showsRefsPanel") private var wantsRefsPanel = true
     /// The width of the window, once it's in one.
     @State private var windowWidth: Double?
-    @State private var sidebarWidth = 0.0
+    /// The width of the sidebar, once it's been laid out.
+    @State private var sidebarWidth: Double?
 
     public init(window: Binding<WorkspaceWindow?>) {
         _window = window
@@ -108,25 +109,26 @@ public struct WorkspaceView: View {
         .focusedSceneValue(\.refsPanelVisibility, refsPanelVisibility)
     }
 
-    private var refsPanelFits: Bool {
-        guard let windowWidth else { return true }
-        return RefsPanelVisibility.fits(
-            window: windowWidth,
-            sidebar: columns == .detailOnly ? 0 : sidebarWidth
-        )
+    /// Whether the panel fits, or nil until the window and the sidebar have
+    /// been measured. It stays closed until then, because closing it during the
+    /// window's first layout makes AppKit give up on the layout and crash.
+    private var refsPanelFits: Bool? {
+        guard let windowWidth else { return nil }
+        if columns == .detailOnly { return RefsPanelVisibility.fits(window: windowWidth, sidebar: 0) }
+        return sidebarWidth.map { RefsPanelVisibility.fits(window: windowWidth, sidebar: $0) }
     }
 
     private var refsPanelVisibility: RefsPanelVisibility {
-        RefsPanelVisibility(isWanted: $wantsRefsPanel, fits: refsPanelFits)
+        RefsPanelVisibility(isWanted: $wantsRefsPanel, fits: refsPanelFits ?? true)
     }
 
     /// Whether the panel shows. It only says the user closed it while it fits,
     /// because hiding it for a narrow window doesn't change what they want.
     private var refsPanelIsPresented: Binding<Bool> {
         Binding {
-            refsPanelVisibility.isShowing
+            wantsRefsPanel && refsPanelFits == true
         } set: { isPresented in
-            if refsPanelFits { wantsRefsPanel = isPresented }
+            if refsPanelFits == true { wantsRefsPanel = isPresented }
         }
     }
 
