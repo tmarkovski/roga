@@ -1,5 +1,7 @@
+import AppKit
 import CommitGraph
 import Foundation
+import GitCore
 import GitRunner
 import RepositoryEngine
 import TestSupport
@@ -122,5 +124,165 @@ struct RepositoryModelTests {
 
         await model.load()
         #expect(model.history?.isComplete == true)
+    }
+
+    /// A model of the `basic` repository with its history loaded.
+    func loadedModel() async throws -> RepositoryModel {
+        let model = RepositoryModel(session: try await openSession(), worktree: try await Fixture.repository("basic"))
+        await model.load()
+        return model
+    }
+
+    func row(of hex: String, in model: RepositoryModel) throws -> Int {
+        let history = try #require(model.history)
+        let id = try #require(ObjectID(hex: hex))
+        let position = try #require(history.graph.position(of: id))
+        return try #require(history.rows.firstIndex(of: position))
+    }
+
+    @Test func showsTheSelectedCommit() async throws {
+        let model = try await loadedModel()
+        #expect(model.selectedCommit.id == nil)
+
+        model.selectRow(try row(of: Fixture.Basic.main, in: model))
+        #expect(model.selectedCommit.id == ObjectID(hex: Fixture.Basic.main))
+        await model.selectedCommit.loading?.value
+
+        #expect(model.selectedCommit.info?.subject == "Change the app")
+        #expect(model.selectedCommit.info?.body == "The body says why.")
+        guard case .loaded(let files) = model.selectedCommit.files else {
+            Issue.record("Files aren't loaded: \(model.selectedCommit.files)")
+            return
+        }
+        #expect(files.map(\.path) == ["src/app.txt"])
+        #expect(files.first?.lines == .init(added: 1, removed: 0))
+        #expect(model.selectedCommit.problem == nil)
+    }
+
+    @Test func clearsThePanelWhenNoRowIsSelected() async throws {
+        let model = try await loadedModel()
+        model.selectRow(0)
+        await model.selectedCommit.loading?.value
+        #expect(model.selectedCommit.info != nil)
+
+        model.selectRow(nil)
+        #expect(model.selectedRow == nil)
+        #expect(model.selectedCommit.id == nil)
+        #expect(model.selectedCommit.info == nil)
+    }
+
+    @Test func showsTheLastCommitSelected() async throws {
+        // Stepping through history, faster than git can answer.
+        let model = try await loadedModel()
+        for row in 0..<model.rowCount { model.selectRow(row) }
+        let last = model.selectedCommit.id
+        await model.selectedCommit.loading?.value
+
+        #expect(model.selectedCommit.info?.id == last)
+        let parents = try #require(model.selectedCommit.info?.parents)
+        #expect(parents.isEmpty == (last == ObjectID(hex: Fixture.Basic.mainHistory[2])))
+        guard case .loaded(let files) = model.selectedCommit.files else {
+            Issue.record("Files aren't loaded: \(model.selectedCommit.files)")
+            return
+        }
+        #expect(files.map(\.path) == ["README.md"])
+    }
+
+    @Test func goesToAParent() async throws {
+        let model = try await loadedModel()
+        let parent = try #require(ObjectID(hex: Fixture.Basic.mainHistory[1]))
+        #expect(model.hasCommit(parent))
+        model.select(commit: parent)
+        #expect(model.selectedCommit.id == parent)
+        #expect(model.selectedRow == (try row(of: Fixture.Basic.mainHistory[1], in: model)))
+    }
+
+    @Test func ignoresACommitThatHistoryDoesntHave() async throws {
+        let model = try await loadedModel()
+        let unknown = ObjectID(hex: String(repeating: "1", count: 40))!
+        #expect(!model.hasCommit(unknown))
+        model.select(commit: unknown)
+        #expect(model.selectedCommit.id == nil)
+        #expect(model.selectedRow == nil)
+    }
+
+    @Test func saysWhenACommitIsMissing() async throws {
+        let session = try await openSession()
+        let commit = SelectedCommit(session: session)
+        commit.show(ObjectID(hex: String(repeating: "1", count: 40))!)
+        await commit.loading?.value
+        #expect(commit.info == nil)
+        #expect(commit.problem?.contains("missing") == true)
+    }
+
+    @Test func findsTheSelectedCommitInItsNewRow() async throws {
+        let (model, repository) = try await modelOfACopy(keepsCommitGraphCurrent: false)
+        await model.load()
+        // The oldest commit stays in the last row.
+        model.select(commit: try #require(ObjectID(hex: Fixture.Basic.mainHistory[2])))
+        let selected = model.selectedCommit.id
+        let before = try #require(model.selectedRow)
+        #expect(before == model.rowCount - 1)
+
+        _ = try await TestGit.make().run(GitCommand(
+            ["-c", "user.name=A", "-c", "user.email=a@example.com", "commit", "--quiet", "--allow-empty", "--message=New"],
+            in: repository
+        ))
+        model.reload()
+        await model.load()
+
+        #expect(model.selectedCommit.id == selected)
+        #expect(model.selectedRow == before + 1)
+    }
+
+    @Test func dropsASelectedCommitThatsGone() async throws {
+        let (model, repository) = try await modelOfACopy(keepsCommitGraphCurrent: false)
+        let git = try await TestGit.make()
+        // A clone only has a remote branch for feature, and removing it leaves
+        // its commit out of history.
+        await model.load()
+        model.select(commit: try #require(ObjectID(hex: Fixture.Basic.feature)))
+        await model.selectedCommit.loading?.value
+        #expect(model.selectedCommit.info != nil)
+
+        _ = try await git.run(GitCommand("update-ref", "-d", "refs/remotes/origin/feature", in: repository))
+        model.reload()
+        await model.load()
+        #expect(model.selectedCommit.id == nil)
+        #expect(model.selectedRow == nil)
+    }
+
+    @Test func keepsTheSelectionWhileHistoryHasntReachedTheCommit() async throws {
+        // History loads with its first rows and then the rest, so a commit far
+        // down isn't in the rows at first.
+        let repository = try await Fixture.History.single.repository()
+        let session = try await RepositorySession.open(containing: repository, git: try await TestGit.make())
+        let model = RepositoryModel(session: session, worktree: repository)
+        await model.load()
+        let last = model.rowCount - 1
+        #expect(last > 300)
+        model.selectRow(last)
+        let selected = model.selectedCommit.id
+
+        model.sort = .date
+        await model.load()
+        #expect(model.selectedCommit.id == selected)
+        let row = try #require(model.selectedRow)
+        let history = try #require(model.history)
+        #expect(history.graph.id(at: history.rows[row]) == selected)
+    }
+
+    @Test func copiesTheFullHash() async throws {
+        let model = try await loadedModel()
+        let pasteboard = NSPasteboard(name: NSPasteboard.Name("yaga-tests-\(UUID().uuidString)"))
+        defer { pasteboard.releaseGlobally() }
+
+        pasteboard.clearContents()
+        model.selectedCommit.copyHash(to: pasteboard)
+        #expect(pasteboard.string(forType: .string) == nil)
+
+        model.select(commit: try #require(ObjectID(hex: Fixture.Basic.main)))
+        model.selectedCommit.copyHash(to: pasteboard)
+        #expect(pasteboard.string(forType: .string) == Fixture.Basic.main)
     }
 }

@@ -38,7 +38,7 @@ yaga/
 │   │   │   ├── Worktree.swift          a worktree's folder, HEAD and branch
 │   │   │   ├── CommitInfo.swift        a commit's parents, author, committer and message
 │   │   │   ├── StatusEntry.swift
-│   │   │   ├── DiffFile.swift
+│   │   │   ├── DiffFile.swift          a file a diff changes, and the lines added and removed
 │   │   │   └── Parsing/                one parser per git output format
 │   │   │       ├── ParseError.swift
 │   │   │       ├── CommitParser.swift      commit objects from cat-file
@@ -46,7 +46,7 @@ yaga/
 │   │   │       ├── ShowRefParser.swift     show-ref, for HEAD and what annotated tags lead to
 │   │   │       ├── WorktreeListParser.swift worktree list --porcelain -z
 │   │   │       ├── StatusParser.swift      status --porcelain=v2 -z
-│   │   │       ├── RawDiffParser.swift     diff --raw -z
+│   │   │       ├── RawDiffParser.swift     diff-tree --raw --numstat -z
 │   │   │       └── PatchParser.swift       unified patches
 │   │   ├── GitRunner/
 │   │   │   ├── Git.swift               running a command, which every git command goes through
@@ -71,7 +71,7 @@ yaga/
 │   │   │   ├── HistoryLoader.swift     commit-graph, newer commits, fallbacks
 │   │   │   ├── RefsLoader.swift
 │   │   │   ├── StatusLoader.swift
-│   │   │   ├── DiffLoader.swift
+│   │   │   ├── DiffLoader.swift        the files a commit changed
 │   │   │   ├── RepositoryWatcher.swift FSEvents
 │   │   │   ├── CommitGraphUpkeep.swift decision 6
 │   │   │   └── Snapshots.swift
@@ -98,7 +98,7 @@ yaga/
 │       ├── GitRunnerTests/
 │       ├── CommitGraphTests/
 │       ├── RepositoryEngineTests/
-│       ├── YagaUITests/                the list of repositories, and the models windows keep
+│       ├── YagaUITests/                the list of repositories, the models windows keep, and selecting commits
 │       ├── TestSupport/                the git the tests run, and the test repositories
 │       └── Fixtures/                   scripts that build test repositories
 ├── Scripts/
@@ -149,7 +149,7 @@ yaga turns off macOS window tabbing (`NSWindow.allowsAutomaticWindowTabbing = fa
 - VoiceOver, with each repository reported as a group that expands to show its worktrees
 - each worktree's count of uncommitted files, and a mark on a repository when any of its worktrees has changes
 
-A window keeps the models of the eight worktrees it showed most recently, with their history and the commit text it has read, so going back to one shows its history at once. Switching back to Linux takes no time instead of about a second. The window builds a new commit list each time, though, so the list starts at the top again. Keeping the views too, with a container view controller that holds a child for each recently shown worktree and swaps which one is in the window, would also keep each worktree's scroll position and selection.
+A window keeps the models of the eight worktrees it showed most recently, with their history and the commit text it has read, so going back to one shows its history at once. Switching back to Linux takes no time instead of about a second. The model keeps the selected commit too, and the new commit list selects it and scrolls to it. The window builds a new commit list each time, though, so with nothing selected the list starts at the top again. Keeping the views too, with a container view controller that holds a child for each recently shown worktree and swaps which one is in the window, would also keep each worktree's scroll position.
 
 The list of repositories doesn't depend on window restoration, which macOS skips after a normal quit unless the user turned off "Close windows when quitting an application". When macOS does restore windows, each one comes back with its worktree. Otherwise yaga opens one window, which shows the worktree selected last. With no repositories yet, it's the same window with an empty list and a button that opens one, so there's no separate welcome window to bring back.
 
@@ -210,6 +210,12 @@ Updates run at macOS's background priority, which `posix_spawn` sets for each pr
 
 The commit list asks for the text of the rows it's about to draw, and of a screen above and below them, in one batch. The repository's model keeps the text it has, and the session reads the rest with `cat-file`.
 
+**Selecting a commit.** The selection is a commit rather than a row, so it stays selected when history loads again in another order. The model finds its new row in each history that arrives. While only the first rows have loaded the commit may not be among them, and it stays selected until the rest arrive. Once history is complete, a commit that isn't in it is no longer selected. The commit list reports only what the user selects, so that reloading the list can't change the selection.
+
+The commit panel gets the commit's message from `cat-file`, and then its files from `git diff-tree --raw --numstat -z -M`, which runs in the git directory because a commit doesn't belong to a worktree. A commit without parents adds all of its files, and a merge is compared with its first parent, which shows what it brought into the branch. Selecting another commit cancels the load, which stops git. The previous commit's files stay until the new ones arrive, because a list that emptied on every step through history would flash. After 150 ms the panel shows a spinner instead. In a partial clone, listing files makes git download what it's missing, as `git show` does.
+
+On a Release build, a commit that changes one file showed its files about 30 ms after being selected, most of it starting git. A generated commit that changes 20,000 files took about 450 ms, nearly all of it git counting lines, and git took about 75 ms to list those files without counting. Going through those commits and scrolling their lists, the main thread never stalled for more than about 30 ms, which is two frames at 60 Hz but not at 120 Hz. That was measured in an off-screen window. Only the rows of the file list are in a lazy stack, because they're all the same height, so it knows how tall it is. With the commit's message in the stack too, it guessed too tall, and jumping to the end of the list left the panel blank.
+
 **Changes on disk.** FSEvents reports changed paths, and the session sorts them by what they affect:
 
 - refs, `packed-refs` and `reftable/` affect refs and history
@@ -219,7 +225,7 @@ The commit list asks for the text of the rows it's about to draw, and of a scree
 
 The session waits about 100 ms for related changes to arrive together, reloads only what changed, and publishes a new snapshot. On the main actor, yaga applies the difference: new commits are inserted at the top of the table, and badges and status update in place.
 
-**Diffs.** The list of changed files comes from `git diff --raw -z -M` (or `git diff-tree` for a single commit). The patch for the selected files is loaded on demand and parsed in the background. `DiffTextBuilder` builds the attributed text off the main actor, and only setting it on the text view happens on the main actor.
+**Diffs.** The list of changed files comes from `git diff --raw -z -M` (or `git diff-tree` for a single commit, which the commit panel already uses). The patch for the selected files is loaded on demand and parsed in the background. `DiffTextBuilder` builds the attributed text off the main actor, and only setting it on the text view happens on the main actor.
 
 ## Concurrency
 
@@ -263,11 +269,9 @@ Wherever `/usr/bin/git` comes up in the search, yaga runs it only if `xcode-sele
 - Parsers are tested against captured git output stored as files, captured from both git 2.44 and the newest release.
 - Test repositories are built by the scripts in `Tests/Fixtures` when the tests run, with fixed names and dates so that object IDs are the same on every run and with every git version. The scripts and the tests keep the user's and the system's git configuration out with `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_NOSYSTEM=1`, so that settings such as commit signing can't change the results.
 - The `TestSupport` target builds each test repository once per test run, and finds the git the tests use, which is the first supported git on the `PATH`. CI puts the git it's testing first.
-- There are two so far. `basic` is a small repository. `history` builds one history five times, with its commit-graph stored as a single file, as a split chain, as a chain whose upper layers have no corrected commit dates, as a file that leaves out the newest commits, and in a SHA-256 repository. The history has merges, an octopus merge, a second root, commits with the same time on several branches, and dates out of order. Later repositories will cover:
-  - renames
-  - reftable repositories
+- There are three so far. `basic` is a small repository. `changes` has commits that change files in every way a commit can: adding, deleting, renaming, changing a mode or a file's kind, binary files, a merge and an empty commit. `history` builds one history five times, with its commit-graph stored as a single file, as a split chain, as a chain whose upper layers have no corrected commit dates, as a file that leaves out the newest commits, and in a SHA-256 repository. The history has merges, an octopus merge, a second root, commits with the same time on several branches, and dates out of order. Later repositories will cover reftable repositories.
 - Engine tests run real git against those repositories. The commit-graph tests compare every commit's parents, dates and generation numbers, and the order of history from several sets of tips, with what git prints. The lane tests follow every line down from each commit's dot, and check that it reaches the commit's parents, through arrows when it's cut. The session tests compare the history a session loads with `git log`, in every repository and also in copies the tests change: a shallow one, one with replace refs, one with a damaged commit-graph file, one with `core.commitGraph` set to false, a bare clone, one with a detached `HEAD`, and ones with linked worktrees, including one whose folder was removed. The upkeep tests write commit-graph files in copies of the test repositories, and check that history then reads them and still matches `git log`. They also cover each reason to skip a repository, a lock another git holds, damaged files, and closing the session during a write.
-- The YagaUI tests check the saved list of repositories against real git: adding a repository twice, adding one from a linked worktree, a folder outside any repository, removing one, one that moved, one that's gone, worktrees that were added or removed, and a file that can't be read. They also check the models a window keeps, when those load history again, and when they update the commit-graph file or say why they won't.
+- The YagaUI tests check the saved list of repositories against real git: adding a repository twice, adding one from a linked worktree, a folder outside any repository, removing one, one that moved, one that's gone, worktrees that were added or removed, and a file that can't be read. They also check the models a window keeps, when those load history again, when they update the commit-graph file or say why they won't, and how a selected commit follows history as it loads. The commit list's tests check that it reports only what the user selects.
 - CI runs everything against git 2.44 and the newest git.
 - `yaga-bench history` measures the first screen of history and ordering and laying out the rest, first from `HEAD` with the reader alone, then through a session from every ref, as the app loads it, and reports how wide the graph's rows are. `--verify` compares both orders with `git log`. `--cold`, run right after `sudo purge`, loads history once and reports how many pages each step read from disk, and `--parts` takes the steps one at a time instead of the way the app overlaps them. A clone of Linux with only its commits is enough for it. `yaga-bench commit-graph` times bringing a repository's commit-graph files up to date, and writes to the repository, so it takes a copy. A CI job that runs it on a cached clone, and fails when a performance target from the roadmap is missed, is still to be added.
 
@@ -282,7 +286,9 @@ The app's bundle identifier is `build.yaga.app`, and the app is named yaga. It i
 ## Still open
 
 - What a session does while none of its worktrees is showing. Every repository in the sidebar keeps a session open (decision 14), so this matters as soon as someone lists a few. A session could close its `cat-file` process and watch only enough to keep the sidebar's counts of uncommitted files current.
-- Whether a window keeps each worktree's commit list as well as its history, so that switching back keeps the scroll position and selection.
+- Whether a window keeps each worktree's commit list as well as its history, so that switching back keeps the scroll position.
+- Whether the commit panel shows a very large commit's files before git has counted their lines. git can list 20,000 files in about 75 ms, and counting their lines takes about 450 ms.
+- Whether a merge can be compared with its other parents, or show only what its conflict resolutions changed.
 - Whether yaga runs the git that `/usr/bin/git` stands for directly. That stub looks up the developer tools every time it runs, which made a short command take 13 ms instead of 6.4 ms.
 - Whether yaga saves the login shell's `PATH` between launches, so that finding git doesn't wait for the user's shell to start.
 - Whether clicking an arrow on a cut line jumps to the commit at its other end, and whether the lanes' colors should follow branches rather than columns.

@@ -49,7 +49,7 @@ public struct CommitInfo: Sendable, Hashable {
     /// and the lines up to the next blank one are joined with spaces.
     public var subject: String {
         var lines: [Substring] = []
-        for line in message.split(separator: "\n", omittingEmptySubsequences: false) {
+        for line in message.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline) {
             let trimmed = line.trimmingSuffix(while: \.isWhitespace)
             if trimmed.isEmpty {
                 if lines.isEmpty { continue }
@@ -58,6 +58,19 @@ public struct CommitInfo: Sendable, Hashable {
             lines.append(trimmed)
         }
         return lines.joined(separator: " ")
+    }
+
+    /// What follows the subject, the way `git log --format=%b` shows it,
+    /// without the blank lines at its end.
+    public var body: String {
+        let lines = message.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)
+        let isBlank = { (line: Substring) in line.allSatisfy(\.isWhitespace) }
+        guard let subject = lines.firstIndex(where: { !isBlank($0) }),
+              let gap = lines[subject...].firstIndex(where: isBlank),
+              let first = lines[gap...].firstIndex(where: { !isBlank($0) }),
+              let last = lines.lastIndex(where: { !isBlank($0) })
+        else { return "" }
+        return lines[first...last].joined(separator: "\n")
     }
 }
 

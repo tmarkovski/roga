@@ -49,6 +49,53 @@ struct Panel<Leading: View, Trailing: View, Content: View>: View {
     }
 }
 
+/// Two panels, one above the other, with a thin line between them that drags
+/// to resize them. The lower one keeps its height as the window changes size,
+/// unless that would make the upper one too short.
+struct PanelSplit<Upper: View, Lower: View>: View {
+    @Binding var lowerHeight: Double
+    @ViewBuilder var upper: Upper
+    @ViewBuilder var lower: Lower
+    /// The lower panel's height when the current drag started.
+    @State private var heightAtStart: Double?
+
+    private static var minimumHeight: Double { 100 }
+
+    var body: some View {
+        GeometryReader { geometry in
+            let tallest = max(Self.minimumHeight, geometry.size.height - Self.minimumHeight - 1)
+            let height = min(max(lowerHeight, Self.minimumHeight), tallest)
+            VStack(spacing: 0) {
+                upper
+                    .frame(maxHeight: .infinity)
+                Rectangle()
+                    .fill(Palette.separator)
+                    .frame(height: 1)
+                    .overlay {
+                        // Easier to grab than the line, and over both panels.
+                        Color.clear
+                            .frame(height: 9)
+                            .contentShape(Rectangle())
+                            .pointerStyle(.rowResize)
+                            .gesture(
+                                // The line moves during the drag, so measure from the window.
+                                DragGesture(minimumDistance: 0, coordinateSpace: .global)
+                                    .onChanged { drag in
+                                        let start = heightAtStart ?? height
+                                        heightAtStart = start
+                                        lowerHeight = min(max(start - drag.translation.height, Self.minimumHeight), tallest)
+                                    }
+                                    .onEnded { _ in heightAtStart = nil }
+                            )
+                    }
+                    .zIndex(1)
+                lower
+                    .frame(height: height)
+            }
+        }
+    }
+}
+
 /// A thin icon that gets a rounded gray square while the pointer is over it,
 /// for the commands in panel headers and the sidebar (docs/main-window.md).
 struct IconButtonStyle: ButtonStyle {

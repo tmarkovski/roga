@@ -48,7 +48,7 @@ Every section in the middle is a panel: a plain rectangle with a 40-point header
 - The panel's commands follow as icon buttons with tooltips. An icon button is a thin, dark glyph that gets a rounded gray square when the pointer is over it, like the Claude app's.
 - A menu for more commands comes last. It lists every command the panel has, including the ones shown as buttons, with their keyboard shortcuts. Every command is also in the menu bar.
 - When several things in a panel are selected, such as files in release 2, the header can switch to commands that act on the selection.
-- Dragging the lines between panels resizes them.
+- Dragging the lines between panels resizes them. The commit panel's height is one setting for every window, and each panel stays at least 100 points tall.
 
 ## The history panel
 
@@ -64,7 +64,7 @@ The history panel fills the top of the middle column.
 
 Two panels sit under the history panel.
 
-- **The commit panel** shows the selected commit: its subject and message, author, date and parents, and the files it changed with the lines added and removed in each. Its header shows the short hash and a button that copies the full hash.
+- **The commit panel** shows the selected commit: its subject and message, author, date and parents, and the files it changed with the lines added and removed in each. Its header shows the short hash and a button that copies the full hash, which Edit > Copy Commit Hash and Shift-Command-C do too. It shows the committer as well when that differs from the author. Clicking a parent's hash selects the parent in history. A merge lists what changed compared with its first parent, and says so. With nothing selected, which is how a worktree opens, the panel asks you to select a commit. Until the diff panel exists, the commit panel takes the full width.
 - **The diff panel** shows the selected file's changes as a unified diff without wrapping, with backgrounds for added lines, removed lines and hunk headers. Its header shows the file's path, with the folders in gray and the file name in full color, and buttons for finding text, opening the file in an editor, and more. Line numbers and highlighted changed words come with the TextKit 1 view (decision 9).
 - In **Changes**, the commit panel is hidden and the diff panel takes the full width.
 
@@ -104,3 +104,4 @@ We sketched several ways to show history and uncommitted changes, and they're wo
 - What Command-1 to Command-9 and Control-Tab do now that there are no tabs, such as selecting repositories in the sidebar or switching between History and Changes.
 - Where branch review, file history and the contents of a stash appear. The review pane above is one answer.
 - How wide the commit panel is by default, and whether it can be hidden.
+- Whether a worktree opens with `HEAD` selected, rather than with nothing selected.

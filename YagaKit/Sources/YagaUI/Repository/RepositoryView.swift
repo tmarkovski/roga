@@ -3,9 +3,10 @@ import GitRunner
 import RepositoryEngine
 import SwiftUI
 
-/// One worktree: for now, its history.
+/// One worktree: its history, and the commit selected in it.
 struct RepositoryView: View {
     let model: RepositoryModel
+    @AppStorage("commitPanelHeight") private var commitPanelHeight = 280.0
 
     var body: some View {
         content
@@ -29,7 +30,11 @@ struct RepositoryView: View {
                 Button("Try Again") { model.reload() }
             }
         case .ready:
-            HistoryPanel(model: model)
+            PanelSplit(lowerHeight: $commitPanelHeight) {
+                HistoryPanel(model: model)
+            } lower: {
+                CommitPanel(model: model)
+            }
         }
     }
 }
@@ -116,7 +121,7 @@ struct HistoryPanel: View {
             if let history = model.history, history.isComplete, history.rows.isEmpty {
                 ContentUnavailableView("No Commits Yet", systemImage: "clock", description: Text("Commits appear here once there are some."))
             } else {
-                CommitList(model: model, version: model.historyVersion)
+                CommitList(model: model, version: model.historyVersion, selectedRow: model.selectedRow)
             }
         }
     }

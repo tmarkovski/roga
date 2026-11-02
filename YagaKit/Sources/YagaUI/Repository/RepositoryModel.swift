@@ -51,6 +51,11 @@ final class RepositoryModel {
     /// Goes up when the user asks to load history again.
     private(set) var reloads = 0
     private(set) var commitGraphState = CommitGraphState.unknown
+    /// The commit selected in history, and what the commit panel shows of it.
+    let selectedCommit: SelectedCommit
+    /// The row of the selected commit. It's nil while the history being
+    /// loaded hasn't reached the commit yet, and the commit stays selected.
+    private(set) var selectedRow: Int?
 
     /// The request whose history has loaded completely.
     @ObservationIgnored private var loaded: LoadRequest?
@@ -85,6 +90,7 @@ final class RepositoryModel {
         self.session = session
         self.worktree = worktree
         self.keepsCommitGraphCurrent = keepsCommitGraphCurrent
+        selectedCommit = SelectedCommit(session: session)
     }
 
     var loadRequest: LoadRequest { LoadRequest(sort: sort, reloads: reloads) }
@@ -167,6 +173,7 @@ final class RepositoryModel {
                     badges = Self.badges(history)
                 }
                 self.history = history
+                findSelectedRow(in: history)
                 historyVersion += 1
                 phase = .ready
                 isComplete = history.isComplete
@@ -177,6 +184,41 @@ final class RepositoryModel {
         } catch {
             phase = .failed(String(describing: error))
         }
+    }
+
+    /// Selects a row, or none.
+    func selectRow(_ row: Int?) {
+        guard row != selectedRow else { return }
+        selectedRow = row
+        guard let row, let history else { return selectedCommit.show(nil) }
+        selectedCommit.show(history.graph.id(at: history.rows[row]))
+    }
+
+    /// Selects a commit, if history has it.
+    func select(commit id: ObjectID) {
+        if let row = history.flatMap({ Self.row(of: id, in: $0) }) { selectRow(row) }
+    }
+
+    /// Whether history has a commit. A shallow clone doesn't have the parents
+    /// of its oldest commits, for example.
+    func hasCommit(_ id: ObjectID) -> Bool {
+        history?.graph.position(of: id) != nil
+    }
+
+    /// Finds the selected commit in a history that has just loaded, where it
+    /// can be in another row. Once history is complete, a commit that isn't in
+    /// it is gone, such as after deleting its branch.
+    private func findSelectedRow(in history: History) {
+        guard let id = selectedCommit.id else { return }
+        selectedRow = Self.row(of: id, in: history)
+        if selectedRow == nil, history.isComplete { selectedCommit.show(nil) }
+    }
+
+    /// Goes through the rows, which takes up to a millisecond for as many as
+    /// Linux has, so it's only for when history loads or a commit is selected
+    /// by its ID.
+    private static func row(of id: ObjectID, in history: History) -> Int? {
+        history.graph.position(of: id).flatMap { history.rows.firstIndex(of: $0) }
     }
 
     var rowCount: Int { history?.rows.count ?? 0 }

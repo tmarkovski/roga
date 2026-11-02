@@ -5,9 +5,9 @@ import GitRunner
 /// Everything yaga knows about one repository, and the git processes it
 /// keeps running for it. All of the repository's worktrees share it.
 ///
-/// For now a session lists worktrees, reads history and the text of commits,
-/// and keeps the commit-graph files up to date. Status, diffs and watching for
-/// changes come later, as ARCHITECTURE.md describes.
+/// For now a session lists worktrees, reads history, the text of commits and
+/// the files they changed, and keeps the commit-graph files up to date. Status,
+/// patches and watching for changes come later, as ARCHITECTURE.md describes.
 public actor RepositorySession {
     public nonisolated let location: RepositoryLocation
     public nonisolated let git: Git
@@ -71,6 +71,12 @@ public actor RepositorySession {
             guard let object, object.type == .commit else { return nil }
             return try? CommitParser.parse(object.contents, id: id)
         }
+    }
+
+    /// Lists the files a commit changed, with the lines added and removed in
+    /// each. A merge is compared with its first parent.
+    public nonisolated func changedFiles(in commit: ObjectID) async throws -> [DiffFile] {
+        try await DiffLoader.changedFiles(in: commit, git: git, directory: location.commonDirectory)
     }
 
     /// Writes what the repository's commit-graph files are missing, at low

@@ -30,6 +30,7 @@ struct CommitParserTests {
         #expect(commit.committer == Signature(name: "Sam Lee", email: "sam@example.com", time: 1767265200, timeZoneOffset: -19800))
         #expect(commit.message == "Change the app\n\nThe body says why.\n")
         #expect(commit.subject == "Change the app")
+        #expect(commit.body == "The body says why.")
     }
 
     @Test func readsEveryParentAndSkipsSignatures() throws {
@@ -63,6 +64,23 @@ struct CommitParserTests {
             And a body.
             """)
         #expect(commit.subject == "A subject that   goes on to a second line")
+        #expect(commit.body == "And a body.")
+    }
+
+    @Test func keepsTheBodysParagraphs() throws {
+        let commit = try parse("tree \(tree)\n\nSubject\n\n\nFirst\nlines\n\nSecond\n\n\n")
+        #expect(commit.body == "First\nlines\n\nSecond")
+    }
+
+    @Test func readsAMessageWithWindowsLineEndings() throws {
+        let commit = try parse("tree \(tree)\n\nSubject\r\n\r\nThe body\r\ngoes on\r\n")
+        #expect(commit.subject == "Subject")
+        #expect(commit.body == "The body\ngoes on")
+    }
+
+    @Test func hasNoBodyWithOnlyASubject() throws {
+        #expect(try parse("tree \(tree)\n\nSubject\n").body == "")
+        #expect(try parse("tree \(tree)\n\n").body == "")
     }
 
     @Test func convertsTheCommitsEncoding() throws {

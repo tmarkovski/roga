@@ -26,15 +26,20 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
         /// rows that have new text. It's cancelled when other rows come into
         /// view before it finishes.
         public var loadText: (Range<Int>) async -> IndexSet
+        /// Says that the user selected a row, or no row. A selection made with
+        /// `select(row:)` isn't reported.
+        public var selectRow: (Int?) -> Void
 
         public init(
             count: @escaping () -> Int,
             content: @escaping (Int) -> CommitRowContent,
-            loadText: @escaping (Range<Int>) async -> IndexSet
+            loadText: @escaping (Range<Int>) async -> IndexSet,
+            selectRow: @escaping (Int?) -> Void
         ) {
             self.count = count
             self.content = content
             self.loadText = loadText
+            self.selectRow = selectRow
         }
     }
 
@@ -46,6 +51,8 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
     private var requestedRows: Range<Int>?
     private var graphColumns = 0
     private var fitGraphTask: Task<Void, Never>?
+    /// Whether the code here is changing the selection, rather than the user.
+    private var isSettingSelection = false
 
     public init(source: Source) {
         self.source = source
@@ -90,13 +97,39 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
         fitGraphTask?.cancel()
     }
 
-    /// Shows new rows, such as when history is loaded again. The selection
-    /// and scroll position stay where they are.
+    /// Shows new rows, such as when history is loaded again. The selected row
+    /// number and scroll position stay where they are, unless the row is gone.
     public func reloadData() {
+        isSettingSelection = true
         tableView.reloadData()
+        isSettingSelection = false
         requestedRows = nil
         sizeGraph(canNarrow: true)
         loadVisibleText()
+    }
+
+    /// The selected row, or nil when there's none.
+    public var selectedRow: Int? {
+        tableView.selectedRow >= 0 ? tableView.selectedRow : nil
+    }
+
+    /// Selects a row or none, for a selection that didn't start in the list.
+    /// A newly selected row is scrolled into view.
+    public func select(row: Int?) {
+        guard row != selectedRow else { return }
+        isSettingSelection = true
+        defer { isSettingSelection = false }
+        if let row {
+            tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+            tableView.scrollRowToVisible(row)
+        } else {
+            tableView.deselectAll(nil)
+        }
+    }
+
+    public func tableViewSelectionDidChange(_ notification: Notification) {
+        guard !isSettingSelection else { return }
+        source.selectRow(selectedRow)
     }
 
     @objc private func visibleRowsMayHaveChanged(_ notification: Notification) {

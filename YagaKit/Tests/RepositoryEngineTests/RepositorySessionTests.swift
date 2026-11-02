@@ -1,6 +1,7 @@
 import CommitGraph
 import Foundation
 import GitCore
+import GitRunner
 import TestSupport
 import Testing
 @testable import RepositoryEngine
@@ -89,6 +90,95 @@ struct RepositorySessionTests {
         #expect(try await session.worktrees().map(\.path) == [repository])
         let commits = try await session.commits([try #require(ObjectID(hex: Fixture.Basic.feature))])
         #expect(commits.first??.subject == "Add notes")
+    }
+
+    /// The files a tagged commit in the `changes` repository changed.
+    func changedFiles(at tag: String, from folder: String? = nil) async throws -> [DiffFile] {
+        let repository = try await Fixture.repository("changes")
+        let session = try await openSession(folder ?? repository)
+        let commit = try #require(ObjectID(hex: try await runGit("rev-parse", tag + "^{commit}", in: repository)))
+        return try await session.changedFiles(in: commit)
+    }
+
+    @Test func listsTheFilesACommitChanged() async throws {
+        let files = try await changedFiles(at: "every-way")
+        func file(_ path: String) throws -> DiffFile { try #require(files.first { $0.path == path }) }
+
+        #expect(files.map(\.path) == [
+            "image.bin", "kind.txt", "lib/moved.txt", "notes.opaque", "run.sh", "src/gone.txt", "src/new.txt", "with space.txt",
+        ])
+        #expect(try file("src/new.txt").status == .added)
+        #expect(try file("src/new.txt").lines == .init(added: 2, removed: 0))
+        #expect(try file("src/new.txt").oldID == nil)
+        #expect(try file("src/gone.txt").status == .deleted)
+        #expect(try file("src/gone.txt").lines == .init(added: 0, removed: 1))
+        #expect(try file("src/gone.txt").newID == nil)
+        #expect(try file("with space.txt").status == .modified)
+        #expect(try file("with space.txt").lines == .init(added: 1, removed: 0))
+        #expect(try file("kind.txt").status == .typeChanged)
+        #expect(try file("kind.txt").newMode == 0o120000)
+
+        let moved = try file("lib/moved.txt")
+        #expect(moved.oldPath == "moved.txt")
+        #expect(moved.lines == .init(added: 1, removed: 0))
+        guard case .renamed(let similarity) = moved.status else {
+            Issue.record("\(moved.status) isn't a rename")
+            return
+        }
+        #expect(similarity > 50)
+
+        // Only its mode changed, so no lines did.
+        #expect(try file("run.sh").oldMode == 0o100644)
+        #expect(try file("run.sh").newMode == 0o100755)
+        #expect(try file("run.sh").lines == .init(added: 0, removed: 0))
+
+        #expect(try file("image.bin").lines == nil)
+        // The repository's attributes say not to diff these.
+        #expect(try file("notes.opaque").lines == nil)
+    }
+
+    @Test func listsEveryFileOfACommitWithoutParents() async throws {
+        let files = try await changedFiles(at: "root")
+        #expect(files.allSatisfy { $0.status == .added })
+        #expect(files.contains { $0.path == "src/a\ttab.txt" })
+    }
+
+    @Test func comparesAMergeWithItsFirstParent() async throws {
+        let files = try await changedFiles(at: "merge")
+        #expect(files.map(\.path) == ["side.txt"])
+    }
+
+    @Test func findsNoFilesInAnEmptyCommit() async throws {
+        #expect(try await changedFiles(at: "empty") == [])
+    }
+
+    @Test func failsOnACommitTheRepositoryDoesntHave() async throws {
+        let session = try await openSession(try await Fixture.repository("basic"))
+        let unknown = ObjectID(hex: String(repeating: "1", count: 40))!
+        await #expect(throws: GitError.self) {
+            try await session.changedFiles(in: unknown)
+        }
+    }
+
+    @Test func listsChangedFilesAfterTheWorktreeWasRemoved() async throws {
+        let repository = try await copyRepository(try await Fixture.repository("basic"))
+        let notes = (repository as NSString).deletingLastPathComponent + "/notes"
+        try await runGit("worktree", "add", "--quiet", notes, "feature", in: repository)
+        let session = try await openSession(notes)
+        try await runGit("worktree", "remove", notes, in: repository)
+
+        let files = try await session.changedFiles(in: try #require(ObjectID(hex: Fixture.Basic.feature)))
+        #expect(files.map(\.path) == ["NOTES.md"])
+    }
+
+    @Test func listsChangedFilesInASHA256Repository() async throws {
+        let repository = try await Fixture.History.sha256.repository()
+        let session = try await openSession(repository)
+        let commit = try #require(ObjectID(hex: try await runGit("rev-parse", "main", in: repository)))
+        #expect(commit.format == .sha256)
+        for file in try await session.changedFiles(in: commit) {
+            #expect((file.newID ?? file.oldID)?.format == .sha256)
+        }
     }
 
     @Test func refusesCommitsOnceClosed() async throws {

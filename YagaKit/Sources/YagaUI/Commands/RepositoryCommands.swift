@@ -11,6 +11,9 @@ public struct RepositoryCommands: Commands {
 
     /// The shortcut for opening a repository, which the sidebar shows too.
     static let openShortcut = KeyboardShortcut("o")
+    /// The shortcut for copying the selected commit's hash, which the commit
+    /// panel shows too.
+    static let copyHashShortcut = KeyboardShortcut("c", modifiers: [.shift, .command])
 
     public init(list: RepositoryList) {
         self.list = list
@@ -32,6 +35,13 @@ public struct RepositoryCommands: Commands {
             }
             .keyboardShortcut(Self.openShortcut)
             .disabled(!list.isConnected)
+        }
+        CommandGroup(after: .pasteboard) {
+            Button("Copy Commit Hash") {
+                repository?.selectedCommit.copyHash()
+            }
+            .keyboardShortcut(Self.copyHashShortcut)
+            .disabled(repository?.selectedCommit.id == nil)
         }
         CommandGroup(replacing: .sidebar) {
             Button(sidebarVisibility?.wrappedValue.sidebarCommandTitle ?? "Hide Sidebar") {
