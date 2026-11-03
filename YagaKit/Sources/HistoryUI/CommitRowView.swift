@@ -80,7 +80,7 @@ final class CommitCellView: NSView {
         }
         let layout = CommitRowLayout(content: content, graphColumns: graphColumns, size: bounds.size)
         if graphColumns > 0, let lanes = content.lanes {
-            LaneRenderer.draw(lanes, columns: graphColumns, at: CommitRowLayout.graphX, height: bounds.height, isHollow: content.isWorkingTree)
+            LaneRenderer.draw(lanes, columns: graphColumns, at: CommitRowLayout.graphX, height: bounds.height, isHollow: content.isWorkingTree, isCurrent: content.isCurrent)
         }
         for column in layout.columns {
             if let text = column.text {
@@ -91,7 +91,7 @@ final class CommitCellView: NSView {
             drawBadge(content.badges[index], in: frame, isHovered: index == hoveredBadge)
         }
         if let subject = content.subject, layout.subjectMaxX > layout.subjectX {
-            draw(subject, at: layout.subjectX, width: layout.subjectMaxX - layout.subjectX, style: Style.subject)
+            draw(subject, at: layout.subjectX, width: layout.subjectMaxX - layout.subjectX, style: content.isCurrent ? Style.currentSubject : Style.subject)
         }
     }
 
@@ -102,7 +102,7 @@ final class CommitCellView: NSView {
 
     private func drawBadge(_ badge: CommitRowContent.Badge, in rect: NSRect, isHovered: Bool) {
         let color = Self.color(for: badge.kind)
-        let style = Style.badge(color)
+        let style = Style.badge(badge.kind)
         let padding = CommitRowLayout.badgePadding
 
         color.withAlphaComponent(0.14).setFill()
@@ -162,11 +162,12 @@ final class CommitCellView: NSView {
         }
 
         static let subject = Style(font: .systemFont(ofSize: 12.5), color: .labelColor)
+        static let currentSubject = Style(font: .systemFont(ofSize: 12.5, weight: .semibold), color: .labelColor)
         static let detail = Style(font: .systemFont(ofSize: 12.5), color: .secondaryLabelColor)
         static let shortID = Style(font: .monospacedSystemFont(ofSize: 11.5, weight: .regular), color: .tertiaryLabelColor)
 
-        static func badge(_ color: NSColor) -> Style {
-            Style(font: .systemFont(ofSize: 11, weight: .medium), color: color)
+        static func badge(_ kind: CommitRowContent.Badge.Kind) -> Style {
+            Style(font: .systemFont(ofSize: 11, weight: kind.isCurrent ? .bold : .medium), color: color(for: kind))
         }
     }
 }
@@ -231,7 +232,7 @@ struct CommitRowLayout {
     }
 
     private static func badgeWidth(_ badge: CommitRowContent.Badge) -> CGFloat {
-        let style = CommitCellView.Style.badge(CommitCellView.color(for: badge.kind))
+        let style = CommitCellView.Style.badge(badge.kind)
         let iconWidth = CommitCellView.icon(for: badge.kind).map { $0.size.width + badgeIconGap } ?? 0
         let titleWidth = ceil((badge.title as NSString).size(withAttributes: style.attributes).width)
         return badgePadding + iconWidth + titleWidth + badgePadding

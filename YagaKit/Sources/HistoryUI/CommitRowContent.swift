@@ -13,6 +13,11 @@ public struct CommitRowContent: Hashable {
             case branch
             case remoteBranch
             case tag
+
+            /// Whether this is where `HEAD` is.
+            var isCurrent: Bool {
+                self == .currentBranch || self == .detachedHead
+            }
         }
 
         public var title: String
@@ -79,11 +84,17 @@ public struct CommitRowContent: Hashable {
         self.isPreviewed = isPreviewed
     }
 
+    /// Whether the worktree's `HEAD` is on this commit, which a ring around the
+    /// dot and bold text show.
+    var isCurrent: Bool {
+        badges.contains { $0.kind.isCurrent }
+    }
+
     /// What VoiceOver reads for the row.
     var spokenText: String {
         var parts: [String] = []
         if let subject { parts.append(subject) }
-        parts += badges.map(\.title)
+        parts += badges.map { $0.kind == .currentBranch ? "\($0.title), current branch" : $0.title }
         if let author { parts.append(author) }
         if let date { parts.append(date) }
         if !shortID.isEmpty { parts.append(shortID) }
