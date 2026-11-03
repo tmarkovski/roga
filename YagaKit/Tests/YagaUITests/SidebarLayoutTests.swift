@@ -7,13 +7,14 @@ import Testing
 struct SidebarLayoutTests {
     /// A repository with a main worktree and linked ones with these names, at
     /// `/git/<name>`.
-    func repository(_ name: String, owner: String? = nil, linked: [String] = [], isExpanded: Bool = false, uncommitted: [String: Int] = [:], branch: String = "main") -> ListedRepository {
+    func repository(_ name: String, owner: String? = nil, linked: [String] = [], isExpanded: Bool = false, kept: [String] = [], uncommitted: [String: Int] = [:], branch: String = "main") -> ListedRepository {
         let main = Worktree(path: "/git/\(name)", branch: "refs/heads/\(branch)", isMain: true)
         let others = linked.map { Worktree(path: "/git/\($0)", branch: "refs/heads/\($0)") }
         return ListedRepository(
             path: "/git/\(name)/.git",
             owner: owner,
             isExpanded: isExpanded,
+            keptWorktrees: Set(kept.map { "/git/\($0)" }),
             worktrees: [main] + others,
             uncommittedFiles: Dictionary(uniqueKeysWithValues: uncommitted.map { ("/git/\($0)", $1) })
         )
@@ -132,6 +133,22 @@ struct SidebarLayoutTests {
     @Test func theSelectedWorktreeEndsTheLineWhenItsTheOnlyOne() {
         let api = repository("api", owner: "acme", linked: ["a"])
         #expect(rows([api, repository("web", owner: "acme")], scope: .organization("acme"), selection: select(api, "a")) == ["api", "└ a", "web"])
+    }
+
+    @Test func aCollapsedRepositoryShowsTheWorktreesItKept() {
+        let api = repository("api", owner: "acme", linked: ["a", "b", "c"], kept: ["a"])
+        #expect(rows([api, repository("web", owner: "acme")], scope: .organization("acme")) == ["api", "│ a", "└ 2 more worktrees", "web"])
+    }
+
+    @Test func aKeptWorktreeShowsWithTheSelectedOne() {
+        let api = repository("api", owner: "acme", linked: ["a", "b", "c"], kept: ["a"])
+        let rows = rows([api, repository("web", owner: "acme")], scope: .organization("acme"), selection: select(api, "c"))
+        #expect(rows == ["api", "│ a", "│ c", "└ 1 more worktree", "web"])
+    }
+
+    @Test func aKeptWorktreeEndsTheLineWhenNothingIsHidden() {
+        let api = repository("api", owner: "acme", linked: ["a"], kept: ["a"])
+        #expect(rows([api, repository("web", owner: "acme")], scope: .organization("acme")) == ["api", "└ a", "web"])
     }
 
     @Test func anExpandedRepositoryShowsEveryWorktree() {

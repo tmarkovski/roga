@@ -189,6 +189,17 @@ public final class RepositoryList {
     func setExpanded(_ isExpanded: Bool, _ repository: ListedRepository) {
         guard repository.isExpanded != isExpanded else { return }
         repository.isExpanded = isExpanded
+        if isExpanded { repository.keptWorktrees = [] }
+        save()
+    }
+
+    /// Keeps a linked worktree showing under its collapsed repository, now that
+    /// it's no longer selected, until the repository is expanded.
+    func keepShowing(_ selection: WorktreeSelection) {
+        guard let repository = repository(at: selection.repository), !repository.isExpanded,
+              repository.worktrees.contains(where: { $0.path == selection.worktree && !$0.isMain }),
+              repository.keptWorktrees.insert(selection.worktree).inserted
+        else { return }
         save()
     }
 
@@ -358,6 +369,9 @@ public final class ListedRepository: Identifiable {
     fileprivate(set) var path: String
     fileprivate(set) var bookmark: Data?
     fileprivate(set) var isExpanded: Bool
+    /// The linked worktrees it goes on showing while it's collapsed, by their
+    /// folders: the ones that were selected while it was.
+    fileprivate(set) var keptWorktrees: Set<String>
     /// Who owns the repository, from its `origin` URL, or nil without one.
     fileprivate(set) var owner: String?
     fileprivate(set) var state = State.opening
@@ -370,14 +384,16 @@ public final class ListedRepository: Identifiable {
         path = saved.path
         bookmark = saved.bookmark
         isExpanded = saved.isExpanded
+        keptWorktrees = Set(saved.keptWorktrees ?? [])
         owner = saved.owner
     }
 
     /// A repository that isn't in a list, for checking how a sidebar lays out.
-    init(path: String, owner: String? = nil, isExpanded: Bool = false, state: State = .opening, worktrees: [Worktree] = [], uncommittedFiles: [String: Int] = [:]) {
+    init(path: String, owner: String? = nil, isExpanded: Bool = false, keptWorktrees: Set<String> = [], state: State = .opening, worktrees: [Worktree] = [], uncommittedFiles: [String: Int] = [:]) {
         self.path = path
         self.owner = owner
         self.isExpanded = isExpanded
+        self.keptWorktrees = keptWorktrees
         self.state = state
         self.worktrees = worktrees
         self.uncommittedFiles = uncommittedFiles
@@ -411,7 +427,7 @@ public final class ListedRepository: Identifiable {
     }
 
     fileprivate var saved: RepositoryStore.SavedRepository {
-        RepositoryStore.SavedRepository(path: path, bookmark: bookmark, isExpanded: isExpanded, owner: owner)
+        RepositoryStore.SavedRepository(path: path, bookmark: bookmark, isExpanded: isExpanded, keptWorktrees: keptWorktrees.isEmpty ? nil : keptWorktrees.sorted(), owner: owner)
     }
 }
 

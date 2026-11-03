@@ -17,6 +17,7 @@ The Claude app's sidebar shows the same relationship between a session and the s
 - An expanded repository shows every linked worktree. Nothing folds inside it, so the rows for quiet worktrees and **Show fewer** are gone.
 - A collapsed repository has one row under it, on the same line, such as **3 worktrees**, with how many uncommitted files those worktrees have in orange. Clicking it expands the repository.
 - The selected worktree always shows, as before. The row for the others then says **2 more worktrees**, and there's no such row if it's the only one.
+- A worktree that was selected while its repository was collapsed goes on showing after something else is selected, so that clicking elsewhere doesn't take it away. Expanding the repository forgets these, so expanding and collapsing it again is how to hide them.
 - The triangle after the name, and the right and left arrows, still expand and collapse a repository, and the choice is still saved. A new repository still starts collapsed.
 
 **A repository's row counts only itself.** Its orange number is always the main worktree's uncommitted files, because the rows under it count theirs in both states. The number of linked worktrees leaves its label, since the rows under it say the same thing.
@@ -29,4 +30,4 @@ The Claude app's sidebar shows the same relationship between a session and the s
 - An expanded repository with many worktrees is as long as it has worktrees, however quiet they are, until it's collapsed. If that gets in the way, folding quiet worktrees is the thing to bring back.
 - A worktree where an agent has committed everything no longer folds away by itself, so it's in plain sight in an expanded repository. Until yaga knows about agents, a collapsed repository's row is the only sign of what's inside it.
 - Showing a worktree in Finder or Terminal takes one more click.
-- `repositories.json` doesn't change. It saves whether each repository is expanded, as it did.
+- `repositories.json` saves which worktrees each collapsed repository goes on showing, as well as whether it's expanded. Earlier versions ignore that, and a file without it still opens.

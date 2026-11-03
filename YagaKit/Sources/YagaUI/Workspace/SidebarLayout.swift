@@ -174,13 +174,16 @@ struct SidebarLayout {
         return items
     }
 
-    /// A collapsed repository shows only its selected worktree, and a row for
-    /// the rest.
+    /// A collapsed repository shows only its selected worktree and the ones it's
+    /// keeping, and a row for the rest.
     private func append(_ repository: ListedRepository, title: String? = nil, to items: inout [SidebarItem]) {
         items.append(.repository(repository, title: title ?? repository.name, detail: detail(of: repository)))
         let linked = repository.worktrees.filter { !$0.isMain }
-        let shown = repository.isExpanded ? linked : linked.filter { isSelected($0, in: repository) }
-        let hidden = repository.isExpanded ? [] : linked.filter { !isSelected($0, in: repository) }
+        func isShown(_ worktree: Worktree) -> Bool {
+            repository.isExpanded || repository.keptWorktrees.contains(worktree.path) || isSelected(worktree, in: repository)
+        }
+        let shown = linked.filter(isShown)
+        let hidden = linked.filter { !isShown($0) }
         for worktree in shown {
             items.append(.worktree(repository, worktree, isLast: hidden.isEmpty && worktree.path == shown.last?.path))
         }

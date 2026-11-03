@@ -197,6 +197,41 @@ struct RepositoryListTests {
         #expect(try await makeList().repositories.first?.isExpanded == true)
     }
 
+    /// A list with a collapsed repository that has a linked worktree, and that
+    /// worktree's selection.
+    private func listWithLinkedWorktree() async throws -> (RepositoryList, ListedRepository, WorktreeSelection) {
+        let repository = try await copyRepository(try await Fixture.repository("basic"), into: folder)
+        try await runGit("worktree", "add", "--quiet", folder + "/notes", "feature", in: repository)
+        let list = try await makeList()
+        _ = try await list.add(folder: repository)
+        let listed = try #require(list.repositories.first)
+        return (list, listed, WorktreeSelection(repository: listed.path, worktree: folder + "/notes"))
+    }
+
+    @Test func aCollapsedRepositoryRemembersTheWorktreesItKeeps() async throws {
+        let (list, listed, notes) = try await listWithLinkedWorktree()
+        list.keepShowing(notes)
+        #expect(listed.keptWorktrees == [notes.worktree])
+        #expect(try await makeList().repositories.first?.keptWorktrees == [notes.worktree])
+    }
+
+    @Test func expandingARepositoryForgetsTheWorktreesItKept() async throws {
+        let (list, listed, notes) = try await listWithLinkedWorktree()
+        list.keepShowing(notes)
+        list.setExpanded(true, listed)
+        list.setExpanded(false, listed)
+        #expect(listed.keptWorktrees.isEmpty)
+    }
+
+    @Test func onlyACollapsedRepositoryKeepsALinkedWorktree() async throws {
+        let (list, listed, notes) = try await listWithLinkedWorktree()
+        list.keepShowing(listed.home)
+        #expect(listed.keptWorktrees.isEmpty)
+        list.setExpanded(true, listed)
+        list.keepShowing(notes)
+        #expect(listed.keptWorktrees.isEmpty)
+    }
+
     @Test func readsAndRemembersWhoOwnsARepository() async throws {
         let repository = try await copyRepository(try await Fixture.repository("basic"), into: folder)
         try await runGit("remote", "set-url", "origin", "git@github.com:acme/basic.git", in: repository)

@@ -160,8 +160,9 @@ public struct WorkspaceView: View {
             // selected last.
             if window?.selection == nil { selection.wrappedValue = list.lastSelection }
         }
-        .onChange(of: window?.selection) { _, selected in
+        .onChange(of: window?.selection) { previous, selected in
             if let selected { list.lastSelection = selected }
+            if let previous { list.keepShowing(previous) }
         }
         .onChange(of: list.resolve(window?.selection)) { _, resolved in
             if resolved != window?.selection { selection.wrappedValue = resolved }
