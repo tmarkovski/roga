@@ -28,5 +28,6 @@ We considered these ways of building and deploying it:
 - The house's body now exists three times: in the SVG, in `HouseOutline.swift` and in `site/public/index.html`. The stride exists twice, in Swift and in `site/public/house.js`. Nothing keeps them in step, so a change to the mark or to Push won't reach the page by itself.
 - Deploying needs a Cloudflare API token in the repository's secrets.
 - The settings that send `http://` to `https://` and `www` to the bare domain are in Cloudflare's dashboard, because a Worker with no script can't redirect by hostname.
+- Cloudflare adds its Web Analytics script to the page in browsers. We want those numbers, so the Content Security Policy allows that script and lets it report to `/cdn-cgi/rum` on the site itself. It's the only thing the page loads from anywhere else.
 - Cloudflare won't make a preview for a Worker that doesn't exist yet, so the first deploy has to come from `main`.
 - There's no way to sign up to hear when the app ships, because that needs a service behind it. A second page would be the time to look at a site generator again, and it can deploy to the same place.
