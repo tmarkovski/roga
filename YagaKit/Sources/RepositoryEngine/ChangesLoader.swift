@@ -29,7 +29,7 @@ enum ChangesLoader {
     /// variable ignore it.
     ///
     /// - Parameter isUpkeep: Whether nobody is waiting for the answer, which
-    ///   runs git at low priority.
+    ///   runs git at utility priority.
     @concurrent
     static func status(in directory: String, git: Git, limit: Int = statusLimit, isUpkeep: Bool = false) async throws -> WorktreeChanges {
         var setting = GitCommand("config", "--get", "status.showUntrackedFiles", in: directory)
@@ -38,7 +38,7 @@ enum ChangesLoader {
         let untracked = ["no", "false", "off", "0"].contains(value) ? "no" : "all"
 
         var command = GitCommand(StatusParser.arguments + ["--untracked-files=" + untracked], in: directory)
-        command.runsAtLowPriority = isUpkeep
+        command.priority = isUpkeep ? .utility : .normal
         command.environment["GIT_NO_LAZY_FETCH"] = "1"
         var output: [UInt8] = []
         for try await chunk in git.stream(command) {

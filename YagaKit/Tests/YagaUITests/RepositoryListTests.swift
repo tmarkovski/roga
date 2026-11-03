@@ -189,6 +189,80 @@ struct RepositoryListTests {
         #expect(list.repositories.first?.uncommittedFiles == [:])
     }
 
+    /// A git whose `git status` takes a second, for catching what waits for it and
+    /// what runs alongside it.
+    func gitWithSlowStatus(log: CommandLog) async throws -> Git {
+        var installation = try await TestGit.installation()
+        let script = folder + "/slow-git"
+        try """
+        #!/bin/sh
+        case " $* " in *" status "*) sleep 1 ;; esac
+        exec "\(installation.executable)" "$@"
+        """.write(toFile: script, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: script)
+        installation.executable = script
+        return Git(installation: installation, log: log, environment: TestGit.isolatedEnvironment)
+    }
+
+    func statusCommands(in log: CommandLog) -> [CommandLog.Entry] {
+        log.entries.filter { $0.arguments.contains("status") }
+    }
+
+    @Test func aChangeSomeoneMadeDoesntWaitForTheCounts() async throws {
+        let repository = try await copyRepository(try await Fixture.repository("basic"), into: folder)
+        let list = RepositoryList(store: store)
+        await list.connect(git: try await gitWithSlowStatus(log: CommandLog()))
+        _ = try await list.add(folder: repository)
+        let listed = try #require(list.repositories.first)
+        await list.refresh()
+
+        try await runGit("worktree", "add", "--quiet", folder + "/notes", "feature", in: repository)
+        await list.refresh(repositoryAt: listed.path)
+
+        #expect(listed.worktrees.contains { $0.path == folder + "/notes" })
+        #expect(listed.uncommittedFiles[folder + "/notes"] == nil)
+
+        await list.refresh()
+        #expect(listed.uncommittedFiles[folder + "/notes"] == 0)
+    }
+
+    @Test func looksOnceMoreHoweverOftenItsAskedDuringALook() async throws {
+        let repository = try await copyRepository(try await Fixture.repository("basic"), into: folder)
+        let log = CommandLog()
+        let list = RepositoryList(store: store)
+        await list.connect(git: try await gitWithSlowStatus(log: log))
+        _ = try await list.add(folder: repository)
+        await list.refresh()
+        let before = statusCommands(in: log).count
+
+        async let first: Void = list.refresh()
+        async let second: Void = list.refresh()
+        async let third: Void = list.refresh()
+        _ = await (first, second, third)
+
+        #expect(statusCommands(in: log).count == before + 2)
+    }
+
+    @Test func looksAtALimitedNumberOfRepositoriesAtOnce() async throws {
+        let log = CommandLog()
+        let list = RepositoryList(store: store)
+        await list.connect(git: try await gitWithSlowStatus(log: log))
+        for index in 0...RepositoryList.lookLimit {
+            _ = try await list.add(folder: try await copyRepository(try await Fixture.repository("basic"), into: folder + "/\(index)"))
+        }
+        await list.refresh()
+
+        let commands = statusCommands(in: log)
+        let mostAtOnce = commands.map { command in
+            commands.count { other in
+                let running = other.duration.map { TimeInterval($0.components.seconds) + TimeInterval($0.components.attoseconds) / 1e18 } ?? 0
+                return other.started <= command.started && command.started < other.started.addingTimeInterval(running)
+            }
+        }.max()
+        #expect(mostAtOnce == RepositoryList.lookLimit)
+        #expect(list.repositories.allSatisfy { $0.uncommittedFiles.count == 1 })
+    }
+
     @Test func remembersWhichRepositoriesAreExpanded() async throws {
         let list = try await makeList()
         _ = try await list.add(folder: try await Fixture.repository("basic"))

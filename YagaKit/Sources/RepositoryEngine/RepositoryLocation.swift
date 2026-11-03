@@ -49,6 +49,7 @@ public struct RepositoryLocation: Sendable, Hashable {
 
     /// Finds the repository that `path` is in, which can be any folder of a
     /// worktree, or a git directory.
+    @concurrent
     public static func find(containing path: String, git: Git) async throws -> RepositoryLocation {
         let details = GitCommand(
             [

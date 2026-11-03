@@ -15,18 +15,22 @@ struct ChildProcessTests {
         )
     }
 
-    @Test func startsAtLowPriorityWhenAsked() async throws {
-        func priority(lowPriority: Bool) async throws -> Int {
+    @Test func startsAtThePriorityItsAskedFor() async throws {
+        func running(at priority: GitCommand.Priority) async throws -> Int {
             let process = try ChildProcess.spawn(
                 executable: "/bin/sh",
                 arguments: ["-c", "ps -o pri= -p $$"],
                 environment: shellEnvironment,
-                lowPriority: lowPriority
+                priority: priority
             )
             let output = String(decoding: try await process.readAll(), as: UTF8.self)
             return try #require(Int(output.trimmingCharacters(in: .whitespacesAndNewlines)))
         }
-        #expect(try await priority(lowPriority: true) < (try await priority(lowPriority: false)))
+        let background = try await running(at: .background)
+        let utility = try await running(at: .utility)
+        let normal = try await running(at: .normal)
+        #expect(background < utility)
+        #expect(utility < normal)
     }
 
     @Test func reportsExitStatus() async throws {

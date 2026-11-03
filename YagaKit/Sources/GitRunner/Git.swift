@@ -59,6 +59,7 @@ public struct Git: Sendable {
     /// - Throws: `GitError.failed` when git's exit status isn't one of the
     ///   command's success statuses, `GitError.couldNotStart`, or
     ///   `CancellationError` when the task is cancelled, which also stops git.
+    @concurrent
     public func run(_ command: GitCommand, input: [UInt8]? = nil) async throws -> GitResult {
         try Task.checkCancellation()
         let running = try start(command, withInput: input != nil)
@@ -109,7 +110,7 @@ public struct Git: Sendable {
                 environment: environment.merging(command.environment) { $1 },
                 directory: command.directory,
                 withInput: withInput,
-                lowPriority: command.runsAtLowPriority,
+                priority: command.priority,
                 onExit: { [log] status in log.finish(entry, .finished(status)) }
             )
             return RunningGit(command: command, process: process)

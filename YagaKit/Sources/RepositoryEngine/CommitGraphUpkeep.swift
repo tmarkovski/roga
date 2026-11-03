@@ -35,9 +35,9 @@ public enum CommitGraphUpdate: Sendable, Hashable {
         /// Whether `core.commitGraph` is false, which also makes git ignore
         /// the files. git fails on a value that isn't a boolean, here and in
         /// every command that reads history.
-        static func isTurnedOffInGit(git: Git, in directory: String, lowPriority: Bool = false) async throws -> Bool {
+        static func isTurnedOffInGit(git: Git, in directory: String, priority: GitCommand.Priority = .normal) async throws -> Bool {
             var read = GitCommand("config", "--type=bool", "--default", "true", "core.commitGraph", in: directory)
-            read.runsAtLowPriority = lowPriority
+            read.priority = priority
             return try await git.text(read) == "false"
         }
 
@@ -70,18 +70,18 @@ struct CommitGraphUpkeep: Sendable {
 
     @concurrent
     func update() async throws -> CommitGraphUpdate {
-        let refs = try await RefsLoader.load(git: git, in: location.commonDirectory, lowPriority: true)
+        let refs = try await RefsLoader.load(git: git, in: location.commonDirectory, priority: .background)
         if let reason = CommitGraphUpdate.Reason.gitIgnoresFiles(in: location, refs: refs) { return .skipped(reason) }
         // git prints a warning and writes nothing when the setting is false,
         // so yaga asks first to be able to say why.
-        if try await CommitGraphUpdate.Reason.isTurnedOffInGit(git: git, in: location.commonDirectory, lowPriority: true) {
+        if try await CommitGraphUpdate.Reason.isTurnedOffInGit(git: git, in: location.commonDirectory, priority: .background) {
             return .skipped(.turnedOffInGit)
         }
         guard try await needsWriting(refs) else { return .upToDate }
         if let folder = readOnlyFolder() { return .skipped(.cannotWrite(folder: folder)) }
 
         var write = GitCommand("commit-graph", "write", "--reachable", "--split", in: location.commonDirectory)
-        write.runsAtLowPriority = true
+        write.priority = .background
         _ = try await git.run(write)
         return .written
     }

@@ -36,6 +36,15 @@ public final class RepositoryList {
 
     @ObservationIgnored private let store: RepositoryStore
     @ObservationIgnored private var activation: (any NSObjectProtocol)?
+    /// How many repositories it's looking at.
+    @ObservationIgnored private var looksRunning = 0
+    /// The repositories waiting for their turn to be looked at, oldest first.
+    @ObservationIgnored private var waitingToLook: [CheckedContinuation<Void, Never>] = []
+
+    /// How many repositories it looks at at once. Each one takes a `git status`
+    /// in every worktree, and a list of dozens would otherwise start them all
+    /// together every time yaga becomes active.
+    static let lookLimit = 4
 
     public convenience init() {
         self.init(store: .standard)
@@ -72,7 +81,10 @@ public final class RepositoryList {
         }
         await withTaskGroup { group in
             for repository in repositories {
-                group.addTask { await self.open(repository, git: git) }
+                group.addTask {
+                    await self.open(repository, git: git)
+                    await self.finishLooking(at: repository)
+                }
             }
         }
     }
@@ -95,7 +107,7 @@ public final class RepositoryList {
             return selection
         }
 
-        let session = try RepositorySession(location: Self.gitDirectoryLocation(found), git: git)
+        let session = try await RepositorySession.start(location: Self.gitDirectoryLocation(found), git: git)
         let worktrees: [Worktree]
         let owners: [String]
         do {
@@ -120,7 +132,7 @@ public final class RepositoryList {
         repository.worktrees = worktrees
         repositories.append(repository)
         save()
-        Task { await lookAtWorktrees(of: repository, session: session) }
+        look(at: repository, session: session)
         return selection
     }
 
@@ -242,17 +254,23 @@ public final class RepositoryList {
     }
 
     /// Lists each open repository's worktrees again, and tries again to open
-    /// the repositories that couldn't be opened.
+    /// the repositories that couldn't be opened. It returns once it has looked
+    /// at all of them.
     func refresh() async {
         guard let git else { return }
         await withTaskGroup { group in
             for repository in repositories {
-                group.addTask { await self.refresh(repository, git: git) }
+                group.addTask {
+                    await self.refresh(repository, git: git)
+                    await self.finishLooking(at: repository)
+                }
             }
         }
     }
 
-    /// Lists a repository's worktrees again, because one of them changed.
+    /// Lists a repository's worktrees again, because one of them changed. It
+    /// returns once the sidebar has the list, which anything someone asked for
+    /// can rely on, rather than waiting for what else it reads about them.
     func refresh(repositoryAt path: String) async {
         guard let git, let repository = repository(at: path) else { return }
         await refresh(repository, git: git)
@@ -266,8 +284,7 @@ public final class RepositoryList {
             do {
                 let worktrees = try await session.worktrees()
                 if worktrees != repository.worktrees { repository.worktrees = worktrees }
-                await updateOwners(of: repository, session: session)
-                await lookAtWorktrees(of: repository, session: session)
+                look(at: repository, session: session)
             } catch {
                 guard !FileManager.default.fileExists(atPath: repository.path) else { return }
                 await session.close()
@@ -293,10 +310,48 @@ public final class RepositoryList {
         }
     }
 
-    /// Reads what the rows of a repository's worktrees need beyond the list of them.
-    private func lookAtWorktrees(of repository: ListedRepository, session: RepositorySession) async {
-        await updateRemoteBranches(of: repository, session: session)
-        await countUncommittedFiles(in: repository, session: session)
+    /// Reads what the rows of a repository's worktrees need beyond the list of
+    /// them, without anyone waiting, because that takes a while in a large
+    /// worktree. Only one look runs in a repository. Asking during one looks once
+    /// more when it's done, however many times it's asked, because something may
+    /// have changed since it started.
+    private func look(at repository: ListedRepository, session: RepositorySession) {
+        guard repository.look == nil else {
+            repository.needsAnotherLook = true
+            return
+        }
+        repository.look = Task {
+            repeat {
+                await takeTurnToLook()
+                repository.needsAnotherLook = false
+                await updateOwners(of: repository, session: session)
+                await updateRemoteBranches(of: repository, session: session)
+                await countUncommittedFiles(in: repository, session: session)
+                finishTurnToLook()
+            } while repository.needsAnotherLook
+            repository.look = nil
+        }
+    }
+
+    /// Returns once a look that's running in a repository is done.
+    private func finishLooking(at repository: ListedRepository) async {
+        await repository.look?.value
+    }
+
+    private func takeTurnToLook() async {
+        if looksRunning < Self.lookLimit {
+            looksRunning += 1
+        } else {
+            await withCheckedContinuation { waitingToLook.append($0) }
+        }
+    }
+
+    private func finishTurnToLook() {
+        if waitingToLook.isEmpty {
+            looksRunning -= 1
+        } else {
+            waitingToLook.removeFirst().resume()
+        }
     }
 
     /// Reads which remote branches the branches of its linked worktrees track, for
@@ -312,7 +367,7 @@ public final class RepositoryList {
     }
 
     /// Counts the uncommitted files of each of a repository's worktrees, one
-    /// worktree at a time and at low priority, because each one looks at every
+    /// worktree at a time and at utility priority, because each one looks at every
     /// file in the worktree. One that git can't look at has no count.
     private func countUncommittedFiles(in repository: ListedRepository, session: RepositorySession) async {
         var counts: [String: Int] = [:]
@@ -339,7 +394,7 @@ public final class RepositoryList {
         repository.state = .opening
         do {
             let location = try await RepositoryLocation.find(containing: path, git: git)
-            let session = try RepositorySession(location: Self.gitDirectoryLocation(location), git: git)
+            let session = try await RepositorySession.start(location: Self.gitDirectoryLocation(location), git: git)
             let worktrees = try await session.worktrees()
             guard repositories.contains(where: { $0 === repository }) else {
                 await session.close()
@@ -357,8 +412,7 @@ public final class RepositoryList {
                 }
                 save()
             }
-            await updateOwners(of: repository, session: session)
-            await lookAtWorktrees(of: repository, session: session)
+            look(at: repository, session: session)
         } catch {
             repository.state = .failed(String(describing: error))
         }
@@ -432,6 +486,10 @@ public final class ListedRepository: Identifiable {
     /// How many deletions have finished, for windows to look at the repository's
     /// refs again.
     fileprivate(set) var deletionCount = 0
+    /// The look at its worktrees that's running.
+    @ObservationIgnored fileprivate var look: Task<Void, Never>?
+    /// Whether someone asked to look while one was running.
+    @ObservationIgnored fileprivate var needsAnotherLook = false
 
     fileprivate init(saved: RepositoryStore.SavedRepository) {
         path = saved.path

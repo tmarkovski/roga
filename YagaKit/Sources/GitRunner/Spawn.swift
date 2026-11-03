@@ -78,8 +78,7 @@ final class ChildProcess: Sendable {
 
     /// Starts `executable` with `arguments`, which don't include the program
     /// name. Standard input is an empty pipe end that's closed at once unless
-    /// `withInput` is true. With `lowPriority`, macOS runs the process at
-    /// background priority. `onExit` is called on the process's queue once its
+    /// `withInput` is true. `onExit` is called on the process's queue once its
     /// status has been collected, whether or not anyone is waiting for it.
     static func spawn(
         executable: String,
@@ -87,7 +86,7 @@ final class ChildProcess: Sendable {
         environment: [String: String],
         directory: String? = nil,
         withInput: Bool = false,
-        lowPriority: Bool = false,
+        priority: GitCommand.Priority = .normal,
         onExit: @escaping @Sendable (ExitStatus) -> Void = { _ in }
     ) throws(SpawnError) -> ChildProcess {
         let outputPipe = try makePipe(executable, directory)
@@ -141,8 +140,10 @@ final class ChildProcess: Sendable {
             &attributes,
             Int16(POSIX_SPAWN_CLOEXEC_DEFAULT | POSIX_SPAWN_SETSIGDEF | POSIX_SPAWN_SETSIGMASK | POSIX_SPAWN_SETPGROUP)
         )
-        if lowPriority {
-            posix_spawnattr_set_qos_class_np(&attributes, QOS_CLASS_BACKGROUND)
+        switch priority {
+        case .normal: break
+        case .utility: posix_spawnattr_set_qos_class_np(&attributes, QOS_CLASS_UTILITY)
+        case .background: posix_spawnattr_set_qos_class_np(&attributes, QOS_CLASS_BACKGROUND)
         }
 
         let argv = ([executable] + arguments).map { strdup($0) } + [nil]

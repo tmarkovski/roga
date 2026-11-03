@@ -34,10 +34,24 @@ public struct GitCommand: Sendable, Hashable, CustomStringConvertible {
     /// `git merge-base --is-ancestor`.
     public var successStatuses: Set<Int32> = [0]
 
-    /// Whether the command is upkeep that nobody is waiting for. macOS then
-    /// runs it at background priority, which keeps it on the efficiency cores
-    /// and holds back its disk use while anything else needs the disk.
-    public var runsAtLowPriority = false
+    /// How readily macOS runs a command.
+    public enum Priority: Sendable, Hashable {
+        /// Someone is waiting for it.
+        case normal
+        /// Nobody is waiting for it, but someone would notice if it were late,
+        /// as with the sidebar's counts. It runs about as fast as at normal
+        /// priority, unless something more urgent needs the machine.
+        case utility
+        /// Heavy upkeep that can take as long as it takes. macOS keeps it on the
+        /// efficiency cores and holds back its disk use while anything else needs
+        /// the disk, which made `git status` about 15 times slower on an M1 Max
+        /// with other apps open, and took minutes when the machine was busy
+        /// (docs/performance). So nothing that someone might wait for belongs
+        /// here, or may wait for a command that's here.
+        case background
+    }
+
+    public var priority = Priority.normal
 
     public init(_ arguments: [String], in directory: String? = nil) {
         self.arguments = arguments
