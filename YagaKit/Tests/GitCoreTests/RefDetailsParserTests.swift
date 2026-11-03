@@ -70,8 +70,8 @@ struct RefDetailsParserTests {
     @Test func readsTheFirstURLOfEachRemote() throws {
         let output = "remote.origin.url\nhttps://github.com/a/b.git\0remote.origin.url\nhttps://mirror.example.com/a/b.git\0remote.my.fork.url\ngit@example.com:me/b.git\0"
         #expect(try RemoteListParser.parse(Array(output.utf8)) == [
-            "origin": "github.com/a/b.git",
-            "my.fork": "example.com/me/b.git",
+            "origin": "https://github.com/a/b.git",
+            "my.fork": "git@example.com:me/b.git",
         ])
         #expect(try RemoteListParser.parse([]) == [:])
         #expect(throws: ParseError.self) { try RemoteListParser.parse(Array("nonsense\0".utf8)) }
@@ -167,5 +167,27 @@ struct RefDetailsParserTests {
     ])
     func remotesWithoutAnOwner(url: String) {
         #expect(RemoteAddress.owner(url) == nil)
+    }
+
+    @Test func ownersOfARepository() {
+        // Without an `origin`, they go by the names of their remotes.
+        #expect(RemoteAddress.owners([
+            "work": "https://github.com/acme/api.git",
+            "client": "https://me@dev.azure.com/northwind/api/_git/api",
+        ]) == ["northwind", "acme"])
+        // `origin` comes before a name that sorts earlier.
+        #expect(RemoteAddress.owners([
+            "backup": "git@gitlab.com:safe/api.git",
+            "origin": "git@github.com:me/api.git",
+        ]) == ["me", "safe"])
+        // One owner on two hosts, however they spell it, is one owner.
+        #expect(RemoteAddress.owners([
+            "origin": "git@github.com:Acme/api.git",
+            "mirror": "git@gitlab.com:acme/api.git",
+        ]) == ["Acme"])
+        // A remote without an owner doesn't hide one that has one.
+        #expect(RemoteAddress.owners(["origin": "/Volumes/backup/api.git", "work": "git@github.com:acme/api.git"]) == ["acme"])
+        #expect(RemoteAddress.owners(["origin": "/Volumes/backup/api.git"]) == [])
+        #expect(RemoteAddress.owners([:]) == [])
     }
 }

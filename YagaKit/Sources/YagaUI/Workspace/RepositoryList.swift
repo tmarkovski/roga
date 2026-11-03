@@ -97,10 +97,10 @@ public final class RepositoryList {
 
         let session = try RepositorySession(location: Self.gitDirectoryLocation(found), git: git)
         let worktrees: [Worktree]
-        let origin: String?
+        let owners: [String]
         do {
             worktrees = try await session.worktrees()
-            origin = try await session.originURL()
+            owners = try await session.owners()
         } catch {
             await session.close()
             throw error
@@ -113,9 +113,9 @@ public final class RepositoryList {
         let repository = ListedRepository(saved: RepositoryStore.SavedRepository(
             path: found.commonDirectory,
             bookmark: Self.bookmark(for: found.commonDirectory),
-            isExpanded: false,
-            owner: origin.flatMap(RemoteAddress.owner)
+            isExpanded: false
         ))
+        repository.owners = owners
         repository.state = .open(session)
         repository.worktrees = worktrees
         repositories.append(repository)
@@ -240,7 +240,7 @@ public final class RepositoryList {
             do {
                 let worktrees = try await session.worktrees()
                 if worktrees != repository.worktrees { repository.worktrees = worktrees }
-                await updateOwner(of: repository, session: session)
+                await updateOwners(of: repository, session: session)
                 await countUncommittedFiles(in: repository, session: session)
             } catch {
                 guard !FileManager.default.fileExists(atPath: repository.path) else { return }
@@ -252,17 +252,17 @@ public final class RepositoryList {
         }
     }
 
-    /// Reads who owns the repository, in case its `origin` changed. It keeps
+    /// Reads who owns the repository, in case its remotes changed. It keeps
     /// what it knew when git can't say.
-    private func updateOwner(of repository: ListedRepository, session: RepositorySession) async {
-        let owner: String?
+    private func updateOwners(of repository: ListedRepository, session: RepositorySession) async {
+        let owners: [String]
         do {
-            owner = try await session.originURL().flatMap(RemoteAddress.owner)
+            owners = try await session.owners()
         } catch {
             return
         }
-        if owner != repository.owner {
-            repository.owner = owner
+        if owners != repository.owners {
+            repository.owners = owners
             save()
         }
     }
@@ -313,7 +313,7 @@ public final class RepositoryList {
                 }
                 save()
             }
-            await updateOwner(of: repository, session: session)
+            await updateOwners(of: repository, session: session)
             await countUncommittedFiles(in: repository, session: session)
         } catch {
             repository.state = .failed(String(describing: error))
@@ -372,8 +372,9 @@ public final class ListedRepository: Identifiable {
     /// The linked worktrees it goes on showing while it's collapsed, by their
     /// folders: the ones that were selected while it was.
     fileprivate(set) var keptWorktrees: Set<String>
-    /// Who owns the repository, from its `origin` URL, or nil without one.
-    fileprivate(set) var owner: String?
+    /// Who owns the repository, from its remotes' URLs, with `origin`'s owner
+    /// first.
+    fileprivate(set) var owners: [String]
     fileprivate(set) var state = State.opening
     /// The main worktree first, then the linked ones.
     fileprivate(set) var worktrees: [Worktree] = []
@@ -385,13 +386,13 @@ public final class ListedRepository: Identifiable {
         bookmark = saved.bookmark
         isExpanded = saved.isExpanded
         keptWorktrees = Set(saved.keptWorktrees ?? [])
-        owner = saved.owner
+        owners = (saved.owner.map { [$0] } ?? []) + (saved.moreOwners ?? [])
     }
 
     /// A repository that isn't in a list, for checking how a sidebar lays out.
-    init(path: String, owner: String? = nil, isExpanded: Bool = false, keptWorktrees: Set<String> = [], state: State = .opening, worktrees: [Worktree] = [], uncommittedFiles: [String: Int] = [:]) {
+    init(path: String, owners: [String] = [], isExpanded: Bool = false, keptWorktrees: Set<String> = [], state: State = .opening, worktrees: [Worktree] = [], uncommittedFiles: [String: Int] = [:]) {
         self.path = path
-        self.owner = owner
+        self.owners = owners
         self.isExpanded = isExpanded
         self.keptWorktrees = keptWorktrees
         self.state = state
@@ -403,7 +404,7 @@ public final class ListedRepository: Identifiable {
 
     /// The repository's name with its owner in front, as in `git/git`, for
     /// when the sidebar lists it among other owners' repositories.
-    var nameWithOwner: String { owner.map { $0 + "/" + name } ?? name }
+    var nameWithOwner: String { owners.first.map { $0 + "/" + name } ?? name }
 
     /// The folder that holds the repository's files, or a bare repository's
     /// git directory. It comes from the git directory, like the name, so it's
@@ -427,7 +428,7 @@ public final class ListedRepository: Identifiable {
     }
 
     fileprivate var saved: RepositoryStore.SavedRepository {
-        RepositoryStore.SavedRepository(path: path, bookmark: bookmark, isExpanded: isExpanded, keptWorktrees: keptWorktrees.isEmpty ? nil : keptWorktrees.sorted(), owner: owner)
+        RepositoryStore.SavedRepository(path: path, bookmark: bookmark, isExpanded: isExpanded, keptWorktrees: keptWorktrees.isEmpty ? nil : keptWorktrees.sorted(), owner: owners.first, moreOwners: owners.count > 1 ? Array(owners.dropFirst()) : nil)
     }
 }
 

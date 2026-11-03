@@ -105,7 +105,7 @@ struct AddRepositories: View {
         let picked = pickedPaths
         return (clones ?? []).filter { clone in
             let isPicked = picked.contains(clone.path) || picked.contains((clone.path as NSString).deletingLastPathComponent)
-            return (isPicked || scope == .all || groups.scope(ofOwner: clone.owner) == scope)
+            return (isPicked || scope == .all || groups.scopes(ofOwners: clone.owners).contains(scope))
                 && (filter.isEmpty || clone.name.localizedStandardContains(filter))
         }
     }

@@ -7,12 +7,12 @@ import Testing
 struct SidebarLayoutTests {
     /// A repository with a main worktree and linked ones with these names, at
     /// `/git/<name>`.
-    func repository(_ name: String, owner: String? = nil, linked: [String] = [], isExpanded: Bool = false, kept: [String] = [], uncommitted: [String: Int] = [:], branch: String = "main") -> ListedRepository {
+    func repository(_ name: String, owner: String? = nil, moreOwners: [String] = [], linked: [String] = [], isExpanded: Bool = false, kept: [String] = [], uncommitted: [String: Int] = [:], branch: String = "main") -> ListedRepository {
         let main = Worktree(path: "/git/\(name)", branch: "refs/heads/\(branch)", isMain: true)
         let others = linked.map { Worktree(path: "/git/\($0)", branch: "refs/heads/\($0)") }
         return ListedRepository(
             path: "/git/\(name)/.git",
-            owner: owner,
+            owners: (owner.map { [$0] } ?? []) + moreOwners,
             isExpanded: isExpanded,
             keptWorktrees: Set(kept.map { "/git/\($0)" }),
             worktrees: [main] + others,
@@ -55,6 +55,41 @@ struct SidebarLayoutTests {
         #expect(groups.otherOwners.map(\.name) == ["linux"])
         #expect(groups.noRemote.map(\.name) == ["scratch"])
         #expect(groups.scopes == [.all, .organization("acme"), .other])
+    }
+
+    @Test func anyRemoteCanPutARepositoryInAnOrganization() {
+        let client = repository("submissions", owner: "northwind", moreOwners: ["Acme"])
+        let groups = RepositoryGroups([client, repository("api", owner: "acme")])
+        #expect(groups.organizations.map(\.id) == ["acme"])
+        #expect(groups.organizations[0].repositories.map(\.name) == ["api", "submissions"])
+        #expect(groups.otherOwners.isEmpty)
+        #expect(groups.scopes == [.all, .organization("acme")])
+        #expect(groups.scopes(of: client) == [.organization("acme")])
+    }
+
+    @Test func aRepositoryIsListedInEachOfItsOrganizations() {
+        let shared = repository("shared", owner: "acme", moreOwners: ["northwind"])
+        let groups = RepositoryGroups([shared, repository("api", owner: "acme"), repository("web", owner: "northwind")])
+        #expect(groups.repositories(in: .organization("acme")).map(\.name) == ["api", "shared"])
+        #expect(groups.repositories(in: .organization("northwind")).map(\.name) == ["shared", "web"])
+        #expect(groups.all.map(\.name) == ["api", "shared", "web"])
+        #expect(groups.scopes(of: shared) == [.organization("acme"), .organization("northwind")])
+    }
+
+    @Test func aRepositoryWithOwnersThatHaveNoOthersIsInOtherOnce() {
+        let linux = repository("linux", owner: "torvalds", moreOwners: ["mirrors"])
+        let groups = RepositoryGroups([linux])
+        #expect(groups.organizations.isEmpty)
+        #expect(groups.otherOwners.map(\.nameWithOwner) == ["torvalds/linux"])
+        #expect(groups.repositories(in: .other).count == 1)
+        #expect(groups.scopes(of: linux) == [.other])
+    }
+
+    @Test func aCloneIsListedWhereItsOwnersAre() {
+        let groups = RepositoryGroups([repository("api", owner: "acme"), repository("web", owner: "acme")])
+        #expect(groups.scopes(ofOwners: ["northwind", "ACME"]) == [.organization("acme")])
+        #expect(groups.scopes(ofOwners: ["northwind"]) == [.other])
+        #expect(groups.scopes(ofOwners: []) == [.other])
     }
 
     @Test func theRailListsOrganizationsFromAToZ() {
@@ -207,6 +242,39 @@ struct SidebarLayoutTests {
         place.record(web.home, in: groups)
         #expect(place.scope == .all)
         #expect(place.lastSelections[.organization("acme")] == web.home)
+    }
+
+    @Test func aSelectionInSeveralOrganizationsStaysInTheOneItsIn() {
+        let shared = repository("shared", owner: "acme", moreOwners: ["northwind"])
+        let web = repository("web", owner: "northwind")
+        let groups = RepositoryGroups([shared, repository("api", owner: "acme"), web])
+        var place = SidebarPlace()
+        place.scope = .organization("northwind")
+        place.lastSelections[.organization("acme")] = web.home
+        place.record(shared.home, in: groups)
+        #expect(place.scope == .organization("northwind"))
+        #expect(place.lastSelections[.organization("northwind")] == shared.home)
+        #expect(place.lastSelections[.organization("acme")] == web.home)
+    }
+
+    @Test func aSelectionInSeveralOrganizationsMovesTheSidebarToTheFirst() {
+        let shared = repository("shared", owner: "acme", moreOwners: ["northwind"])
+        let groups = RepositoryGroups([shared, repository("api", owner: "acme"), repository("web", owner: "northwind"), repository("scratch")])
+        var place = SidebarPlace()
+        place.scope = .other
+        place.record(shared.home, in: groups)
+        #expect(place.scope == .organization("acme"))
+        #expect(place.lastSelections[.organization("acme")] == shared.home)
+    }
+
+    @Test func aSelectionFromAllCountsInEachOfItsOrganizations() {
+        let shared = repository("shared", owner: "acme", moreOwners: ["northwind"])
+        let groups = RepositoryGroups([shared, repository("api", owner: "acme"), repository("web", owner: "northwind")])
+        var place = SidebarPlace()
+        place.record(shared.home, in: groups)
+        #expect(place.scope == .all)
+        #expect(place.lastSelections[.organization("acme")] == shared.home)
+        #expect(place.lastSelections[.organization("northwind")] == shared.home)
     }
 
     @Test func aWindowsPlaceSurvivesSaving() throws {

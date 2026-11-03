@@ -25,12 +25,15 @@ struct SidebarPlace: Codable, Hashable, Sendable {
 
     /// Remembers that the window shows `selection`, and moves the sidebar to
     /// where it's listed, as when File > Open adds a repository to another
-    /// organization.
+    /// organization. A repository in several organizations leaves the sidebar
+    /// on the one it's on, and doesn't change what the others showed last.
     mutating func record(_ selection: WorktreeSelection, in groups: RepositoryGroups) {
         guard let repository = groups.repository(at: selection.repository) else { return }
-        let owner = groups.scope(of: repository)
-        lastSelections[owner] = selection
-        if scope != .all { scope = owner }
+        let listedIn = groups.scopes(of: repository)
+        if scope != .all, !listedIn.contains(scope) { scope = listedIn[0] }
+        for place in scope == .all ? listedIn : [scope] {
+            lastSelections[place] = selection
+        }
     }
 }
 
@@ -59,7 +62,7 @@ struct RepositoryOrganization: Identifiable {
 struct RepositoryGroups {
     /// From A to Z.
     private(set) var organizations: [RepositoryOrganization] = []
-    /// The repositories of owners with only one, from A to Z by owner.
+    /// The repositories whose owners have no others, from A to Z by owner.
     private(set) var otherOwners: [ListedRepository] = []
     /// From A to Z.
     private(set) var noRemote: [ListedRepository] = []
@@ -77,16 +80,22 @@ struct RepositoryGroups {
         }
         all = sorted
         repeatedNames = Set(Dictionary(grouping: sorted, by: \.name).filter { $0.value.count > 1 }.keys)
-        for (id, owned) in Dictionary(grouping: sorted.filter { $0.owner != nil }, by: { $0.owner!.lowercased() }) {
-            if owned.count >= 2 {
-                organizations.append(RepositoryOrganization(id: id, name: owned[0].owner!, repositories: owned))
-            } else {
-                otherOwners += owned
+        var owned: [String: (name: String, repositories: [ListedRepository])] = [:]
+        for repository in sorted {
+            for owner in repository.owners {
+                owned[owner.lowercased(), default: (owner, [])].repositories.append(repository)
             }
         }
+        for (id, group) in owned where group.repositories.count >= 2 {
+            organizations.append(RepositoryOrganization(id: id, name: group.name, repositories: group.repositories))
+        }
         organizations.sort { $0.id < $1.id }
+        let onTheRail = Set(organizations.map(\.id))
+        otherOwners = sorted.filter { repository in
+            !repository.owners.isEmpty && onTheRail.isDisjoint(with: repository.owners.map { $0.lowercased() })
+        }
         otherOwners.sort { $0.nameWithOwner.localizedStandardCompare($1.nameWithOwner) == .orderedAscending }
-        noRemote = sorted.filter { $0.owner == nil }
+        noRemote = sorted.filter(\.owners.isEmpty)
     }
 
     /// What the rail lists, from the top.
@@ -117,16 +126,16 @@ struct RepositoryGroups {
         all.first { $0.path == path }
     }
 
-    /// The organization a repository is in, or Other.
-    func scope(of repository: ListedRepository) -> SidebarScope {
-        scope(ofOwner: repository.owner)
+    /// The organizations a repository is in, or else Other.
+    func scopes(of repository: ListedRepository) -> [SidebarScope] {
+        scopes(ofOwners: repository.owners)
     }
 
-    /// Where a repository with this owner would be listed, as for one that
+    /// Where a repository with these owners would be listed, as for one that
     /// could be added.
-    func scope(ofOwner owner: String?) -> SidebarScope {
-        guard let id = owner?.lowercased(), organizations.contains(where: { $0.id == id }) else { return .other }
-        return .organization(id)
+    func scopes(ofOwners owners: [String]) -> [SidebarScope] {
+        let onTheRail = owners.map { $0.lowercased() }.filter { id in organizations.contains { $0.id == id } }
+        return onTheRail.isEmpty ? [.other] : onTheRail.map(SidebarScope.organization)
     }
 }
 

@@ -148,9 +148,9 @@ public enum RemoteListParser {
     /// Each entry is the setting's name, a line break and its value, ending in
     /// a NUL byte. A remote with several URLs fetches from the first.
     ///
-    /// - Returns: How to show each remote's address, by the remote's name.
+    /// - Returns: Each remote's URL, by the remote's name.
     public static func parse(_ output: [UInt8]) throws(ParseError) -> [String: String] {
-        var addresses: [String: String] = [:]
+        var urls: [String: String] = [:]
         for entry in output.split(separator: 0) {
             guard let lineBreak = entry.firstIndex(of: UInt8(ascii: "\n")) else {
                 throw ParseError("git config printed a setting without a value.")
@@ -160,11 +160,11 @@ public enum RemoteListParser {
                 throw ParseError("git config printed \(key) when asked for the remotes' URLs.")
             }
             let name = String(key.dropFirst("remote.".count).dropLast(".url".count))
-            if addresses[name] == nil {
-                addresses[name] = RemoteAddress.shown(String(decoding: entry[entry.index(after: lineBreak)...], as: UTF8.self))
+            if urls[name] == nil {
+                urls[name] = String(decoding: entry[entry.index(after: lineBreak)...], as: UTF8.self)
             }
         }
-        return addresses
+        return urls
     }
 }
 

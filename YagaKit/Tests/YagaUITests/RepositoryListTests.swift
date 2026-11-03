@@ -237,25 +237,44 @@ struct RepositoryListTests {
         try await runGit("remote", "set-url", "origin", "git@github.com:acme/basic.git", in: repository)
         let list = try await makeList()
         _ = try await list.add(folder: repository)
-        #expect(list.repositories.first?.owner == "acme")
+        #expect(list.repositories.first?.owners == ["acme"])
 
         // It's known before the repository opens, so a repository that can't
         // be opened stays in its organization.
         let reopened = RepositoryList(store: store)
-        #expect(reopened.repositories.first?.owner == "acme")
+        #expect(reopened.repositories.first?.owners == ["acme"])
     }
 
-    @Test func seesThatOriginChanged() async throws {
+    @Test func remembersEveryOwnerOfARepositoryWithoutAnOrigin() async throws {
+        let repository = try await copyRepository(try await Fixture.repository("basic"), into: folder)
+        try await runGit("remote", "remove", "origin", in: repository)
+        try await runGit("remote", "add", "work", "https://github.com/acme/basic.git", in: repository)
+        try await runGit("remote", "add", "client", "https://me@dev.azure.com/northwind/basic/_git/basic", in: repository)
+        let list = try await makeList()
+        _ = try await list.add(folder: repository)
+        #expect(list.repositories.first?.owners == ["northwind", "acme"])
+
+        let reopened = RepositoryList(store: store)
+        #expect(reopened.repositories.first?.owners == ["northwind", "acme"])
+    }
+
+    @Test func seesThatRemotesChanged() async throws {
         let repository = try await copyRepository(try await Fixture.repository("basic"), into: folder)
         try await runGit("remote", "set-url", "origin", "https://github.com/acme/basic.git", in: repository)
         let list = try await makeList()
         _ = try await list.add(folder: repository)
         try await runGit("remote", "set-url", "origin", "https://github.com/northwind/basic.git", in: repository)
         await list.refresh()
-        #expect(list.repositories.first?.owner == "northwind")
+        #expect(list.repositories.first?.owners == ["northwind"])
+        try await runGit("remote", "add", "work", "https://github.com/acme/basic.git", in: repository)
+        await list.refresh()
+        #expect(list.repositories.first?.owners == ["northwind", "acme"])
         try await runGit("remote", "remove", "origin", in: repository)
         await list.refresh()
-        #expect(list.repositories.first?.owner == nil)
+        #expect(list.repositories.first?.owners == ["acme"])
+        try await runGit("remote", "remove", "work", in: repository)
+        await list.refresh()
+        #expect(list.repositories.first?.owners == [])
     }
 
     @Test func findsClonesBesideTheListedOnes() async throws {

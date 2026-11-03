@@ -63,6 +63,10 @@ enum RefDetailsLoader {
     }
 
     static func remoteAddresses(git: Git, in directory: String) async throws -> [String: String] {
+        try await remoteURLs(git: git, in: directory).mapValues(RemoteAddress.shown)
+    }
+
+    static func remoteURLs(git: Git, in directory: String) async throws -> [String: String] {
         var command = GitCommand(RemoteListParser.arguments, in: directory)
         command.successStatuses = [0, 1]
         return try await parse(command, git: git, with: RemoteListParser.parse)

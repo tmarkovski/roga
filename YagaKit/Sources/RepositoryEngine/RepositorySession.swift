@@ -83,9 +83,10 @@ public actor RepositorySession {
         }
     }
 
-    /// The URL of the `origin` remote, or nil for a repository without one.
-    public nonisolated func originURL() async throws -> String? {
-        try await LocalClones.originURL(in: location.commonDirectory, git: git)
+    /// Who owns the repository, from its remotes' URLs, with `origin`'s owner
+    /// first.
+    public nonisolated func owners() async throws -> [String] {
+        try await LocalClones.owners(in: location.commonDirectory, git: git)
     }
 
     /// Reads commits with the session's `git cat-file`. The result has an

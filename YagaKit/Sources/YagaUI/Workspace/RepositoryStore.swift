@@ -28,10 +28,13 @@ struct RepositoryStore {
         /// The linked worktrees it goes on showing while it's collapsed, by
         /// their folders.
         var keptWorktrees: [String]?
-        /// Who owns the repository, from its `origin` URL. It's saved so that
-        /// the rail is in its usual order at launch, and so that a repository
-        /// on a disk that isn't mounted stays in its organization.
+        /// Who owns the repository, from its remotes' URLs, with `origin`'s
+        /// owner first. It's saved so that the rail is in its usual order at
+        /// launch, and so that a repository on a disk that isn't mounted stays
+        /// in its organization.
         var owner: String?
+        /// The owners after the first, when its remotes have more than one.
+        var moreOwners: [String]?
     }
 
     let file: URL

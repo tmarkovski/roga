@@ -6,8 +6,8 @@ import GitRunner
 public struct LocalClone: Sendable, Hashable, Identifiable {
     /// The clone's top folder, with symbolic links resolved, as git gives it.
     public var path: String
-    /// Who owns it, from its `origin` URL, or nil without one.
-    public var owner: String?
+    /// Who owns it, from its remotes' URLs, with `origin`'s owner first.
+    public var owners: [String]
     /// When its index last changed, which is about when someone last worked
     /// in it.
     public var lastUsed: Date?
@@ -15,9 +15,9 @@ public struct LocalClone: Sendable, Hashable, Identifiable {
     public var id: String { path }
     public var name: String { (path as NSString).lastPathComponent }
 
-    public init(path: String, owner: String? = nil, lastUsed: Date? = nil) {
+    public init(path: String, owners: [String] = [], lastUsed: Date? = nil) {
         self.path = path
-        self.owner = owner
+        self.owners = owners
         self.lastUsed = lastUsed
     }
 }
@@ -57,13 +57,10 @@ public enum LocalClones {
         }
     }
 
-    /// The URL of the `origin` remote, or nil without one. A remote with several
-    /// URLs fetches from the first.
-    static func originURL(in directory: String, git: Git) async throws -> String? {
-        var command = GitCommand("config", "--get-all", "remote.origin.url", in: directory)
-        // git exits with status 1 when the setting isn't there.
-        command.successStatuses = [0, 1]
-        return try await git.text(command).split(separator: "\n").first.map(String.init)
+    /// Who owns the repository in a directory, from its remotes' URLs, with
+    /// `origin`'s owner first.
+    static func owners(in directory: String, git: Git) async throws -> [String] {
+        RemoteAddress.owners(try await RefDetailsLoader.remoteURLs(git: git, in: directory))
     }
 
     private static func candidates(in folder: String) -> [String] {
@@ -82,8 +79,8 @@ public enum LocalClones {
     /// git can't always read a clone's configuration, such as one owned by
     /// someone else, and that only leaves it without an owner.
     private static func clone(at path: String, git: Git) async -> LocalClone {
-        let url = try? await originURL(in: path, git: git)
-        return LocalClone(path: path, owner: url.flatMap(RemoteAddress.owner), lastUsed: lastUsed(path))
+        let owners = try? await Self.owners(in: path, git: git)
+        return LocalClone(path: path, owners: owners ?? [], lastUsed: lastUsed(path))
     }
 
     private static func lastUsed(_ path: String) -> Date? {

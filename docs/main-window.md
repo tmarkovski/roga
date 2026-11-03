@@ -31,7 +31,7 @@ The sidebar runs the full height of the window on the left, with the traffic lig
 The rail picks which repositories the list shows ([decision 16](decisions/0016-a-rail-of-organizations-in-the-sidebar.md)). A thin line separates it from the list, starting under the traffic lights.
 
 - From the top, it has **All**, then each organization from A to Z, then **Other** when it has any repositories. An organization shows two letters from its name, and its tooltip has the whole name. A button at the bottom adds repositories. Items are 38 points square with 9-point corners, and the selected one fills with gray.
-- An organization is the owner in a repository's `origin` URL, with at least two repositories listed. Other has the rest.
+- An organization is the owner in any of a repository's remote URLs, with at least two repositories listed ([decision 18](decisions/0018-every-remote-counts-toward-a-repositorys-organization.md)). A repository with remotes in two organizations is listed in both. Other has the rest.
 - Clicking an organization shows the worktree last shown there, or the main worktree of its first repository. Clicking All keeps the window on what it shows. Each window remembers its own organization, and the last worktree in each.
 - View > All Repositories and the organizations after it have the shortcuts Command-1 to Command-9. View > Hide Organizations, Control-Command-O, hides the rail, which leaves All, and the button for adding repositories moves to the top of the list.
 

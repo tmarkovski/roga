@@ -32,9 +32,17 @@ struct LocalClonesTests {
         try await makeClone("scratch")
         let clones = await LocalClones.find(in: [folder], git: git)
         #expect(clones.map(\.name).sorted() == ["api", "scratch"])
-        #expect(clones.first { $0.name == "api" }?.owner == "acme")
-        #expect(clones.first { $0.name == "scratch" }?.owner == nil)
+        #expect(clones.first { $0.name == "api" }?.owners == ["acme"])
+        #expect(clones.first { $0.name == "scratch" }?.owners == [])
         #expect(clones.allSatisfy { $0.lastUsed != nil })
+    }
+
+    @Test func findsTheOwnersOfEveryRemote() async throws {
+        let clone = try await makeClone("api")
+        try await git.run(GitCommand("remote", "add", "work", "git@github.com:acme/api.git", in: clone))
+        try await git.run(GitCommand("remote", "add", "client", "https://me@dev.azure.com/northwind/api/_git/api", in: clone))
+        let clones = await LocalClones.find(in: [folder], git: git)
+        #expect(clones.first?.owners == ["northwind", "acme"])
     }
 
     @Test func looksOnlyOneLevelDown() async throws {

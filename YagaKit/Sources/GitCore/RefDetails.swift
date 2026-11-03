@@ -221,4 +221,15 @@ public enum RemoteAddress {
         let segments = path.split(separator: "/")
         return segments.count >= 2 ? String(segments[0]) : nil
     }
+
+    /// Who owns a repository with these remotes, each of them once, because
+    /// hosts don't care about case. The owner of `origin` comes first, then
+    /// the others by the names of their remotes.
+    ///
+    /// - Parameter urls: Each remote's URL, by the remote's name.
+    public static func owners(_ urls: [String: String]) -> [String] {
+        let others = urls.keys.filter { $0 != "origin" }.sorted()
+        var seen: Set<String> = []
+        return (["origin"] + others).compactMap { urls[$0].flatMap(owner) }.filter { seen.insert($0.lowercased()).inserted }
+    }
 }
