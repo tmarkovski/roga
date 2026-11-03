@@ -16,7 +16,7 @@ extension BranchModel.Action {
     /// pulling have a direction to show.
     var houseAnimation: HouseAnimation {
         switch self {
-        case .pushing, .forcePushing: .push
+        case .pushing, .forcePushing, .deletingFromRemote: .push
         case .pulling: .heave
         case .fetching, .undoingPull: .waddle
         }

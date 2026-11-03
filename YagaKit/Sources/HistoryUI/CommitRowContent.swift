@@ -35,6 +35,14 @@ public struct CommitRowContent: Hashable {
             case .currentBranch, .detachedHead, .tag: false
             }
         }
+
+        /// Whether the row's menu lists the badge, which is every branch.
+        var isBranch: Bool {
+            switch kind {
+            case .currentBranch, .branch, .remoteBranch: true
+            case .detachedHead, .tag: false
+            }
+        }
     }
 
     public var shortID: String

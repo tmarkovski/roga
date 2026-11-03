@@ -194,6 +194,7 @@ struct RefsPanel: View {
             imageColor: isCurrent ? .green : .secondary,
             title: branch.shortName,
             subtitle: branch.subtitle(isCurrent: isCurrent),
+            menuTitle: branch.shortName,
             isSelected: isSelected(branch.name, branch.tip),
             hasCommands: otherWorktree != nil,
             action: { select(branch.name, branch.tip) }
@@ -218,6 +219,10 @@ struct RefsPanel: View {
                 Divider()
             }
             Button("Copy Name") { copy(branch.shortName) }
+            Divider()
+            // git won't delete a branch that a worktree has checked out.
+            Button("Delete Branch", role: .destructive) { model.branch.askToDelete(ref: branch.name) }
+                .disabled(isCurrent || branch.worktree != nil || model.branch.isBusy)
         }
         .id(branch.name)
     }
@@ -226,6 +231,7 @@ struct RefsPanel: View {
         RefRow(
             systemImage: "arrow.triangle.branch",
             title: branch.shortName,
+            menuTitle: Ref.shortName(branch.name),
             isSelected: isSelected(branch.name, branch.tip),
             isIndented: true,
             action: { select(branch.name, branch.tip) }
@@ -238,6 +244,9 @@ struct RefsPanel: View {
         } commands: {
         } menu: {
             Button("Copy Name") { copy(Ref.shortName(branch.name)) }
+            Divider()
+            Button("Delete from Remote…", role: .destructive) { model.branch.askToDelete(ref: branch.name) }
+                .disabled(model.branch.isBusy)
         }
         .id(branch.name)
     }
@@ -247,6 +256,7 @@ struct RefsPanel: View {
             systemImage: "tag",
             title: tag.shortName,
             subtitle: tag.subject ?? "No commit to show",
+            menuTitle: tag.shortName,
             isSelected: tag.commit.map { isSelected(tag.name, $0) } ?? false,
             action: tag.commit.map { commit in { select(tag.name, commit) } }
         ) {
@@ -450,6 +460,10 @@ private struct RefRow<Trailing: View, Commands: View, MenuItems: View>: View {
     var imageColor = Color.secondary
     let title: String
     var subtitle: String?
+    /// What the top of the row's menu calls the ref, so that it's clear what the
+    /// menu acts on. Its full name, because a remote branch's title leaves out
+    /// the remote.
+    var menuTitle: String?
     /// Where a title that doesn't fit gives way. A ref's name usually differs
     /// at its end, so that stays, and a sentence reads from its start.
     var titleTruncation = Text.TruncationMode.middle
@@ -508,7 +522,13 @@ private struct RefRow<Trailing: View, Commands: View, MenuItems: View>: View {
         .onTapGesture { action?() }
         .onHover { isHovering = $0 }
         .help(title)
-        .contextMenu { menu }
+        .contextMenu {
+            if let menuTitle {
+                Section(menuTitle) { menu }
+            } else {
+                menu
+            }
+        }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
         .accessibilityValue(subtitle ?? "")

@@ -8,8 +8,8 @@ import GitRunner
 ///
 /// For now a session lists worktrees and refs, reads history, the text of
 /// commits, the files they changed and their patches, reads what's uncommitted
-/// in a worktree, checks out branches, fetches, pulls and pushes, and keeps the
-/// commit-graph files up to date. Watching for changes comes later, as
+/// in a worktree, checks out and deletes branches, fetches, pulls and pushes, and
+/// keeps the commit-graph files up to date. Watching for changes comes later, as
 /// ARCHITECTURE.md describes.
 public actor RepositorySession {
     public nonisolated let location: RepositoryLocation
@@ -287,6 +287,25 @@ public actor RepositorySession {
     public func push(_ push: Push, in worktree: String) async throws {
         _ = await runningFetch?.value
         _ = try await Self.run(push.arguments, in: worktree, git: git)
+    }
+
+    /// Finds out what deleting a branch would come to, without changing anything.
+    ///
+    /// - Parameters:
+    ///   - name: The full name of the branch or remote branch.
+    ///   - limit: The most commits to list of those it would lose.
+    ///   - worktree: The worktree's folder.
+    public nonisolated func prepareToDelete(ref name: String, limit: Int, in worktree: String) async throws -> BranchDeletion {
+        try await BranchDeletion.prepare(ref: name, limit: limit, in: worktree, worktrees: try await worktrees(), git: git)
+    }
+
+    /// Deletes a branch. Deleting one from a remote waits for any fetch that's
+    /// running to finish, because that fetch could bring the branch's copy back.
+    ///
+    /// - Throws: `GitError` when git refuses, which says why.
+    public func delete(_ deletion: BranchDeletion, in worktree: String) async throws {
+        if case .remote = deletion.place { _ = await runningFetch?.value }
+        try await deletion.run(in: worktree, git: git)
     }
 
     /// Says whether a worktree is partway through a merge or a rebase.

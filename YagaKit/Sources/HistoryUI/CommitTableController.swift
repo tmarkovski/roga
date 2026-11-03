@@ -31,19 +31,27 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
         public var selectRow: (Int?) -> Void
         /// Says that the user double-clicked the badge of a branch.
         public var checkOut: (CommitRowContent.Badge) -> Void
+        /// Says that the user chose to delete the branch of a badge.
+        public var deleteBranch: (CommitRowContent.Badge) -> Void
+        /// Whether something's running that deleting a branch has to wait for.
+        public var isBusy: () -> Bool
 
         public init(
             count: @escaping () -> Int,
             content: @escaping (Int) -> CommitRowContent,
             loadText: @escaping (Range<Int>) async -> IndexSet,
             selectRow: @escaping (Int?) -> Void,
-            checkOut: @escaping (CommitRowContent.Badge) -> Void = { _ in }
+            checkOut: @escaping (CommitRowContent.Badge) -> Void = { _ in },
+            deleteBranch: @escaping (CommitRowContent.Badge) -> Void = { _ in },
+            isBusy: @escaping () -> Bool = { false }
         ) {
             self.count = count
             self.content = content
             self.loadText = loadText
             self.selectRow = selectRow
             self.checkOut = checkOut
+            self.deleteBranch = deleteBranch
+            self.isBusy = isBusy
         }
     }
 
@@ -91,6 +99,7 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
         tableView.target = self
         tableView.doubleAction = #selector(doubleClicked)
         tableView.pointerMoved = { [unowned self] in updateHoveredBadge(atWindowLocation: $0) }
+        tableView.menuForRow = { [unowned self] in menu(forRow: $0) }
 
         scrollView.documentView = tableView
         scrollView.drawsBackground = false
@@ -212,6 +221,32 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
         source.checkOut(source.content(place.row).badges[place.index])
     }
 
+    /// What right-clicking a row offers, under the name of each branch that points
+    /// to its commit, so that it's clear which one an item acts on. That includes
+    /// branches whose badges don't fit in the row. A row without branches has no
+    /// menu. The current branch's item is there but disabled, because git won't
+    /// delete a branch that's checked out.
+    func menu(forRow row: Int) -> NSMenu? {
+        let branches = source.content(row).badges.filter(\.isBranch)
+        guard !branches.isEmpty else { return nil }
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        for badge in branches {
+            menu.addItem(.sectionHeader(title: badge.title))
+            let title = badge.kind == .remoteBranch ? "Delete from Remote…" : "Delete Branch"
+            let item = NSMenuItem(title: title, action: #selector(deleteBranch), keyEquivalent: "")
+            item.target = self
+            item.representedObject = badge
+            item.isEnabled = badge.kind != .currentBranch && !source.isBusy()
+            menu.addItem(item)
+        }
+        return menu
+    }
+
+    @objc private func deleteBranch(_ item: NSMenuItem) {
+        if let badge = item.representedObject as? CommitRowContent.Badge { source.deleteBranch(badge) }
+    }
+
     @objc private func visibleRowsMayHaveChanged(_ notification: Notification) {
         if needsToRevealSelection { revealSelectedRow() }
         sizeGraph(canNarrow: false)
@@ -286,6 +321,8 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
 final class CommitTableView: NSTableView {
     /// Says where in the window the pointer is, or nil once it has left.
     var pointerMoved: (NSPoint?) -> Void = { _ in }
+    /// Makes the menu for right-clicking a row, if it has one.
+    var menuForRow: (Int) -> NSMenu? = { _ in nil }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -307,6 +344,14 @@ final class CommitTableView: NSTableView {
             guard let self, let window, window.firstResponder === window else { return }
             window.makeFirstResponder(self)
         }
+    }
+
+    /// The table outlines the row while its menu is open, as long as it's the one
+    /// that returns the menu. A row without a menu gets no outline either.
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let row = row(at: convert(event.locationInWindow, from: nil))
+        menu = row >= 0 ? menuForRow(row) : nil
+        return super.menu(for: event)
     }
 
     override func mouseMoved(with event: NSEvent) {

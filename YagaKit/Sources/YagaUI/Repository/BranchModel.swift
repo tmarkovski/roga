@@ -7,7 +7,8 @@ import RepositoryEngine
 /// A worktree's branch in the title row: where it stands against its upstream,
 /// and fetching, pulling, pushing and starting a new branch (decisions 19 and
 /// 20). All of this acts on the branch the worktree has checked out, whatever is
-/// selected in history.
+/// selected in history. Deleting a branch is here because it can't run alongside
+/// those, and it acts on whichever branch's menu someone opened.
 @Observable
 final class BranchModel {
     /// What git is doing because someone asked it to. Nothing else runs until
@@ -18,6 +19,7 @@ final class BranchModel {
         case forcePushing
         case fetching
         case undoingPull
+        case deletingFromRemote
 
         var title: String {
             switch self {
@@ -26,6 +28,7 @@ final class BranchModel {
             case .forcePushing: "Force pushing…"
             case .fetching: "Fetching…"
             case .undoingPull: "Undoing…"
+            case .deletingFromRemote: "Deleting…"
             }
         }
     }
@@ -60,7 +63,14 @@ final class BranchModel {
         var subjects: [String]
     }
 
-    /// The most subjects to list before a force push.
+    /// A deletion that's waiting for someone to agree to it.
+    struct PendingDeletion: Equatable {
+        var deletion: BranchDeletion
+        /// The subjects of the newest commits it loses.
+        var subjects: [String]
+    }
+
+    /// The most subjects to list before a force push or a deletion.
     private static let overwrittenLimit = 5
     /// The most commits to tint in history while the pointer is over a count.
     private static let previewLimit = 1000
@@ -88,6 +98,8 @@ final class BranchModel {
     var conflict: Conflict?
     /// A force push that's waiting for someone to agree to it.
     var forcePush: ForcePush?
+    /// A deletion that's waiting for someone to agree to it.
+    var pendingDeletion: PendingDeletion?
     /// Whether the popover for a new branch shows.
     var isCreatingBranch = false
 
@@ -106,6 +118,8 @@ final class BranchModel {
     /// the action stays in the title row when git finishes sooner.
     @ObservationIgnored var timeToPlayHouse: (Action) -> Duration = { $0.timeToPlayHouse }
     @ObservationIgnored private(set) var running: Task<Void, Never>?
+    /// Finding out what deleting a branch would come to.
+    @ObservationIgnored private(set) var preparingDeletion: Task<Void, Never>?
     @ObservationIgnored private(set) var quietFetch: Task<Void, Never>?
     @ObservationIgnored private(set) var previewing: Task<Void, Never>?
     @ObservationIgnored private var finishedNote: Task<Void, Never>?
@@ -136,7 +150,7 @@ final class BranchModel {
     private var upstreamName: String? { status?.upstream.map(Ref.shortName) }
 
     /// Whether anything that someone asks for has to wait.
-    var isBusy: Bool { action != nil || isCheckingOut() }
+    var isBusy: Bool { action != nil || running != nil || isCheckingOut() }
 
     // MARK: Fetching
 
@@ -241,6 +255,55 @@ final class BranchModel {
         }
     }
 
+    // MARK: Deleting branches
+
+    /// Deletes a branch or remote branch straight away when that loses nothing,
+    /// and otherwise says what it would lose and asks. Deleting from a remote
+    /// always asks, because that affects everyone who uses the remote.
+    ///
+    /// - Parameter name: The branch's full name.
+    func askToDelete(ref name: String) {
+        guard !isBusy else { return }
+        preparingDeletion = Task {
+            do {
+                let deletion = try await session.prepareToDelete(ref: name, limit: Self.overwrittenLimit, in: worktree)
+                if deletion.asksFirst {
+                    let commits = (try? await session.commits(deletion.lost)) ?? []
+                    pendingDeletion = PendingDeletion(deletion: deletion, subjects: commits.compactMap { $0?.subject })
+                } else {
+                    delete(deletion)
+                }
+            } catch {
+                failure = Failure(title: "Can't Delete \(Ref.shortName(name))", message: (error as? GitError)?.message ?? String(describing: error))
+            }
+            preparingDeletion = nil
+        }
+    }
+
+    /// Runs the deletion that was asked about.
+    func confirmDeletion() {
+        guard let pendingDeletion else { return }
+        self.pendingDeletion = nil
+        delete(pendingDeletion.deletion)
+    }
+
+    /// Runs a deletion. Only a remote takes long enough for the house, and leaving
+    /// it out lets someone delete several branches in a row without waiting for it.
+    private func delete(_ deletion: BranchDeletion) {
+        var action: Action?
+        if case .remote = deletion.place { action = .deletingFromRemote }
+        run(action, failure: "Can't Delete \(deletion.shortName)") { [session, worktree] in
+            try await session.delete(deletion, in: worktree)
+            return "Deleted \(Self.shortened(deletion.shortName))"
+        }
+    }
+
+    /// A branch's name, short enough to say what just happened in the title row,
+    /// which keeps that at its full width. Names usually differ at their ends.
+    static func shortened(_ name: String) -> String {
+        name.count <= 32 ? name : name.prefix(15) + "…" + name.suffix(16)
+    }
+
     // MARK: New branches
 
     /// Makes a new branch, and shows its worktree if it gets one.
@@ -270,12 +333,14 @@ final class BranchModel {
     /// looks at what it changed.
     ///
     /// - Parameters:
+    ///   - action: What the title row shows while it runs, or nil for something
+    ///     too quick to mention, which doesn't wait for the house.
     ///   - title: What an alert says when git refuses.
     ///   - fetchesAfterFailing: Whether a refusal may mean the counts were stale,
     ///     as a rejected push does, so a fetch should correct them.
     ///   - work: Returns what to say when it's done, if anything.
     private func run(
-        _ action: Action,
+        _ action: Action?,
         failure title: String,
         fetchesAfterFailing: Bool = false,
         work: @escaping () async throws -> String?
@@ -292,7 +357,7 @@ final class BranchModel {
                 if let message = try await work() {
                     // A quick git shouldn't cut the house off partway through.
                     // Bad news doesn't wait for it.
-                    try? await Task.sleep(until: started + timeToPlayHouse(action), clock: .continuous)
+                    if let action { try? await Task.sleep(until: started + timeToPlayHouse(action), clock: .continuous) }
                     show(finished: message)
                 }
             } catch {

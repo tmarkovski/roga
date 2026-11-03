@@ -64,6 +64,43 @@ struct RepositoryView: View {
             } message: { push in
                 Text(forcePushMessage(push))
             }
+            .alert(
+                model.branch.pendingDeletion.map(deletionTitle) ?? "",
+                isPresented: Binding { model.branch.pendingDeletion != nil } set: { if !$0 { model.branch.pendingDeletion = nil } },
+                presenting: model.branch.pendingDeletion
+            ) { _ in
+                Button("Delete", role: .destructive) { model.branch.confirmDeletion() }
+                Button("Cancel", role: .cancel) {}
+            } message: { pending in
+                Text(deletionMessage(pending))
+            }
+    }
+
+    private func deletionTitle(_ pending: BranchModel.PendingDeletion) -> String {
+        if case .remote(let remote, let branch) = pending.deletion.place { return "Delete \(branch) from \(remote)?" }
+        return "Delete \(pending.deletion.shortName)?"
+    }
+
+    /// What a deletion loses, as the vision asks of destructive operations, and
+    /// the command, since it can't be taken back from here.
+    private func deletionMessage(_ pending: BranchModel.PendingDeletion) -> String {
+        let deletion = pending.deletion
+        var parts: [String] = []
+        if case .remote(let remote, _) = deletion.place {
+            parts.append("This deletes the branch on \(remote), for everyone who uses it.")
+        }
+        if deletion.lostCount > 0 {
+            var lost = deletion.lostCount == 1
+                ? "1 commit isn't on any other branch or tag:\n"
+                : "\(deletion.lostCount.formatted()) commits aren't on any other branch or tag:\n"
+            lost += pending.subjects.map { "\n• \($0)" }.joined()
+            if deletion.lostCount > pending.subjects.count { lost += "\n• and \((deletion.lostCount - pending.subjects.count).formatted()) more" }
+            parts.append(lost)
+        } else {
+            parts.append("Its commits are all on other branches or tags, so none are lost.")
+        }
+        parts.append(BranchModel.command(deletion.arguments))
+        return parts.joined(separator: "\n\n")
     }
 
     /// Which files a pull stopped on, and what can be done about them.

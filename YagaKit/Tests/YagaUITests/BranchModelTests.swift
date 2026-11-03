@@ -296,6 +296,151 @@ struct BranchModelTests {
         #expect(try await git("rev-parse", "main", in: clones.remote) == mine)
     }
 
+    // MARK: Deleting branches
+
+    func exists(_ ref: String, in folder: String) async throws -> Bool {
+        try await !git("for-each-ref", "--format=%(refname)", ref, in: folder).isEmpty
+    }
+
+    /// Asks to delete a branch, and waits for that to run or to ask about it.
+    func askToDelete(_ ref: String, _ model: RepositoryModel) async {
+        model.branch.askToDelete(ref: ref)
+        await model.branch.preparingDeletion?.value
+        await model.branch.running?.value
+    }
+
+    /// Makes a branch with a commit that nothing else has, and goes back to `main`.
+    func makeBranchWithACommit(_ name: String, _ clones: Clones) async throws -> String {
+        try await git("switch", "--quiet", "--create", name, in: clones.work)
+        let id = try await commit("Only on \(name)", in: clones.work)
+        try await git("switch", "--quiet", "main", in: clones.work)
+        return id
+    }
+
+    /// The suite's time limit would fail this if it waited for the house.
+    @Test func deletesABranchThatLosesNothingStraightAway() async throws {
+        let clones = try await clones()
+        try await git("branch", "other", in: clones.work)
+        let model = model(clones, fetches: false)
+        model.branch.timeToPlayHouse = { _ in .seconds(600) }
+        await model.appear()
+
+        await askToDelete("refs/heads/other", model)
+        #expect(model.branch.pendingDeletion == nil)
+        #expect(model.branch.action == nil)
+        #expect(!model.branch.isBusy)
+        #expect(model.branch.finished == "Deleted other")
+        #expect(try await !exists("refs/heads/other", in: clones.work))
+
+        // History loads again, without the branch's badge.
+        await model.check?.value
+        await model.load()
+        #expect(model.history?.refs.refs.contains { $0.name == "refs/heads/other" } == false)
+    }
+
+    @Test func asksBeforeLosingCommitsAndSaysWhichOnes() async throws {
+        let clones = try await clones()
+        _ = try await makeBranchWithACommit("other", clones)
+        let model = model(clones, fetches: false)
+        await model.appear()
+
+        await askToDelete("refs/heads/other", model)
+        #expect(model.branch.pendingDeletion?.deletion.lostCount == 1)
+        #expect(model.branch.pendingDeletion?.subjects == ["Only on other"])
+        #expect(try await exists("refs/heads/other", in: clones.work))
+
+        model.branch.confirmDeletion()
+        await model.branch.running?.value
+        #expect(model.branch.pendingDeletion == nil)
+        #expect(model.branch.finished == "Deleted other")
+        #expect(try await !exists("refs/heads/other", in: clones.work))
+    }
+
+    @Test func goesBackToNoSelectionWhenDeletingLosesTheSelectedCommit() async throws {
+        let clones = try await clones()
+        let id = try await makeBranchWithACommit("other", clones)
+        let model = model(clones, fetches: false)
+        await model.appear()
+        model.select(commit: try #require(ObjectID(hex: id)))
+        #expect(model.selectedCommit.id?.hex == id)
+
+        await askToDelete("refs/heads/other", model)
+        model.branch.confirmDeletion()
+        await model.branch.running?.value
+        await model.check?.value
+        await model.load()
+        #expect(model.selectedCommit.id == nil)
+    }
+
+    @Test func alwaysAsksBeforeDeletingFromARemote() async throws {
+        let clones = try await clones()
+        try await git("branch", "--track", "feature", "origin/feature", in: clones.work)
+        let model = model(clones, fetches: false)
+        await model.appear()
+
+        await askToDelete("refs/remotes/origin/feature", model)
+        #expect(model.branch.pendingDeletion?.deletion.lostCount == 0)
+        #expect(try await exists("refs/heads/feature", in: clones.remote))
+
+        model.branch.confirmDeletion()
+        #expect(model.branch.action == .deletingFromRemote)
+        await model.branch.running?.value
+        #expect(model.branch.action == nil)
+        #expect(model.branch.finished == "Deleted origin/feature")
+        #expect(try await !exists("refs/heads/feature", in: clones.remote))
+    }
+
+    @Test func sayingNoLeavesTheBranch() async throws {
+        let clones = try await clones()
+        _ = try await makeBranchWithACommit("other", clones)
+        let model = model(clones, fetches: false)
+        await model.appear()
+        await askToDelete("refs/heads/other", model)
+        // What the alert's Cancel button does through its binding.
+        model.branch.pendingDeletion = nil
+        model.branch.confirmDeletion()
+        #expect(model.branch.running == nil)
+        #expect(try await exists("refs/heads/other", in: clones.work))
+    }
+
+    @Test func aBranchInAnotherWorktreeSaysWhatGitSaid() async throws {
+        let clones = try await clones()
+        let folder = clones.folder + "/notes"
+        try await git("worktree", "add", "--quiet", folder, "-b", "notes", in: clones.work)
+        let model = model(clones, fetches: false)
+        await model.appear()
+
+        await askToDelete("refs/heads/notes", model)
+        #expect(model.branch.pendingDeletion == nil)
+        #expect(model.branch.failure?.title == "Can't Delete notes")
+        #expect(model.branch.failure?.message.contains(folder) == true)
+        #expect(try await exists("refs/heads/notes", in: clones.work))
+    }
+
+    @Test func aBranchThatsAlreadyGoneSaysWhatGitSaid() async throws {
+        let clones = try await clones()
+        let model = model(clones, fetches: false)
+        await model.appear()
+        await askToDelete("refs/heads/nothing", model)
+        #expect(model.branch.failure?.title == "Can't Delete nothing")
+    }
+
+    @Test func refusesToDeleteWhileSomethingRuns() async throws {
+        let clones = try await clones()
+        try await git("branch", "other", in: clones.work)
+        let model = model(clones, fetches: false)
+        await model.appear()
+        model.branch.isCheckingOut = { true }
+        await askToDelete("refs/heads/other", model)
+        #expect(try await exists("refs/heads/other", in: clones.work))
+    }
+
+    @Test func shortensALongNameForTheTitleRow() {
+        #expect(BranchModel.shortened("fix-retry") == "fix-retry")
+        let long = "claude/fix-the-login-regression-in-the-session-store"
+        #expect(BranchModel.shortened(long) == "claude/fix-the-…he-session-store")
+    }
+
     // MARK: New branches
 
     @Test func createsABranchAndClosesThePopover() async throws {

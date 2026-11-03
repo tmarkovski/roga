@@ -47,6 +47,10 @@ struct CommitList: NSViewRepresentable {
             controller.source.checkOut = { [unowned self] badge in
                 model.checkOut(badge) { [unowned self] in showWorktree($0, $1) }
             }
+            controller.source.deleteBranch = { badge in
+                if let name = badge.refName { model.branch.askToDelete(ref: name) }
+            }
+            controller.source.isBusy = { model.branch.isBusy }
         }
 
         func show(_ version: Int, selecting row: Int?) {

@@ -125,15 +125,20 @@ struct CommitTableBadgeTests {
         Badge(title: "HEAD", kind: .detachedHead),
     ]
 
-    /// A list whose row 1 has all the kinds of badge, and whose others have none.
+    /// A list whose row 1 has all the kinds of badge, whose row 2 has the ones
+    /// that aren't branches, and whose row 0 has none.
     final class List {
         var checkedOut: [Badge] = []
+        var deleted: [Badge] = []
+        var isBusy = false
         private(set) lazy var controller = CommitTableController(source: CommitTableController.Source(
             count: { 3 },
             content: { CommitTableBadgeTests.content(ofRow: $0) },
             loadText: { _ in [] },
             selectRow: { _ in },
-            checkOut: { [unowned self] in checkedOut.append($0) }
+            checkOut: { [unowned self] in checkedOut.append($0) },
+            deleteBranch: { [unowned self] in deleted.append($0) },
+            isBusy: { [unowned self] in isBusy }
         ))
 
         init() {
@@ -153,7 +158,49 @@ struct CommitTableBadgeTests {
     }
 
     static func content(ofRow row: Int) -> CommitRowContent {
-        CommitRowContent(shortID: "abcd1234", badges: row == 1 ? badges : [], subject: "A subject")
+        let badges = switch row {
+        case 1: badges
+        case 2: badges.filter { !$0.isBranch }
+        default: [Badge]()
+        }
+        return CommitRowContent(shortID: "abcd1234", badges: badges, subject: "A subject")
+    }
+
+    @Test func aRowsMenuNamesEachBranchAboveItsItem() throws {
+        let list = List()
+        let menu = try #require(list.controller.menu(forRow: 1))
+        #expect(menu.items.map(\.title) == ["main", "Delete Branch", "feature", "Delete Branch", "origin/feature", "Delete from Remote…"])
+        #expect(menu.items.map(\.isSectionHeader) == [true, false, true, false, true, false])
+    }
+
+    @Test func aRowsMenuActsOnTheBranchOfTheChosenItem() throws {
+        let list = List()
+        let menu = try #require(list.controller.menu(forRow: 1))
+        for index in [3, 5] {
+            let item = menu.items[index]
+            _ = (item.target as? NSObject)?.perform(item.action, with: item)
+        }
+        #expect(list.deleted.map(\.refName) == ["refs/heads/feature", "refs/remotes/origin/feature"])
+    }
+
+    @Test func aRowsMenuDisablesTheCurrentBranch() throws {
+        let list = List()
+        let menu = try #require(list.controller.menu(forRow: 1))
+        #expect(!menu.autoenablesItems)
+        #expect(menu.items.filter { !$0.isSectionHeader }.map(\.isEnabled) == [false, true, true])
+    }
+
+    @Test func aRowsMenuDisablesEverythingWhileSomethingRuns() throws {
+        let list = List()
+        list.isBusy = true
+        let menu = try #require(list.controller.menu(forRow: 1))
+        #expect(menu.items.filter { !$0.isSectionHeader }.allSatisfy { !$0.isEnabled })
+    }
+
+    @Test func aRowWithoutBranchesHasNoMenu() {
+        let list = List()
+        #expect(list.controller.menu(forRow: 0) == nil)
+        #expect(list.controller.menu(forRow: 2) == nil)
     }
 
     @Test func checksOutTheBranchesOfTheBadgesThatHaveThem() {
