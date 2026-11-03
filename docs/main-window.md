@@ -110,6 +110,7 @@ As the window gets narrower, the panel narrows to keep 400 points for the middle
 
 - Surfaces are plain, with thin gray lines between sections. The sidebar is a shade darker. Dark mode keeps the same structure in dark grays.
 - Selection is a soft gray fill, not the accent color. The accent color is kept for the graph.
+- A file's status letter is colored by what happened to it: orange for a change, like the sidebar's counts, green for an added file, red for a deleted file or a conflict, and blue for a file that was renamed or copied. An untracked file's `?` stays gray, because git doesn't have it yet. The letter says the same thing without the color.
 - Text uses the system font at 12.5 to 13 points. The sidebar's rows use 14 points, with 13 for a second line and for shortcuts, as the Claude app's sidebar does. Hashes and diffs use the monospaced system font.
 
 ## Options we're keeping open

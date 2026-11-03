@@ -206,7 +206,7 @@ struct ChangedFileRow: View {
         HStack(spacing: 8) {
             Text(file.status.letter)
                 .font(.system(size: 11.5, weight: .medium, design: .monospaced))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(file.status.color)
                 .frame(width: 12)
             Text(file.name)
                 .font(.system(size: 12.5))
@@ -262,6 +262,24 @@ struct ChangedFileRow: View {
         guard file.status != .untracked, file.status != .conflicted else { return change }
         guard let lines = file.lines else { return change + ", a binary file" }
         return change + ", \(lines.added) lines added and \(lines.removed) removed"
+    }
+}
+
+private extension DiffFile.Status {
+    /// The color of the status letter. Changed files are orange like the
+    /// sidebar's counts, added ones green, and ones that are gone or in conflict
+    /// red, like the line counts. Moved and copied ones are blue, because their
+    /// contents mostly stayed the same. Untracked ones stay gray, because green
+    /// would say they've been added, and git doesn't have them yet. The letter
+    /// still says it all without color, which is why `D` and `U` can share one.
+    var color: Color {
+        switch self {
+        case .modified, .typeChanged: .orange
+        case .added: .green
+        case .deleted, .conflicted: .red
+        case .renamed, .copied: .blue
+        case .untracked, .other: .secondary
+        }
     }
 }
 
