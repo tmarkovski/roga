@@ -4,11 +4,12 @@ import GitRunner
 /// What checking out a branch came to.
 public enum BranchCheckout: Sendable, Hashable {
     /// The worktree is on the branch now. This has the branch's full name, which
-    /// for a remote branch is the local branch's.
-    case checkedOut(String)
+    /// for a remote branch is the local branch's, and the commit it points to.
+    case checkedOut(String, commit: ObjectID?)
     /// Another worktree has the branch checked out, which git doesn't allow
-    /// twice, so nothing changed. This has that worktree's folder.
-    case inOtherWorktree(String)
+    /// twice, so nothing changed. This has that worktree's folder and the commit
+    /// it's on.
+    case inOtherWorktree(String, commit: ObjectID?)
 
     /// Switches to a local branch. A remote branch goes through the local branch
     /// of the same name, as `git switch <name>` does: it's created to track the
@@ -26,18 +27,18 @@ public enum BranchCheckout: Sendable, Hashable {
                 // On its own, --track would take the name from after the first
                 // slash, which is wrong for a remote with a slash in its name.
                 try await run(["switch", "--create=" + branch, "--track", name], in: worktree, git: git)
-                return .checkedOut(local)
+                return .checkedOut(local, commit: refs.refs.first { $0.name == name }?.target)
             }
         }
         // git says the same about a worktree that's gone, but only it can say
         // what to do about that one.
         if local != refs.currentBranch, let other = worktrees.first(where: { $0.branch == local && !$0.isPrunable }) {
-            return .inOtherWorktree(other.path)
+            return .inOtherWorktree(other.path, commit: other.head)
         }
         // A ref can be named like an option, even if git won't create a branch
         // with such a name.
         try await run(["switch", "--end-of-options", Ref.shortName(local)], in: worktree, git: git)
-        return .checkedOut(local)
+        return .checkedOut(local, commit: refs.refs.first { $0.name == local }?.target)
     }
 
     private static func run(_ arguments: [String], in worktree: String, git: Git) async throws {

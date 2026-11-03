@@ -238,9 +238,11 @@ final class RepositoryModel {
     }
 
     /// Checks out a badge's branch, unless a checkout is running already, and
-    /// shows what that changed. When another worktree has the branch checked
-    /// out, that's the one to look at, so it asks to show it instead.
-    func checkOut(_ badge: CommitRowContent.Badge, showWorktree: @escaping (String) -> Void) {
+    /// shows what that changed, with the branch's commit selected. For a remote
+    /// branch, that may not be the commit that was clicked. When another
+    /// worktree has the branch checked out, that's the one to look at, so it asks
+    /// to show it instead, with the commit to select there.
+    func checkOut(_ badge: CommitRowContent.Badge, showWorktree: @escaping (String, ObjectID?) -> Void) {
         guard checkout == nil, let name = badge.refName else { return }
         checkout = Task {
             let note = Task {
@@ -249,11 +251,12 @@ final class RepositoryModel {
             }
             do {
                 switch try await session.checkOut(ref: name, in: worktree) {
-                case .checkedOut:
+                case .checkedOut(_, let commit):
+                    if let commit { select(commit: commit) }
                     reportBranchChange()
                     lookAgain()
-                case .inOtherWorktree(let folder):
-                    showWorktree(folder)
+                case .inOtherWorktree(let folder, let commit):
+                    showWorktree(folder, commit)
                 }
             } catch {
                 checkoutFailure = CheckoutFailure(branch: badge.title, message: (error as? GitError)?.message ?? String(describing: error))
@@ -351,9 +354,17 @@ final class RepositoryModel {
         selectedCommit.show(history.graph.id(at: history.rows[row - rowOffset]))
     }
 
-    /// Selects a commit, if history has it.
+    /// Selects a commit. While history hasn't reached it, which includes when
+    /// history hasn't started loading, the commit is selected without a row until
+    /// loading finds one. Once history is complete, it has to have the commit.
     func select(commit id: ObjectID) {
-        if let row = history.flatMap({ Self.row(of: id, in: $0) }) { selectRow(row + rowOffset) }
+        if let row = history.flatMap({ Self.row(of: id, in: $0) }) {
+            selectRow(row + rowOffset)
+        } else if history?.isComplete != true {
+            selectedRow = nil
+            selectedChanges.deselect()
+            selectedCommit.show(id)
+        }
     }
 
     /// Selects the commit a ref points to, and the ref's row in the refs panel.

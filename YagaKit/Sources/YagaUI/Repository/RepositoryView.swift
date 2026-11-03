@@ -1,5 +1,6 @@
 import AppKit
 import CommitGraph
+import GitCore
 import GitRunner
 import RepositoryEngine
 import SwiftUI
@@ -7,8 +8,9 @@ import SwiftUI
 /// One worktree: its history, and the commit and file selected in it.
 struct RepositoryView: View {
     let model: RepositoryModel
-    /// Shows one of the repository's worktrees in the window, by its folder.
-    let showWorktree: (String) -> Void
+    /// Shows one of the repository's worktrees in the window, by its folder,
+    /// with a commit selected in it.
+    let showWorktree: (String, ObjectID?) -> Void
     @AppStorage("commitPanelHeight") private var commitPanelHeight = 340.0
     @AppStorage("commitPanelWidth") private var commitPanelWidth = 320.0
 
@@ -92,7 +94,7 @@ private struct LoadingHistory: View {
 /// the right end.
 struct HistoryPanel: View {
     let model: RepositoryModel
-    let showWorktree: (String) -> Void
+    let showWorktree: (String, ObjectID?) -> Void
 
     var body: some View {
         Group {

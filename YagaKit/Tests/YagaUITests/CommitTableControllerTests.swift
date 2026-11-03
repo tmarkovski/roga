@@ -55,6 +55,54 @@ struct CommitTableControllerTests {
         #expect(list.reported.isEmpty)
     }
 
+    /// The rows in view, once the list has a height.
+    func giveHeight(to list: List) -> Range<Int> {
+        list.controller.scrollView.frame = NSRect(x: 0, y: 0, width: 800, height: 300)
+        list.controller.scrollView.layoutSubtreeIfNeeded()
+        let rows = list.table.rows(in: list.table.visibleRect)
+        return rows.location..<rows.location + rows.length
+    }
+
+    @Test func leavesARowInViewWhereItIsWhenItSelectsItBeforeHavingAHeight() {
+        // The window shows a worktree again, which makes a new list with its
+        // selection before the list has been laid out.
+        let list = List(count: 100)
+        list.controller.select(row: 2)
+        let rows = giveHeight(to: list)
+        #expect(rows.lowerBound == 0)
+        #expect(rows.contains(2))
+    }
+
+    @Test func scrollsARowOutOfViewIntoViewOnceItHasAHeight() {
+        let list = List(count: 100)
+        list.controller.select(row: 50)
+        let rows = giveHeight(to: list)
+        #expect(rows.contains(50))
+        #expect(rows.lowerBound < 50)
+    }
+
+    @Test func revealsTheLatestSelectionOnceItHasAHeight() {
+        let list = List(count: 100)
+        list.controller.select(row: 50)
+        list.controller.select(row: 80)
+        #expect(giveHeight(to: list).contains(80))
+    }
+
+    @Test func revealsNothingAfterTheSelectionGoesAway() {
+        let list = List(count: 100)
+        list.controller.select(row: 50)
+        list.controller.select(row: nil)
+        #expect(giveHeight(to: list).lowerBound == 0)
+    }
+
+    @Test func scrollsStraightAwayOnceItHasAHeight() {
+        let list = List(count: 100)
+        _ = giveHeight(to: list)
+        list.controller.select(row: 50)
+        let rows = list.table.rows(in: list.table.visibleRect)
+        #expect(rows.location <= 50 && 50 < rows.location + rows.length)
+    }
+
     @Test func reportsAgainAfterChangingTheSelection() {
         let list = List(count: 10)
         list.controller.select(row: 1)

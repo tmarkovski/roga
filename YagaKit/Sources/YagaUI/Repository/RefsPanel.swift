@@ -14,8 +14,9 @@ struct RefsPanel: View {
     /// How wide the panel is, which its row in the toolbar has to match.
     let width: Double
     @Binding var isShown: Bool
-    /// Shows one of the repository's worktrees in the window, by its folder.
-    let showWorktree: (String) -> Void
+    /// Shows one of the repository's worktrees in the window, by its folder,
+    /// with a commit selected in it.
+    let showWorktree: (String, ObjectID?) -> Void
     @AppStorage(RefsPanelSettings.sort) private var sort = RefsModel.Sort.name
     /// The sections that are collapsed, separated by commas. It's one setting
     /// for every repository, like the sizes of the panels.
@@ -207,13 +208,13 @@ struct RefsPanel: View {
             }
         } commands: {
             if let otherWorktree {
-                Button { showWorktree(otherWorktree) } label: { Image(systemName: "arrow.right.circle") }
+                Button { showWorktree(otherWorktree, branch.tip) } label: { Image(systemName: "arrow.right.circle") }
                     .buttonStyle(.icon(size: 24))
                     .help("Show Worktree")
             }
         } menu: {
             if let otherWorktree {
-                Button("Show Worktree") { showWorktree(otherWorktree) }
+                Button("Show Worktree") { showWorktree(otherWorktree, branch.tip) }
                 Divider()
             }
             Button("Copy Name") { copy(branch.shortName) }

@@ -97,7 +97,7 @@ struct RepositoryModelTests {
         #expect(model.headDescription == "main")
         let checks = model.refsChecks
 
-        model.checkOut(try badge("origin/feature", in: model)) { _ in Issue.record("It's not in another worktree.") }
+        model.checkOut(try badge("origin/feature", in: model)) { _, _ in Issue.record("It's not in another worktree.") }
         await finishCheckout(model)
 
         #expect(model.headDescription == "feature")
@@ -118,7 +118,7 @@ struct RepositoryModelTests {
         try await runGit("switch", "--quiet", "main", in: repository)
         try write("Mine\n", to: "README.md", in: repository)
 
-        model.checkOut(CommitRowContent.Badge(title: "changed", kind: .branch, refName: "refs/heads/changed")) { _ in }
+        model.checkOut(CommitRowContent.Badge(title: "changed", kind: .branch, refName: "refs/heads/changed")) { _, _ in }
         await finishCheckout(model)
 
         #expect(model.checkoutFailure?.branch == "changed")
@@ -134,20 +134,86 @@ struct RepositoryModelTests {
         try await runGit("worktree", "add", "--quiet", folder, "-b", "feature", "origin/feature", in: repository)
 
         var shown: [String] = []
-        model.checkOut(CommitRowContent.Badge(title: "feature", kind: .branch, refName: "refs/heads/feature")) { shown.append($0) }
+        var commits: [ObjectID?] = []
+        model.checkOut(CommitRowContent.Badge(title: "feature", kind: .branch, refName: "refs/heads/feature")) {
+            shown.append($0)
+            commits.append($1)
+        }
         await finishCheckout(model)
 
         #expect(shown == [folder])
+        #expect(commits == [ObjectID(hex: Fixture.Basic.feature)])
         #expect(model.headDescription == "main")
         #expect(model.checkoutFailure == nil)
+    }
+
+    @Test func selectsTheLocalBranchOfARemoteBranchItChecksOut() async throws {
+        let (model, repository) = try await modelOfACopy()
+        try await runGit("branch", "--no-track", "feature", "main~1", in: repository)
+        await model.load()
+        let local = try await runGit("rev-parse", "feature", in: repository)
+        // The first click of the double-click selects the remote branch's row.
+        model.selectRow(try row(of: Fixture.Basic.feature, in: model))
+
+        model.checkOut(try badge("origin/feature", in: model)) { _, _ in }
+        await finishCheckout(model)
+
+        #expect(model.headDescription == "feature")
+        #expect(model.selectedCommit.id == ObjectID(hex: local))
+        #expect(model.selectedRow == (try row(of: local, in: model)))
+    }
+
+    @Test func replacesWhatWasSelectedWithTheCommitItsToldToSelect() async throws {
+        let (model, _) = try await modelOfACopy()
+        await model.load()
+        model.selectRow(try row(of: Fixture.Basic.mainHistory[2], in: model))
+
+        let id = try #require(ObjectID(hex: Fixture.Basic.main))
+        model.select(commit: id)
+
+        #expect(model.selectedCommit.id == id)
+        #expect(model.selectedRow == (try row(of: Fixture.Basic.main, in: model)))
+    }
+
+    @Test func selectsACommitBeforeHistoryHasLoaded() async throws {
+        let (model, _) = try await modelOfACopy()
+        let id = try #require(ObjectID(hex: Fixture.Basic.mainHistory[1]))
+        model.select(commit: id)
+        #expect(model.selectedCommit.id == id)
+        #expect(model.selectedRow == nil)
+
+        await model.load()
+        #expect(model.selectedCommit.id == id)
+        #expect(model.selectedRow == (try row(of: Fixture.Basic.mainHistory[1], in: model)))
+    }
+
+    @Test func dropsACommitThatHistoryTurnsOutNotToHave() async throws {
+        let (model, _) = try await modelOfACopy()
+        let missing = try #require(ObjectID(hex: String(repeating: "1", count: 40)))
+        model.select(commit: missing)
+        await model.load()
+        #expect(model.selectedCommit.id == nil)
+        #expect(model.selectedRow == nil)
+    }
+
+    @Test func leavesTheSelectionForACommitThatLoadedHistoryDoesntHave() async throws {
+        let (model, _) = try await modelOfACopy()
+        await model.load()
+        let selected = try row(of: Fixture.Basic.main, in: model)
+        model.selectRow(selected)
+
+        model.select(commit: try #require(ObjectID(hex: String(repeating: "1", count: 40))))
+
+        #expect(model.selectedRow == selected)
+        #expect(model.selectedCommit.id == ObjectID(hex: Fixture.Basic.main))
     }
 
     @Test func runsOneCheckoutAtATime() async throws {
         let (model, _) = try await modelOfACopy()
         await model.load()
-        model.checkOut(try badge("origin/feature", in: model)) { _ in }
+        model.checkOut(try badge("origin/feature", in: model)) { _, _ in }
         let running = try #require(model.checkout)
-        model.checkOut(CommitRowContent.Badge(title: "nothing", kind: .branch, refName: "refs/heads/nothing")) { _ in }
+        model.checkOut(CommitRowContent.Badge(title: "nothing", kind: .branch, refName: "refs/heads/nothing")) { _, _ in }
         #expect(model.checkout == running)
         await finishCheckout(model)
         #expect(model.headDescription == "feature")

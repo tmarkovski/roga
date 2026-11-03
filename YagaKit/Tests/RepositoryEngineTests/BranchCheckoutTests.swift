@@ -1,4 +1,5 @@
 import Foundation
+import GitCore
 import GitRunner
 import TestSupport
 import Testing
@@ -17,6 +18,10 @@ struct BranchCheckoutTests {
         try await runGit("symbolic-ref", "HEAD", in: repository)
     }
 
+    func head(in repository: String) async throws -> ObjectID {
+        try #require(ObjectID(hex: try await runGit("rev-parse", "HEAD", in: repository)))
+    }
+
     func upstream(in repository: String) async throws -> String {
         try await runGit("rev-parse", "--abbrev-ref", "@{upstream}", in: repository)
     }
@@ -25,21 +30,21 @@ struct BranchCheckoutTests {
         let (session, repository) = try await copy()
         try await runGit("branch", "other", in: repository)
         let result = try await session.checkOut(ref: "refs/heads/other", in: repository)
-        #expect(result == .checkedOut("refs/heads/other"))
+        #expect(result == .checkedOut("refs/heads/other", commit: try await head(in: repository)))
         #expect(try await currentBranch(in: repository) == "refs/heads/other")
     }
 
     @Test func staysOnTheCurrentBranch() async throws {
         let (session, repository) = try await copy()
         let result = try await session.checkOut(ref: "refs/heads/main", in: repository)
-        #expect(result == .checkedOut("refs/heads/main"))
+        #expect(result == .checkedOut("refs/heads/main", commit: try await head(in: repository)))
         #expect(try await currentBranch(in: repository) == "refs/heads/main")
     }
 
     @Test func createsALocalBranchThatTracksARemoteBranch() async throws {
         let (session, repository) = try await copy()
         let result = try await session.checkOut(ref: "refs/remotes/origin/feature", in: repository)
-        #expect(result == .checkedOut("refs/heads/feature"))
+        #expect(result == .checkedOut("refs/heads/feature", commit: try await head(in: repository)))
         #expect(try await currentBranch(in: repository) == "refs/heads/feature")
         #expect(try await upstream(in: repository) == "origin/feature")
         #expect(try await runGit("rev-parse", "HEAD", in: repository) == Fixture.Basic.feature)
@@ -52,7 +57,7 @@ struct BranchCheckoutTests {
         #expect(local != Fixture.Basic.feature)
 
         let result = try await session.checkOut(ref: "refs/remotes/origin/feature", in: repository)
-        #expect(result == .checkedOut("refs/heads/feature"))
+        #expect(result == .checkedOut("refs/heads/feature", commit: try await head(in: repository)))
         #expect(try await currentBranch(in: repository) == "refs/heads/feature")
         #expect(try await runGit("rev-parse", "HEAD", in: repository) == local)
     }
@@ -62,7 +67,7 @@ struct BranchCheckoutTests {
         try await runGit("remote", "add", remote, try await Fixture.repository("basic"), in: repository)
         try await runGit("fetch", "--quiet", remote, in: repository)
         let result = try await session.checkOut(ref: "refs/remotes/\(remote)/feature", in: repository)
-        #expect(result == .checkedOut("refs/heads/feature"))
+        #expect(result == .checkedOut("refs/heads/feature", commit: try await head(in: repository)))
         #expect(try await upstream(in: repository) == "\(remote)/feature")
     }
 
@@ -70,14 +75,14 @@ struct BranchCheckoutTests {
         let (session, repository) = try await copy()
         try await runGit("update-ref", "refs/remotes/origin/fix/login", "origin/feature", in: repository)
         let result = try await session.checkOut(ref: "refs/remotes/origin/fix/login", in: repository)
-        #expect(result == .checkedOut("refs/heads/fix/login"))
+        #expect(result == .checkedOut("refs/heads/fix/login", commit: try await head(in: repository)))
     }
 
     @Test func doesntTakeABranchNameForAnOption() async throws {
         let (session, repository) = try await copy()
         try await runGit("update-ref", "refs/heads/--detach", "HEAD", in: repository)
         let result = try await session.checkOut(ref: "refs/heads/--detach", in: repository)
-        #expect(result == .checkedOut("refs/heads/--detach"))
+        #expect(result == .checkedOut("refs/heads/--detach", commit: try await head(in: repository)))
         #expect(try await currentBranch(in: repository) == "refs/heads/--detach")
     }
 
@@ -95,8 +100,9 @@ struct BranchCheckoutTests {
         let folder = (repository as NSString).deletingLastPathComponent + "/notes"
         try await runGit("worktree", "add", "--quiet", folder, "-b", "feature", "origin/feature", in: repository)
 
-        #expect(try await session.checkOut(ref: "refs/heads/feature", in: repository) == .inOtherWorktree(folder))
-        #expect(try await session.checkOut(ref: "refs/remotes/origin/feature", in: repository) == .inOtherWorktree(folder))
+        let commit = ObjectID(hex: Fixture.Basic.feature)
+        #expect(try await session.checkOut(ref: "refs/heads/feature", in: repository) == .inOtherWorktree(folder, commit: commit))
+        #expect(try await session.checkOut(ref: "refs/remotes/origin/feature", in: repository) == .inOtherWorktree(folder, commit: commit))
         #expect(try await currentBranch(in: repository) == "refs/heads/main")
     }
 

@@ -183,17 +183,22 @@ public struct WorkspaceView: View {
            let repository = list.repository(at: selected.repository),
            case .open(let session) = repository.state,
            repository.worktrees.contains(where: { $0.path == selected.worktree }) {
-            RefsPanel(model: model(for: selected, session: session), width: width, isShown: $wantsRefsPanel, showWorktree: showWorktree(of: selected))
+            RefsPanel(model: model(for: selected, session: session), width: width, isShown: $wantsRefsPanel, showWorktree: showWorktree(of: selected, session: session))
                 .id(selected)
         } else {
             RefsPanelPlaceholder(width: width)
         }
     }
 
-    /// What shows another of a repository's worktrees in the window, by its folder.
-    private func showWorktree(of selected: WorktreeSelection) -> (String) -> Void {
-        { worktree in
-            selection.wrappedValue = WorktreeSelection(repository: selected.repository, worktree: worktree)
+    /// What shows another of a repository's worktrees in the window, by its
+    /// folder, because of a branch that it has checked out. The worktree's model
+    /// remembers what was selected the last time it showed, so the branch's commit
+    /// replaces that.
+    private func showWorktree(of selected: WorktreeSelection, session: RepositorySession) -> (String, ObjectID?) -> Void {
+        { worktree, commit in
+            let shown = WorktreeSelection(repository: selected.repository, worktree: worktree)
+            if let commit { model(for: shown, session: session).select(commit: commit) }
+            selection.wrappedValue = shown
         }
     }
 
@@ -261,7 +266,7 @@ public struct WorkspaceView: View {
             }
         case .open(let session):
             if repository.worktrees.contains(where: { $0.path == selected.worktree }) {
-                RepositoryView(model: model(for: selected, session: session), showWorktree: showWorktree(of: selected))
+                RepositoryView(model: model(for: selected, session: session), showWorktree: showWorktree(of: selected, session: session))
                     .id(selected)
             } else {
                 // The worktree is gone, and resolving the selection moves the

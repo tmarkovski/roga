@@ -1,4 +1,5 @@
 import AppKit
+import GitCore
 import HistoryUI
 import SwiftUI
 
@@ -14,8 +15,9 @@ struct CommitList: NSViewRepresentable {
     /// new history puts the commit in another row, or when the commit panel
     /// goes to a parent.
     let selectedRow: Int?
-    /// Shows one of the repository's worktrees in the window, by its folder.
-    let showWorktree: (String) -> Void
+    /// Shows one of the repository's worktrees in the window, by its folder,
+    /// with a commit selected in it.
+    let showWorktree: (String, ObjectID?) -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(model: model)
@@ -32,7 +34,7 @@ struct CommitList: NSViewRepresentable {
 
     final class Coordinator {
         let controller: CommitTableController
-        var showWorktree: (String) -> Void = { _ in }
+        var showWorktree: (String, ObjectID?) -> Void = { _, _ in }
         private var shownVersion: Int?
 
         init(model: RepositoryModel) {
@@ -43,7 +45,7 @@ struct CommitList: NSViewRepresentable {
                 selectRow: { model.selectRow($0) }
             ))
             controller.source.checkOut = { [unowned self] badge in
-                model.checkOut(badge) { [unowned self] in showWorktree($0) }
+                model.checkOut(badge) { [unowned self] in showWorktree($0, $1) }
             }
         }
 

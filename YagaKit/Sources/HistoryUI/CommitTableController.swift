@@ -65,6 +65,9 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
     private var isSettingSelection = false
     /// The badge the pointer is over, if double-clicking it would do something.
     private var hoveredBadge: BadgePlace?
+    /// Whether the selected row is waiting for the list to have a height before
+    /// it's scrolled into view.
+    private var needsToRevealSelection = false
 
     public init(source: Source) {
         self.source = source
@@ -137,10 +140,19 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
         defer { isSettingSelection = false }
         if let row {
             tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
-            tableView.scrollRowToVisible(row)
+            revealSelectedRow()
         } else {
             tableView.deselectAll(nil)
         }
+    }
+
+    /// Scrolls the selected row into view, as little as that takes. A new list
+    /// has no height until it's laid out, and scrolling then would put the row at
+    /// the top of the list however near the top it is, so that waits.
+    private func revealSelectedRow() {
+        needsToRevealSelection = scrollView.contentView.bounds.height < tableView.rowHeight
+        guard !needsToRevealSelection, let selectedRow else { return }
+        tableView.scrollRowToVisible(selectedRow)
     }
 
     public func tableViewSelectionDidChange(_ notification: Notification) {
@@ -201,6 +213,7 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
     }
 
     @objc private func visibleRowsMayHaveChanged(_ notification: Notification) {
+        if needsToRevealSelection { revealSelectedRow() }
         sizeGraph(canNarrow: false)
         loadVisibleText()
         updateHoveredBadge()
