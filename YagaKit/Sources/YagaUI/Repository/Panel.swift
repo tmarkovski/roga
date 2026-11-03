@@ -210,7 +210,10 @@ extension ButtonStyle where Self == IconButtonStyle {
     static func icon(isOn: Bool) -> IconButtonStyle { IconButtonStyle(isOn: isOn) }
 }
 
-/// The small triangle after a name that says whether what's under it shows.
+/// The small triangle after a name that says whether what's under it shows. It
+/// changes with the system's replace animation, which goes no further than the
+/// triangle, so what's under it still comes and goes at once. Both directions
+/// take the same room, so that nothing beside it moves.
 struct Triangle: View {
     let pointsDown: Bool
 
@@ -218,6 +221,9 @@ struct Triangle: View {
         Image(systemName: pointsDown ? "arrowtriangle.down.fill" : "arrowtriangle.right.fill")
             .font(.system(size: 8))
             .foregroundStyle(.secondary)
+            .contentTransition(.symbolEffect(.replace))
+            .animation(.default, value: pointsDown)
+            .frame(width: 10, height: 10)
     }
 }
 

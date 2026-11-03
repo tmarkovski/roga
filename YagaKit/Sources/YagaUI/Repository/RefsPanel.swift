@@ -415,8 +415,7 @@ private struct RefSectionHeader: View {
             Text(section.title)
                 .font(.system(size: 12, weight: .semibold))
             if count > 0 {
-                Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
+                Triangle(pointsDown: !isCollapsed)
             }
             Spacer(minLength: 8)
             Text(count, format: .number)
