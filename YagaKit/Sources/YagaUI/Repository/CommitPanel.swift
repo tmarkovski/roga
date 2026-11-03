@@ -73,6 +73,9 @@ private struct CommitDetails: View {
     let files: SelectedCommit.Files
     let model: RepositoryModel
     let select: (DiffFile) -> Void
+    /// It's one setting for every commit, so that moving through history with a
+    /// long message out of the way keeps it out of the way.
+    @AppStorage("collapsesCommitBody") private var collapsesBody = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -120,14 +123,16 @@ private struct CommitDetails: View {
         if info.subject.isEmpty {
             Text("This commit has no message.")
                 .foregroundStyle(.secondary)
-        } else {
+        } else if info.body.isEmpty {
             Text(info.subject)
                 .fontWeight(.semibold)
                 .textSelection(.enabled)
-        }
-        if !info.body.isEmpty {
-            Text(info.body)
-                .textSelection(.enabled)
+        } else {
+            CollapsibleSubject(subject: info.subject, isCollapsed: $collapsesBody)
+            if !collapsesBody {
+                Text(info.body)
+                    .textSelection(.enabled)
+            }
         }
     }
 
@@ -163,6 +168,44 @@ private struct CommitDetails: View {
             }
             .font(.system(size: 12))
         }
+    }
+}
+
+/// The subject of a commit that has more to its message, which hides and shows
+/// the rest. Clicking the subject does the same as the triangle after it, so
+/// it's underlined while the pointer is over it. It can't be selected, because
+/// selectable text shows the text cursor, which says the click would do nothing.
+private struct CollapsibleSubject: View {
+    let subject: String
+    @Binding var isCollapsed: Bool
+    @State private var isHovering = false
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 2) {
+            Button {
+                isCollapsed.toggle()
+            } label: {
+                Text(subject)
+                    .fontWeight(.semibold)
+                    .underline(isHovering)
+                    .multilineTextAlignment(.leading)
+            }
+            .buttonStyle(.plain)
+            .onHover { isHovering = $0 }
+            Button {
+                isCollapsed.toggle()
+            } label: {
+                Triangle(pointsDown: !isCollapsed)
+            }
+            .buttonStyle(.icon(size: 18))
+            .offset(y: -1)
+            .help(title)
+            .accessibilityLabel(title)
+        }
+    }
+
+    private var title: String {
+        isCollapsed ? "Show Commit Message" : "Hide Commit Message"
     }
 }
 

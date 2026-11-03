@@ -210,6 +210,17 @@ extension ButtonStyle where Self == IconButtonStyle {
     static func icon(isOn: Bool) -> IconButtonStyle { IconButtonStyle(isOn: isOn) }
 }
 
+/// The small triangle after a name that says whether what's under it shows.
+struct Triangle: View {
+    let pointsDown: Bool
+
+    var body: some View {
+        Image(systemName: pointsDown ? "arrowtriangle.down.fill" : "arrowtriangle.right.fill")
+            .font(.system(size: 8))
+            .foregroundStyle(.secondary)
+    }
+}
+
 /// An icon in a square that fills with gray while the pointer is over it.
 /// Menus use it as their label, because they don't take a button style.
 struct HoverIcon<Icon: View>: View {

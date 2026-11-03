@@ -364,17 +364,6 @@ private struct WorktreeConnector: View {
     }
 }
 
-/// The small triangle after a name that says whether what's under it shows.
-private struct Triangle: View {
-    let pointsDown: Bool
-
-    var body: some View {
-        Image(systemName: pointsDown ? "arrowtriangle.down.fill" : "arrowtriangle.right.fill")
-            .font(.system(size: 8))
-            .foregroundStyle(.secondary)
-    }
-}
-
 /// The button that opens the menu of a row's commands, which shows while the
 /// pointer is over the row.
 private struct RowMenu<Items: View>: View {
