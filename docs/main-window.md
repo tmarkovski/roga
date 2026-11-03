@@ -6,18 +6,18 @@ The layout follows the Claude and ChatGPT apps. A sidebar on the left has a rail
 
 ```text
 ┌──────────────────────────────┬──────────────────────────────────────────────────┬────────────────────────┐
-│ ● ● ●  ◧                     │ agents-demo / main · 128 commits             ≡ ◨ │               ⌕  ⇅  ⋯  │
-├──────┬───────────────────────┼──────────────────────────────────────────────────┤ Branches ▾           4 │
-│ [▣]  │ All repositories  19  │ ○  3 uncommitted files                           │   main               ✓ │
-│ AC   │ api ▾           7  ⧉ 4│ ●  agent/fix-login  Add login tests      48ba644 │   agent/add-tests   ↑1 │
-│ NO   │   agent/add-tests    4│ ●  ✓ main  Update the changelog          5405371 │   agent/fix-login ↑3 ↓2│
-│ TM   │   agent/fix-login    3│ ●  Add parser tests                      bb3b6b6 │ Remotes ▾            1 │
-│ …    │   2 quiet worktrees ▸ │ ●  v0.2  Show an error when …            86b3386 │   origin               │
-│      │ auth  release/2.3     ├───────────────────┬──────────────────────────────┤ Tags ▾               2 │
-│      │ billing              1│ Commit 5405371  ⧉ │ CHANGELOG.md     ⌕  ↗  ⋯     │   v0.2                 │
-│      │ docs                  ├───────────────────┼──────────────────────────────┤   v0.1                 │
-│      │ infra                 │ Update changelog  │ @@ -1,6 +1,10 @@             │ Stashes              0 │
-│  +   │ web ▸          2  ⧉ 2 │ CHANGELOG.md +4 −0│   # Changelog                │                        │
+│ ● ● ●  ◧                     │ agents-demo  main · 128 commits              ≡ ◨ │               ⌕  ⇅  ⋯  │
+├──────┬───────────────────────┼──────────────────────────────────────────────────┼────────────────────────┤
+│ [▣]  │ All repositories  19  │ ○  3 uncommitted files                           │ Branches ▾           4 │
+│ AC   │ api ▾           7  ⧉ 4│ ●  agent/fix-login  Add login tests      48ba644 │   main               ✓ │
+│ NO   │   agent/add-tests    4│ ●  ✓ main  Update the changelog          5405371 │   agent/add-tests   ↑1 │
+│ TM   │   agent/fix-login    3│ ●  Add parser tests                      bb3b6b6 │   agent/fix-login ↑3 ↓2│
+│ …    │   2 quiet worktrees ▸ │ ●  v0.2  Show an error when …            86b3386 │ Remotes ▾            1 │
+│      │ auth  release/2.3     ├───────────────────┬──────────────────────────────┤   origin               │
+│      │ billing              1│ Commit 5405371  ⧉ │ CHANGELOG.md     ⌕  ↗  ⋯     │ Tags ▾               2 │
+│      │ docs                  ├───────────────────┼──────────────────────────────┤   v0.2                 │
+│      │ infra                 │ Update changelog  │ @@ -1,6 +1,10 @@             │   v0.1                 │
+│  +   │ web ▸          2  ⧉ 2 │ CHANGELOG.md +4 −0│   # Changelog                │ Stashes              0 │
 │      │ yaga ▸               3│                   │ + ## 0.3                     │                        │
 └──────┴───────────────────────┴───────────────────┴──────────────────────────────┴────────────────────────┘
 ```
@@ -59,7 +59,7 @@ File > Open still asks for a folder and adds its repository, from anywhere.
 
 ## The title row
 
-The top row of the middle column names what the window shows: the repository, and under it the branch and how many commits history has, as in `main · 128 commits`. A thin line runs under the row, from the sidebar to the refs panel. The right end of the row holds the commands for history, then the button that shows or hides the refs panel, which moves to the edge of the window while the panel is hidden. It'll also hold the log of git commands yaga ran. Dragging the empty part of the row moves the window, and double-clicking it does what the user chose in System Settings.
+The top row of the middle column is 40 points tall, like a panel's header, and names what the window shows on one line: the repository, then in gray the branch and how many commits history has, as in `main · 128 commits`. They're the same size, and they truncate to leave room for the commands. A thin line runs along the bottom of the row, from the sidebar to the edge of the window, across the refs panel. The right end of the row holds the commands for history, then the button that shows or hides the refs panel, which moves to the edge of the window while the panel is hidden. It'll also hold the log of git commands yaga ran. Dragging the empty part of the row moves the window, and double-clicking it does what the user chose in System Settings.
 
 ## Panels
 
@@ -95,7 +95,7 @@ The refs panel runs the full height of the window on the right, with a thin line
 
 As the window gets narrower, the panel narrows to keep 400 points for the middle, down to 288. After that it gives way, and its button and menu command are disabled until there's room. It comes back by itself when the window is wide enough again, unless the user had closed it. Decision 13 expected the panel to be what gives way first.
 
-- Its top row is level with the title row, and has buttons for filtering and for sorting by name or by date, and a menu with every command the panel has. They're items in the window's toolbar, whose empty parts still move the window.
+- Its top row is the rest of the title row, and has buttons for filtering and for sorting by name or by date, and a menu with every command the panel has. They're items in the window's toolbar, whose empty parts still move the window.
 - The button for filtering opens a field at the top of the panel, as the diff panel's button for finding text does, and so do View > Filter Refs and Option-Command-F, showing the panel first if it's hidden. The field narrows every section at once, by the names of branches, remotes and tags and the messages of stashes, and it opens any section that's collapsed. The down arrow goes from the field to the first row. Escape or the button in the field clears the filter and closes the field.
 - Its sections are **Branches**, **Remotes**, **Tags** and **Stashes**. A section's header shows its title with a small triangle after it, and clicking the header collapses or expands the section, which is one setting for every repository. A section with nothing in it has no triangle and nothing to click, and shows only its title and `0`. The header shows how many items the section has, stays in view while its rows scroll, and on hover it will show the section's commands, such as creating a branch or tag in release 2.
 - Clicking a branch, remote branch or tag selects its commit in history, whichever worktree has it checked out. After that the up and down arrows move through the rows, skipping remotes, stashes and anything else with no commit to select.

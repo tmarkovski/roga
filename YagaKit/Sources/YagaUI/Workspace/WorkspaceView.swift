@@ -33,6 +33,8 @@ public struct WorkspaceView: View {
     /// The width of the column that holds the worktree and the refs panel, once
     /// it's been laid out.
     @State private var columnWidth: Double?
+    /// The width of the middle of the window, once it's been laid out.
+    @State private var middleWidth: Double?
 
     public init(window: Binding<WorkspaceWindow?>) {
         _window = window
@@ -115,21 +117,30 @@ public struct WorkspaceView: View {
             ) {
                 detail
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    // A line under the title row, from the sidebar to the refs
-                    // panel, like the lines between panels. It replaces macOS's
-                    // own, which is thinner and goes all the way across.
-                    .safeAreaInset(edge: .top, spacing: 0) {
-                        Rectangle()
-                            .fill(Palette.separator)
-                            .frame(height: 1)
-                    }
+                    .onGeometryChange(for: Double.self) { $0.size.width } action: { middleWidth = $0 }
             } side: { width in
                 refsPanel(width: width)
+            }
+            // A line at the bottom of the title row, from the sidebar to the
+            // edge of the window, like the one in a panel's header. It replaces
+            // macOS's own, which is thinner and sits under the row.
+            .overlay(alignment: .top) {
+                Rectangle()
+                    .fill(Palette.separator)
+                    .frame(height: 1)
+                    .offset(y: -1)
+                    .allowsHitTesting(false)
             }
             .background(Palette.surface)
             .onGeometryChange(for: Double.self) { $0.size.width } action: { columnWidth = $0 }
             .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
+            .toolbar(removing: .title)
             .toolbar {
+                ToolbarItem(placement: .navigation) {
+                    titleRow
+                }
+                .sharedBackgroundVisibility(.hidden)
+                ToolbarSpacer(.flexible)
                 if let model = shownModel, case .ready = model.phase {
                     HistoryCommands(model: model)
                 }
@@ -140,7 +151,6 @@ public struct WorkspaceView: View {
             }
         }
         .navigationTitle(title)
-        .navigationSubtitle(subtitle)
         .frame(minWidth: 720, minHeight: 480)
         .task(id: gitProvider.git != nil) {
             if let git = gitProvider.git { await list.connect(git: git) }
@@ -274,6 +284,36 @@ public struct WorkspaceView: View {
         guard let worktree = shown?.1 else { return "" }
         guard let commits = shownModel?.commitCountDescription else { return worktree.title }
         return "\(worktree.title) · \(commits)"
+    }
+
+    /// What the window shows, on one line like the title of a panel.
+    private var titleRow: some View {
+        HStack(spacing: 6) {
+            Text(title)
+                .font(.system(size: 13, weight: .medium))
+            Text(subtitle)
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+        }
+        .lineLimit(1)
+        .help("\(title) \(subtitle)")
+        // In line with the titles of the panels below it.
+        .padding(.leading, 6)
+        .frame(maxWidth: titleRowWidth, alignment: .leading)
+    }
+
+    /// How wide the title can get, because the toolbar moves what doesn't fit
+    /// into a menu, starting with the commands after it.
+    private var titleRowWidth: Double {
+        guard let middleWidth else { return .infinity }
+        // History's order button, the button for the refs panel, and the space
+        // the toolbar keeps around them.
+        var taken = 125.0
+        // The window's buttons and the button for the sidebar.
+        if columns == .detailOnly { taken += 140 }
+        // The note about the commit-graph file.
+        if shownModel?.historyWasSlowToLoad == true { taken += 180 }
+        return max(0, middleWidth - taken)
     }
 
     private func open() {

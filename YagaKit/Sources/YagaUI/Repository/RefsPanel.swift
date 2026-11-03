@@ -36,7 +36,7 @@ struct RefsPanel: View {
                     isListFocused = true
                 }
                 .padding(.horizontal, 10)
-                .padding(.bottom, 6)
+                .padding(.vertical, 6)
             }
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
