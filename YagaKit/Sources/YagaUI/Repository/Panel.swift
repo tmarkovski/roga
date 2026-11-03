@@ -210,19 +210,20 @@ extension ButtonStyle where Self == IconButtonStyle {
     static func icon(isOn: Bool) -> IconButtonStyle { IconButtonStyle(isOn: isOn) }
 }
 
-/// The small triangle after a name that says whether what's under it shows. It
-/// changes with the system's replace animation, which goes no further than the
-/// triangle, so what's under it still comes and goes at once. Both directions
-/// take the same room, so that nothing beside it moves.
+/// The small triangle that says whether what's under it shows. It turns a
+/// quarter of the way around between its two directions. The animation goes no
+/// further than the triangle, so what's under it still comes and goes at once.
+/// Both directions take the same room, so that nothing beside it moves.
 struct Triangle: View {
     let pointsDown: Bool
+    @Environment(\.accessibilityReduceMotion) private var reducesMotion
 
     var body: some View {
-        Image(systemName: pointsDown ? "arrowtriangle.down.fill" : "arrowtriangle.right.fill")
+        Image(systemName: "arrowtriangle.right.fill")
             .font(.system(size: 8))
             .foregroundStyle(.secondary)
-            .contentTransition(.symbolEffect(.replace))
-            .animation(.default, value: pointsDown)
+            .rotationEffect(.degrees(pointsDown ? 90 : 0))
+            .animation(reducesMotion ? nil : .easeInOut(duration: 0.18), value: pointsDown)
             .frame(width: 10, height: 10)
     }
 }
