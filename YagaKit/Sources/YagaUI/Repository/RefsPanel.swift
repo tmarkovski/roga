@@ -535,13 +535,13 @@ private struct AheadBehind: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            if ahead > 0 {
-                Text("↑\(ahead)")
-                    .foregroundStyle(.green)
-            }
             if behind > 0 {
                 Text("↓\(behind)")
                     .foregroundStyle(.red)
+            }
+            if ahead > 0 {
+                Text("↑\(ahead)")
+                    .foregroundStyle(.green)
             }
         }
         .font(.system(size: 11, design: .monospaced))

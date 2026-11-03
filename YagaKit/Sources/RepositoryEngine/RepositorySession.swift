@@ -1,4 +1,5 @@
 import CommitGraph
+import Foundation
 import GitCore
 import GitRunner
 
@@ -7,13 +8,21 @@ import GitRunner
 ///
 /// For now a session lists worktrees and refs, reads history, the text of
 /// commits, the files they changed and their patches, reads what's uncommitted
-/// in a worktree, checks out branches, and keeps the commit-graph files up to
-/// date. Watching for changes comes later, as ARCHITECTURE.md describes.
+/// in a worktree, checks out branches, fetches, pulls and pushes, and keeps the
+/// commit-graph files up to date. Watching for changes comes later, as
+/// ARCHITECTURE.md describes.
 public actor RepositorySession {
     public nonisolated let location: RepositoryLocation
     public nonisolated let git: Git
     private nonisolated let catFile: CatFileSession
     private var commitGraphUpdate: Task<CommitGraphUpdate, any Error>?
+    /// The running fetch. There's only ever one, because every worktree shares
+    /// the repository's remote branches.
+    private var runningFetch: Task<(any Error)?, Never>?
+    /// When the last quiet fetch started.
+    private var lastQuietFetch: ContinuousClock.Instant?
+    /// What became of the last fetch.
+    private var fetchRecord: FetchRecord?
 
     public init(location: RepositoryLocation, git: Git) throws {
         self.location = location
@@ -162,6 +171,146 @@ public actor RepositorySession {
         try await BranchCheckout.run(ref: name, in: worktree, worktrees: try await worktrees(), git: git)
     }
 
+    /// Says where a worktree's branch stands against its upstream, or nil when
+    /// it isn't on a branch, or its branch has no commits yet.
+    public nonisolated func branchStatus(in worktree: String) async throws -> BranchStatus? {
+        try await BranchStatusLoader.load(git: git, in: worktree)
+    }
+
+    /// Lists the commits that `tip` has and `base` doesn't, newest first.
+    ///
+    /// - Parameters:
+    ///   - base: The full name of a ref, or `HEAD`.
+    ///   - tip: The full name of a ref, or `HEAD`.
+    ///   - limit: The most to list.
+    ///   - worktree: The worktree whose `HEAD` to use.
+    public nonisolated func commits(from base: String, to tip: String, limit: Int, in worktree: String) async throws -> [ObjectID] {
+        let command = GitCommand("rev-list", "--max-count=\(limit)", "\(base)..\(tip)", "--", in: worktree)
+        return try await git.text(command).split(separator: "\n").compactMap { ObjectID(hex: String($0)) }
+    }
+
+    /// Fetches by itself, without asking anyone, as long as this repository
+    /// hasn't done that within `minimumInterval`, and returns what became of the
+    /// latest fetch (decision 20). A fetch that's running already is waited for.
+    /// It doesn't throw, because nobody asked for it, so the record has what git
+    /// said.
+    ///
+    /// - Parameter timeLimit: How long it can run before yaga stops it, because
+    ///   a stalled connection would otherwise hold up every later fetch.
+    public func fetchQuietly(
+        from remote: String,
+        minimumInterval: Duration = .seconds(60),
+        timeLimit: Duration = .seconds(60)
+    ) async -> FetchRecord {
+        if let runningFetch {
+            _ = await runningFetch.value
+            return lastFetch()
+        }
+        if let lastQuietFetch, ContinuousClock.now - lastQuietFetch < minimumInterval { return lastFetch() }
+        lastQuietFetch = .now
+        let git = git
+        let command = RemoteCommands.quietFetch(from: remote, in: location.commonDirectory)
+        await runFetch { () async throws(any Error) in
+            try await withThrowingTaskGroup { group in
+                group.addTask { _ = try await git.run(command) }
+                group.addTask {
+                    try await Task.sleep(for: timeLimit)
+                    throw RepositoryError.fetchTookTooLong
+                }
+                try await group.next()
+                group.cancelAll()
+            }
+        }
+        return lastFetch()
+    }
+
+    /// Fetches because someone asked to, whenever yaga last did.
+    ///
+    /// - Throws: `GitError` when git can't fetch, which says why.
+    public func fetch(from remote: String, in worktree: String) async throws {
+        _ = await runningFetch?.value
+        let git = git
+        let command = RemoteCommands.asked(["fetch", remote], in: worktree)
+        lastQuietFetch = .now
+        if let error = await runFetch({ () async throws(any Error) in _ = try await git.run(command) }) {
+            throw error
+        }
+    }
+
+    /// Runs a fetch as the running one, records what became of it, and returns
+    /// the error if it failed.
+    @discardableResult
+    private func runFetch(_ fetch: sending @escaping () async throws(any Error) -> Void) async -> (any Error)? {
+        let task = Task(priority: .utility) { () -> (any Error)? in
+            do {
+                try await fetch()
+                return nil
+            } catch {
+                return error
+            }
+        }
+        runningFetch = task
+        let failure = await task.value
+        runningFetch = nil
+        switch failure {
+        case nil:
+            fetchRecord = FetchRecord(lastFetched: Date())
+        case is CancellationError:
+            // The session is closing, so nobody will read the record.
+            break
+        case let failure?:
+            fetchRecord = FetchRecord(lastFetched: lastFetch().lastFetched, failure: (failure as? GitError)?.message ?? String(describing: failure))
+        }
+        return failure
+    }
+
+    /// What became of the last fetch. Before yaga has fetched, the date of
+    /// `FETCH_HEAD` says when someone else last did.
+    public func lastFetch() -> FetchRecord {
+        if let fetchRecord { return fetchRecord }
+        let attributes = try? FileManager.default.attributesOfItem(atPath: location.commonDirectory + "/FETCH_HEAD")
+        return FetchRecord(lastFetched: attributes?[.modificationDate] as? Date)
+    }
+
+    /// Pulls a worktree's branch, once any fetch that's running has finished.
+    /// Like a checkout, this is best left to finish.
+    ///
+    /// - Throws: `GitError` when git refuses or hits a conflict, which says why.
+    public func pull(_ pull: Pull, in worktree: String) async throws {
+        _ = await runningFetch?.value
+        _ = try await Self.run(pull.arguments, in: worktree, git: git)
+    }
+
+    /// Pushes a worktree's branch, once any fetch that's running has finished.
+    ///
+    /// - Throws: `GitError` when git refuses, which says why.
+    public func push(_ push: Push, in worktree: String) async throws {
+        _ = await runningFetch?.value
+        _ = try await Self.run(push.arguments, in: worktree, git: git)
+    }
+
+    /// Says whether a worktree is partway through a merge or a rebase.
+    public nonisolated func stoppedPull(in worktree: String) async throws -> StoppedPull? {
+        try await RemoteCommands.stoppedPull(in: worktree, git: git)
+    }
+
+    /// Goes back to before a pull that stopped partway.
+    public nonisolated func undo(_ pull: StoppedPull, in worktree: String) async throws {
+        _ = try await Self.run(pull.abortArguments, in: worktree, git: git)
+    }
+
+    /// Makes a new branch on the commit a worktree is on, and switches to it
+    /// there or in a new worktree.
+    ///
+    /// - Throws: `GitError` when git refuses, which says why.
+    public nonisolated func create(_ branch: NewBranch, in worktree: String) async throws {
+        _ = try await Self.run(branch.arguments, in: worktree, git: git)
+    }
+
+    private nonisolated static func run(_ arguments: [String], in worktree: String, git: Git) async throws -> GitResult {
+        try await git.run(RemoteCommands.asked(arguments, in: worktree))
+    }
+
     /// Writes what the repository's commit-graph files are missing, at low
     /// priority (decision 6). History reads the files when it loads, so the
     /// next load is the one that gets faster.
@@ -185,6 +334,7 @@ public actor RepositorySession {
     /// except that an update of the commit-graph files runs to its end.
     public func close() {
         commitGraphUpdate?.cancel()
+        runningFetch?.cancel()
         catFile.close()
     }
 }

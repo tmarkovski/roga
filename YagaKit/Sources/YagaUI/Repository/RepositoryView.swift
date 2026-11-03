@@ -36,6 +36,56 @@ struct RepositoryView: View {
             } message: { failure in
                 Text(failure.message)
             }
+            .alert(
+                model.branch.failure?.title ?? "",
+                isPresented: Binding { model.branch.failure != nil } set: { if !$0 { model.branch.failure = nil } },
+                presenting: model.branch.failure
+            ) { _ in
+            } message: { failure in
+                Text(failure.message)
+            }
+            .alert(
+                "The Pull Stopped on a Conflict",
+                isPresented: Binding { model.branch.conflict != nil } set: { if !$0 { model.branch.conflict = nil } },
+                presenting: model.branch.conflict
+            ) { _ in
+                Button("Undo the Pull") { model.branch.undoPull() }
+                Button("Leave It", role: .cancel) {}
+            } message: { conflict in
+                Text(conflictMessage(conflict))
+            }
+            .alert(
+                "Force Push \(model.branch.forcePush?.branch ?? "")?",
+                isPresented: Binding { model.branch.forcePush != nil } set: { if !$0 { model.branch.forcePush = nil } },
+                presenting: model.branch.forcePush
+            ) { _ in
+                Button("Force Push", role: .destructive) { model.branch.confirmForcePush() }
+                Button("Cancel", role: .cancel) {}
+            } message: { push in
+                Text(forcePushMessage(push))
+            }
+    }
+
+    /// Which files a pull stopped on, and what can be done about them.
+    private func conflictMessage(_ conflict: BranchModel.Conflict) -> String {
+        let shown = conflict.files.prefix(5).joined(separator: ", ")
+        let others = conflict.files.count - min(conflict.files.count, 5)
+        let files = others > 0 ? "\(shown) and \(others.formatted()) more" : shown
+        let advice = "yaga can't resolve conflicts yet, so you can undo the pull, or leave the worktree as it is to finish from the command line."
+        return files.isEmpty ? advice : "These files conflict: \(files).\n\n\(advice)"
+    }
+
+    /// What a force push overwrites, as the vision asks of destructive operations.
+    private func forcePushMessage(_ push: BranchModel.ForcePush) -> String {
+        guard push.count > 0 else {
+            return "This replaces \(push.upstream) with \(push.branch). It has no commits that \(push.branch) doesn't, so none are lost. git refuses if \(push.upstream) has moved since your branch last had it."
+        }
+        var message = push.count == 1
+            ? "This overwrites 1 commit on \(push.upstream):\n"
+            : "This overwrites \(push.count.formatted()) commits on \(push.upstream):\n"
+        message += push.subjects.map { "\n• \($0)" }.joined()
+        if push.count > push.subjects.count { message += "\n• and \((push.count - push.subjects.count).formatted()) more" }
+        return message + "\n\ngit refuses if \(push.upstream) has commits that \(push.branch) never had."
     }
 
     @ViewBuilder private var content: some View {

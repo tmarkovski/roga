@@ -207,7 +207,7 @@ public struct WorkspaceView: View {
         recent.model(for: selected, session: session) { [list] count in
             list.setUncommittedFiles(count, in: selected)
         } reportBranchChange: { [list] in
-            Task { await list.refresh(repositoryAt: selected.repository) }
+            await list.refresh(repositoryAt: selected.repository)
         }
     }
 
@@ -292,24 +292,49 @@ public struct WorkspaceView: View {
         return model(for: selected, session: session)
     }
 
-    /// The worktree's branch, and how many commits it has once they've been read.
-    private var subtitle: String {
-        guard let worktree = shown?.1 else { return "" }
-        guard let commits = shownModel?.commitCountDescription else { return worktree.title }
-        return "\(worktree.title) · \(commits)"
-    }
-
-    /// What the window shows, on one line like the title of a panel.
+    /// What the window shows, on one line like the title of a panel: the
+    /// repository, the worktree's branch and what can be done with it, and how many
+    /// commits it has once they've been read. When there's no room, the number of
+    /// commits goes first, then the branch's name truncates, and the counts stay.
     private var titleRow: some View {
         HStack(spacing: 6) {
             Text(title)
                 .font(.system(size: 13, weight: .medium))
-            Text(subtitle)
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
+                .fixedSize()
+                .help(title)
+            if let (_, worktree) = shown, let worktree {
+                if let selected = window?.selection, let model = shownModel, !worktree.isBare {
+                    BranchControl(
+                        branch: model.branch,
+                        worktree: worktree,
+                        switchBranch: refsPanelVisibility.fits ? {
+                            refsPanelVisibility.isWanted.wrappedValue = true
+                            model.refs.showFilter()
+                        } : nil,
+                        showWorktree: { folder, commit in
+                            if case .open(let session) = shown?.0.state {
+                                showWorktree(of: selected, session: session)(folder, commit)
+                            }
+                        }
+                    )
+                    .layoutPriority(1)
+                } else {
+                    Text(worktree.title)
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                }
+                if let commits = shownModel?.commitCountDescription {
+                    ViewThatFits(in: .horizontal) {
+                        Text("· \(commits)")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                            .fixedSize()
+                        Color.clear.frame(width: 0, height: 0)
+                    }
+                }
+            }
         }
         .lineLimit(1)
-        .help("\(title) \(subtitle)")
         // In line with the titles of the panels below it.
         .padding(.leading, 6)
         .frame(maxWidth: titleRowWidth, alignment: .leading)
@@ -352,12 +377,13 @@ final class RecentWorktrees {
     ///   - reportUncommittedFiles: What a new model calls with how many
     ///     uncommitted files it finds.
     ///   - reportBranchChange: What a new model calls when it has put the
-    ///     worktree on another branch.
+    ///     worktree on another branch or made a new worktree, which returns once
+    ///     the sidebar knows.
     func model(
         for selection: WorktreeSelection,
         session: RepositorySession,
         reportUncommittedFiles: @escaping (Int) -> Void = { _ in },
-        reportBranchChange: @escaping () -> Void = {}
+        reportBranchChange: @escaping () async -> Void = {}
     ) -> RepositoryModel {
         order.removeAll { $0 == selection }
         order.append(selection)

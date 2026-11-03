@@ -26,7 +26,7 @@ Some of the setup comes later, when there's something for it to work on:
 
 Release 1 is for someone who works in the terminal and keeps yaga open next to it. They use it to read history and to review what they and their agents have changed.
 
-yaga doesn't change the repository in release 1, with two exceptions. It keeps the commit-graph file up to date (decision 6), and double-clicking a branch's badge in history checks that branch out with `git switch`, which came forward from release 2. Switching worktrees only changes what yaga shows.
+yaga doesn't change the repository in release 1, with a few exceptions. It keeps the commit-graph file up to date (decision 6), double-clicking a branch's badge in history checks that branch out with `git switch`, and the branch in the title row fetches, pulls, pushes and starts new branches (decisions 19 and 20). The last two came forward from release 2. Switching worktrees only changes what yaga shows.
 
 The work happens in this order:
 
@@ -57,7 +57,7 @@ Release 1 can ship without the next two items. They're built last, and if they a
 
 ### Not in release 1
 
-- anything else that changes the repository, such as staging, committing, fetching or pushing
+- anything else that changes the repository, such as staging or committing
 - side-by-side diffs and syntax highlighting
 - managing submodules or Git LFS
 - resolving merge conflicts
@@ -67,9 +67,9 @@ Release 1 can ship without the next two items. They're built last, and if they a
 
 - Stage and unstage by file, hunk or line, and discard changes.
 - Commit and amend. The user's git runs their hooks and signs their commits.
-- Create, rename and delete branches, switch branches from the keyboard and the refs panel, and create and remove worktrees.
-- Fetch, pull and push, using the user's own credential helpers and SSH setup. Pull and push happen from the branch in the title row (decision 19), and yaga fetches by itself when it becomes active (decision 20).
-- Clone a repository into a folder the user chooses, with the same credential helpers and SSH setup, and add it to the sidebar. Its action goes under opening a repository at the top of the sidebar.
+- Rename and delete branches, start a branch from any commit, switch branches from the keyboard and the refs panel, and remove worktrees.
+- Ask for a passphrase when git needs one to fetch, pull or push (decision 20).
+- Clone a repository into a folder the user chooses, using the user's own credential helpers and SSH setup, and add it to the sidebar. Its action goes under opening a repository at the top of the sidebar.
 - Create, apply and drop stashes.
 - Decide whether yaga turns on the untracked cache or the filesystem monitor for large repositories.
 

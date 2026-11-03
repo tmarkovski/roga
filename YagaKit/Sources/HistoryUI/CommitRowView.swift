@@ -64,8 +64,20 @@ final class CommitCellView: NSView {
 
     override var isFlipped: Bool { true }
 
+    /// The tint on a commit that a count in the title row would move, which is
+    /// the brand's orange.
+    private static let previewColor = NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(srgbRed: 240 / 255, green: 129 / 255, blue: 63 / 255, alpha: 0.16)
+            : NSColor(srgbRed: 201 / 255, green: 68 / 255, blue: 2 / 255, alpha: 0.1)
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         guard let content else { return }
+        if content.isPreviewed {
+            Self.previewColor.setFill()
+            NSBezierPath(roundedRect: bounds.insetBy(dx: 6, dy: 0), xRadius: 4, yRadius: 4).fill()
+        }
         let layout = CommitRowLayout(content: content, graphColumns: graphColumns, size: bounds.size)
         if graphColumns > 0, let lanes = content.lanes {
             LaneRenderer.draw(lanes, columns: graphColumns, at: CommitRowLayout.graphX, height: bounds.height, isHollow: content.isWorkingTree)

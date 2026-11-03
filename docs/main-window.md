@@ -59,18 +59,18 @@ File > Open still asks for a folder and adds its repository, from anywhere.
 
 ## The title row
 
-The top row of the middle column is 40 points tall, like a panel's header, and names what the window shows on one line: the repository, then in gray the branch and how many commits history has, as in `main · 128 commits`. They're the same size, and they truncate to leave room for the commands. A thin line runs along the bottom of the row, from the sidebar to the edge of the window, across the refs panel. The right end of the row holds the commands for history, then the button that shows or hides the refs panel, which moves to the edge of the window while the panel is hidden. It'll also hold the log of git commands yaga ran. Dragging the empty part of the row moves the window, and double-clicking it does what the user chose in System Settings.
+The top row of the middle column is 40 points tall, like a panel's header, and names what the window shows on one line: the repository, then the branch and how far it is from its upstream, then in gray how many commits history has. They're the same size. A thin line runs along the bottom of the row, from the sidebar to the edge of the window, across the refs panel. The right end of the row holds the commands for history, then the button that shows or hides the refs panel, which moves to the edge of the window while the panel is hidden. It'll also hold the log of git commands yaga ran. Dragging the empty part of the row moves the window, and double-clicking it does what the user chose in System Settings.
 
-### Pull, push and branch, in release 2
+### Pull, push and branch
 
-In release 2 the row also says where the branch stands and acts on it ([decision 19](decisions/0019-pull-and-push-from-the-branch-in-the-title-row.md)), so it reads `agents-demo`, then the branch, then `↓3` and `↑1`, then `· 128 commits`. All of this acts on the branch the worktree has checked out, whatever is selected in history.
+The row also says where the branch stands and acts on it ([decision 19](decisions/0019-pull-and-push-from-the-branch-in-the-title-row.md)), so it reads `agents-demo`, then the branch, then `↓3` and `↑1`, then `· 128 commits`. All of this acts on the branch the worktree has checked out, whatever is selected in history.
 
-- **The branch** is a chip with a branch icon and a small triangle, which opens a menu. The menu starts with the upstream, how far the branch is from it and when yaga last fetched, as in `origin/main · 3 behind, 1 ahead · fetched 4 min ago`. Then come Pull, Push, Fetch, New Branch and Switch Branch, which opens the refs panel's filter. Holding Option swaps Push for Force Push with Lease. In a detached `HEAD` the chip shows the short hash, followed by **detached** in gray, and the menu has only New Branch and Switch Branch.
+- **The branch** is a chip with a branch icon and a small triangle, which opens a menu. The menu starts with the upstream, how far the branch is from it and when yaga last fetched, as in `origin/main · 3 behind, 1 ahead · fetched 4 min ago`. Then come Pull, Push, Fetch, New Branch and Switch Branch, which opens the refs panel's filter. Holding Option swaps Push for Force Push with Lease, which lists what it would overwrite and asks first. In a detached `HEAD` the chip shows the short hash, followed by **detached** in gray, and the menu has only New Branch and Switch Branch.
 - **`↓3` pulls and `↑1` pushes.** A count shows only when there's something to pull or push, and it's orange when a click would run right now. When a branch is both behind and ahead, `↑` stays gray, because git would reject the push, and clicking it opens the menu. A branch that has never been pushed shows a gray `↑ Push`.
 - **Pulling** runs `git pull --ff-only` for a branch that's only behind. A branch that's also ahead runs what `pull.rebase` says, and when that isn't set, clicking `↓` opens the menu, with **Rebase main onto origin/main** and **Merge origin/main into main** in place of Pull.
 - **Hovering a count** tints the commits in history that it would move, and its tooltip names the branch, the remote and the git command.
-- **While git runs**, the house from the mark waddles in place of the counts, beside **Pulling…**, and nothing else runs until it finishes. Then **✓ Pulled 3** shows for 3 seconds. When git refuses, an alert shows what git said and nothing changes, as with a failed checkout.
-- **New Branch** opens a popover under the chip, with a field for the name, a checkbox for **In a new worktree**, and the exact command as it's typed. Return creates the branch and switches to it. It starts from the worktree's branch, and a right click on a commit can offer New Branch Here.
+- **While git runs**, the house from the mark waddles in place of the counts, beside **Pulling…**, and nothing else runs until it finishes. Then **✓ Pulled 3** shows for 3 seconds. When git refuses, an alert shows what git said and nothing changes, as with a failed checkout. A pull that hits a conflict names the files, and offers to undo the pull or to leave the worktree as it is, to finish from the command line.
+- **New Branch** opens a popover under the chip, with a field for the name, a checkbox for **In a new worktree**, and the exact command as it's typed. Return creates the branch and switches to it, or shows its new worktree, which goes next to this one with slashes in its name as dashes. It starts from the worktree's branch.
 - **yaga fetches by itself** when it becomes active and when a window shows a different repository ([decision 20](decisions/0020-fetch-when-yaga-becomes-active.md)). Nothing shows while it runs or if it fails, and only the menu says so. A count appears or ticks up when it finds something.
 - In a narrow column, the commit count goes first, then the branch's name truncates, and the counts stay.
 
@@ -124,7 +124,7 @@ As the window gets narrower, the panel narrows to keep 400 points for the middle
 - Surfaces are plain, with thin gray lines between sections. The sidebar is a shade darker. Dark mode keeps the same structure in dark grays.
 - Selection is a soft gray fill, not the accent color. The accent color is kept for the graph.
 - A file's status letter is colored by what happened to it: orange for a change, like the sidebar's counts, green for an added file, red for a deleted file or a conflict, and blue for a file that was renamed or copied. An untracked file's `?` stays gray, because git doesn't have it yet. The letter says the same thing without the color.
-- In release 2, a count in the title row is orange when a click on it would run right now ([decision 19](decisions/0019-pull-and-push-from-the-branch-in-the-title-row.md)).
+- A count in the title row is orange when a click on it would run right now ([decision 19](decisions/0019-pull-and-push-from-the-branch-in-the-title-row.md)).
 - Text uses the system font at 12.5 to 13 points. The sidebar's rows use 14 points, with 13 for a second line and for shortcuts, as the Claude app's sidebar does. Hashes and diffs use the monospaced system font.
 
 ## Options we're keeping open
@@ -151,6 +151,4 @@ We sketched several ways to show uncommitted changes. [Decision 15](decisions/00
 - Whether a worktree opens with `HEAD` selected, rather than with nothing selected.
 - Whether going to another commit should stay on the same file, if the commit changed it, rather than selecting the first one.
 - Whether the diff's tabs should be as wide as they are in a terminal, which is 8 columns.
-- Whether the title row's `↓` and `↑` or the refs panel's `↑` and `↓` change, so that both use the same order.
-- Where the folder goes for a worktree made from New Branch.
 - How yaga asks for a passphrase when someone asks for a fetch, pull or push.

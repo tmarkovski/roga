@@ -106,6 +106,8 @@ public enum RepositoryError: Error, Sendable, Hashable, CustomStringConvertible 
     case patchTooLarge(path: String, limit: Int)
     /// A worktree's list of changed files has more text than yaga reads.
     case tooManyChanges(limit: Int)
+    /// A fetch that nobody asked for ran for longer than yaga lets it.
+    case fetchTookTooLong
 
     public var description: String {
         switch self {
@@ -117,6 +119,8 @@ public enum RepositoryError: Error, Sendable, Hashable, CustomStringConvertible 
             "The changes to \(path) take more than \(limit >> 20) MB of text, which is too much to show."
         case .tooManyChanges(let limit):
             "The list of files that changed takes more than \(limit >> 20) MB of text, which is too much to show. A folder of generated files may need to be ignored."
+        case .fetchTookTooLong:
+            "git fetch took too long, so yaga stopped it."
         }
     }
 }

@@ -62,7 +62,7 @@ public enum BranchListParser {
 
     /// Reads `ahead 3, behind 2`, `ahead 3` or `behind 2`, or nothing when the
     /// two are the same. for-each-ref doesn't translate these.
-    private static func counts(track: String, of name: String) throws(ParseError) -> Counts {
+    static func counts(track: String, of name: String) throws(ParseError) -> Counts {
         var counts = Counts(ahead: 0, behind: 0)
         guard !track.isEmpty else { return counts }
         for part in track.split(separator: ", ") {

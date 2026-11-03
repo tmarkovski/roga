@@ -63,6 +63,8 @@ final class RepositoryModel {
     let selectedChanges: SelectedChanges
     /// What the refs panel lists.
     let refs: RefsModel
+    /// The branch in the title row, and what can be done with it.
+    let branch: BranchModel
     /// Goes up when the refs panel should read its lists again, if it's showing.
     private(set) var refsChecks = 0
     /// How many files have uncommitted changes. While there are any, a row for
@@ -84,13 +86,17 @@ final class RepositoryModel {
     @ObservationIgnored private var texts: [CommitGraph.Position: RowText] = [:]
     @ObservationIgnored private var graphGeneration = 0
     @ObservationIgnored private var badges: [CommitGraph.Position: [CommitRowContent.Badge]] = [:]
+    /// The commits that the count under the pointer would move, which history
+    /// tints.
+    @ObservationIgnored private var previewedCommits: Set<CommitGraph.Position> = []
     @ObservationIgnored private let now = Date()
     /// Whether the user wants commit-graph files kept up to date.
     @ObservationIgnored private let keepsCommitGraphCurrent: () -> Bool
     /// Says how many files are uncommitted, whenever that's been checked.
     @ObservationIgnored private let reportUncommittedFiles: (Int) -> Void
-    /// Says that the worktree is on another branch, because of something yaga did.
-    @ObservationIgnored private let reportBranchChange: () -> Void
+    /// Says that the worktree is on another branch, or the repository has a new
+    /// worktree, because of something yaga did, and returns once the sidebar knows.
+    @ObservationIgnored private let reportBranchChange: () async -> Void
     /// The line from the row for uncommitted changes down to `HEAD`.
     @ObservationIgnored private var workingTreeLine: WorkingTreeLine?
     /// The check that yaga becoming active started, which a newer one replaces.
@@ -118,7 +124,8 @@ final class RepositoryModel {
         worktree: String,
         keepsCommitGraphCurrent: @escaping () -> Bool = { UserDefaults.standard.keepsCommitGraphCurrent },
         reportUncommittedFiles: @escaping (Int) -> Void = { _ in },
-        reportBranchChange: @escaping () -> Void = {}
+        reportBranchChange: @escaping () async -> Void = {},
+        fetchesByItself: @escaping () -> Bool = { UserDefaults.standard.fetchesByItself }
     ) {
         self.session = session
         self.worktree = worktree
@@ -128,7 +135,11 @@ final class RepositoryModel {
         selectedCommit = SelectedCommit(session: session)
         selectedChanges = SelectedChanges(session: session, worktree: worktree, selectedFile: selectedCommit.selectedFile, fileList: selectedCommit.fileList)
         refs = RefsModel(session: session, worktree: worktree)
+        branch = BranchModel(session: session, worktree: worktree, fetchesByItself: fetchesByItself, reportBranchChange: reportBranchChange)
         selectedChanges.onLoad = { [weak self] count in self?.show(uncommittedFiles: count) }
+        branch.isCheckingOut = { [weak self] in self?.checkout != nil }
+        branch.lookAgain = { [weak self] in self?.lookAgain() }
+        branch.showPreview = { [weak self] commits in self?.preview(commits) }
     }
 
     /// The file selected in whichever panel is showing, which the diff panel
@@ -225,16 +236,23 @@ final class RepositoryModel {
     /// the window shows another worktree. A worktree that was showing before
     /// has its history already, so it only needs checking.
     func appear() async {
-        guard loadRequest != loaded else { return await checkForChanges() }
-        async let status: Void = updateUncommittedFiles()
-        await load()
-        await status
+        if loadRequest == loaded {
+            await checkForChanges()
+        } else {
+            async let status: Void = updateUncommittedFiles()
+            async let branchStatus: Void = branch.refresh()
+            await load()
+            await status
+            await branchStatus
+        }
+        if !Task.isCancelled { branch.fetchByItself() }
     }
 
     /// Looks at the worktree again, because yaga became active and whatever
     /// the user was doing elsewhere may have changed it.
     func becameActive() {
         lookAgain()
+        branch.fetchByItself()
     }
 
     private func lookAgain() {
@@ -249,7 +267,7 @@ final class RepositoryModel {
     /// worktree has the branch checked out, that's the one to look at, so it asks
     /// to show it instead, with the commit to select there.
     func checkOut(_ badge: CommitRowContent.Badge, showWorktree: @escaping (String, ObjectID?) -> Void) {
-        guard checkout == nil, let name = badge.refName else { return }
+        guard checkout == nil, branch.action == nil, let name = badge.refName else { return }
         checkout = Task {
             let note = Task {
                 guard (try? await Task.sleep(for: Self.slowCheckoutDelay)) != nil else { return }
@@ -259,8 +277,8 @@ final class RepositoryModel {
                 switch try await session.checkOut(ref: name, in: worktree) {
                 case .checkedOut(_, let commit):
                     if let commit { select(commit: commit) }
-                    reportBranchChange()
                     lookAgain()
+                    await reportBranchChange()
                 case .inOtherWorktree(let folder, let commit):
                     showWorktree(folder, commit)
                 }
@@ -281,7 +299,9 @@ final class RepositoryModel {
     /// such as after a commit. History has to change then too, because a row
     /// for uncommitted changes leads to `HEAD`.
     private func checkForChanges() async {
+        async let branchStatus: Void = branch.refresh()
         await updateUncommittedFiles()
+        await branchStatus
         guard let history, let refs = try? await session.refs(in: worktree), !Task.isCancelled, refs != history.refs else { return }
         reload()
     }
@@ -326,6 +346,7 @@ final class RepositoryModel {
                     graphGeneration += 1
                     texts = [:]
                     badges = Self.badges(history)
+                    previewedCommits = []
                 }
                 self.history = history
                 if hasWorkingTreeRow { workingTreeLine = WorkingTreeLine(layout: history.lanes, head: history.head) }
@@ -340,6 +361,15 @@ final class RepositoryModel {
         } catch {
             phase = .failed(String(describing: error))
         }
+    }
+
+    /// Tints these commits in history, or none.
+    private func preview(_ commits: [ObjectID]) {
+        guard let history else { return }
+        let positions = Set(commits.compactMap { history.graph.position(of: $0) })
+        guard positions != previewedCommits else { return }
+        previewedCommits = positions
+        historyVersion += 1
     }
 
     /// Selects a row, or none.
@@ -430,7 +460,8 @@ final class RepositoryModel {
             date: text?.date,
             lanes: hasWorkingTreeRow
                 ? workingTreeLine?.adding(to: history.lanes.row(row), at: row)
-                : history.lanes.row(row)
+                : history.lanes.row(row),
+            isPreviewed: previewedCommits.contains(position)
         )
     }
 

@@ -36,6 +36,12 @@ public struct RepositoryCommands: Commands {
     /// The shortcut for going to the filter for a commit's files, which the
     /// commit panel shows too.
     static let filterFilesShortcut = KeyboardShortcut("f", modifiers: [.shift, .command])
+    /// The shortcuts for what can be done with the worktree's branch, which its
+    /// menu in the title row shows too (decision 19).
+    static let pullShortcut = KeyboardShortcut("l", modifiers: [.shift, .command])
+    static let pushShortcut = KeyboardShortcut("p", modifiers: [.shift, .command])
+    static let fetchShortcut = KeyboardShortcut("e", modifiers: [.shift, .command])
+    static let newBranchShortcut = KeyboardShortcut("b", modifiers: [.shift, .command])
 
     public init(list: RepositoryList) {
         self.list = list
@@ -163,6 +169,30 @@ public struct RepositoryCommands: Commands {
                 }
             }
             Divider()
+        }
+        CommandMenu("Branch") {
+            if let branch = repository?.branch {
+                BranchMenuItems(branch: branch, switchBranch: refsPanelVisibility?.fits == true ? {
+                    refsPanelVisibility?.isWanted.wrappedValue = true
+                    repository?.refs.showFilter()
+                } : nil)
+            } else {
+                Button("Pull") {}
+                    .keyboardShortcut(Self.pullShortcut)
+                    .disabled(true)
+                Button("Push") {}
+                    .keyboardShortcut(Self.pushShortcut)
+                    .disabled(true)
+                Button("Fetch") {}
+                    .keyboardShortcut(Self.fetchShortcut)
+                    .disabled(true)
+                Divider()
+                Button("New Branch…") {}
+                    .keyboardShortcut(Self.newBranchShortcut)
+                    .disabled(true)
+                Button("Switch Branch…") {}
+                    .disabled(true)
+            }
         }
     }
 }

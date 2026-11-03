@@ -12,6 +12,12 @@ enum Palette {
     static let hover = Color.primary.opacity(0.075)
     /// The fill under a selected row.
     static let selection = Color.primary.opacity(0.11)
+    /// The brand's orange, for what a click would run right now.
+    static let action = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(srgbRed: 240 / 255, green: 129 / 255, blue: 63 / 255, alpha: 1)
+            : NSColor(srgbRed: 201 / 255, green: 68 / 255, blue: 2 / 255, alpha: 1)
+    })
 
     static func gray(light: CGFloat, dark: CGFloat) -> Color {
         Color(nsColor: NSColor(name: nil) { appearance in

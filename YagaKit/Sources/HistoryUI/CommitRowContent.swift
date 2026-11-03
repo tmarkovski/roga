@@ -47,6 +47,9 @@ public struct CommitRowContent: Hashable {
     /// Whether the row stands for a worktree's uncommitted changes rather than
     /// a commit, which its hollow dot shows.
     public var isWorkingTree: Bool
+    /// Whether the row is tinted, because a count in the title row would move
+    /// the commit.
+    public var isPreviewed: Bool
 
     public init(
         shortID: String,
@@ -55,7 +58,8 @@ public struct CommitRowContent: Hashable {
         author: String? = nil,
         date: String? = nil,
         lanes: LaneLayout.Row? = nil,
-        isWorkingTree: Bool = false
+        isWorkingTree: Bool = false,
+        isPreviewed: Bool = false
     ) {
         self.shortID = shortID
         self.badges = badges
@@ -64,6 +68,7 @@ public struct CommitRowContent: Hashable {
         self.date = date
         self.lanes = lanes
         self.isWorkingTree = isWorkingTree
+        self.isPreviewed = isPreviewed
     }
 
     /// What VoiceOver reads for the row.
