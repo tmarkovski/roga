@@ -14,6 +14,10 @@ npx --yes wrangler@4.157.0 dev --cwd site
 
 [`site.yml`](../.github/workflows/site.yml) runs whenever something in `site/` changes. Merging to `main` deploys to roga.sh, and a pull request gets a comment with the address of its preview.
 
+## Analytics
+
+Cloudflare adds its Web Analytics script to the page when a browser asks for it, so the live page isn't quite the file in `public/`, and `curl` gets it without the script. The policy in `public/_headers` allows that script and lets it report to the site itself. Tightening the policy stops the numbers without any visible sign on the page, apart from an error in the browser console.
+
 ## Setting it up
 
 This only needs doing once.
