@@ -11,6 +11,7 @@ public struct RepositoryCommands: Commands {
     @FocusedValue(\.showsOrganizationRail) private var showsOrganizationRail
     @FocusedValue(\.refsPanelVisibility) private var refsPanelVisibility
     @AppStorage(RefsPanelSettings.sort) private var refsSort = RefsModel.Sort.name
+    @AppStorage(FileListSettings.layout) private var fileLayout = FileLayout.list
     @Environment(\.openWindow) private var openWindow
 
     /// The shortcut for opening a repository, which the sidebar shows too.
@@ -32,6 +33,9 @@ public struct RepositoryCommands: Commands {
     static let refsPanelShortcut = KeyboardShortcut("i", modifiers: [.control, .command])
     /// The shortcut for going to the refs panel's filter.
     static let filterRefsShortcut = KeyboardShortcut("f", modifiers: [.option, .command])
+    /// The shortcut for going to the filter for a commit's files, which the
+    /// commit panel shows too.
+    static let filterFilesShortcut = KeyboardShortcut("f", modifiers: [.shift, .command])
 
     public init(list: RepositoryList) {
         self.list = list
@@ -148,6 +152,16 @@ public struct RepositoryCommands: Commands {
             }
             .keyboardShortcut(.upArrow, modifiers: [.option, .command])
             .disabled(repository?.selectedFile.file == nil)
+            Button("Filter Files") {
+                repository?.fileList.showFilter()
+            }
+            .keyboardShortcut(Self.filterFilesShortcut)
+            .disabled(repository?.canFilterFiles != true)
+            Picker("Show Files", selection: $fileLayout) {
+                ForEach(FileLayout.allCases, id: \.self) { layout in
+                    Text(layout.title).tag(layout)
+                }
+            }
             Divider()
         }
     }

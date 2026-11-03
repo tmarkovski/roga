@@ -13,6 +13,7 @@ struct RepositoryView: View {
     let showWorktree: (String, ObjectID?) -> Void
     @AppStorage("commitPanelHeight") private var commitPanelHeight = 340.0
     @AppStorage("commitPanelWidth") private var commitPanelWidth = 320.0
+    @AppStorage(FileListSettings.layout) private var fileLayout = FileLayout.list
 
     var body: some View {
         content
@@ -22,6 +23,9 @@ struct RepositoryView: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                 model.becameActive()
+            }
+            .onChange(of: fileLayout, initial: true) {
+                model.fileList.layout = fileLayout
             }
             .focusedSceneValue(\.repository, model)
             .alert(

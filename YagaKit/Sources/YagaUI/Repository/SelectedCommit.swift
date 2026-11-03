@@ -26,6 +26,8 @@ final class SelectedCommit {
     private(set) var problem: String?
     /// The file selected in the commit's list, and its patch.
     let selectedFile: SelectedFile
+    /// What the panel lists of the commit's files.
+    let fileList = FileListModel()
     /// Goes up when the user moves through the list of files, so that the list
     /// knows to scroll to the selected file. It stays where it is when a new
     /// commit selects its first file, at the top of its message.
@@ -69,13 +71,20 @@ final class SelectedCommit {
         selectedFile.show(file, in: id)
     }
 
-    /// Selects the file `step` places from the selected one, and stops at the
-    /// ends of the list.
+    /// Selects the file `step` places from the selected one among the rows that
+    /// show, and stops at the ends of the list.
     func selectFile(by step: Int) {
-        guard case .loaded(let files) = files else { return }
-        let index = files.firstIndex { $0.path == selectedFile.file?.path } ?? -step
-        guard files.indices.contains(index + step) else { return }
-        select(files[index + step])
+        guard case .loaded(let files) = files,
+              let file = fileList.rows(of: files).file(step, from: selectedFile.file?.path, in: nil)?.file
+        else { return }
+        select(file)
+        fileSteps += 1
+    }
+
+    /// Selects the first file among the rows that show.
+    func selectFirstFile() {
+        guard case .loaded(let files) = files, let file = fileList.rows(of: files).firstFile?.file else { return }
+        select(file)
         fileSteps += 1
     }
 
@@ -118,7 +127,8 @@ final class SelectedCommit {
             try Task.checkCancellation()
             patience?.cancel()
             files = .loaded(changed)
-            selectedFile.show(changed.first, in: id)
+            // A filter that leaves none of them leaves the diff panel its first.
+            selectedFile.show(fileList.rows(of: changed).firstFile?.file ?? changed.first, in: id)
         } catch is CancellationError {
         } catch {
             patience?.cancel()

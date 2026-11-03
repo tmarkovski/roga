@@ -23,6 +23,9 @@ final class SelectedChanges {
     /// The same one the selected commit uses, because they share the diff
     /// panel.
     let selectedFile: SelectedFile
+    /// The same one the selected commit uses, because the panels take each
+    /// other's place.
+    let fileList: FileListModel
     /// Goes up when the user moves through the list of files, so that the list
     /// knows to scroll to the selected file.
     private(set) var fileSteps = 0
@@ -35,10 +38,11 @@ final class SelectedChanges {
     @ObservationIgnored private let session: RepositorySession
     @ObservationIgnored private let worktree: String
 
-    init(session: RepositorySession, worktree: String, selectedFile: SelectedFile) {
+    init(session: RepositorySession, worktree: String, selectedFile: SelectedFile, fileList: FileListModel) {
         self.session = session
         self.worktree = worktree
         self.selectedFile = selectedFile
+        self.fileList = fileList
     }
 
     /// Selects the row, and selects the first file once they're listed.
@@ -71,15 +75,28 @@ final class SelectedChanges {
         selectedFile.show(file, from: source(group, changes))
     }
 
-    /// Selects the file `step` places from the selected one, going through the
-    /// groups in order, and stops at the ends of the list.
+    /// Selects the file `step` places from the selected one among the rows that
+    /// show, going through the groups in order, and stops at the ends of the list.
     func selectFile(by step: Int) {
         guard case .loaded(let changes) = files else { return }
-        let all = Self.groups.flatMap { group in changes[group].map { (group, $0) } }
-        let index = all.firstIndex { $0.0 == selectedFile.group && $0.1.path == selectedFile.file?.path } ?? -step
-        guard all.indices.contains(index + step) else { return }
-        select(all[index + step].1, in: all[index + step].0)
+        select(rows(of: changes).file(step, from: selectedFile.file?.path, in: selectedFile.group), in: changes)
+    }
+
+    /// Selects the first file among the rows that show.
+    func selectFirstFile() {
+        guard case .loaded(let changes) = files else { return }
+        select(rows(of: changes).firstFile, in: changes)
+    }
+
+    private func select(_ row: FileRow?, in changes: WorktreeChanges) {
+        guard let file = row?.file, let group = row?.group else { return }
+        selectedFile.show(file, from: source(group, changes))
         fileSteps += 1
+    }
+
+    /// The rows that show of every group, in order.
+    private func rows(of changes: WorktreeChanges) -> [FileRow] {
+        Self.groups.flatMap { fileList.rows(of: changes[$0], in: $0) }
     }
 
     private func source(_ group: WorktreeChanges.Group, _ changes: WorktreeChanges) -> PatchSource {
@@ -113,7 +130,10 @@ final class SelectedChanges {
                 selectedFile.refresh(file, from: source(group, changes))
                 return
             }
-            let first = Self.groups.lazy.compactMap { group in changes[group].first.map { (group, $0) } }.first
+            // A filter that leaves none of them leaves the diff panel the first
+            // of all.
+            let first = rows(of: changes).firstFile.flatMap { row in row.file.flatMap { file in row.group.map { ($0, file) } } }
+                ?? Self.groups.lazy.compactMap { group in changes[group].first.map { (group, $0) } }.first
             selectedFile.show(first?.1, from: first.map { source($0.0, changes) })
         } catch is CancellationError {
         } catch {

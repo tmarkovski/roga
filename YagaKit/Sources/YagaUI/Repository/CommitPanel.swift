@@ -8,25 +8,31 @@ struct CommitPanel: View {
     @FocusState private var isFocused: Bool
 
     private var commit: SelectedCommit { model.selectedCommit }
+    private var fileList: FileListModel { commit.fileList }
 
     var body: some View {
         Panel {
-            Text("Commit")
-                .font(.system(size: 13, weight: .medium))
-                .padding(.leading, 4)
-            if let id = commit.id {
-                Text(id.hex.prefix(8))
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .padding(.leading, 4)
-                Button("Copy Commit Hash", systemImage: "doc.on.doc") {
-                    commit.copyHash()
+            if fileList.isFilterShown {
+                FileFilterField(list: fileList) {
+                    isFocused = true
+                    commit.selectFile(by: 1)
+                } selectFirstFile: {
+                    isFocused = true
+                    commit.selectFirstFile()
+                } close: {
+                    closeFilter()
                 }
-                .labelStyle(.iconOnly)
-                .buttonStyle(.icon)
-                .help("Copy Commit Hash (\(RepositoryCommands.copyHashShortcut.symbols))")
+            } else {
+                // The hash gives way first in a narrow panel, because the button
+                // still copies it.
+                ViewThatFits(in: .horizontal) {
+                    title(showingHash: true)
+                    title(showingHash: false)
+                }
             }
         } trailing: {
+            FileListCommands(list: fileList, closeFilter: closeFilter)
+                .disabled(commit.id == nil)
         } content: {
             if commit.id == nil {
                 note("Select a commit to see what it changed.")
@@ -38,6 +44,9 @@ struct CommitPanel: View {
                         CommitDetails(info: info, files: commit.files, model: model) { file in
                             isFocused = true
                             commit.select(file)
+                        } toggleFolder: { path in
+                            isFocused = true
+                            fileList.toggleFolder(path)
                         }
                     }
                     // Each commit starts at the top of its message.
@@ -50,11 +59,56 @@ struct CommitPanel: View {
                         return .handled
                     }
                     .onChange(of: commit.fileSteps) {
-                        if let path = commit.selectedFile.file?.path { scroller.scrollTo(path) }
+                        if let path = commit.selectedFile.file?.path { scroller.scrollTo(FileRow.ID(path: path)) }
+                    }
+                    .onChange(of: fileList.layout) {
+                        revealSelectedFile(scroller)
+                    }
+                    .onChange(of: fileList.filter) {
+                        if fileList.filter.isEmpty {
+                            revealSelectedFile(scroller)
+                        } else {
+                            scroller.scrollOnceLaidOut(to: FileRows.top, anchor: .top)
+                        }
                     }
                 }
             }
         }
+    }
+
+    private func title(showingHash: Bool) -> some View {
+        HStack(spacing: 4) {
+            Text("Commit")
+                .font(.system(size: 13, weight: .medium))
+                .padding(.leading, 4)
+            if let id = commit.id {
+                if showingHash {
+                    Text(id.hex.prefix(8))
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .padding(.leading, 4)
+                }
+                Button("Copy Commit Hash", systemImage: "doc.on.doc") {
+                    commit.copyHash()
+                }
+                .labelStyle(.iconOnly)
+                .buttonStyle(.icon)
+                .help("Copy Commit Hash (\(RepositoryCommands.copyHashShortcut.symbols))")
+            }
+        }
+    }
+
+    private func closeFilter() {
+        fileList.closeFilter()
+        isFocused = true
+    }
+
+    /// Brings the selected file's row into view, opening its folders, because a
+    /// filter can select a file in a closed one.
+    private func revealSelectedFile(_ scroller: ScrollViewProxy) {
+        guard let path = commit.selectedFile.file?.path else { return }
+        fileList.reveal(path)
+        scroller.scrollOnceLaidOut(to: FileRow.ID(path: path))
     }
 
     private func note(_ text: String) -> some View {
@@ -73,23 +127,30 @@ private struct CommitDetails: View {
     let files: SelectedCommit.Files
     let model: RepositoryModel
     let select: (DiffFile) -> Void
+    let toggleFolder: (String) -> Void
     /// It's one setting for every commit, so that moving through history with a
     /// long message out of the way keeps it out of the way.
     @AppStorage("collapsesCommitBody") private var collapsesBody = false
 
+    private var fileList: FileListModel { model.selectedCommit.fileList }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 10) {
-                message
-                people
-                parents
+            // A filter's matches go at the top, because a long message could
+            // otherwise leave them out of sight.
+            if fileList.filter.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    message
+                    people
+                    parents
+                }
+                .font(.system(size: 13))
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Rectangle()
+                    .fill(Palette.separator)
+                    .frame(height: 1)
             }
-            .font(.system(size: 13))
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            Rectangle()
-                .fill(Palette.separator)
-                .frame(height: 1)
             switch files {
             case .loading:
                 ProgressView()
@@ -103,18 +164,15 @@ private struct CommitDetails: View {
                     .textSelection(.enabled)
                     .padding(14)
             case .loaded(let files):
-                FilesSummary(files: files, isMerge: info.parents.count > 1)
-                // A large merge can change thousands of files. Only rows of one
-                // height go in the lazy stack, so that it can tell how tall it
-                // is without having laid them all out.
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(files, id: \.path) { file in
-                        ChangedFileRow(file: file, isSelected: model.selectedCommit.selectedFile.file?.path == file.path) {
-                            select(file)
-                        }
-                    }
+                let rows = fileList.rows(of: files)
+                if rows.isEmpty, !fileList.filter.isEmpty {
+                    NoMatchingFiles(filter: fileList.filter)
+                } else {
+                    FilesSummary(files: fileList.matching(files), total: files.count, isMerge: info.parents.count > 1)
+                        .id(FileRows.top)
                 }
-                .padding(.bottom, 6)
+                FileRows(list: fileList, rows: rows, selectedFile: model.selectedCommit.selectedFile, select: select, toggleFolder: toggleFolder)
+                    .padding(.bottom, 6)
             }
         }
     }
@@ -230,9 +288,12 @@ private struct ParentLink: View {
     }
 }
 
-/// How many files a commit changed, and how many lines.
+/// How many files a commit changed, and how many lines, or how many of them a
+/// filter left.
 private struct FilesSummary: View {
     let files: [DiffFile]
+    /// How many files the commit changed.
+    let total: Int
     let isMerge: Bool
 
     var body: some View {
@@ -250,111 +311,13 @@ private struct FilesSummary: View {
     }
 
     private var title: String {
-        let count = files.isEmpty ? "No files changed" : files.count == 1 ? "1 file changed" : "\(files.count.formatted()) files changed"
+        let count = if files.count < total {
+            "\(files.count.formatted()) of \(total.formatted()) files"
+        } else if files.isEmpty {
+            "No files changed"
+        } else {
+            files.count == 1 ? "1 file changed" : "\(files.count.formatted()) files changed"
+        }
         return isMerge ? count + " compared with the first parent" : count
-    }
-}
-
-/// One file that changed: its status, name and folder, and its line counts. It
-/// fills with gray while the pointer is over it, and a little darker while it's
-/// selected.
-struct ChangedFileRow: View {
-    let file: DiffFile
-    let isSelected: Bool
-    let select: () -> Void
-    @State private var isHovering = false
-
-    var body: some View {
-        Button(action: select) {
-            content
-                .padding(.horizontal, 8)
-                .frame(height: 24)
-                .background {
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(isSelected ? Palette.selection : isHovering ? Palette.hover : .clear)
-                }
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 6)
-        .onHover { isHovering = $0 }
-        .help(description)
-        .accessibilityLabel(description)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-    }
-
-    private var content: some View {
-        HStack(spacing: 8) {
-            Text(file.status.letter)
-                .font(.system(size: 11.5, weight: .medium, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .frame(width: 12)
-            Text(file.name)
-                .font(.system(size: 12.5))
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .layoutPriority(1)
-            Text(location)
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-            Spacer(minLength: 8)
-            if let lines = file.lines {
-                if lines.added + lines.removed > 0 {
-                    LineCounts(added: lines.added, removed: lines.removed)
-                        .font(.system(size: 12))
-                } else if file.oldMode != file.newMode, file.oldMode != 0, file.newMode != 0 {
-                    change("mode")
-                }
-            } else {
-                change("binary")
-            }
-        }
-    }
-
-    private func change(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 12))
-            .foregroundStyle(.secondary)
-    }
-
-    /// The file's folder, and where it came from if it moved.
-    private var location: String {
-        let origin = file.oldPath.map { "from " + $0 }
-        return [String(file.folder), origin].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
-    }
-
-    private var description: String {
-        let change = switch file.status {
-        case .added: "Added \(file.path)"
-        case .deleted: "Deleted \(file.path)"
-        case .modified: "Modified \(file.path)"
-        case .renamed: "Renamed \(file.oldPath ?? "") to \(file.path)"
-        case .copied: "Copied \(file.oldPath ?? "") to \(file.path)"
-        case .typeChanged: "Changed the kind of \(file.path)"
-        case .untracked: "Untracked \(file.path)"
-        case .conflicted: "Conflict in \(file.path)"
-        case .other(let letter): "\(letter) \(file.path)"
-        }
-        guard file.status != .untracked, file.status != .conflicted else { return change }
-        guard let lines = file.lines else { return change + ", a binary file" }
-        return change + ", \(lines.added) lines added and \(lines.removed) removed"
-    }
-}
-
-/// Lines added in green and removed in red.
-struct LineCounts: View {
-    let added: Int
-    let removed: Int
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Text("+\(added.formatted())")
-                .foregroundStyle(added > 0 ? Color.green : Color.secondary)
-            Text("−\(removed.formatted())")
-                .foregroundStyle(removed > 0 ? Color.red : Color.secondary)
-        }
-        .monospacedDigit()
     }
 }

@@ -381,6 +381,53 @@ struct RepositoryModelTests {
         #expect(selected() == "Staged README.md")
     }
 
+    @Test func theUncommittedRowsFollowTheTreeAndTheFilter() async throws {
+        let (model, repository) = try await modelOfACopy()
+        try FileManager.default.createDirectory(atPath: repository + "/src", withIntermediateDirectories: true)
+        try write("a\n", to: "a-new.txt", in: repository)
+        try write("b\n", to: "src/b-new.txt", in: repository)
+        try write("c\n", to: "src/c-new.txt", in: repository)
+        model.fileList.layout = .tree
+        await model.appear()
+        model.selectRow(0)
+        await settled(model)
+
+        // In a tree, the folder comes before the file at the top.
+        #expect(model.selectedFile.file?.path == "src/b-new.txt")
+        model.selectFile(by: 1)
+        await settled(model)
+        #expect(model.selectedFile.file?.path == "src/c-new.txt")
+        model.selectFile(by: 1)
+        await settled(model)
+        #expect(model.selectedFile.file?.path == "a-new.txt")
+
+        model.fileList.filter = "c-new"
+        model.selectFile(by: 1)
+        await settled(model)
+        #expect(model.selectedFile.file?.path == "src/c-new.txt")
+        #expect(model.selectedFile.group == .untracked)
+
+        // Reading the files again keeps the selected file, match or not.
+        model.fileList.filter = "a-new"
+        model.becameActive()
+        await model.check?.value
+        await settled(model)
+        #expect(model.selectedFile.file?.path == "src/c-new.txt")
+    }
+
+    @Test func aPanelThatComesBackSelectsTheFirstFileItShows() async throws {
+        let (model, repository) = try await modelOfACopy()
+        try FileManager.default.createDirectory(atPath: repository + "/src", withIntermediateDirectories: true)
+        try write("a\n", to: "a-new.txt", in: repository)
+        try write("b\n", to: "src/b-new.txt", in: repository)
+        model.fileList.layout = .tree
+        model.fileList.toggleFolder("src", in: .untracked)
+        await model.appear()
+        model.selectRow(0)
+        await settled(model)
+        #expect(model.selectedFile.file?.path == "a-new.txt")
+    }
+
     @Test func lookingAgainKeepsTheSameTextUnlessTheFileChanged() async throws {
         let (model, repository) = try await modelOfACopy()
         try write("one\n", to: "new.txt", in: repository)

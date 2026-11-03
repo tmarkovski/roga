@@ -126,7 +126,7 @@ final class RepositoryModel {
         self.reportUncommittedFiles = reportUncommittedFiles
         self.reportBranchChange = reportBranchChange
         selectedCommit = SelectedCommit(session: session)
-        selectedChanges = SelectedChanges(session: session, worktree: worktree, selectedFile: selectedCommit.selectedFile)
+        selectedChanges = SelectedChanges(session: session, worktree: worktree, selectedFile: selectedCommit.selectedFile, fileList: selectedCommit.fileList)
         refs = RefsModel(session: session, worktree: worktree)
         selectedChanges.onLoad = { [weak self] count in self?.show(uncommittedFiles: count) }
     }
@@ -134,6 +134,12 @@ final class RepositoryModel {
     /// The file selected in whichever panel is showing, which the diff panel
     /// shows.
     var selectedFile: SelectedFile { selectedCommit.selectedFile }
+
+    /// What whichever panel is showing lists of its files.
+    var fileList: FileListModel { selectedCommit.fileList }
+
+    /// Whether a panel has files to list, or will have once they're read.
+    var canFilterFiles: Bool { selectedChanges.isSelected || selectedCommit.id != nil }
 
     /// Selects the file `step` places from the selected one.
     func selectFile(by step: Int) {

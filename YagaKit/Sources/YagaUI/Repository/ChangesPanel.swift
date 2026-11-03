@@ -9,13 +9,28 @@ struct ChangesPanel: View {
     let selection: SelectedChanges
     @FocusState private var isFocused: Bool
 
+    private var fileList: FileListModel { selection.fileList }
+
     var body: some View {
         Panel {
-            Text("Uncommitted Changes")
-                .font(.system(size: 13, weight: .medium))
-                .lineLimit(1)
-                .padding(.leading, 4)
+            if fileList.isFilterShown {
+                FileFilterField(list: fileList) {
+                    isFocused = true
+                    selection.selectFile(by: 1)
+                } selectFirstFile: {
+                    isFocused = true
+                    selection.selectFirstFile()
+                } close: {
+                    closeFilter()
+                }
+            } else {
+                Text("Uncommitted Changes")
+                    .font(.system(size: 13, weight: .medium))
+                    .lineLimit(1)
+                    .padding(.leading, 4)
+            }
         } trailing: {
+            FileListCommands(list: fileList, closeFilter: closeFilter)
         } content: {
             switch selection.files {
             case .loading:
@@ -39,16 +54,22 @@ struct ChangesPanel: View {
         ScrollViewReader { scroller in
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    ForEach(SelectedChanges.groups, id: \.self) { group in
-                        if !changes[group].isEmpty {
-                            GroupOfFiles(group: group, files: changes[group], selectedFile: selection.selectedFile) { file in
-                                isFocused = true
-                                selection.select(file, in: group)
-                            }
+                    let groups = SelectedChanges.groups.filter { !fileList.rows(of: changes[$0], in: $0).isEmpty }
+                    if groups.isEmpty {
+                        NoMatchingFiles(filter: fileList.filter)
+                    }
+                    ForEach(groups, id: \.self) { group in
+                        GroupOfFiles(group: group, files: changes[group], list: fileList, selectedFile: selection.selectedFile) { file in
+                            isFocused = true
+                            selection.select(file, in: group)
+                        } toggleFolder: { path in
+                            isFocused = true
+                            fileList.toggleFolder(path, in: group)
                         }
                     }
                 }
                 .padding(.bottom, 6)
+                .id(FileRows.top)
             }
             .focusable()
             .focused($isFocused)
@@ -59,10 +80,33 @@ struct ChangesPanel: View {
             }
             .onChange(of: selection.fileSteps) {
                 if let group = selection.selectedFile.group, let path = selection.selectedFile.file?.path {
-                    scroller.scrollTo(FileRowID(group: group, path: path))
+                    scroller.scrollTo(FileRow.ID(group: group, path: path))
+                }
+            }
+            .onChange(of: fileList.layout) {
+                revealSelectedFile(scroller)
+            }
+            .onChange(of: fileList.filter) {
+                if fileList.filter.isEmpty {
+                    revealSelectedFile(scroller)
+                } else {
+                    scroller.scrollOnceLaidOut(to: FileRows.top, anchor: .top)
                 }
             }
         }
+    }
+
+    private func closeFilter() {
+        fileList.closeFilter()
+        isFocused = true
+    }
+
+    /// Brings the selected file's row into view, opening its folders, because a
+    /// filter can select a file in a closed one.
+    private func revealSelectedFile(_ scroller: ScrollViewProxy) {
+        guard let group = selection.selectedFile.group, let path = selection.selectedFile.file?.path else { return }
+        fileList.reveal(path, in: group)
+        scroller.scrollOnceLaidOut(to: FileRow.ID(group: group, path: path))
     }
 
     private func note(_ text: String) -> some View {
@@ -75,28 +119,24 @@ struct ChangesPanel: View {
     }
 }
 
-/// A row's place in the panel, since a file can be in two groups.
-private struct FileRowID: Hashable {
-    let group: WorktreeChanges.Group
-    let path: String
-}
-
 /// One group's title, how many files it has and how many lines they change,
-/// and its files. Only rows of one height go in the lazy stack, so that it can
-/// tell how tall it is without having laid them all out.
+/// or as many as a filter left, and its files.
 private struct GroupOfFiles: View {
     let group: WorktreeChanges.Group
     let files: [DiffFile]
+    let list: FileListModel
     let selectedFile: SelectedFile
     let select: (DiffFile) -> Void
+    let toggleFolder: (String) -> Void
 
     var body: some View {
         HStack(spacing: 8) {
+            let matching = list.matching(files, in: group)
             Text(group.title)
                 .fontWeight(.medium)
-            Text(files.count, format: .number)
+            Text(matching.count, format: .number)
                 .foregroundStyle(.secondary)
-            let lines = files.compactMap(\.lines)
+            let lines = matching.compactMap(\.lines)
             if lines.contains(where: { $0.added + $0.removed > 0 }) {
                 LineCounts(added: lines.reduce(0) { $0 + $1.added }, removed: lines.reduce(0) { $0 + $1.removed })
             }
@@ -106,13 +146,7 @@ private struct GroupOfFiles: View {
         .padding(.top, 10)
         .padding(.bottom, 6)
         .accessibilityAddTraits(.isHeader)
-        LazyVStack(alignment: .leading, spacing: 0) {
-            ForEach(files.map { (id: FileRowID(group: group, path: $0.path), file: $0) }, id: \.id) { row in
-                ChangedFileRow(file: row.file, isSelected: selectedFile.group == group && selectedFile.file?.path == row.file.path) {
-                    select(row.file)
-                }
-            }
-        }
+        FileRows(list: list, rows: list.rows(of: files, in: group), selectedFile: selectedFile, select: select, toggleFolder: toggleFolder)
     }
 }
 
