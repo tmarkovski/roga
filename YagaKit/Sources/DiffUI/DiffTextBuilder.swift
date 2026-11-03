@@ -31,6 +31,18 @@ nonisolated enum DiffStyle {
         }
     }
 
+    /// The fill behind the parts of a changed line that differ, over the line's
+    /// background.
+    static func changedWordBackground(_ kind: FilePatch.Line.Kind) -> NSColor? {
+        switch kind {
+        case .added: NSColor.systemGreen.withAlphaComponent(0.28)
+        case .removed: NSColor.systemRed.withAlphaComponent(0.28)
+        case .hunkHeader, .context, .noNewline: nil
+        }
+    }
+
+    static let changedWordCornerRadius: CGFloat = 3
+
     /// The fill behind the text being searched for.
     static var matchBackground: NSColor { NSColor.systemYellow.withAlphaComponent(0.3) }
     /// The fill behind the match that the search is at.
@@ -61,8 +73,10 @@ nonisolated public final class DiffDocument: @unchecked Sendable {
     /// far the text scrolls sideways. Non-contiguous layout means the text view
     /// doesn't measure every line, so it can't find this out itself.
     let columns: Int
+    /// The parts of changed lines that differ from the other side, in order.
+    let changedWords: [NSRange]
 
-    init(text: NSAttributedString, lines: [FilePatch.Line], lineStarts: [Int], columns: Int) {
+    init(text: NSAttributedString, lines: [FilePatch.Line], lineStarts: [Int], columns: Int, changedWords: [NSRange]) {
         storage = NSTextStorage(attributedString: text)
         layoutManager = DiffLayoutManager()
         layoutManager.allowsNonContiguousLayout = true
@@ -76,6 +90,7 @@ nonisolated public final class DiffDocument: @unchecked Sendable {
         self.lines = lines
         self.lineStarts = lineStarts
         self.columns = columns
+        self.changedWords = changedWords
         layoutManager.document = self
     }
 
@@ -147,8 +162,8 @@ nonisolated public enum DiffTextBuilder {
     }
 
     /// Only hunk headers and git's remarks differ from the text's attributes,
-    /// and the layout manager draws the lines' backgrounds, so most of a long
-    /// patch costs no attributes.
+    /// and the layout manager draws the lines' backgrounds and the changed
+    /// words, so most of a long patch costs no attributes.
     static func build(_ patch: FilePatch) -> DiffDocument {
         var utf8: [UInt8] = []
         utf8.reserveCapacity(patch.bytes.count)
@@ -186,7 +201,8 @@ nonisolated public enum DiffTextBuilder {
             length += 1
         }
 
-        let text = NSMutableAttributedString(string: String(decoding: utf8, as: UTF8.self), attributes: [
+        let string = String(decoding: utf8, as: UTF8.self)
+        let text = NSMutableAttributedString(string: string, attributes: [
             .font: DiffStyle.font,
             .foregroundColor: NSColor.labelColor,
             .paragraphStyle: DiffStyle.paragraph,
@@ -194,7 +210,10 @@ nonisolated public enum DiffTextBuilder {
         for range in secondary {
             text.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: range)
         }
-        let document = DiffDocument(text: text, lines: patch.lines, lineStarts: lineStarts, columns: columns)
+        let changedWords = patch.lines.count <= wholeLayoutLimit
+            ? ChangedWords.ranges(in: Array(string.utf16), lines: patch.lines, lineStarts: lineStarts)
+            : []
+        let document = DiffDocument(text: text, lines: patch.lines, lineStarts: lineStarts, columns: columns, changedWords: changedWords)
         if patch.lines.count <= wholeLayoutLimit {
             var laidOut = 0
             while laidOut < length, !Task.isCancelled {

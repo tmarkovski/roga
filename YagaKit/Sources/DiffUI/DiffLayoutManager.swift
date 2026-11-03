@@ -20,38 +20,52 @@ nonisolated final class DiffLayoutManager: NSLayoutManager, @unchecked Sendable 
                 context.setFillColor(color.cgColor)
                 context.fill(CGRect(x: 0, y: rect.minY + origin.y, width: rect.maxX + origin.x, height: rect.height))
             }
-            drawMatches(forGlyphRange: glyphs, at: origin, in: context)
+            drawChangedWords(of: document, forGlyphRange: glyphs, at: origin, in: context)
+            enumerateRects(of: matches, forGlyphRange: glyphs, at: origin) { index, rect in
+                let color = index == self.currentMatch ? DiffStyle.currentMatchBackground : DiffStyle.matchBackground
+                context.setFillColor(color.cgColor)
+                context.fill(rect)
+            }
         }
         // This draws the selection, over the backgrounds.
         super.drawBackground(forGlyphRange: glyphs, at: origin)
     }
 
-    /// Fills behind the matches among the lines being drawn, so that only those
-    /// take any time, however many matches the text has.
-    private func drawMatches(forGlyphRange glyphs: NSRange, at origin: NSPoint, in context: CGContext) {
-        guard !matches.isEmpty, let container = textContainers.first else { return }
-        let characters = characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
-        var index = firstMatch(endingAfter: characters.location)
-        while index < matches.count, matches[index].location < characters.upperBound {
-            let color = index == currentMatch ? DiffStyle.currentMatchBackground : DiffStyle.matchBackground
+    private func drawChangedWords(of document: DiffDocument, forGlyphRange glyphs: NSRange, at origin: NSPoint, in context: CGContext) {
+        enumerateRects(of: document.changedWords, forGlyphRange: glyphs, at: origin) { index, rect in
+            let line = document.lines[document.lineIndex(atCharacter: document.changedWords[index].location)]
+            guard let color = DiffStyle.changedWordBackground(line.kind) else { return }
             context.setFillColor(color.cgColor)
+            let radius = DiffStyle.changedWordCornerRadius
+            context.addPath(CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil))
+            context.fillPath()
+        }
+    }
+
+    /// Goes through those of some sorted ranges that are among the lines being
+    /// drawn, so that only those take any time, however many ranges there are.
+    private func enumerateRects(of ranges: [NSRange], forGlyphRange glyphs: NSRange, at origin: NSPoint, body: @escaping (Int, CGRect) -> Void) {
+        guard !ranges.isEmpty, let container = textContainers.first else { return }
+        let characters = characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
+        var index = Self.firstRange(of: ranges, endingAfter: characters.location)
+        while index < ranges.count, ranges[index].location < characters.upperBound {
             enumerateEnclosingRects(
-                forGlyphRange: glyphRange(forCharacterRange: matches[index], actualCharacterRange: nil),
+                forGlyphRange: glyphRange(forCharacterRange: ranges[index], actualCharacterRange: nil),
                 withinSelectedGlyphRange: NSRange(location: NSNotFound, length: 0),
                 in: container
             ) { rect, _ in
-                context.fill(rect.offsetBy(dx: origin.x, dy: origin.y))
+                body(index, rect.offsetBy(dx: origin.x, dy: origin.y))
             }
             index += 1
         }
     }
 
-    private func firstMatch(endingAfter character: Int) -> Int {
+    private static func firstRange(of ranges: [NSRange], endingAfter character: Int) -> Int {
         var low = 0
-        var high = matches.count
+        var high = ranges.count
         while low < high {
             let middle = (low + high) / 2
-            if matches[middle].upperBound <= character { low = middle + 1 } else { high = middle }
+            if ranges[middle].upperBound <= character { low = middle + 1 } else { high = middle }
         }
         return low
     }

@@ -86,9 +86,10 @@ yaga/
 │   │   ├── DiffUI/                     AppKit, TextKit 1
 │   │   │   ├── DiffTextController.swift the text view and what's beside it, and handing documents over
 │   │   │   ├── DiffTextView.swift      text that can be selected but not edited
-│   │   │   ├── DiffLayoutManager.swift full-width line backgrounds
-│   │   │   ├── LineNumberGutter.swift  line numbers and signs
-│   │   │   └── DiffTextBuilder.swift   attributed text, laid out ahead of time
+│   │   │   ├── DiffLayoutManager.swift full-width line backgrounds, changed words and matches
+│   │   │   ├── LineNumberGutter.swift  line numbers and the bars beside changed lines
+│   │   │   ├── DiffTextBuilder.swift   attributed text, laid out ahead of time
+│   │   │   └── ChangedWords.swift      which words of changed lines differ
 │   │   ├── YagaUI/                     SwiftUI
 │   │   │   ├── Workspace/              windows, finding git, the sidebar and the saved list of repositories
 │   │   │   ├── Repository/             the repository model, panels, the refs panel, commit details
@@ -257,14 +258,18 @@ As with commits, what's showing stays until the next file's patch is ready, and 
 
 Each line of a patch is one row, which the rest of the diff view relies on. Every row has the same height, whatever fonts its characters fall back on, and nothing wraps. Control characters and the characters that end a line show as symbols. A form feed, which old C code has, would otherwise end the text container. A carriage return at the end of a line stays, because with the newline after it, it still ends one row, and it's there when the text is copied. A line that isn't valid UTF-8 is read as Latin-1, and a line over 10,000 bytes is cut off and says so. Drawing takes time for all of a line, even the part out of view, so a window of lines a megabyte long took between 0.2 and 1 second to draw each time the text moved.
 
-The line numbers and the `+` and `−` signs are in a view beside the scroll view, so that a selection copies only the code. They aren't in the scroll view's ruler, because AppKit lays out the text under a ruler on the macOS this was built with. Two more things about TextKit 1 took finding out, and `DiffTextController` has them in comments:
+The line numbers and the bars beside changed lines are in a view beside the scroll view, so that a selection copies only the code. An added line's bar is solid and a removed line's is striped, so that they differ without relying on color. They aren't in the scroll view's ruler, because AppKit lays out the text under a ruler on the macOS this was built with. Two more things about TextKit 1 took finding out, and `DiffTextController` has them in comments:
 
 - A text view made with `init(frame:)` uses TextKit 2, and believes it owns its text system, so it takes the text with it when it goes away. `init(frame:textContainer:)` does neither. This matters because a document outlives its view when a window goes to another worktree and back.
 - Most of a text view's settings, such as whether it can be edited, are kept with its layout manager, and each document has its own. So they're set again for each document.
 
+**Changed words.** `ChangedWords` runs as part of `DiffTextBuilder`, away from the main thread, and `DiffLayoutManager` fills behind the words it finds, in the lines it's drawing. It compares each run of removed and added lines as a whole, with Myers' algorithm for the shortest edit, rather than pairing lines up. That means nothing has to guess which added line came from which removed line, and a word that a reflowed comment moves to the next line doesn't count as changed. It compares words and punctuation marks, not spaces, because spaces match as readily as words do, and a run of unrelated lines would break into scraps. Spaces count as changed only between words that are the same on both sides and at the start or end of a line that matches, and then only the part that differs, so a line indented further marks only the extra. A line where less than 30% stays the same shows no marks, because it was replaced, and its background already says that.
+
+A run with more than 1,000 differences shows no marks, because the time and memory for one run grow with the square of the differences. So does a patch over 50,000 lines, which isn't laid out ahead of time either. On a Release build, with 40,368 generated lines, finding the words took 30 ms when each changed line had one changed word. The longest it took in any patch tried was 0.8 seconds, with runs of 65 removed lines and 65 added lines that had nothing in common, on top of the 0.65 seconds for the rest. Eight marks on every changed line took 0.56 seconds to find, and didn't take scrolling past 10 ms.
+
 **Finding text in the diff.** Decision 9 counted the find bar among the things AppKit provides, and yaga used it at first. It's drawn by macOS and sits on top of the text, so it couldn't become the same box in the panel's header that the refs panel has. Now `SelectedFile` looks for the text with `NSString`'s search on a background task, which each key press cancels, and `DiffLayoutManager` fills behind the matches in the lines it's drawing, so the number of matches doesn't affect drawing. The marks and the count stay until the new search is done, so they don't flash while someone types. Matches belong to a document, and the text view ignores any from the document before the one it's showing. On a Release build, searching 40,000 lines took 20 to 60 ms, and 400,000 lines took 0.2 to 0.6 seconds, the longest being a letter with 2 million matches.
 
-On a Release build, a small file's patch showed about 25 ms after being selected, and a patch of 44,005 lines took about 620 ms, nearly all of it layout. While they loaded, the main thread didn't stall for more than 11 ms, and usually about 4 ms, measured in an off-screen window. `yaga-bench diff` times each step from moving the text until the window has drawn. With 40,368 generated lines, no step of scrolling took longer than 11 ms, and no jump longer than 8 ms, which is within one frame at 60 Hz and within two at 120 Hz. With 400,000 lines, which have an estimated height, one jump took 161 ms and scrolling stayed under 11 ms.
+On a Release build, a small file's patch showed about 25 ms after being selected, and a patch of 44,005 lines took about 620 ms, nearly all of it layout. While they loaded, the main thread didn't stall for more than 11 ms, and usually about 4 ms, measured in an off-screen window. `yaga-bench diff` times each step from moving the text until the window has drawn. With 40,368 generated lines, no step of scrolling or jump took longer than 11 ms, which is within one frame at 60 Hz and within two at 120 Hz. With 400,000 lines, which have an estimated height, one jump took 170 ms and scrolling stayed under 11 ms.
 
 ## Concurrency
 
@@ -331,7 +336,7 @@ The app's bundle identifier is `build.yaga.app`, and the app is named yaga. It i
 - Whether the commit panel shows a very large commit's files before git has counted their lines. git can list 20,000 files in about 75 ms, and counting their lines takes about 450 ms.
 - Whether a merge can be compared with its other parents, or show only what its conflict resolutions changed.
 - Whether a patch should follow the user's `diff.algorithm` and `diff.context`, as `git diff` in their terminal does. Going by `git show` would, and it also brings in settings that change the output's shape, such as `log.showSignature`.
-- How VoiceOver tells added lines from removed ones in the diff. The signs aren't in the text, so that they aren't copied, so it reads only the code.
+- How VoiceOver tells added lines from removed ones in the diff. The bars aren't in the text, so it reads only the code.
 - Which editor opening a file should use. Opening a file with its default app could run it, as a `.command` file does, so this needs a setting rather than `NSWorkspace.open`.
 - Whether a very long patch should wait to be laid out, for the exact height. A patch of 400,000 lines would take six seconds.
 - Whether yaga runs the git that `/usr/bin/git` stands for directly. That stub looks up the developer tools every time it runs, which made a short command take 13 ms instead of 6.4 ms.

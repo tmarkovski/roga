@@ -145,3 +145,121 @@ struct DiffTextBuilderTests {
         #expect(document.layoutManager.firstUnlaidCharacterIndex() < document.storage.length)
     }
 }
+
+struct ChangedWordsTests {
+    func document(_ lines: [String]) throws -> DiffDocument {
+        let oldCount = lines.count { $0.hasPrefix("-") || $0.hasPrefix(" ") }
+        let newCount = lines.count { $0.hasPrefix("+") || $0.hasPrefix(" ") }
+        let patch = "@@ -1,\(oldCount) +1,\(newCount) @@\n" + lines.map { $0 + "\n" }.joined()
+        return DiffTextBuilder.build(try PatchParser.parse(Array(patch.utf8)))
+    }
+
+    /// What differs on each changed line of a patch, as text.
+    func changedWords(_ lines: String...) throws -> [String] {
+        let document = try document(lines)
+        return document.changedWords.map((document.storage.string as NSString).substring)
+    }
+
+    @Test func marksOnlyTheWordThatChanged() throws {
+        #expect(try changedWords("-let name = 1", "+let name = 2") == ["1", "2"])
+    }
+
+    @Test func marksWhatWasAddedInTheMiddleOfALine() throws {
+        #expect(try changedWords("-open(path)", "+open(path, line)") == [", line"])
+    }
+
+    @Test func comparesWholeWords() throws {
+        #expect(try changedWords("-the file is open", "+the files is open") == ["file", "files"])
+    }
+
+    @Test func joinsWordsWithOnlySpacesBetweenThem() throws {
+        #expect(try changedWords("-keep one two three keep keep", "+keep four five six keep keep") == ["one two three", "four five six"])
+    }
+
+    @Test func doesntJoinWordsWithOtherTextBetweenThem() throws {
+        #expect(try changedWords("-one keep two keep keep", "+three keep four keep keep") == ["one", "two", "three", "four"])
+    }
+
+    @Test func marksAChangeInIndentation() throws {
+        #expect(try changedWords("-  call()", "+      call()") == ["    "])
+        #expect(try changedWords("-call()", "+  call()") == ["  "])
+        #expect(try changedWords("-\tcall()", "+    call()") == ["\t", "    "])
+    }
+
+    @Test func marksAChangeInTheSpacesInALine() throws {
+        #expect(try changedWords("-a,b", "+a, b") == [" "])
+        #expect(try changedWords("-a  = 1", "+a = 1") == [" "])
+    }
+
+    @Test func marksSpacesAtTheEndOfALine() throws {
+        #expect(try changedWords("-let a = 1  ", "+let a = 1") == ["  "])
+    }
+
+    @Test func leavesSpacesAloneBetweenWordsThatMoved() throws {
+        #expect(try changedWords("-one two", "-three", "+one", "+two three").isEmpty)
+    }
+
+    @Test func leavesAWordAloneWhenItMovesToAnotherLine() throws {
+        #expect(try changedWords("-first second", "-third fourth fifth", "+first second third", "+fourth fifth").isEmpty)
+    }
+
+    @Test func leavesALineAloneWhenNothingOnTheOtherSideIsLikeIt() throws {
+        #expect(try changedWords("-let open: () -> Void", "+/// What the rail has selected.").isEmpty)
+    }
+
+    @Test func leavesAnAddedLineAloneWhenTheRestOfTheRunIsAComparison() throws {
+        #expect(try changedWords("-let name = 1", "+let name = 2", "+@Binding var selection: Item?") == ["1", "2"])
+    }
+
+    @Test func leavesLinesAloneWhenOnlyOneSideHasAny() throws {
+        #expect(try changedWords("+added", "+another").isEmpty)
+        #expect(try changedWords("-removed", "-another").isEmpty)
+    }
+
+    @Test func comparesEachRunByItself() throws {
+        #expect(try changedWords("-let a = 1", "+let a = 2", " same", "-let b = 3", "+let b = 4") == ["1", "2", "3", "4"])
+    }
+
+    @Test func comparesPastARemarkThatALineHasNoNewline() throws {
+        #expect(try changedWords("-let a = 1", "\\ No newline at end of file", "+let a = 2") == ["1", "2"])
+    }
+
+    @Test func doesntMarkACarriageReturn() throws {
+        #expect(try changedWords("-let a = 1\r", "+let a = 1").isEmpty)
+    }
+
+    @Test func countsPositionsInCodeUnits() throws {
+        #expect(try changedWords("-😀 é keep 1", "+😀 é keep 2") == ["1", "2"])
+    }
+
+    @Test func keepsACharacterThatTakesTwoCodeUnitsWhole() throws {
+        #expect(try changedWords("-keep keep 😀", "+keep keep 😁") == ["😀", "😁"])
+    }
+
+    @Test func givesTheRangesInOrder() throws {
+        let document = try document(["-one keep two keep", "+three keep four keep", " same", "-five keep", "+six keep"])
+        let starts = document.changedWords.map(\.location)
+        #expect(starts.count == 6)
+        #expect(starts == starts.sorted())
+    }
+
+    @Test func givesUpOnARunWithTooManyDifferences() throws {
+        // Half of each line stays the same, and there are enough lines.
+        let lineCount = ChangedWords.differenceLimit / 20 + 1
+        func lines(_ sign: String) -> [String] {
+            (0..<lineCount).map { line in sign + (0..<10).map { "\(sign == "-" ? "old" : "new")\(line)x\($0) keep" }.joined(separator: " ") }
+        }
+        #expect(try document(lines("-") + lines("+")).changedWords.isEmpty)
+    }
+
+    @Test func comparesALongRunWithFewDifferences() throws {
+        let same = (0..<ChangedWords.differenceLimit).map { "-keep \($0)" }
+        let document = try document(same + ["-keep 1"] + same.map { "+" + $0.dropFirst() } + ["+keep 2"])
+        #expect(document.changedWords.count == 2)
+    }
+
+    @Test func leavesAVeryLongPatchAlone() throws {
+        let lines = (0...DiffTextBuilder.wholeLayoutLimit / 2).flatMap { _ in ["-let a = 1", "+let a = 2"] }
+        #expect(try document(lines).changedWords.isEmpty)
+    }
+}

@@ -30,7 +30,8 @@ struct DiffBenchmark {
     }
 
     /// Hunks of removed lines and added lines with context around them. Tabs
-    /// and hex numbers, like the largest file in the prototype's test.
+    /// and hex numbers, like the largest file in the prototype's test, with a
+    /// number on each changed line that differs from the other side.
     private func patch() throws -> FilePatch {
         var text = "diff --git a/table.c b/table.c\n--- a/table.c\n+++ b/table.c\n"
         text.reserveCapacity(lines * (lineLength + 2))
@@ -42,7 +43,7 @@ struct DiffBenchmark {
             text += "@@ -\(old),\(changed + 6) +\(old),\(changed + 6) @@ static const u32 table[] = {\n"
             for _ in 0..<3 { text += " \t\(padding)\n" }
             for index in 0..<changed { text += "-\t\(padding)0x\(String(index, radix: 16)),\n" }
-            for index in 0..<changed { text += "+\t\(padding)0x\(String(index + 1, radix: 16)),\n" }
+            for index in 0..<changed { text += "+\t\(padding)0x\(String(index + changed, radix: 16)),\n" }
             for _ in 0..<3 { text += " \t\(padding)\n" }
             old += changed + 6
             written += changed * 2 + 7
