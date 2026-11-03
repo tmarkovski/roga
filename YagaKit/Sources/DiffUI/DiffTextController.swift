@@ -13,32 +13,13 @@ public final class DiffTextController: NSObject {
 
     /// The space above and below the text.
     private static let inset: CGFloat = 4
-    /// How tall the find bar is while it's open, which is 0 when it's closed.
-    /// The bar floats over the text, so the text starts this much lower. The
-    /// first rows would otherwise stay hidden for as long as it's open.
-    private var findBarHeight: CGFloat = 0 {
-        didSet {
-            guard findBarHeight != oldValue else { return }
-            let clipView = scrollView.contentView
-            let isAtTop = clipView.bounds.minY <= 0
-            textView.textContainerInset.height = Self.inset + findBarHeight
-            textView.sizeToFit()
-            updateTextSize()
-            // What's in view stays where it is, unless that's the top.
-            if !isAtTop {
-                clipView.scroll(to: NSPoint(x: clipView.bounds.minX, y: clipView.bounds.minY + findBarHeight - oldValue))
-                scrollView.reflectScrolledClipView(clipView)
-            }
-            gutter.needsDisplay = true
-        }
-    }
 
     override public init() {
         // Made this way, it uses TextKit 1, and it doesn't own its text system.
         // One that does would take the text with it when it went away, which a
         // later text view might be showing.
         textView = DiffTextView(frame: .zero, textContainer: nil)
-        let scrollView = DiffScrollView()
+        let scrollView = NSScrollView()
         self.scrollView = scrollView
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
@@ -58,7 +39,6 @@ public final class DiffTextController: NSObject {
         super.init()
 
         configureTextView()
-        scrollView.findBarHeightChanged = { [weak self] in self?.findBarHeight = $0 }
         let clipView = scrollView.contentView
         clipView.postsFrameChangedNotifications = true
         clipView.postsBoundsChangedNotifications = true
@@ -98,10 +78,6 @@ public final class DiffTextController: NSObject {
         document.container.textView?.textContainer = nil
         document.container.textView = textView
         configureTextView()
-        // The find bar reads the text once, and nothing tells it when a text
-        // view goes on to another document. This makes it read the text again.
-        textView.usesFindBar = false
-        textView.usesFindBar = true
         textView.sizeToFit()
         updateTextSize()
         textView.needsDisplay = true
@@ -127,17 +103,39 @@ public final class DiffTextController: NSObject {
         textView.usesRuler = false
         textView.allowsUndo = false
         textView.drawsBackground = false
-        textView.textContainerInset = NSSize(width: 0, height: Self.inset + findBarHeight)
-        textView.usesFindBar = true
-        textView.isIncrementalSearchingEnabled = true
+        textView.textContainerInset = NSSize(width: 0, height: Self.inset)
     }
 
-    /// Shows the find bar, and puts the keyboard in it.
-    public func showFind() {
+    /// Marks where the text being searched for shows in the document showing,
+    /// and which match the search is at.
+    public func showMatches(_ matches: [NSRange], current: Int?) {
+        guard let layoutManager = document?.layoutManager,
+              matches != layoutManager.matches || current != layoutManager.currentMatch else { return }
+        layoutManager.matches = matches
+        layoutManager.currentMatch = current
+        textView.needsDisplay = true
+    }
+
+    /// Brings the match the search is at into view, with some of what's around it.
+    public func scrollToCurrentMatch() {
+        guard let document, let match = currentMatch else { return }
+        let glyphs = document.layoutManager.glyphRange(forCharacterRange: match, actualCharacterRange: nil)
+        let origin = textView.textContainerOrigin
+        let rect = document.layoutManager.boundingRect(forGlyphRange: glyphs, in: document.container)
+            .offsetBy(dx: origin.x, dy: origin.y)
+        textView.scrollToVisible(rect.insetBy(dx: -DiffStyle.columnWidth * 8, dy: -DiffStyle.lineHeight * 3))
+    }
+
+    /// Selects the match the search is at, and gives the text the keyboard,
+    /// for when the search closes.
+    public func endFind() {
+        if let currentMatch { textView.setSelectedRange(currentMatch) }
         textView.window?.makeFirstResponder(textView)
-        let action = NSMenuItem()
-        action.tag = NSTextFinder.Action.showFindInterface.rawValue
-        textView.performTextFinderAction(action)
+    }
+
+    private var currentMatch: NSRange? {
+        guard let layoutManager = document?.layoutManager, let current = layoutManager.currentMatch else { return nil }
+        return layoutManager.matches[current]
     }
 
     /// Makes the text as wide as its longest line, or as the view if that's
@@ -147,15 +145,6 @@ public final class DiffTextController: NSObject {
         let width = CGFloat(document?.columns ?? 0) * DiffStyle.columnWidth + DiffStyle.textPadding * 2
         textView.minSize = NSSize(width: 0, height: visible.height)
         textView.setFrameSize(NSSize(width: max(width, visible.width), height: max(textView.frame.height, visible.height)))
-    }
-}
-
-/// Says when the find bar opens and closes.
-private final class DiffScrollView: NSScrollView {
-    var findBarHeightChanged: ((CGFloat) -> Void)?
-
-    override var isFindBarVisible: Bool {
-        didSet { findBarHeightChanged?(isFindBarVisible ? findBarView?.frame.height ?? 0 : 0) }
     }
 }
 

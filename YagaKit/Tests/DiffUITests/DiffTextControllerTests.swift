@@ -13,6 +13,41 @@ struct DiffTextControllerTests {
         controller.scrollView.documentView as! NSTextView
     }
 
+    func longDocument() throws -> DiffDocument {
+        try document("@@ -0,0 +1,500 @@\n" + (1...500).map { "+line \($0)\n" }.joined())
+    }
+
+    @Test func bringsTheCurrentMatchIntoView() throws {
+        let document = try longDocument()
+        let controller = DiffTextController()
+        controller.view.frame = NSRect(x: 0, y: 0, width: 400, height: 200)
+        controller.view.layoutSubtreeIfNeeded()
+        controller.show(document)
+
+        let matches = document.ranges(of: "line 450")
+        controller.showMatches(matches, current: 0)
+        #expect(controller.scrollView.contentView.bounds.minY == 0)
+        controller.scrollToCurrentMatch()
+
+        let rows = controller.scrollView.contentView.bounds.minY / DiffStyle.lineHeight
+        #expect((430...451).contains(Int(rows)))
+    }
+
+    @Test func selectsTheCurrentMatchWhenTheSearchEnds() throws {
+        let document = try longDocument()
+        let controller = DiffTextController()
+        controller.show(document)
+        let matches = document.ranges(of: "line 3")
+        controller.showMatches(matches, current: 1)
+        controller.endFind()
+        #expect(text(of: controller).selectedRange() == matches[1])
+
+        // A search that found nothing leaves the selection alone.
+        controller.showMatches([], current: nil)
+        controller.endFind()
+        #expect(text(of: controller).selectedRange() == matches[1])
+    }
+
     @Test func handsADocumentToANewController() throws {
         // What happens when a window goes to another worktree and back.
         let document = try document()

@@ -7,29 +7,78 @@ import SwiftUI
 /// Shows what changed in the selected file, in a commit or a worktree.
 struct DiffPanel: View {
     let selection: SelectedFile
+    /// Whether the header has room for the file's path beside the search box.
+    @State private var hasRoomForTitle = true
+
+    /// The widest the search box gets, so that it doesn't reach across a wide
+    /// screen.
+    private static let findBoxWidth = 320.0
+    /// How much room the path needs to be worth showing beside the box.
+    private static let titleWidthBesideFindBox = 120.0
+    /// The space after the path.
+    private static let titleSpacing = 12.0
 
     var body: some View {
+        @Bindable var selection = selection
         Panel {
-            if let shown = selection.shown {
-                FileTitle(file: shown.file, source: shown.source)
-            } else {
-                Text("Diff")
-                    .font(.system(size: 13, weight: .medium))
-                    .padding(.leading, 4)
+            HStack(spacing: 0) {
+                if !selection.isFindShown || hasRoomForTitle {
+                    title
+                        .padding(.trailing, Self.titleSpacing)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    Spacer(minLength: 0)
+                }
+                if selection.isFindShown {
+                    PanelSearchField(
+                        prompt: "Find",
+                        label: "Find in Diff",
+                        text: $selection.findText,
+                        wantsFocus: $selection.wantsFindFocus,
+                        note: selection.matchesNote,
+                        submit: { isBackwards in
+                            if isBackwards { selection.findPrevious() } else { selection.findNext() }
+                        },
+                        close: selection.closeFind
+                    )
+                    .frame(maxWidth: Self.findBoxWidth)
+                    .layoutPriority(1)
+                }
+            }
+            .onGeometryChange(for: Bool.self) { geometry in
+                geometry.size.width >= Self.findBoxWidth + Self.titleSpacing + Self.titleWidthBesideFindBox
+            } action: { hasRoom in
+                hasRoomForTitle = hasRoom
             }
         } trailing: {
-            Button("Find in Diff", systemImage: "magnifyingglass") {
-                selection.find()
+            if selection.isFindShown {
+                Button("Previous Match", systemImage: "chevron.up", action: selection.findPrevious)
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(.icon)
+                    .disabled(!selection.hasMatches)
+                    .help("Previous Match (\(RepositoryCommands.findPreviousShortcut.symbols))")
+                Button("Next Match", systemImage: "chevron.down", action: selection.findNext)
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(.icon)
+                    .disabled(!selection.hasMatches)
+                    .help("Next Match (\(RepositoryCommands.findNextShortcut.symbols))")
             }
-            .labelStyle(.iconOnly)
-            .buttonStyle(.icon)
-            .disabled(!selection.canFind)
-            .help("Find in Diff (\(RepositoryCommands.findShortcut.symbols))")
+            Button(selection.isFindShown ? "Close Find" : "Find in Diff", systemImage: "magnifyingglass", action: selection.toggleFind)
+                .labelStyle(.iconOnly)
+                .buttonStyle(.icon(isOn: selection.isFindShown))
+                .disabled(!selection.canFind && !selection.isFindShown)
+                .help(selection.isFindShown ? "Close Find" : "Find in Diff (\(RepositoryCommands.findShortcut.symbols))")
         } content: {
             ZStack {
                 switch selection.shown?.content {
                 case .patch(let document):
-                    DiffText(document: document, isUpdate: selection.shown?.isUpdate == true, findRequests: selection.findRequests)
+                    DiffText(
+                        document: document,
+                        isUpdate: selection.shown?.isUpdate == true,
+                        matches: selection.matches,
+                        matchSteps: selection.matchSteps,
+                        findCloses: selection.findCloses
+                    )
                 case .note(let text):
                     note(text)
                 case .failed(let message):
@@ -44,6 +93,16 @@ struct DiffPanel: View {
                         .controlSize(.small)
                 }
             }
+        }
+    }
+
+    @ViewBuilder private var title: some View {
+        if let shown = selection.shown {
+            FileTitle(file: shown.file, source: shown.source)
+        } else {
+            Text("Diff")
+                .font(.system(size: 13, weight: .medium))
+                .padding(.leading, 4)
         }
     }
 
@@ -104,10 +163,12 @@ private struct DiffText: NSViewRepresentable {
     let document: DiffDocument
     /// Whether the document is a newer copy of the one showing.
     let isUpdate: Bool
-    let findRequests: Int
+    let matches: SelectedFile.Matches?
+    let matchSteps: Int
+    let findCloses: Int
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(findRequests: findRequests)
+        Coordinator(matchSteps: matchSteps, findCloses: findCloses)
     }
 
     func makeNSView(context: Context) -> NSView {
@@ -115,22 +176,37 @@ private struct DiffText: NSViewRepresentable {
     }
 
     func updateNSView(_ view: NSView, context: Context) {
-        context.coordinator.controller.show(document, keepingPosition: isUpdate)
-        context.coordinator.update(findRequests: findRequests)
+        let controller = context.coordinator.controller
+        controller.show(document, keepingPosition: isUpdate)
+        // Before the marks go away, since closing selects the current one.
+        context.coordinator.update(findCloses: findCloses)
+        // What's marked can be from the document before this one, until the
+        // search of this one is done.
+        let shown = matches?.document === document ? matches : nil
+        controller.showMatches(shown?.ranges ?? [], current: shown?.current)
+        context.coordinator.update(matchSteps: matchSteps)
     }
 
     final class Coordinator {
         let controller = DiffTextController()
-        private var findRequests: Int
+        private var matchSteps: Int
+        private var findCloses: Int
 
-        init(findRequests: Int) {
-            self.findRequests = findRequests
+        init(matchSteps: Int, findCloses: Int) {
+            self.matchSteps = matchSteps
+            self.findCloses = findCloses
         }
 
-        func update(findRequests: Int) {
-            guard findRequests != self.findRequests else { return }
-            self.findRequests = findRequests
-            controller.showFind()
+        func update(matchSteps: Int) {
+            guard matchSteps != self.matchSteps else { return }
+            self.matchSteps = matchSteps
+            controller.scrollToCurrentMatch()
+        }
+
+        func update(findCloses: Int) {
+            guard findCloses != self.findCloses else { return }
+            self.findCloses = findCloses
+            controller.endFind()
         }
     }
 }

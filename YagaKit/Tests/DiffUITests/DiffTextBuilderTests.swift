@@ -30,6 +30,25 @@ struct DiffTextBuilderTests {
         #expect(string(document) == "@@ -1,2 +1,2 @@ func main()\nsame\nold\nnew\n")
     }
 
+    @Test func findsTextIgnoringCase() throws {
+        let document = DiffTextBuilder.build(try PatchParser.parse(Array("@@ -1 +1 @@\n-Old line\n+new LINE\n".utf8)))
+        let text = document.storage.string as NSString
+        #expect(document.ranges(of: "line").map(text.substring) == ["line", "LINE"])
+        #expect(document.ranges(of: "nothing").isEmpty)
+        #expect(document.ranges(of: "").isEmpty)
+    }
+
+    @Test func matchesDontOverlap() throws {
+        let document = DiffTextBuilder.build(try PatchParser.parse(Array("@@ -0,0 +1 @@\n+aaaaa\n".utf8)))
+        #expect(document.ranges(of: "aa").count == 2)
+    }
+
+    @Test func findsTextAfterCharactersThatTakeTwoCodeUnits() throws {
+        let document = DiffTextBuilder.build(try PatchParser.parse(Array("@@ -0,0 +1 @@\n+😀 word\n".utf8)))
+        let text = document.storage.string as NSString
+        #expect(document.ranges(of: "word").map(text.substring) == ["word"])
+    }
+
     @Test func findsTheLineOfAPositionInTheText() throws {
         let document = try document("@@ -1,2 +1,2 @@\n aa\n-é𝄞\n+c\n")
         let text = string(document) as NSString

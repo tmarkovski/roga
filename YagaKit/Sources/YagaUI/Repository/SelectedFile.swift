@@ -1,4 +1,5 @@
 import DiffUI
+import Foundation
 import GitCore
 import Observation
 import RepositoryEngine
@@ -25,6 +26,14 @@ final class SelectedFile {
         var isUpdate = false
     }
 
+    /// Where the text being searched for shows in a document.
+    struct Matches {
+        let document: DiffDocument
+        let ranges: [NSRange]
+        /// Which of them the search is at.
+        var current: Int?
+    }
+
     /// How long what's showing stays before the panel says the next file is
     /// loading.
     static let patience = Duration.milliseconds(150)
@@ -35,11 +44,32 @@ final class SelectedFile {
     private(set) var source: PatchSource?
     /// What the panel shows, which is an earlier file while the selected one
     /// loads.
-    private(set) var shown: Shown?
+    private(set) var shown: Shown? {
+        didSet {
+            if shownDocument !== matches?.document { search(scrolling: shown?.isUpdate != true) }
+        }
+    }
     private(set) var isWaiting = false
-    /// Goes up when the user asks to find text in the diff, so that the text
-    /// view knows to show its find bar.
-    private(set) var findRequests = 0
+    /// Whether the box for finding text shows, which it doesn't until someone
+    /// asks for it. It stays open from one file to the next.
+    private(set) var isFindShown = false
+    /// Whether a command asked for the keyboard to go to the box, which the
+    /// panel does once it's showing.
+    var wantsFindFocus = false
+    /// The text to find in the diff.
+    var findText = "" {
+        didSet {
+            if findText != oldValue { search() }
+        }
+    }
+    /// Where that text shows, once it's been looked for.
+    private(set) var matches: Matches?
+    /// Goes up when the search moves to a match, so that the text view knows to
+    /// bring it into view.
+    private(set) var matchSteps = 0
+    /// Goes up when the box closes, so that the text view knows to take the
+    /// keyboard back.
+    private(set) var findCloses = 0
 
     /// The load for the selected file, which selecting another one cancels.
     @ObservationIgnored private(set) var loading: Task<Void, Never>?
@@ -50,6 +80,8 @@ final class SelectedFile {
     /// What git printed for the patch showing, for telling whether looking at
     /// the file again found anything new.
     @ObservationIgnored private var shownPatch: [UInt8]?
+    /// The search for the latest text, which typing more cancels.
+    @ObservationIgnored private(set) var searching: Task<Void, Never>?
     @ObservationIgnored private let session: RepositorySession
 
     init(session: RepositorySession) {
@@ -114,13 +146,78 @@ final class SelectedFile {
         isWaiting = true
     }
 
+    /// Shows the box for finding text, or goes back to it if it's showing.
     func find() {
-        findRequests += 1
+        isFindShown = true
+        wantsFindFocus = true
+    }
+
+    /// Hides the box, and stops marking what it found.
+    func closeFind() {
+        isFindShown = false
+        findText = ""
+        findCloses += 1
+    }
+
+    func toggleFind() {
+        if isFindShown { closeFind() } else { find() }
+    }
+
+    func findNext() {
+        step(by: 1)
+    }
+
+    func findPrevious() {
+        step(by: -1)
+    }
+
+    /// Moves to another match, going around at either end.
+    private func step(by step: Int) {
+        guard let count = matches?.ranges.count, count > 0 else { return }
+        let current = matches?.current ?? (step > 0 ? -1 : 0)
+        matches?.current = (current + step + count) % count
+        matchSteps += 1
+    }
+
+    /// Looks for the text in the document showing. Until that's done, the marks
+    /// and the count stay as they were, so that they don't flash as someone types.
+    private func search(scrolling: Bool = true) {
+        searching?.cancel()
+        guard !findText.isEmpty, let document = shownDocument else {
+            if matches != nil { matches = nil }
+            return
+        }
+        let query = findText
+        // Typing more stays around the same place, and a new file starts over.
+        let place = matches.flatMap { $0.document === document ? $0.currentRange?.location : nil } ?? 0
+        searching = Task {
+            let ranges = await document.matches(of: query)
+            guard !Task.isCancelled else { return }
+            let current = ranges.firstIndex { $0.location >= place } ?? (ranges.isEmpty ? nil : 0)
+            matches = Matches(document: document, ranges: ranges, current: current)
+            if scrolling { matchSteps += 1 }
+        }
+    }
+
+    /// Whether there are any matches to go to.
+    var hasMatches: Bool {
+        matches?.ranges.isEmpty == false
+    }
+
+    /// How the search went, once it's looked.
+    var matchesNote: String? {
+        guard let matches else { return nil }
+        guard let current = matches.current else { return "No matches" }
+        return "\(current + 1) of \(matches.ranges.count)"
+    }
+
+    private var shownDocument: DiffDocument? {
+        if case .patch(let document) = shown?.content { document } else { nil }
     }
 
     /// Whether there's text to find something in.
     var canFind: Bool {
-        if case .patch = shown?.content { true } else { false }
+        shownDocument != nil
     }
 
     /// The group of a worktree's changes that the selected file is in, or nil
@@ -181,5 +278,12 @@ final class SelectedFile {
         self.shown = shown
         shownPatch = patch
         isWaiting = false
+    }
+}
+
+extension SelectedFile.Matches {
+    /// Where the match the search is at is.
+    var currentRange: NSRange? {
+        current.map { ranges[$0] }
     }
 }

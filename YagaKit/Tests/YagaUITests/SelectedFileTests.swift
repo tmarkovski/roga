@@ -218,7 +218,113 @@ struct SelectedFileTests {
         #expect(!commit.selectedFile.canFind)
         try await select("with space.txt", commit)
         #expect(commit.selectedFile.canFind)
-        commit.selectedFile.find()
-        #expect(commit.selectedFile.findRequests == 1)
+    }
+
+    /// What the search says after looking for some text in `with space.txt`,
+    /// which shows `@@ -1 +1,2 @@`, `keep` and `more`.
+    func searching(for text: String) async throws -> SelectedFile {
+        let commit = try await selected("every-way")
+        try await select("with space.txt", commit)
+        let selection = commit.selectedFile
+        selection.find()
+        selection.findText = text
+        await selection.searching?.value
+        return selection
+    }
+
+    @Test func opensTheBoxWithTheKeyboardInIt() async throws {
+        let commit = try await selected("every-way")
+        let selection = commit.selectedFile
+        #expect(!selection.isFindShown)
+        selection.toggleFind()
+        #expect(selection.isFindShown)
+        #expect(selection.wantsFindFocus)
+    }
+
+    @Test func goesThroughTheMatchesAndAround() async throws {
+        let selection = try await searching(for: "E")
+        #expect(selection.matchesNote == "1 of 3")
+        let steps = selection.matchSteps
+        selection.findNext()
+        #expect(selection.matchesNote == "2 of 3")
+        selection.findNext()
+        selection.findNext()
+        #expect(selection.matchesNote == "1 of 3")
+        selection.findPrevious()
+        #expect(selection.matchesNote == "3 of 3")
+        #expect(selection.matchSteps == steps + 4)
+    }
+
+    @Test func changingTheTextStaysAroundTheSamePlace() async throws {
+        let selection = try await searching(for: "e")
+        selection.findNext()
+        selection.findNext()
+        #expect(selection.matchesNote == "3 of 3")
+
+        selection.findText = "E"
+        await selection.searching?.value
+        #expect(selection.matchesNote == "3 of 3")
+    }
+
+    @Test func saysWhenNothingMatches() async throws {
+        let selection = try await searching(for: "zzz")
+        #expect(selection.matchesNote == "No matches")
+        #expect(!selection.hasMatches)
+        let steps = selection.matchSteps
+        selection.findNext()
+        selection.findPrevious()
+        #expect(selection.matchSteps == steps)
+    }
+
+    @Test func clearingKeepsTheBoxOpen() async throws {
+        let selection = try await searching(for: "e")
+        selection.findText = ""
+        await selection.searching?.value
+        #expect(selection.isFindShown)
+        #expect(selection.matches == nil)
+        #expect(selection.matchesNote == nil)
+    }
+
+    @Test func closingStopsMarkingWhatItFound() async throws {
+        let selection = try await searching(for: "e")
+        let closes = selection.findCloses
+        selection.toggleFind()
+        #expect(!selection.isFindShown)
+        #expect(selection.findText.isEmpty)
+        #expect(selection.matches == nil)
+        #expect(selection.findCloses == closes + 1)
+    }
+
+    @Test func looksInTheNextFileToo() async throws {
+        let commit = try await selected("every-way")
+        try await select("with space.txt", commit)
+        let selection = commit.selectedFile
+        selection.find()
+        selection.findText = "e"
+        await selection.searching?.value
+        selection.findNext()
+        let first = try #require(selection.matches?.document)
+
+        try await select("lib/moved.txt", commit)
+        await selection.searching?.value
+        #expect(selection.isFindShown)
+        #expect(selection.matches?.document !== first)
+        #expect(selection.matches?.current == 0)
+    }
+
+    @Test func marksNothingInAFileWithNoPatch() async throws {
+        let commit = try await selected("every-way")
+        let note = try #require(commit.selectedFile.file?.path)
+        try await select("with space.txt", commit)
+        let selection = commit.selectedFile
+        selection.find()
+        selection.findText = "e"
+        await selection.searching?.value
+        #expect(selection.hasMatches)
+
+        try await select(note, commit)
+        #expect(!selection.canFind)
+        #expect(selection.isFindShown)
+        #expect(selection.matches == nil)
     }
 }

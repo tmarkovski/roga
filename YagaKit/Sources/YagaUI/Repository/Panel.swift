@@ -31,8 +31,10 @@ struct Panel<Leading: View, Trailing: View, Content: View>: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 4) {
-                leading
-                Spacer(minLength: 8)
+                HStack(spacing: 4) {
+                    leading
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 trailing
             }
             .padding(.horizontal, 10)
@@ -191,17 +193,21 @@ private struct PanelDivider: View {
 /// for the commands in panel headers and the sidebar (docs/main-window.md).
 struct IconButtonStyle: ButtonStyle {
     var size: CGFloat = 28
+    /// Whether it stays looking pressed, for as long as what it opened shows.
+    var isOn = false
 
     func makeBody(configuration: Configuration) -> some View {
-        HoverIcon(isPressed: configuration.isPressed, size: size) {
+        HoverIcon(isPressed: configuration.isPressed || isOn, size: size) {
             configuration.label
         }
+        .accessibilityAddTraits(isOn ? .isSelected : [])
     }
 }
 
 extension ButtonStyle where Self == IconButtonStyle {
     static var icon: IconButtonStyle { IconButtonStyle() }
     static func icon(size: CGFloat) -> IconButtonStyle { IconButtonStyle(size: size) }
+    static func icon(isOn: Bool) -> IconButtonStyle { IconButtonStyle(isOn: isOn) }
 }
 
 /// An icon in a square that fills with gray while the pointer is over it.
@@ -216,7 +222,7 @@ struct HoverIcon<Icon: View>: View {
     var body: some View {
         icon
             .font(.system(size: size >= 28 ? 14 : 12.5))
-            .foregroundStyle(isHovering ? .primary : .secondary)
+            .foregroundStyle(isHovering || isPressed ? .primary : .secondary)
             .frame(width: size, height: size)
             .background {
                 RoundedRectangle(cornerRadius: size >= 28 ? 8 : 7, style: .continuous)
@@ -225,6 +231,80 @@ struct HoverIcon<Icon: View>: View {
             .contentShape(Rectangle())
             .opacity(isEnabled ? 1 : 0.4)
             .onHover { isHovering = $0 && isEnabled }
+    }
+}
+
+/// The box that opens beside a panel's search button, which looks pressed while
+/// it's open and closes it when pressed again. It's as tall and as round as the
+/// buttons beside it. Its own button clears what's typed, and Escape closes it.
+struct PanelSearchField: View {
+    let prompt: String
+    let label: String
+    @Binding var text: String
+    @Binding var wantsFocus: Bool
+    /// How the search went, which goes at the end of the box.
+    var note: String?
+    /// What the down arrow does, if anything.
+    var moveDown: (() -> Void)?
+    /// What Return does, if anything, and whether Shift was held.
+    var submit: ((_ isBackwards: Bool) -> Void)?
+    let close: () -> Void
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        HStack(spacing: 5) {
+            TextField(prompt, text: $text)
+                .textFieldStyle(.plain)
+                .font(.system(size: 13))
+                .focused($isFocused)
+                .onKeyPress(.downArrow) {
+                    guard let moveDown else { return .ignored }
+                    moveDown()
+                    return .handled
+                }
+                .onKeyPress(keys: [.return], phases: [.down, .repeat]) { press in
+                    guard let submit else { return .ignored }
+                    submit(press.modifiers.contains(.shift))
+                    return .handled
+                }
+                .onExitCommand(perform: close)
+                .accessibilityLabel(label)
+            if let note, !text.isEmpty {
+                Text(note)
+                    .font(.system(size: 12))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .fixedSize()
+            }
+            if !text.isEmpty {
+                Button("Clear", systemImage: "xmark") {
+                    text = ""
+                    isFocused = true
+                }
+                .labelStyle(.iconOnly)
+                .buttonStyle(.icon)
+                .help("Clear")
+            }
+        }
+        .padding(.leading, 8)
+        .frame(height: 28)
+        .background(Palette.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Palette.separator)
+                .allowsHitTesting(false)
+        }
+        .onChange(of: wantsFocus, initial: true) {
+            guard wantsFocus else { return }
+            wantsFocus = false
+            // The field can't take the keyboard until it's in the window, which
+            // takes a moment when the command has just shown it.
+            Task {
+                try? await Task.sleep(for: .milliseconds(100))
+                isFocused = true
+            }
+        }
     }
 }
 

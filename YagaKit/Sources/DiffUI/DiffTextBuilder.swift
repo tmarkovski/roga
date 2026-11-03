@@ -31,6 +31,11 @@ nonisolated enum DiffStyle {
         }
     }
 
+    /// The fill behind the text being searched for.
+    static var matchBackground: NSColor { NSColor.systemYellow.withAlphaComponent(0.3) }
+    /// The fill behind the match that the search is at.
+    static var currentMatchBackground: NSColor { NSColor.systemOrange.withAlphaComponent(0.65) }
+
     nonisolated(unsafe) static let paragraph: NSParagraphStyle = {
         let paragraph = NSMutableParagraphStyle()
         paragraph.minimumLineHeight = lineHeight
@@ -89,6 +94,28 @@ nonisolated public final class DiffDocument: @unchecked Sendable {
     var numberDigits: Int {
         let largest = lines.reduce(0) { max($0, $1.oldNumber ?? 0, $1.newNumber ?? 0) }
         return String(largest).count
+    }
+
+    /// Where some text shows, ignoring case, away from the main actor, since a
+    /// very long patch takes a while.
+    @concurrent public func matches(of query: String) async -> [NSRange] {
+        ranges(of: query)
+    }
+
+    /// Where some text shows, in order and without overlapping, in UTF-16 code
+    /// units, stopping if the task is cancelled.
+    func ranges(of query: String) -> [NSRange] {
+        guard !query.isEmpty else { return [] }
+        let text = storage.string as NSString
+        var ranges: [NSRange] = []
+        var start = 0
+        while !Task.isCancelled {
+            let found = text.range(of: query, options: .caseInsensitive, range: NSRange(location: start, length: text.length - start))
+            guard found.location != NSNotFound else { break }
+            ranges.append(found)
+            start = found.upperBound
+        }
+        return ranges
     }
 }
 

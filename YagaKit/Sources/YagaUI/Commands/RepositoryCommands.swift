@@ -21,6 +21,10 @@ public struct RepositoryCommands: Commands {
     /// The shortcut for finding text in the diff, which the diff panel shows
     /// too.
     static let findShortcut = KeyboardShortcut("f")
+    /// The shortcuts for going through what the diff panel found, which it
+    /// shows too.
+    static let findNextShortcut = KeyboardShortcut("g")
+    static let findPreviousShortcut = KeyboardShortcut("g", modifiers: [.shift, .command])
     /// The shortcut for hiding the rail of organizations.
     static let organizationRailShortcut = KeyboardShortcut("o", modifiers: [.control, .command])
     /// The shortcut for hiding the refs panel, which is what macOS gives an
@@ -63,6 +67,16 @@ public struct RepositoryCommands: Commands {
             }
             .keyboardShortcut(Self.findShortcut)
             .disabled(repository?.selectedFile.canFind != true)
+            Button("Find Next") {
+                repository?.selectedFile.findNext()
+            }
+            .keyboardShortcut(Self.findNextShortcut)
+            .disabled(repository?.selectedFile.hasMatches != true)
+            Button("Find Previous") {
+                repository?.selectedFile.findPrevious()
+            }
+            .keyboardShortcut(Self.findPreviousShortcut)
+            .disabled(repository?.selectedFile.hasMatches != true)
         }
         CommandGroup(replacing: .sidebar) {
             Button(sidebarVisibility?.wrappedValue.sidebarCommandTitle ?? "Hide Sidebar") {
