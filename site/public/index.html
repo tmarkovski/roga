@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roga: a Git client for the way code gets written now</title>
+<meta name="description" content="Roga is a fast, native Git client for the Mac, made for reviewing what your agents wrote. Free and open source. Coming soon.">
+<link rel="canonical" href="https://roga.sh/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#faf6ee">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#16150e">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://roga.sh/">
+<meta property="og:title" content="Roga: a Git client for the way code gets written now">
+<meta property="og:description" content="A fast, native Git client for the Mac, made for reviewing what your agents wrote. Coming soon.">
+<meta property="og:image" content="https://roga.sh/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="The Roga house on chicken legs, above the Roga wordmark.">
+<meta name="twitter:card" content="summary_large_image">
+<style>
+  :root {
+    color-scheme: light dark;
+    --paper: #faf6ee;
+    --ink: #16150e;
+    --muted: #6a665a;
+    --line: #dcd5c6;
+    --orange: #d54802;
+    --orange-dark: #953201;
+    --accent: #b53d00;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #16150e;
+      --ink: #f5f0e6;
+      --muted: #a9a394;
+      --line: #3a372d;
+      --accent: #f2702e;
+    }
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 1.0625rem/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .column {
+    width: min(100% - 2rem, 40rem);
+    margin-inline: auto;
+  }
+
+  .stage {
+    overflow-x: clip;
+    padding-top: clamp(1.5rem, 5vh, 3.5rem);
+  }
+
+  .stage .column {
+    position: relative;
+  }
+
+  #house {
+    display: block;
+    width: min(100%, 24rem);
+    height: auto;
+    overflow: visible;
+  }
+
+  .floor {
+    stroke: var(--line);
+    stroke-width: 5;
+  }
+
+  .commits {
+    stroke: var(--muted);
+    stroke-width: 22;
+    stroke-linecap: round;
+  }
+
+  .leg {
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .bones {
+    stroke-width: 44;
+  }
+
+  .toes {
+    stroke-width: 30;
+  }
+
+  .rear {
+    stroke: var(--orange-dark);
+  }
+
+  .front {
+    stroke: var(--orange);
+  }
+
+  #body {
+    fill: var(--orange);
+  }
+
+  #motion {
+    position: absolute;
+    right: 0;
+    bottom: 0.75rem;
+    min-height: 2.75rem;
+    padding: 0 0 0 1rem;
+    border: 0;
+    background: none;
+    color: var(--muted);
+    font: inherit;
+    font-size: 0.875rem;
+    cursor: pointer;
+  }
+
+  #motion:hover {
+    color: var(--ink);
+  }
+
+  #motion:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  main {
+    padding-block: clamp(1.75rem, 4vh, 2.5rem) clamp(3rem, 8vh, 5rem);
+  }
+
+  .brand {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.25rem 1rem;
+    margin: 0;
+  }
+
+  .wordmark {
+    display: block;
+    height: 3rem;
+    width: auto;
+  }
+
+  .name {
+    flex: 1 1 auto;
+    padding-bottom: 0.7rem;
+    color: var(--muted);
+    font-size: 0.9375rem;
+  }
+
+  .soon {
+    padding-bottom: 0.7rem;
+    color: var(--accent);
+    font-size: 0.9375rem;
+    font-weight: 600;
+  }
+
+  h1 {
+    margin: 2rem 0 1rem;
+    font: 700 clamp(2.25rem, 7vw, 3.375rem)/1.06 ui-rounded, "SF Pro Rounded", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    letter-spacing: -0.022em;
+    text-wrap: balance;
+  }
+
+  .lede {
+    margin: 0 0 2.5rem;
+    font-size: 1.1875rem;
+    line-height: 1.5;
+    text-wrap: pretty;
+  }
+
+  /* The points are drawn like history: commits on a line, and the one that
+     hasn't happened yet as a hollow ring. */
+  .history {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .history li {
+    position: relative;
+    padding: 0 0 1.5rem 1.75rem;
+    text-wrap: pretty;
+  }
+
+  .history li::before {
+    content: "";
+    position: absolute;
+    z-index: 1;
+    top: 0.42em;
+    left: 0;
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 50%;
+    background: var(--orange);
+  }
+
+  .history li::after {
+    content: "";
+    position: absolute;
+    top: 0.42em;
+    bottom: -0.42em;
+    left: calc(0.375rem - 1px);
+    width: 2px;
+    background: var(--line);
+  }
+
+  .history li:last-child {
+    padding-bottom: 0;
+    font-weight: 600;
+  }
+
+  .history li:last-child::before {
+    border: 2px solid var(--orange);
+    background: var(--paper);
+  }
+
+  .history li:last-child::after {
+    display: none;
+  }
+
+  .history strong {
+    font-weight: 600;
+  }
+</style>
+<script src="/house.js" defer></script>
+</head>
+<body>
+<header class="stage">
+  <div class="column">
+    <svg id="house" viewBox="278 128 640 570" role="img" aria-label="The Roga house on chicken legs, walking along a line of commits.">
+      <line class="floor" x1="-10000" y1="693" x2="10000" y2="693"/>
+      <line id="commits" class="commits" x1="-10000" y1="693" x2="10000" y2="693" stroke-dasharray="0 200"/>
+      <polyline id="rear-bones" class="leg bones rear" points="552 470 495 541 423 497 392 548"/>
+      <path id="rear-toes" class="leg toes rear" d="M392 548L380 605M392 548L342 572M392 548L350 520"/>
+      <polyline id="front-bones" class="leg bones front" points="680 480 706 548 728 590 742 632"/>
+      <path id="front-toes" class="leg toes front" d="M742 632L825 607M742 632L838 668M742 632L690 668"/>
+      <path id="body" fill-rule="evenodd" d="M 652.79 509.23 L 635.65 505.99 C 601.04 499.46 567.46 492.94 565.84 492.44 L 517.23 480.68 C 516.34 480.18 499.68 475.27 483.5 470.75 C 472.99 467.8 471.42 467.09 470.81 464.94 C 470.43 463.6 469.59 456.31 468.95 448.74 C 468.09 438.66 468.07 434.62 468.88 433.64 C 469.49 432.91 476.29 429.68 484 426.47 C 497.91 420.66 498 420.61 498 417.39 C 498 414.55 497.61 414.08 494.75 413.5 C 483.43 411.18 470.31 407.65 469.24 406.62 C 468.43 405.84 467.63 399.89 466.99 389.95 C 465.71 369.9 465.16 370.75 482.6 365.96 L 495.5 362.41 495.32 358.46 C 495.23 356.28 494.85 350.55 494.48 345.71 C 493.91 338.18 493.58 336.99 492.16 337.41 C 491.25 337.67 476.1 340.2 458.5 343.02 C 440.9 345.85 424.69 348.49 422.48 348.9 C 420.27 349.32 417.89 349.46 417.2 349.23 C 415.62 348.71 408.75 335.26 409.76 334.68 C 410.17 334.45 415.9 332.13 422.5 329.53 C 429.1 326.93 443.5 320.39 454.5 315 C 529.53 278.21 595.37 224.72 645.04 160.17 L 651.44 151.84 653.43 156.17 C 664.03 179.23 673.9 196.9 685.45 213.47 C 696.98 230 718.81 257.27 720.1 256.76 C 720.46 256.62 723.06 253.8 725.87 250.5 L 730.98 244.5 730.99 233.23 L 731 221.96 735.48 213.04 L 739.96 204.13 734.44 202.06 C 731.41 200.93 728.56 200 728.12 200 C 726.69 200 724 196.4 724 194.49 C 724 192.34 733.68 167.11 735.21 165.25 C 735.78 164.56 737.3 164 738.59 164 C 739.87 164 755.58 169.47 773.48 176.15 C 802.33 186.91 806.1 188.57 806.64 190.7 C 807.05 192.34 805.51 197.49 801.83 206.8 C 795.66 222.39 794.61 223.38 786.54 221.22 C 784.1 220.57 781.63 219.92 781.03 219.77 C 780.44 219.62 778.45 222.91 776.62 227.08 C 773.97 233.12 772.94 237.48 771.56 248.49 C 770.21 259.2 769.29 263.16 767.5 266 C 766.22 268.02 762.2 275 758.56 281.51 L 751.93 293.35 768.22 309.42 C 790.47 331.38 814.56 352.03 836.64 368.07 C 842.06 372.01 846.45 375.81 846.38 376.51 C 846.31 377.21 843.2 381.43 839.47 385.89 C 834.9 391.35 832 393.99 830.59 393.97 C 829.44 393.96 817.26 389.47 803.52 384 C 789.79 378.53 778.25 374.38 777.88 374.78 C 776.56 376.21 767.07 400.3 767.53 401.04 C 767.79 401.47 772.29 404.22 777.54 407.16 C 783.69 410.6 787.26 413.24 787.6 414.57 C 787.9 415.76 785.96 422.51 783.06 430.33 C 780.28 437.85 778 444.44 778 444.98 C 778 445.52 776.85 446.71 775.44 447.63 C 773.24 449.07 770.97 449.22 759.1 448.71 L 745.31 448.12 743.66 451.6 C 742.75 453.51 742 455.46 742 455.94 C 742 456.42 743.96 458.31 746.35 460.15 C 758.96 469.84 764 474.35 764 475.95 C 764 478.79 748.21 510.99 746.79 511.06 C 746.08 511.09 736.61 511.06 725.75 511 C 714.89 510.94 706 511.14 706 511.44 Z M 682.6 431.1 C 688.36 428.48 690.37 424.45 693.39 409.5 C 696.67 393.23 696.66 391.75 693.25 388.03 C 690.66 385.21 689.36 384.83 670.74 381.5 C 652.21 378.18 650.79 378.06 647.95 379.53 C 646.28 380.39 644.49 382.09 643.97 383.3 C 642.15 387.55 636.27 416.97 636.74 419.45 C 637.63 424.1 641.5 426.74 649.31 428.03 C 653.26 428.69 660.77 430.03 666 431.01 C 678.11 433.29 677.76 433.29 682.6 431.1 Z M 618.07 417.15 C 620.19 414.86 621.19 411.59 623.82 398.44 C 625.57 389.67 627 381.52 627 380.33 C 627 376.82 622.49 372.31 618.26 371.58 C 616.19 371.22 607.21 369.5 598.31 367.75 C 583.02 364.75 581.93 364.66 578.8 366.16 C 574.38 368.26 573.61 370.07 570.09 386.61 C 567.7 397.8 567.28 401.44 568.05 404.23 C 569.21 408.41 573.29 412.78 576.91 413.7 C 587.44 416.4 610.96 420.75 613 420.38 C 614.38 420.13 616.66 418.68 618.07 417.15 Z M 699.23 366.03 C 702.36 363.57 703.39 360.93 705.95 348.77 C 708.52 336.56 708.54 331.4 706.04 327.3 C 702.96 322.25 699.74 320.82 684.65 317.84 C 667.51 314.45 663.15 314.31 659.71 317.02 C 656.61 319.46 655.75 321.93 652.51 337.89 C 647.92 360.54 647.64 360.13 670.58 364.56 C 690.9 368.48 695.8 368.74 699.23 366.03 Z M 631.34 352 C 633.11 349.9 634.43 345.42 636.88 333.16 C 639.78 318.6 639.95 316.81 638.65 314.28 C 636.05 309.27 633.95 308.35 618.5 305.48 C 600.63 302.16 596.86 302.16 591.83 305.5 C 586.76 308.85 585.7 311.26 582.5 326.75 C 579.37 341.88 579.81 345.04 585.41 347.59 C 589.28 349.36 624.88 355.84 627.26 355.22 C 628.23 354.97 630.07 353.52 631.34 352 Z"/>
+    </svg>
+    <button id="motion" type="button" hidden>Pause</button>
+  </div>
+</header>
+<main class="column">
+  <p class="brand">
+    <svg class="wordmark" viewBox="20 20 645 221" role="img" aria-label="Roga">
+      <g transform="translate(-282.5 -697)">
+        <g fill="currentColor" fill-rule="evenodd" transform="translate(302.5 0)">
+      <path d="M 14 2 L 35 2 C 44 2 49 7 49 16 L 49 25 C 60 9 75 0 95 0 C 103 0 111 1 117 4 C 123 7 125 13 123 20 L 117 47 C 115 55 110 58 102 56 C 98 55 93 54 88 54 C 64 54 49 70 49 99 L 49 142 C 49 152 44 156 35 156 L 14 156 C 4 156 0 152 0 142 L 0 16 C 0 6 4 2 14 2 Z" transform="translate(0 717)" />
+      <g>
+        <path d="M 290 795 C 290 838.08 254.85 873 211.5 873 C 168.15 873 133 838.08 133 795 C 133 751.92 168.15 717 211.5 717 C 254.85 717 290 751.92 290 795 Z M 219.15 828.64 C 233.13 825.35 242.63 815.27 244.86 801.37 C 246.77 789.38 242.91 778.77 233.49 770.16 C 216.39 754.54 188.78 759.95 179.23 780.8 C 177.14 785.38 176.66 787.96 176.62 794.99 C 176.57 802.35 176.95 804.38 179.24 809.05 C 185.11 821.05 197.82 829.38 211 829.87 C 212.38 829.93 216.04 829.37 219.15 828.64 Z " />
+      </g>
+      <path d="M 680.5 936.89 C 672.11 935.68 661.75 932.41 653.35 928.32 C 645.7 924.6 634.59 916.04 631.16 911.23 C 627.89 906.63 626.55 900.24 627.86 895.5 C 629.32 890.26 638.69 879.81 644.43 877.03 C 648.31 875.16 649.39 875.03 653.05 876.01 C 655.36 876.63 658.43 878.42 659.87 879.98 C 663.28 883.65 674 889.44 681 891.37 C 695.61 895.41 708.68 893.97 720.17 887.08 C 730.72 880.75 736.55 871.04 737.75 857.82 L 738.31 851.61 734.91 853.84 C 729.06 857.68 722.59 860.78 715.41 863.18 C 709.49 865.17 706.57 865.49 695 865.43 C 683.17 865.38 680.51 865.04 673.5 862.71 C 662.34 859 653.91 853.69 646.07 845.44 C 638.69 837.67 634.03 830.26 630.91 821.34 C 612.97 770.03 647.53 716.95 698.84 717.01 C 712.52 717.02 730.67 723.26 738.3 730.58 C 740.4 732.59 742.25 734.06 742.43 733.86 C 742.61 733.66 743.66 731.7 744.77 729.5 C 748.68 721.74 754.14 719 765.65 719 C 774.8 719 781.11 721.52 784.12 726.39 C 785.99 729.39 786.04 731.75 785.72 796 C 785.4 860.07 785.31 862.79 783.26 870.5 C 778.16 889.68 771.14 901.95 758.46 913.81 C 745.19 926.22 730.9 933.26 712.44 936.48 C 703.07 938.12 690.14 938.28 680.5 936.89 Z  M 708.57 824.91 C 716.56 823.45 723.18 819.67 729.08 813.22 C 746.35 794.33 733.01 762.77 706.35 759.44 C 694.45 757.95 679.97 765.7 673.65 776.93 C 671.05 781.56 670.54 783.67 670.18 791.09 C 669.81 798.76 670.06 800.45 672.23 805.2 C 675.62 812.6 679.85 817.11 686.95 820.89 C 692 823.58 694.62 824.45 702.07 825.89 C 702.38 825.95 705.3 825.51 708.57 824.91 Z" transform="translate(-316 0)" />
+      <path d="M 849.5 871.12 C 835.33 867.02 821.6 858.23 812.73 847.6 C 805.98 839.5 798.6 823.84 796.43 813.03 C 795.12 806.53 794.87 801.75 795.32 792.53 C 795.98 779.01 797.64 771.85 802.58 761.14 C 809.81 745.46 821.1 733.79 837 725.57 C 848.72 719.51 856.23 717.65 869 717.63 C 884.92 717.61 896.42 721.32 908.91 730.51 L 914.88 734.9 916 731.51 C 919 722.4 925.19 719.04 939 719.04 C 949.16 719.04 954.7 720.69 958.35 724.79 C 962.82 729.82 962.91 731.21 962.96 795.43 C 963 855.53 962.97 856.43 960.88 860.75 C 959.6 863.39 957.15 866.2 954.7 867.82 C 950.86 870.36 950 870.5 938.5 870.5 C 926.72 870.5 926.23 870.41 922.66 867.69 C 918.79 864.74 915 858.48 915 855.04 C 915 853.92 914.73 853 914.39 853 C 914.05 853 911.31 855.26 908.29 858.02 C 902.11 863.67 889.27 870.25 881.2 871.91 C 873.15 873.57 856.51 873.15 849.5 871.12 Z  M 887.28 827.4 C 892.27 825.64 898.79 820.9 902.32 816.47 C 909.41 807.57 911.44 797.02 908.13 786.35 C 902.96 769.7 889.44 760.13 872.6 761.21 C 859.9 762.03 849.67 769.08 844.17 780.8 C 840.58 788.47 840.34 801.95 843.67 809.18 C 847.97 818.51 857.68 826.48 867.75 828.95 C 872.23 830.05 881.97 829.28 887.28 827.4 Z " transform="translate(-318 0)" />
+    </g>
+  </g>
+      </g>
+    </svg>
+    <span class="name">Rather Opinionated Git App</span>
+    <span class="soon">Coming soon to the Mac</span>
+  </p>
+  <h1>A Git client for the way code gets written now.</h1>
+  <p class="lede">Other Git clients were built for people clicking through Git. Today you’re more likely to be watching agents work in parallel worktrees and reviewing what they did. Roga is a native Mac app built for that.</p>
+  <ul class="history">
+    <li><strong>Made for reviewing agents’ work.</strong> Worktrees are first-class, agent branches are easy to find, and reviewing a big change feels like reviewing a pull request.</li>
+    <li><strong>Fast on huge repositories.</strong> Opening the Linux kernel should feel like opening a small project.</li>
+    <li><strong>A real Mac app.</strong> Written in Swift, with no web views and a keyboard shortcut for every action.</li>
+    <li><strong>Git stays in charge.</strong> No hidden state, so you can drop to the command line at any moment.</li>
+    <li>Free and open source. On&nbsp;its&nbsp;way.</li>
+  </ul>
+</main>
+</body>
+</html>

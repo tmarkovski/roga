@@ -37,7 +37,7 @@ The SVGs in `branding/` are the saved designs for this exploration. Earlier gene
 
 The mark is one path, so it can't move its legs. For animating, the house is split into a body and two legs ([decision 21](../decisions/0021-draw-the-houses-animations-from-joints.md)).
 
-[`branding/yaga-house-body.svg`](branding/yaga-house-body.svg) is the body: the mark's own outline with the legs cut off, closed across the two places where they join it, in the same coordinates as the mark. `HouseOutline.swift` holds the same path. If the mark's house changes, both have to be cut again.
+[`branding/yaga-house-body.svg`](branding/yaga-house-body.svg) is the body: the mark's own outline with the legs cut off, closed across the two places where they join it, in the same coordinates as the mark. `HouseOutline.swift` and the landing page's `site/public/index.html` hold the same path. If the mark's house changes, all three have to be cut again.
 
 The legs aren't artwork. The app draws each one from joints, which are a hip, a knee, a hock, an ankle and three toes, as lines with round ends. `HousePose.mark` places those joints in the stride the mark is drawn in, closely enough that it reads as the logo, but it isn't a trace.
 
