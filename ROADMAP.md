@@ -26,7 +26,7 @@ Some of the setup comes later, when there's something for it to work on:
 
 Release 1 is for someone who works in the terminal and keeps yaga open next to it. They use it to read history and to review what they and their agents have changed.
 
-yaga doesn't change the repository in release 1, with a few exceptions. It keeps the commit-graph file up to date (decision 6), double-clicking a branch's badge in history checks that branch out with `git switch`, the branch in the title row fetches, pulls, pushes and starts new branches (decisions 19 and 20), and right-clicking a branch or its commit deletes the branch. The last two came forward from release 2. Switching worktrees only changes what yaga shows.
+yaga doesn't change the repository in release 1, with a few exceptions. It keeps the commit-graph file up to date (decision 6), double-clicking a branch's badge in history checks that branch out with `git switch`, the branch in the title row fetches, pulls, pushes and starts new branches (decisions 19 and 20), right-clicking a branch or its commit deletes the branch, and a linked worktree's menu in the sidebar deletes the worktree. The last three came forward from release 2. Switching worktrees only changes what yaga shows.
 
 The work happens in this order:
 
@@ -67,7 +67,7 @@ Release 1 can ship without the next two items. They're built last, and if they a
 
 - Stage and unstage by file, hunk or line, and discard changes.
 - Commit and amend. The user's git runs their hooks and signs their commits.
-- Rename branches, start a branch from any commit, switch branches from the keyboard and the refs panel, and remove worktrees.
+- Rename branches, start a branch from any commit, and switch branches from the keyboard and the refs panel.
 - Ask for a passphrase when git needs one to fetch, pull or push (decision 20).
 - Clone a repository into a folder the user chooses, using the user's own credential helpers and SSH setup, and add it to the sidebar. Its action goes under opening a repository at the top of the sidebar.
 - Create, apply and drop stashes.

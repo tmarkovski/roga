@@ -255,6 +255,12 @@ final class RepositoryModel {
         branch.fetchByItself()
     }
 
+    /// Looks at the worktree again, because something yaga did elsewhere, such as
+    /// deleting another worktree and its branch from the sidebar, moved its refs.
+    func refsChanged() {
+        lookAgain()
+    }
+
     private func lookAgain() {
         refsChecks += 1
         check?.cancel()

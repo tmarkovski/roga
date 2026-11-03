@@ -8,9 +8,9 @@ import GitRunner
 ///
 /// For now a session lists worktrees and refs, reads history, the text of
 /// commits, the files they changed and their patches, reads what's uncommitted
-/// in a worktree, checks out and deletes branches, fetches, pulls and pushes, and
-/// keeps the commit-graph files up to date. Watching for changes comes later, as
-/// ARCHITECTURE.md describes.
+/// in a worktree, checks out and deletes branches, deletes linked worktrees,
+/// fetches, pulls and pushes, and keeps the commit-graph files up to date. Watching
+/// for changes comes later, as ARCHITECTURE.md describes.
 public actor RepositorySession {
     public nonisolated let location: RepositoryLocation
     public nonisolated let git: Git
@@ -306,6 +306,49 @@ public actor RepositorySession {
     public func delete(_ deletion: BranchDeletion, in worktree: String) async throws {
         if case .remote = deletion.place { _ = await runningFetch?.value }
         try await deletion.run(in: worktree, git: git)
+    }
+
+    /// Lists the remote branch each branch tracks, by their full names. It leaves
+    /// out a remote branch this repository no longer has a copy of.
+    public nonisolated func remoteBranches() async throws -> [String: String] {
+        try await WorktreeDeletion.remoteBranches(in: location.commonDirectory, git: git)
+    }
+
+    /// Finds out what deleting a linked worktree would come to, without changing
+    /// anything.
+    ///
+    /// - Parameters:
+    ///   - path: The worktree's folder.
+    ///   - scope: How much goes with it.
+    ///   - limit: The most commits and ignored files to list of those it would lose.
+    public nonisolated func prepareToDelete(worktree path: String, scope: WorktreeDeletion.Scope, limit: Int) async throws -> WorktreeDeletion {
+        try await WorktreeDeletion.prepare(worktree: path, scope: scope, limit: limit, in: location.commonDirectory, worktrees: try await worktrees(), git: git)
+    }
+
+    /// Deletes a linked worktree, then its branch, then the branch on its remote.
+    /// A remote is shared, so it goes last: a worktree that git refuses to remove
+    /// stops all of this before anyone else can see a change.
+    ///
+    /// It first waits for any fetch that's running, which may be running in the
+    /// worktree's folder.
+    ///
+    /// - Throws: `GitError` when git refuses to remove the worktree, so nothing has
+    ///   changed, or `WorktreeDeletion.Stopped` when it stopped after that.
+    public func delete(_ deletion: WorktreeDeletion) async throws {
+        _ = await runningFetch?.value
+        let directory = location.commonDirectory
+        _ = try await Self.run(deletion.removeArguments, in: directory, git: git)
+        do {
+            try await deletion.branch?.run(in: directory, git: git)
+        } catch {
+            throw WorktreeDeletion.Stopped(at: .branch, message: (error as? GitError)?.message ?? String(describing: error))
+        }
+        guard let remoteBranch = deletion.remoteBranch else { return }
+        do {
+            try await delete(remoteBranch, in: directory)
+        } catch {
+            throw WorktreeDeletion.Stopped(at: .remoteBranch, message: (error as? GitError)?.message ?? String(describing: error))
+        }
     }
 
     /// Says whether a worktree is partway through a merge or a rebase.

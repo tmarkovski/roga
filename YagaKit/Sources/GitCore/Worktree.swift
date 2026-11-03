@@ -20,6 +20,9 @@ public struct Worktree: Sendable, Hashable {
     /// Whether `git worktree prune` would remove the worktree, which is
     /// almost always because its folder is gone.
     public var isPrunable: Bool
+    /// Whether `git worktree lock` keeps it from being removed, which often
+    /// means an agent is working in it.
+    public var isLocked: Bool
 
     public init(
         path: String,
@@ -27,7 +30,8 @@ public struct Worktree: Sendable, Hashable {
         branch: String? = nil,
         isMain: Bool = false,
         isBare: Bool = false,
-        isPrunable: Bool = false
+        isPrunable: Bool = false,
+        isLocked: Bool = false
     ) {
         self.path = path
         self.head = head
@@ -35,5 +39,6 @@ public struct Worktree: Sendable, Hashable {
         self.isMain = isMain
         self.isBare = isBare
         self.isPrunable = isPrunable
+        self.isLocked = isLocked
     }
 }

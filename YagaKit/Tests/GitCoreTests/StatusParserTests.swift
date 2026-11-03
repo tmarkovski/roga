@@ -50,6 +50,12 @@ struct StatusParserTests {
         #expect(changes.untracked == [DiffFile(status: .untracked, path: "folder/untracked file.txt", oldMode: 0, newMode: 0, lines: counted)])
     }
 
+    @Test func listsIgnoredFilesWithoutCountingThem() throws {
+        let changes = try StatusParser.parse(Array("! .env\0! build folder/\0? new.txt\0".utf8))
+        #expect(changes.ignored == [".env", "build folder/"])
+        #expect(changes.fileCount == 1)
+    }
+
     @Test func listsAFileWithBothKindsOfChangesTwiceAndCountsItOnce() throws {
         let changes = try StatusParser.parse(output(["1 MM N... 100644 100644 100644 \(one) \(two) both.txt"]))
         #expect(changes.fileCount == 1)
@@ -84,7 +90,7 @@ struct StatusParserTests {
         "1 MMM N... 100644 100644 100644 1111111111111111111111111111111111111111 1111111111111111111111111111111111111111 a.txt",
         "u UU N...",
         "?",
-        "! ignored.txt",
+        "!",
         "# branch.oid nothex",
     ])
     func refusesARecordItCantRead(_ record: String) {

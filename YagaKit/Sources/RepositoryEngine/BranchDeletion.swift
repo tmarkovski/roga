@@ -53,27 +53,30 @@ public struct BranchDeletion: Sendable, Hashable {
     ///   - name: The full name of the branch or remote branch.
     ///   - limit: The most commits to list.
     static func prepare(ref name: String, limit: Int, in worktree: String, worktrees: [Worktree], git: Git) async throws -> BranchDeletion {
-        var place = Place.local
-        if name.hasPrefix(Ref.remoteBranchPrefix) {
-            let remotes = try await RefDetailsLoader.remoteAddresses(git: git, in: worktree)
-            let short = Ref.shortName(name)
-            let remote = RemoteDetails.remoteName(of: short, amongLongestFirst: remotes.keys.sorted { $0.count > $1.count })
-            place = remotes[remote] == nil ? .leftBehind : .remote(remote, branch: String(short.dropFirst(remote.count + 1)))
-        }
-        // A symbolic ref such as `origin/HEAD` goes when its branch goes, so it
-        // doesn't keep the commits.
-        let refs = try await RefsLoader.load(git: git, in: worktree)
-        let leaving = [name] + refs.refs.filter { $0.symbolicTarget == name }.map(\.name)
-        let commits = [name, "--not"] + leaving.map { "--exclude=" + $0 } + ["--all", "--"]
-        let count = try await git.text(GitCommand(["rev-list", "--count"] + commits, in: worktree))
-        let newest = try await git.text(GitCommand(["rev-list", "--max-count=\(limit)"] + commits, in: worktree))
+        let lost = try await LostCommits.find(
+            from: [name],
+            leaving: try await LostCommits.leaving([name], in: worktree, git: git),
+            keeping: ["--all"],
+            limit: limit,
+            in: worktree,
+            git: git
+        )
         return BranchDeletion(
             ref: name,
-            place: place,
+            place: try await place(of: name, in: worktree, git: git),
             isCheckedOut: worktrees.contains { $0.branch == name },
-            lostCount: Int(count) ?? 0,
-            lost: newest.split(separator: "\n").compactMap { ObjectID(hex: String($0)) }
+            lostCount: lost.count,
+            lost: lost.newest
         )
+    }
+
+    /// Says where a branch or remote branch is, which says how it's deleted.
+    static func place(of name: String, in directory: String, git: Git) async throws -> Place {
+        guard name.hasPrefix(Ref.remoteBranchPrefix) else { return .local }
+        let remotes = try await RefDetailsLoader.remoteAddresses(git: git, in: directory)
+        let short = Ref.shortName(name)
+        let remote = RemoteDetails.remoteName(of: short, amongLongestFirst: remotes.keys.sorted { $0.count > $1.count })
+        return remotes[remote] == nil ? .leftBehind : .remote(remote, branch: String(short.dropFirst(remote.count + 1)))
     }
 
     /// Deletes the branch. When a remote no longer has it, because someone else
@@ -107,5 +110,42 @@ public struct BranchDeletion: Sendable, Hashable {
     /// command as someone would type it.
     private static func safe(_ shortName: String) -> [String] {
         shortName.hasPrefix("-") ? ["--end-of-options", shortName] : [shortName]
+    }
+}
+
+/// The commits that only some tips lead to, which go when those tips do.
+struct LostCommits {
+    var count: Int
+    /// The newest of them.
+    var newest: [ObjectID]
+
+    /// - Parameters:
+    ///   - tips: What's going, as revisions.
+    ///   - leaving: The full names of the refs that are going, which don't keep
+    ///     the commits.
+    ///   - keeping: What does keep them, as arguments to `git rev-list`. An option
+    ///     that lists refs, such as `--all`, comes first, because `--exclude` only
+    ///     applies to the next one.
+    ///   - limit: The most commits to list.
+    static func find(
+        from tips: [String],
+        leaving: [String],
+        keeping: [String],
+        limit: Int,
+        in directory: String,
+        git: Git
+    ) async throws -> LostCommits {
+        guard !tips.isEmpty else { return LostCommits(count: 0, newest: []) }
+        let commits = tips + ["--not"] + leaving.map { "--exclude=" + $0 } + keeping + ["--"]
+        let count = try await git.text(GitCommand(["rev-list", "--count"] + commits, in: directory))
+        let newest = try await git.text(GitCommand(["rev-list", "--max-count=\(limit)"] + commits, in: directory))
+        return LostCommits(count: Int(count) ?? 0, newest: newest.split(separator: "\n").compactMap { ObjectID(hex: String($0)) })
+    }
+
+    /// Adds the symbolic refs that point to refs that are going. One such as
+    /// `origin/HEAD` goes when its branch goes, so it doesn't keep the commits.
+    static func leaving(_ names: [String], in directory: String, git: Git) async throws -> [String] {
+        let refs = try await RefsLoader.load(git: git, in: directory)
+        return names + refs.refs.filter { $0.symbolicTarget.map(names.contains) ?? false }.map(\.name)
     }
 }

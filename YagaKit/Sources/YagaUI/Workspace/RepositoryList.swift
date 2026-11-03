@@ -120,7 +120,7 @@ public final class RepositoryList {
         repository.worktrees = worktrees
         repositories.append(repository)
         save()
-        Task { await countUncommittedFiles(in: repository, session: session) }
+        Task { await lookAtWorktrees(of: repository, session: session) }
         return selection
     }
 
@@ -215,6 +215,32 @@ public final class RepositoryList {
         return repository.worktrees.first.map { WorktreeSelection(repository: repository.path, worktree: $0.path) }
     }
 
+    /// Deletes a linked worktree, and whatever else `deletion` says should go with
+    /// it. Its row says so until the list has looked again, which is what moves a
+    /// window that shows the worktree to the main one.
+    ///
+    /// - Throws: `GitError` when git refuses to remove the worktree, or
+    ///   `WorktreeDeletion.Stopped` when it stopped after that.
+    func delete(_ deletion: WorktreeDeletion, in repository: ListedRepository) async throws {
+        guard let git, let session = repository.session else { return }
+        repository.deletingWorktrees.insert(deletion.worktree)
+        var failure: (any Error)?
+        do {
+            try await session.delete(deletion)
+        } catch {
+            failure = error
+        }
+        await refresh(repository, git: git)
+        repository.deletingWorktrees.remove(deletion.worktree)
+        if !repository.worktrees.contains(where: { $0.path == deletion.worktree }), repository.keptWorktrees.remove(deletion.worktree) != nil {
+            save()
+        }
+        // Whatever went, even partway, windows showing other worktrees have to
+        // look again at the repository's refs.
+        repository.deletionCount += 1
+        if let failure { throw failure }
+    }
+
     /// Lists each open repository's worktrees again, and tries again to open
     /// the repositories that couldn't be opened.
     func refresh() async {
@@ -241,7 +267,7 @@ public final class RepositoryList {
                 let worktrees = try await session.worktrees()
                 if worktrees != repository.worktrees { repository.worktrees = worktrees }
                 await updateOwners(of: repository, session: session)
-                await countUncommittedFiles(in: repository, session: session)
+                await lookAtWorktrees(of: repository, session: session)
             } catch {
                 guard !FileManager.default.fileExists(atPath: repository.path) else { return }
                 await session.close()
@@ -265,6 +291,24 @@ public final class RepositoryList {
             repository.owners = owners
             save()
         }
+    }
+
+    /// Reads what the rows of a repository's worktrees need beyond the list of them.
+    private func lookAtWorktrees(of repository: ListedRepository, session: RepositorySession) async {
+        await updateRemoteBranches(of: repository, session: session)
+        await countUncommittedFiles(in: repository, session: session)
+    }
+
+    /// Reads which remote branches the branches of its linked worktrees track, for
+    /// their menus, which can't wait for git. It keeps what it knew when git can't
+    /// say, and deleting reads it again.
+    private func updateRemoteBranches(of repository: ListedRepository, session: RepositorySession) async {
+        guard repository.worktrees.contains(where: { !$0.isMain && $0.branch != nil }) else {
+            if !repository.remoteBranches.isEmpty { repository.remoteBranches = [:] }
+            return
+        }
+        guard let branches = try? await session.remoteBranches() else { return }
+        if branches != repository.remoteBranches { repository.remoteBranches = branches }
     }
 
     /// Counts the uncommitted files of each of a repository's worktrees, one
@@ -314,7 +358,7 @@ public final class RepositoryList {
                 save()
             }
             await updateOwners(of: repository, session: session)
-            await countUncommittedFiles(in: repository, session: session)
+            await lookAtWorktrees(of: repository, session: session)
         } catch {
             repository.state = .failed(String(describing: error))
         }
@@ -380,6 +424,14 @@ public final class ListedRepository: Identifiable {
     fileprivate(set) var worktrees: [Worktree] = []
     /// How many files have uncommitted changes in each worktree, by its folder.
     fileprivate(set) var uncommittedFiles: [String: Int] = [:]
+    /// The remote branch each branch tracks, by their full names, once the
+    /// repository has a linked worktree on a branch.
+    fileprivate(set) var remoteBranches: [String: String] = [:]
+    /// The linked worktrees being deleted, by their folders.
+    fileprivate(set) var deletingWorktrees: Set<String> = []
+    /// How many deletions have finished, for windows to look at the repository's
+    /// refs again.
+    fileprivate(set) var deletionCount = 0
 
     fileprivate init(saved: RepositoryStore.SavedRepository) {
         path = saved.path

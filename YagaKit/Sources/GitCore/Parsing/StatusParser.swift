@@ -19,6 +19,7 @@ public enum StatusParser {
     ///     2 XY <submodule> <mode> <mode> <mode> <id> <id> R100 <path>
     ///     u XY <submodule> <mode> <mode> <mode> <mode> <id> <id> <id> <path>
     ///     ? <path>
+    ///     ! <path>
     ///
     /// The record for a renamed file is followed by a field with its old path.
     /// A path can hold any character but NUL, including spaces.
@@ -52,6 +53,10 @@ public enum StatusParser {
                 guard parts.count == 2 else { throw unreadable(field) }
                 changes.untracked.append(uncounted(.untracked, path: text(parts[1])))
                 changes.fileCount += 1
+            case UInt8(ascii: "!"):
+                let parts = split(field, into: 2)
+                guard parts.count == 2 else { throw unreadable(field) }
+                changes.ignored.append(text(parts[1]))
             default:
                 throw unreadable(field)
             }

@@ -6,8 +6,7 @@ public enum WorktreeListParser {
     /// Each worktree is a list of fields that end in NUL bytes, and an empty
     /// field ends the worktree. The first field is `worktree` and the path,
     /// which can hold any character but NUL. git adds fields from time to
-    /// time, such as `locked` with a reason, and the ones yaga doesn't use are
-    /// skipped.
+    /// time, and the ones yaga doesn't use are skipped.
     public static func parse(_ output: [UInt8]) throws(ParseError) -> [Worktree] {
         // Every field ends in a NUL byte, so splitting leaves an empty piece
         // after the last one.
@@ -46,6 +45,8 @@ public enum WorktreeListParser {
                 current?.isBare = true
             case "prunable":
                 current?.isPrunable = true
+            case "locked":
+                current?.isLocked = true
             default:
                 break
             }

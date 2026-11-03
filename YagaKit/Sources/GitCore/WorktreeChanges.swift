@@ -18,6 +18,9 @@ public struct WorktreeChanges: Sendable, Hashable {
     public var unstaged: [DiffFile]
     public var untracked: [DiffFile]
     public var staged: [DiffFile]
+    /// The files and folders git ignores, when `git status` was asked for them.
+    /// They aren't uncommitted changes, so `fileCount` leaves them out.
+    public var ignored: [String]
 
     public init(
         head: ObjectID? = nil,
@@ -25,7 +28,8 @@ public struct WorktreeChanges: Sendable, Hashable {
         conflicted: [DiffFile] = [],
         unstaged: [DiffFile] = [],
         untracked: [DiffFile] = [],
-        staged: [DiffFile] = []
+        staged: [DiffFile] = [],
+        ignored: [String] = []
     ) {
         self.head = head
         self.fileCount = fileCount
@@ -33,6 +37,7 @@ public struct WorktreeChanges: Sendable, Hashable {
         self.unstaged = unstaged
         self.untracked = untracked
         self.staged = staged
+        self.ignored = ignored
     }
 
     public subscript(group: Group) -> [DiffFile] {

@@ -167,6 +167,9 @@ public struct WorkspaceView: View {
         .onChange(of: list.resolve(window?.selection)) { _, resolved in
             if resolved != window?.selection { selection.wrappedValue = resolved }
         }
+        .onChange(of: shown?.0.deletionCount) {
+            shownModel?.refsChanged()
+        }
         .focusedSceneValue(\.selection, selection)
         .focusedSceneValue(\.sidebarScope, scope)
         .focusedSceneValue(\.showsOrganizationRail, $showsRail)

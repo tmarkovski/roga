@@ -1,5 +1,6 @@
 import AppKit
 import GitCore
+import RepositoryEngine
 import SwiftUI
 
 /// The window's sidebar: the rail that picks an organization, and the list of
@@ -19,6 +20,7 @@ struct Sidebar: View {
     let locate: (ListedRepository) -> Void
     @State private var isAddingRepositories = false
     @State private var adding = AddRepositoriesChoices()
+    @State private var deletions = WorktreeDeletionModel()
     @FocusState private var isFocused: Bool
     @Environment(\.openWindow) private var openWindow
 
@@ -52,6 +54,25 @@ struct Sidebar: View {
                 rows(groups: groups)
             }
             .frame(maxWidth: .infinity)
+        }
+        .alert(
+            deletions.pending?.title ?? "",
+            isPresented: Binding { deletions.pending != nil } set: { if !$0 { deletions.pending = nil } },
+            presenting: deletions.pending
+        ) { _ in
+            Button("Delete", role: .destructive) { deletions.confirm() }
+            Button("Cancel", role: .cancel) {}
+        } message: { pending in
+            Text(WorktreeDeletionModel.message(for: pending))
+        }
+        .alert(
+            deletions.failure?.title ?? "",
+            isPresented: Binding { deletions.failure != nil } set: { if !$0 { deletions.failure = nil } },
+            presenting: deletions.failure
+        ) { _ in
+            Button("OK", role: .cancel) {}
+        } message: { failure in
+            Text(failure.message)
         }
     }
 
@@ -124,10 +145,19 @@ struct Sidebar: View {
             .id(home)
         case .worktree(let repository, let worktree, let isLast):
             let row = WorktreeSelection(repository: repository.path, worktree: worktree.path)
-            WorktreeRow(worktree: worktree, uncommittedFiles: repository.uncommittedFiles[worktree.path] ?? 0, isSelected: selection == row, isLast: isLast) {
+            WorktreeRow(
+                worktree: worktree,
+                uncommittedFiles: repository.uncommittedFiles[worktree.path] ?? 0,
+                hasRemoteBranch: worktree.branch.flatMap { repository.remoteBranches[$0] } != nil,
+                isDeleting: repository.deletingWorktrees.contains(worktree.path),
+                isSelected: selection == row,
+                isLast: isLast
+            ) {
                 select(row)
             } openInNewWindow: {
                 openWindow(value: WorkspaceWindow(selection: row))
+            } delete: { scope in
+                deletions.askToDelete(worktree, scope: scope, in: repository, list: list)
             }
             .id(row)
         case .hiddenWorktrees(let repository, let title, let uncommittedFiles):
@@ -511,20 +541,29 @@ private struct RepositoryRow: View {
 private struct WorktreeRow: View {
     let worktree: Worktree
     let uncommittedFiles: Int
+    /// Whether its branch tracks a remote branch, which can be deleted with it.
+    let hasRemoteBranch: Bool
+    let isDeleting: Bool
     let isSelected: Bool
     let isLast: Bool
     let select: () -> Void
     let openInNewWindow: () -> Void
+    let delete: (WorktreeDeletion.Scope) -> Void
 
     var body: some View {
-        SidebarRow(isSelected: isSelected, isEnabled: !worktree.isPrunable, action: select) {
+        SidebarRow(isSelected: isSelected, isEnabled: !worktree.isPrunable && !isDeleting, action: select) {
             Text(worktree.title)
                 .font(.system(size: 14))
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .padding(.leading, WorktreeConnector.textIndent)
         } trailing: {
-            if worktree.isPrunable {
+            if isDeleting {
+                Text("Deleting…")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .padding(.trailing, 7)
+            } else if worktree.isPrunable {
                 Text("Folder missing")
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
@@ -547,7 +586,10 @@ private struct WorktreeRow: View {
         .accessibilityValue([subtitle, uncommittedFilesDescription(uncommittedFiles)].compactMap(\.self).joined(separator: ", "))
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction(.default, select)
-        .accessibilityActions { menuItems }
+        .accessibilityActions {
+            placeItems
+            deleteActions
+        }
     }
 
     @ViewBuilder private var commands: some View {
@@ -560,11 +602,52 @@ private struct WorktreeRow: View {
         worktree.isPrunable ? "Its folder is missing" : (worktree.path as NSString).lastPathComponent
     }
 
+    /// Whether it has a branch that can go with it. A branch without commits yet
+    /// has nothing to delete.
+    private var hasBranch: Bool {
+        worktree.branch != nil && worktree.head != nil
+    }
+
     @ViewBuilder private var menuItems: some View {
+        placeItems
+        Divider()
+        if hasBranch {
+            Menu("Delete") {
+                // The row's title can be cut short, so this says which branch.
+                Section(worktree.title) {
+                    Button("Worktree") { delete(.worktree) }
+                    Button("Worktree and Branch") { delete(.worktreeAndBranch) }
+                    if hasRemoteBranch {
+                        Button("Worktree, Branch and Remote Branch…") { delete(.everything) }
+                    }
+                }
+            }
+            .disabled(isDeleting)
+        } else {
+            Button("Delete Worktree") { delete(.worktree) }
+                .disabled(isDeleting)
+        }
+    }
+
+    @ViewBuilder private var placeItems: some View {
         Button("Open in New Window", action: openInNewWindow)
         Divider()
         Button("Show in Finder") { reveal(worktree.path) }
         Button("Open in Terminal") { openInTerminal(worktree.path) }
+    }
+
+    /// The menu's deleting commands without the submenu, which assistive apps list
+    /// as actions of their own.
+    @ViewBuilder private var deleteActions: some View {
+        if !isDeleting {
+            Button("Delete Worktree") { delete(.worktree) }
+            if hasBranch {
+                Button("Delete Worktree and Branch") { delete(.worktreeAndBranch) }
+                if hasRemoteBranch {
+                    Button("Delete Worktree, Branch and Remote Branch") { delete(.everything) }
+                }
+            }
+        }
     }
 }
 
