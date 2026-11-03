@@ -23,14 +23,19 @@ public struct Ref: Sendable, Hashable {
     /// `refs/remotes/origin/main` for `refs/remotes/origin/HEAD`, or nil when
     /// it isn't symbolic.
     public var symbolicTarget: String?
+    /// The full name of the branch this one tracks, such as
+    /// `refs/remotes/origin/main`, or nil when it doesn't track one. That
+    /// branch may no longer exist.
+    public var upstream: String?
 
     /// - Parameter peeled: What an annotated tag leads to, or nil for any
     ///   other ref, which leads to its target.
-    public init(name: String, target: ObjectID, peeled: ObjectID? = nil, symbolicTarget: String? = nil) {
+    public init(name: String, target: ObjectID, peeled: ObjectID? = nil, symbolicTarget: String? = nil, upstream: String? = nil) {
         self.name = name
         self.target = target
         self.peeled = peeled ?? target
         self.symbolicTarget = symbolicTarget
+        self.upstream = upstream
     }
 
     public var kind: Kind {
@@ -42,6 +47,19 @@ public struct Ref: Sendable, Hashable {
 
     /// The name without its prefix, such as `main`, `origin/main` or `v1.0`.
     public var shortName: String { Self.shortName(name) }
+
+    /// The upstream, when it's a remote's branch of the same name, as
+    /// `refs/remotes/origin/main` is for `main`. A remote whose name has a
+    /// slash in it doesn't count, because a ref's name alone can't tell it from
+    /// a branch whose name has one.
+    public var upstreamOfSameName: String? {
+        guard let upstream, upstream.hasPrefix(Self.remoteBranchPrefix) else { return nil }
+        let remoteAndBranch = upstream.dropFirst(Self.remoteBranchPrefix.count)
+        guard let slash = remoteAndBranch.firstIndex(of: "/"),
+              remoteAndBranch[remoteAndBranch.index(after: slash)...] == shortName
+        else { return nil }
+        return upstream
+    }
 
     /// Shortens a full ref name, such as `refs/heads/main` to `main`.
     public static func shortName(_ name: String) -> String {

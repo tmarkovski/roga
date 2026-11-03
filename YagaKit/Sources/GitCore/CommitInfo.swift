@@ -72,6 +72,42 @@ public struct CommitInfo: Sendable, Hashable {
         else { return "" }
         return lines[first...last].joined(separator: "\n")
     }
+
+    /// The body on one line, for showing after the subject in a list: its lines
+    /// joined with spaces, without the trailers at its end, such as
+    /// `Signed-off-by`. It stops after about as much as a window could show, so
+    /// that a long message doesn't cost anything to keep or to draw.
+    public var bodyLine: String {
+        var lines = body.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)
+        let lastParagraph = lines.lastIndex { $0.allSatisfy(\.isWhitespace) }.map { $0 + 1 } ?? 0
+        if Self.areTrailers(lines[lastParagraph...]) { lines.removeSubrange(lastParagraph...) }
+
+        var result = ""
+        for line in lines {
+            let text = line.trimmingPrefix(while: \.isWhitespace).trimmingSuffix(while: \.isWhitespace)
+            guard !text.isEmpty else { continue }
+            if !result.isEmpty { result += " " }
+            result += text
+            if result.utf8.count >= Self.bodyLineLimit { return String(result.prefix(Self.bodyLineLimit)) }
+        }
+        return result
+    }
+
+    private static let bodyLineLimit = 200
+
+    /// Whether a paragraph is only trailers, as `git interpret-trailers` would
+    /// read it: each line is `Token: value`, or carries on the one before it
+    /// with an indent.
+    private static func areTrailers(_ paragraph: ArraySlice<Substring>) -> Bool {
+        guard let first = paragraph.first, isTrailer(first) else { return false }
+        return paragraph.allSatisfy { $0.first?.isWhitespace == true || isTrailer($0) }
+    }
+
+    private static func isTrailer(_ line: Substring) -> Bool {
+        guard let colon = line.firstIndex(of: ":"), colon > line.startIndex else { return false }
+        return line[..<colon].allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" }
+            && line[line.index(after: colon)...].first == " "
+    }
 }
 
 extension Substring {

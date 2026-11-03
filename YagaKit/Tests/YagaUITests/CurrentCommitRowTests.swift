@@ -101,7 +101,7 @@ struct CurrentCommitRowTests {
         let regular = try #require(CommitRowLayout(content: CommitRowContent(shortID: "a", badges: [Self.otherBranch]), graphColumns: 0, size: size).badges.first)
         // The current branch's also has room for its checkmark.
         #expect(bold.width > regular.width)
-        let style = CommitCellView.Style.badge(.currentBranch)
+        let style = CommitCellView.BadgeLook.of(.currentBranch).style
         let title = (Self.currentBranch.title as NSString).size(withAttributes: style.attributes).width
         #expect(bold.width >= title + CommitRowLayout.badgePadding * 2)
     }

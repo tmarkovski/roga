@@ -269,6 +269,15 @@ struct RepositoryModelTests {
         #expect(model.rowContent(1).subject != nil)
     }
 
+    @Test func readsABodyWithItsSubject() async throws {
+        let (model, _) = try await modelOfACopy()
+        await model.appear()
+        _ = await model.loadText(for: 0..<model.rowCount)
+        let rows = (0..<model.rowCount).map { model.rowContent($0) }
+        #expect(rows.first { $0.subject == "Change the app" }?.body == "The body says why.")
+        #expect(rows.first { $0.subject == "Add the readme" }?.body == "")
+    }
+
     @Test func saysOneFile() async throws {
         let (model, repository) = try await modelOfACopy()
         try write("new\n", to: "new.txt", in: repository)
@@ -745,5 +754,54 @@ struct RepositoryModelTests {
         model.select(commit: try #require(ObjectID(hex: Fixture.Basic.main)))
         model.selectedCommit.copyHash(to: pasteboard)
         #expect(pasteboard.string(forType: .string) == Fixture.Basic.main)
+    }
+}
+
+/// Which refs on a commit share a badge.
+struct RowBadgeTests {
+    let id = ObjectID(hex: String(repeating: "a", count: 40))!
+
+    func ref(_ name: String, upstream: String? = nil) -> Ref {
+        Ref(name: name, target: id, upstream: upstream)
+    }
+
+    func titles(_ refs: Ref...) -> [String] {
+        RepositoryModel.badges(for: refs, currentBranch: nil).map(\.title)
+    }
+
+    @Test func aBranchAndItsUpstreamShareABadge() throws {
+        let badges = RepositoryModel.badges(for: [
+            ref("refs/heads/main", upstream: "refs/remotes/origin/main"),
+            ref("refs/heads/tm/fix", upstream: "refs/remotes/origin/tm/fix"),
+            ref("refs/remotes/origin/main"),
+            ref("refs/remotes/origin/tm/fix"),
+        ], currentBranch: "refs/heads/main")
+        #expect(badges.map(\.title) == ["main", "tm/fix"])
+        #expect(badges.map(\.kind) == [.currentBranch, .branch])
+        #expect(badges.map(\.refName) == ["refs/heads/main", "refs/heads/tm/fix"])
+        #expect(badges.map(\.upstream) == ["refs/remotes/origin/main", "refs/remotes/origin/tm/fix"])
+    }
+
+    @Test func aBranchThatTracksNothingKeepsItsOwnBadge() {
+        #expect(titles(ref("refs/heads/fix"), ref("refs/remotes/origin/fix")) == ["fix", "origin/fix"])
+    }
+
+    @Test func anUpstreamOnAnotherCommitIsntMentioned() throws {
+        let badges = RepositoryModel.badges(for: [ref("refs/heads/main", upstream: "refs/remotes/origin/main")], currentBranch: nil)
+        #expect(badges.map(\.title) == ["main"])
+        #expect(badges.first?.upstream == nil)
+    }
+
+    @Test func anUpstreamOfAnotherNameKeepsItsOwnBadge() {
+        #expect(titles(ref("refs/heads/fix", upstream: "refs/remotes/origin/tm/fix"), ref("refs/remotes/origin/tm/fix")) == ["fix", "origin/tm/fix"])
+    }
+
+    @Test func anotherRemotesBranchKeepsItsOwnBadge() {
+        let refs = [ref("refs/heads/main", upstream: "refs/remotes/origin/main"), ref("refs/remotes/origin/main"), ref("refs/remotes/upstream/main")]
+        #expect(RepositoryModel.badges(for: refs, currentBranch: nil).map(\.title) == ["main", "upstream/main"])
+    }
+
+    @Test func aTagIsUnaffected() {
+        #expect(titles(ref("refs/heads/main", upstream: "refs/remotes/origin/main"), ref("refs/remotes/origin/main"), ref("refs/tags/v1.0")) == ["main", "v1.0"])
     }
 }

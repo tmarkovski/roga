@@ -173,6 +173,71 @@ struct CommitTableBadgeTests {
         #expect(menu.items.map(\.isSectionHeader) == [true, false, true, false, true, false])
     }
 
+    @Test func aRowsMenuListsUpstreamsThatShareABadge() {
+        let content = CommitRowContent(shortID: "abcd1234", badges: [
+            Badge(title: "main", kind: .currentBranch, refName: "refs/heads/main", upstream: "refs/remotes/origin/main"),
+            Badge(title: "feature", kind: .branch, refName: "refs/heads/feature", upstream: "refs/remotes/origin/feature"),
+            Badge(title: "upstream/main", kind: .remoteBranch, refName: "refs/remotes/upstream/main"),
+        ])
+        #expect(content.branches.map(\.title) == ["main", "feature", "origin/feature", "origin/main", "upstream/main"])
+        #expect(content.branches.map(\.kind) == [.currentBranch, .branch, .remoteBranch, .remoteBranch, .remoteBranch])
+        // Deleting from the remote acts on the upstream, not on the local branch.
+        #expect(content.branches[2].refName == "refs/remotes/origin/feature")
+        #expect(content.branches[2].upstream == nil)
+    }
+
+    @Test func saysWhatABadgeStandsFor() {
+        #expect(Badge(title: "main", kind: .currentBranch, upstream: "refs/remotes/origin/main").spokenTitle == "main, current branch, in sync with origin/main")
+        #expect(Badge(title: "main", kind: .currentBranch).spokenTitle == "main, current branch")
+        #expect(Badge(title: "fix", kind: .branch, upstream: "refs/remotes/origin/fix").spokenTitle == "fix, in sync with origin/fix")
+        #expect(Badge(title: "HEAD", kind: .detachedHead).spokenTitle == "HEAD, on no branch")
+        #expect(Badge(title: "v1.0", kind: .tag).spokenTitle == "v1.0")
+    }
+
+    @Test func readsTheBodyLastWithVoiceOver() {
+        let content = CommitRowContent(shortID: "abcd1234", badges: [Badge(title: "fix", kind: .branch, upstream: "refs/remotes/origin/fix")], subject: "A subject", body: "Why it changed.", author: "Ana", date: "Today")
+        #expect(content.spokenText == "A subject, fix, in sync with origin/fix, Ana, Today, abcd1234, Why it changed.")
+    }
+
+    @Test func aRemotesBranchShowsItsNameBeforeItsRemote() {
+        let remote = Badge(title: "origin/tm/fix", kind: .remoteBranch, refName: "refs/remotes/origin/tm/fix")
+        #expect(remote.nameAndRemote.name == "tm/fix")
+        #expect(remote.nameAndRemote.remote == "origin")
+        // Everywhere that names it in words still has the whole name.
+        #expect(remote.spokenTitle == "origin/tm/fix")
+        #expect(Badge(title: "tm/fix", kind: .branch).nameAndRemote.remote == nil)
+        #expect(Badge(title: "release/1.0", kind: .tag).nameAndRemote.name == "release/1.0")
+    }
+
+    @Test func aRemotesBranchIsWiderThanItsNameForItsRemote() throws {
+        let size = NSSize(width: 1200, height: 28)
+        let local = CommitRowContent(shortID: "a", badges: [Badge(title: "tm/fix", kind: .branch)])
+        let remote = CommitRowContent(shortID: "a", badges: [Badge(title: "origin/tm/fix", kind: .remoteBranch)])
+        let localWidth = try #require(CommitRowLayout(content: local, graphColumns: 0, size: size).badges.first).width
+        let remoteWidth = try #require(CommitRowLayout(content: remote, graphColumns: 0, size: size).badges.first).width
+        let style = CommitCellView.BadgeLook.of(.remoteBranch).remoteStyle
+        #expect(remoteWidth >= localWidth + CommitRowLayout.width(of: "origin", in: style))
+    }
+
+    @Test func aBadgeThatStandsForItsUpstreamIsWiderForItsCloud() throws {
+        let plain = CommitRowContent(shortID: "abcd1234", badges: [Badge(title: "feature", kind: .branch)], subject: "A subject")
+        let merged = CommitRowContent(shortID: "abcd1234", badges: [Badge(title: "feature", kind: .branch, upstream: "refs/remotes/origin/feature")], subject: "A subject")
+        let size = NSSize(width: 1200, height: 28)
+        let plainWidth = try #require(CommitRowLayout(content: plain, graphColumns: 0, size: size).badges.first).width
+        let mergedWidth = try #require(CommitRowLayout(content: merged, graphColumns: 0, size: size).badges.first).width
+        #expect(mergedWidth > plainWidth)
+    }
+
+    @Test func aBadgesTooltipSaysWhatItStandsFor() throws {
+        let cell = CommitCellView()
+        cell.frame = NSRect(x: 0, y: 0, width: 1200, height: 28)
+        cell.content = Self.content(ofRow: 1)
+        let layout = CommitRowLayout(content: Self.content(ofRow: 1), graphColumns: 0, size: cell.bounds.size)
+        let second = NSPoint(x: layout.badges[1].midX, y: layout.badges[1].midY)
+        #expect(cell.view(cell, stringForToolTip: 0, point: second, userData: nil) == "feature")
+        #expect(cell.view(cell, stringForToolTip: 0, point: NSPoint(x: layout.badges[0].midX, y: 14), userData: nil) == "main, current branch")
+    }
+
     @Test func aRowsMenuActsOnTheBranchOfTheChosenItem() throws {
         let list = List()
         let menu = try #require(list.controller.menu(forRow: 1))

@@ -1,4 +1,5 @@
 import CommitGraph
+import GitCore
 
 /// What one row of the commit list shows. The short ID is always there, and
 /// the rest of the text is nil until it's loaded.
@@ -25,11 +26,15 @@ public struct CommitRowContent: Hashable {
         /// The full name of the ref, which `HEAD` doesn't have when it isn't on
         /// a branch.
         public var refName: String?
+        /// The full name of the remote branch that this badge stands for too,
+        /// because the branch tracks it and both are on this commit.
+        public var upstream: String?
 
-        public init(title: String, kind: Kind, refName: String? = nil) {
+        public init(title: String, kind: Kind, refName: String? = nil, upstream: String? = nil) {
             self.title = title
             self.kind = kind
             self.refName = refName
+            self.upstream = upstream
         }
 
         /// Whether double-clicking the badge checks out its branch. There's
@@ -48,11 +53,34 @@ public struct CommitRowContent: Hashable {
             case .detachedHead, .tag: false
             }
         }
+
+        /// A remote's branch shows its own name first and its remote's after it, as
+        /// in `tm/fix | origin`, so that it reads like the local branch of that name.
+        /// A remote whose name has a slash in it is cut at the slash, which only
+        /// changes what's drawn: the tooltip and the menu have the whole name.
+        var nameAndRemote: (name: String, remote: String?) {
+            guard kind == .remoteBranch, let slash = title.firstIndex(of: "/") else { return (title, nil) }
+            return (String(title[title.index(after: slash)...]), String(title[..<slash]))
+        }
+
+        /// What the badge's tooltip says, and VoiceOver reads.
+        var spokenTitle: String {
+            var parts = [title]
+            switch kind {
+            case .currentBranch: parts.append("current branch")
+            case .detachedHead: parts.append("on no branch")
+            case .branch, .remoteBranch, .tag: break
+            }
+            if let upstream { parts.append("in sync with \(Ref.shortName(upstream))") }
+            return parts.joined(separator: ", ")
+        }
     }
 
     public var shortID: String
     public var badges: [Badge]
     public var subject: String?
+    /// What follows the subject in the commit's message, on one line.
+    public var body: String?
     public var author: String?
     public var date: String?
     /// The graph's lines in this row.
@@ -68,6 +96,7 @@ public struct CommitRowContent: Hashable {
         shortID: String,
         badges: [Badge] = [],
         subject: String? = nil,
+        body: String? = nil,
         author: String? = nil,
         date: String? = nil,
         lanes: LaneLayout.Row? = nil,
@@ -77,6 +106,7 @@ public struct CommitRowContent: Hashable {
         self.shortID = shortID
         self.badges = badges
         self.subject = subject
+        self.body = body
         self.author = author
         self.date = date
         self.lanes = lanes
@@ -90,14 +120,29 @@ public struct CommitRowContent: Hashable {
         badges.contains { $0.kind.isCurrent }
     }
 
-    /// What VoiceOver reads for the row.
+    /// Every branch that points to the commit, for the row's menu: local ones
+    /// first, then remote ones from A to Z, including the upstreams that share a
+    /// badge with their branch.
+    var branches: [Badge] {
+        let branches = badges.filter(\.isBranch)
+        let local = branches.filter { $0.kind != .remoteBranch }
+        let upstreams = local.compactMap { badge in
+            badge.upstream.map { Badge(title: Ref.shortName($0), kind: .remoteBranch, refName: $0) }
+        }
+        let remote = branches.filter { $0.kind == .remoteBranch } + upstreams
+        return local + remote.sorted { $0.title < $1.title }
+    }
+
+    /// What VoiceOver reads for the row. The body comes last, so that it's easy
+    /// to move on from.
     var spokenText: String {
         var parts: [String] = []
         if let subject { parts.append(subject) }
-        parts += badges.map { $0.kind == .currentBranch ? "\($0.title), current branch" : $0.title }
+        parts += badges.map(\.spokenTitle)
         if let author { parts.append(author) }
         if let date { parts.append(date) }
         if !shortID.isEmpty { parts.append(shortID) }
+        if let body, !body.isEmpty { parts.append(body) }
         return parts.joined(separator: ", ")
     }
 }

@@ -110,6 +110,7 @@ final class RepositoryModel {
 
     private struct RowText {
         var subject: String
+        var body: String
         var author: String
         var date: String
     }
@@ -462,6 +463,7 @@ final class RepositoryModel {
             shortID: String(history.graph.id(at: position).hex.prefix(8)),
             badges: badges[position] ?? [],
             subject: text?.subject,
+            body: text?.body,
             author: text?.author,
             date: text?.date,
             lanes: hasWorkingTreeRow
@@ -487,6 +489,7 @@ final class RepositoryModel {
         } catch {
             return []
         }
+        let messages = await Self.subjectsAndBodies(of: commits)
         guard generation == graphGeneration else { return [] }
 
         if texts.count + wanted.count > Self.textLimit {
@@ -494,29 +497,48 @@ final class RepositoryModel {
             let keep = Set(rows.map { history.rows[$0] })
             texts = texts.filter { keep.contains($0.key) }
         }
-        for (row, commit) in zip(wanted, commits) {
-            texts[history.rows[row]] = commit.map { commit in
-                RowText(subject: commit.subject, author: commit.author.name, date: Self.format(commit.author.time, now: now))
-            } ?? RowText(subject: "This commit is missing from the repository.", author: "", date: "")
+        for (index, row) in wanted.enumerated() {
+            texts[history.rows[row]] = commits[index].map { commit in
+                RowText(subject: messages[index].subject, body: messages[index].body, author: commit.author.name, date: Self.format(commit.author.time, now: now))
+            } ?? RowText(subject: "This commit is missing from the repository.", body: "", author: "", date: "")
         }
         return IndexSet(wanted.map { $0 + offset })
     }
 
+    /// Reads the subject and the body line of each commit, away from the main
+    /// thread, because going through the messages of a screen's commits takes
+    /// a few milliseconds on a repository like Linux.
+    @concurrent private static func subjectsAndBodies(of commits: [CommitInfo?]) async -> [(subject: String, body: String)] {
+        commits.map { commit in commit.map { ($0.subject, $0.bodyLine) } ?? ("", "") }
+    }
+
     private static func badges(_ history: History) -> [CommitGraph.Position: [CommitRowContent.Badge]] {
-        var badges = history.refsByCommit.mapValues { refs in
-            refs.map { ref -> CommitRowContent.Badge in
-                let kind: CommitRowContent.Badge.Kind = switch ref.kind {
-                case .branch: ref.name == history.refs.currentBranch ? .currentBranch : .branch
-                case .remoteBranch: .remoteBranch
-                case .tag, .other: .tag
-                }
-                return CommitRowContent.Badge(title: ref.shortName, kind: kind, refName: ref.name)
-            }
-        }
+        var badges = history.refsByCommit.mapValues { Self.badges(for: $0, currentBranch: history.refs.currentBranch) }
         if history.refs.currentBranch == nil, let head = history.head {
             badges[head, default: []].insert(CommitRowContent.Badge(title: "HEAD", kind: .detachedHead), at: 0)
         }
         return badges
+    }
+
+    /// The badges for the refs on one commit. A branch and its upstream share a
+    /// badge when they have the same name, because they're the same thing here.
+    /// Any other remote's branch keeps its own.
+    static func badges(for refs: [Ref], currentBranch: String?) -> [CommitRowContent.Badge] {
+        var upstreams: Set<String> = []
+        if refs.contains(where: { $0.upstream != nil }) {
+            let names = Set(refs.map(\.name))
+            upstreams = Set(refs.compactMap(\.upstreamOfSameName)).intersection(names)
+        }
+        return refs.compactMap { ref in
+            guard !upstreams.contains(ref.name) else { return nil }
+            let kind: CommitRowContent.Badge.Kind = switch ref.kind {
+            case .branch: ref.name == currentBranch ? .currentBranch : .branch
+            case .remoteBranch: .remoteBranch
+            case .tag, .other: .tag
+            }
+            let upstream = ref.upstreamOfSameName.flatMap { upstreams.contains($0) ? $0 : nil }
+            return CommitRowContent.Badge(title: ref.shortName, kind: kind, refName: ref.name, upstream: upstream)
+        }
     }
 
     /// Shows the day and time for dates this year, and the day and year for

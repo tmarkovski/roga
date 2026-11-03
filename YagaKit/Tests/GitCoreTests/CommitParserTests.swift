@@ -78,6 +78,40 @@ struct CommitParserTests {
         #expect(commit.body == "The body\ngoes on")
     }
 
+    @Test func joinsTheBodysLinesAndParagraphsIntoOneLine() throws {
+        let commit = try parse("tree \(tree)\n\nSubject\n\nFirst\n  lines  \n\nSecond\r\n")
+        #expect(commit.bodyLine == "First lines Second")
+    }
+
+    @Test func leavesTrailersOutOfTheBodyLine() throws {
+        let commit = try parse("tree \(tree)\n\nSubject\n\nWhy it changed.\n\nFixes: 1234 (\"Some\n  subject\")\nCo-Authored-By: A <a@example.com>\n")
+        #expect(commit.bodyLine == "Why it changed.")
+    }
+
+    @Test func aBodyOfOnlyTrailersHasNoBodyLine() throws {
+        #expect(try parse("tree \(tree)\n\nSubject\n\nSigned-off-by: A <a@example.com>\n").bodyLine == "")
+    }
+
+    @Test func keepsALastParagraphThatIsntOnlyTrailers() throws {
+        let commit = try parse("tree \(tree)\n\nSubject\n\nFirst.\n\nNote: this matters\nand it goes on.\n")
+        #expect(commit.bodyLine == "First. Note: this matters and it goes on.")
+        // A sentence isn't a trailer, and neither is an indented block by itself.
+        #expect(try parse("tree \(tree)\n\nSubject\n\nThis is why: it broke\n").bodyLine == "This is why: it broke")
+        #expect(try parse("tree \(tree)\n\nSubject\n\n  indented: code\n").bodyLine == "indented: code")
+    }
+
+    @Test func stopsALongBodyLineShort() throws {
+        let long = String(repeating: "word ", count: 5_000)
+        let commit = try parse("tree \(tree)\n\nSubject\n\n\(long)\n")
+        #expect(commit.bodyLine.count == 200)
+        #expect(commit.bodyLine.hasPrefix("word word"))
+    }
+
+    @Test func hasNoBodyLineWithOnlyASubject() throws {
+        #expect(try parse("tree \(tree)\n\nSubject\n").bodyLine == "")
+        #expect(try parse("tree \(tree)\n\n").bodyLine == "")
+    }
+
     @Test func hasNoBodyWithOnlyASubject() throws {
         #expect(try parse("tree \(tree)\n\nSubject\n").body == "")
         #expect(try parse("tree \(tree)\n\n").body == "")

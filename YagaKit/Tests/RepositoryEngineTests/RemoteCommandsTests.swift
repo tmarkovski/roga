@@ -56,6 +56,15 @@ struct RemoteCommandsTests {
 
     // MARK: Where a branch stands
 
+    @Test func readsWhatEachBranchTracks() async throws {
+        let clones = try await clones()
+        try await runGit("branch", "--no-track", "agent", in: clones.work)
+        let refs = try await clones.session.refs(in: clones.work).refs
+        #expect(refs.first { $0.name == "refs/heads/main" }?.upstream == "refs/remotes/origin/main")
+        #expect(refs.first { $0.name == "refs/heads/agent" }?.upstream == nil)
+        #expect(refs.first { $0.name == "refs/remotes/origin/main" }?.upstream == nil)
+    }
+
     @Test func saysHowFarABranchIsFromItsUpstream() async throws {
         let clones = try await clones()
         var status = try #require(try await clones.session.branchStatus(in: clones.work))
