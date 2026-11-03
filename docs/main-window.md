@@ -24,7 +24,7 @@ The layout follows the Claude and ChatGPT apps. A sidebar on the left has a rail
 
 ## The sidebar
 
-The sidebar runs the full height of the window on the left, with the traffic lights at its top. It's 312 points wide by default: the 56-point rail and the list beside it. It's a shade darker than the panels, and a thin gray line separates it from them, from the top of the window to the bottom, as in the Claude app. It's the sidebar macOS provides, so the button next to the traffic lights, the View menu and the usual shortcut all hide it. That button is a plain icon that gets a gray square on hover, like the icon buttons in panel headers, rather than the glass button macOS draws. It stays next to the traffic lights while the sidebar is hidden.
+The sidebar runs the full height of the window on the left, with the traffic lights at its top. It's 312 points wide by default, the 56-point rail and the list beside it, and can be dragged from 256 up to 560. It's a shade darker than the panels, and a thin gray line separates it from them, from the top of the window to the bottom, as in the Claude app. It's the sidebar macOS provides, so the button next to the traffic lights, the View menu and the usual shortcut all hide it. That button is a plain icon that gets a gray square on hover, like the icon buttons in panel headers, rather than the glass button macOS draws. It stays next to the traffic lights while the sidebar is hidden.
 
 ### The rail
 
@@ -92,7 +92,7 @@ Two panels sit under the history panel.
 
 ## The refs panel
 
-The refs panel runs the full height of the window on the right, with a thin line between it and the middle from the top of the window to the bottom, like the sidebar's. It has the same background as the panels. It's a plain panel of ours rather than the inspector macOS provides, which animated by itself, stuttered, lost a dragged width and made the window wider ([issue 7](https://github.com/tmarkovski/yaga/issues/7)). The button at the right end of the title row hides it, as View > Hide Refs and Control-Command-I do. It shows and hides at once. It's 288 points wide and can be dragged up to 400, which is one setting for every window, and it keeps that width while it's hidden.
+The refs panel runs the full height of the window on the right, with a thin line between it and the middle from the top of the window to the bottom, like the sidebar's. It has the same background as the panels. It's a plain panel of ours rather than the inspector macOS provides, which animated by itself, stuttered, lost a dragged width and made the window wider ([issue 7](https://github.com/tmarkovski/yaga/issues/7)). The button at the right end of the title row hides it, as View > Hide Refs and Control-Command-I do. It shows and hides at once. It's 288 points wide and can be dragged up to 560, which is one setting for every window, and it keeps that width while it's hidden.
 
 As the window gets narrower, the panel narrows to keep 400 points for the middle, down to 288. After that it gives way, and its button and menu command are disabled until there's room. It comes back by itself when the window is wide enough again, unless the user had closed it. Decision 13 expected the panel to be what gives way first.
 

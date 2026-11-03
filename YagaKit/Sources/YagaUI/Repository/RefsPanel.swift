@@ -555,7 +555,7 @@ private struct AheadBehind: View {
 struct RefsPanelVisibility {
     /// The panel's width until someone drags it wider, from the wireframe.
     static let defaultWidth = 288.0
-    static let maximumWidth = 400.0
+    static let maximumWidth = 560.0
     /// How wide the middle of the window has to stay. The panels under history
     /// need 361 points of it.
     static let minimumMiddleWidth = 400.0

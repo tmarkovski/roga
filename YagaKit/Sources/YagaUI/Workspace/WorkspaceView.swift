@@ -106,7 +106,7 @@ public struct WorkspaceView: View {
                 }
                 // It has to come last, or macOS ignores it and opens a new
                 // window with a sidebar 144 points wide.
-                .navigationSplitViewColumnWidth(min: 256, ideal: 312, max: 400)
+                .navigationSplitViewColumnWidth(min: 256, ideal: 312, max: 560)
         } detail: {
             SidePanelColumns(
                 isShown: refsPanelVisibility.isShowing,
