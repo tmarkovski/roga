@@ -140,6 +140,12 @@ struct RefDetailsParserTests {
         #expect(RefList(refs: [ref("refs/heads/master"), ref("refs/heads/main")]).mainBranch?.name == "refs/heads/main")
         #expect(RefList(refs: [ref("refs/heads/master")]).mainBranch?.name == "refs/heads/master")
         #expect(RefList(refs: [ref("refs/heads/develop")]).mainBranch == nil)
+
+        // The remote branch stays the remote one, even with a local branch of that name.
+        #expect(RefList(refs: [ref("refs/heads/trunk"), originHead, originTrunk]).remoteMainBranch?.name == "refs/remotes/origin/trunk")
+        // There's none without a remote's HEAD, or when it names a branch that's gone.
+        #expect(RefList(refs: [ref("refs/heads/main"), originTrunk]).remoteMainBranch == nil)
+        #expect(RefList(refs: [ref("refs/heads/main"), originHead]).remoteMainBranch == nil)
     }
 
     @Test(arguments: [

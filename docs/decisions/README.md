@@ -27,3 +27,4 @@ Records aren't rewritten when a decision changes. Instead, a new record explains
 | [19](0019-pull-and-push-from-the-branch-in-the-title-row.md) | Pull and push from the branch in the title row | The house's animation changed by [21](0021-draw-the-houses-animations-from-joints.md) |
 | [20](0020-fetch-when-yaga-becomes-active.md) | Fetch by itself when yaga becomes active | Accepted |
 | [21](0021-draw-the-houses-animations-from-joints.md) | Draw the house's animations from joints, in Swift | Accepted |
+| [22](0022-remove-a-worktree-from-the-sidebar.md) | Remove a worktree from the sidebar, saying first what would be lost | Accepted |

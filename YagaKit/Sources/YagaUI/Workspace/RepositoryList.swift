@@ -215,6 +215,49 @@ public final class RepositoryList {
         return repository.worktrees.first.map { WorktreeSelection(repository: repository.path, worktree: $0.path) }
     }
 
+    /// Removes a linked worktree and deletes its folder. Its row goes as soon as
+    /// git has finished, and `resolve(_:)` then moves the windows that show it to
+    /// the repository's main worktree.
+    ///
+    /// - Parameter branch: The branch to delete too, if the main branch has all
+    ///   of its commits. It stays otherwise.
+    /// - Throws: `GitError` when git refuses, which says why, as it does for the
+    ///   main worktree, or `RepositoryListError.branchKept` when the worktree went
+    ///   and only the branch couldn't.
+    func removeWorktree(_ folder: String, of repository: ListedRepository, force: Bool, deletingBranch branch: String? = nil) async throws {
+        guard let session = repository.session, repository.removingWorktrees.insert(folder).inserted else { return }
+        defer { repository.removingWorktrees.remove(folder) }
+        do {
+            try await session.removeWorktree(folder, force: force)
+        } catch {
+            // Once git starts deleting files it doesn't go back, and it forgets
+            // the worktree even if some of them are left.
+            if let worktrees = try? await session.worktrees(), worktrees != repository.worktrees { repository.worktrees = worktrees }
+            throw error
+        }
+        // git won't delete a branch while a worktree has it checked out. This
+        // comes before the list changes, because that's what has windows look
+        // at the branches again.
+        var keptBranch: RepositoryListError?
+        if let branch {
+            do {
+                try await session.deleteMergedBranch(branch)
+            } catch {
+                keptBranch = .branchKept(Ref.shortName(branch), message: (error as? GitError)?.message ?? String(describing: error))
+            }
+        }
+        repository.worktrees.removeAll { $0.path == folder }
+        repository.uncommittedFiles[folder] = nil
+        repository.keptWorktrees.remove(folder)
+        if lastSelection == WorktreeSelection(repository: repository.path, worktree: folder) {
+            lastSelection = repository.home
+        }
+        save()
+        // A refresh that was running may have read the list before git finished.
+        Task { await refresh(repositoryAt: repository.path) }
+        if let keptBranch { throw keptBranch }
+    }
+
     /// Lists each open repository's worktrees again, and tries again to open
     /// the repositories that couldn't be opened.
     func refresh() async {
@@ -380,6 +423,8 @@ public final class ListedRepository: Identifiable {
     fileprivate(set) var worktrees: [Worktree] = []
     /// How many files have uncommitted changes in each worktree, by its folder.
     fileprivate(set) var uncommittedFiles: [String: Int] = [:]
+    /// The linked worktrees git is removing right now, by their folders.
+    fileprivate(set) var removingWorktrees: Set<String> = []
 
     fileprivate init(saved: RepositoryStore.SavedRepository) {
         path = saved.path
@@ -434,10 +479,14 @@ public final class ListedRepository: Identifiable {
 
 enum RepositoryListError: Error, CustomStringConvertible {
     case gitNotFound
+    /// A worktree was removed, but its branch couldn't be deleted. The message
+    /// says why.
+    case branchKept(String, message: String)
 
     var description: String {
         switch self {
         case .gitNotFound: "yaga hasn't found git yet."
+        case .branchKept(let branch, let message): "yaga couldn't delete \(branch): \(message)"
         }
     }
 }

@@ -19,6 +19,7 @@ struct Sidebar: View {
     let locate: (ListedRepository) -> Void
     @State private var isAddingRepositories = false
     @State private var adding = AddRepositoriesChoices()
+    @State private var removal = WorktreeRemoval()
     @FocusState private var isFocused: Bool
     @Environment(\.openWindow) private var openWindow
 
@@ -52,6 +53,27 @@ struct Sidebar: View {
                 rows(groups: groups)
             }
             .frame(maxWidth: .infinity)
+        }
+        .alert(
+            removal.confirmation?.title ?? "",
+            isPresented: Binding { removal.confirmation != nil } set: { if !$0 { removal.confirmation = nil } },
+            presenting: removal.confirmation
+        ) { confirmation in
+            if let title = confirmation.buttonTitleDeletingBranch {
+                Button(title, role: .destructive) { removal.confirm(confirmation, deletingBranch: true, list: list) }
+            }
+            Button(confirmation.buttonTitle, role: .destructive) { removal.confirm(confirmation, list: list) }
+            Button("Cancel", role: .cancel) {}
+        } message: { confirmation in
+            Text(confirmation.message)
+        }
+        .alert(
+            removal.failure?.title ?? "",
+            isPresented: Binding { removal.failure != nil } set: { if !$0 { removal.failure = nil } },
+            presenting: removal.failure
+        ) { _ in
+        } message: { failure in
+            Text(failure.message)
         }
     }
 
@@ -124,10 +146,12 @@ struct Sidebar: View {
             .id(home)
         case .worktree(let repository, let worktree, let isLast):
             let row = WorktreeSelection(repository: repository.path, worktree: worktree.path)
-            WorktreeRow(worktree: worktree, uncommittedFiles: repository.uncommittedFiles[worktree.path] ?? 0, isSelected: selection == row, isLast: isLast) {
+            WorktreeRow(worktree: worktree, uncommittedFiles: repository.uncommittedFiles[worktree.path] ?? 0, isRemoving: repository.removingWorktrees.contains(worktree.path), isSelected: selection == row, isLast: isLast) {
                 select(row)
             } openInNewWindow: {
                 openWindow(value: WorkspaceWindow(selection: row))
+            } remove: {
+                removal.start(worktree, of: repository)
             }
             .id(row)
         case .hiddenWorktrees(let repository, let title, let uncommittedFiles):
@@ -303,7 +327,7 @@ private struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
                 .frame(maxHeight: .infinity)
             Spacer(minLength: 6)
             HStack(spacing: 0) {
-                if isHovering && isEnabled {
+                if isHovering {
                     commands
                 } else {
                     trailing
@@ -511,32 +535,28 @@ private struct RepositoryRow: View {
 private struct WorktreeRow: View {
     let worktree: Worktree
     let uncommittedFiles: Int
+    let isRemoving: Bool
     let isSelected: Bool
     let isLast: Bool
     let select: () -> Void
     let openInNewWindow: () -> Void
+    let remove: () -> Void
 
     var body: some View {
-        SidebarRow(isSelected: isSelected, isEnabled: !worktree.isPrunable, action: select) {
+        SidebarRow(isSelected: isSelected, isEnabled: !worktree.isPrunable && !isRemoving, action: select) {
             Text(worktree.title)
                 .font(.system(size: 14))
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .padding(.leading, WorktreeConnector.textIndent)
         } trailing: {
-            if worktree.isPrunable {
-                Text("Folder missing")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                    .padding(.trailing, 7)
-            } else if uncommittedFiles > 0 {
-                Text(uncommittedFiles, format: .number)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.orange)
-                    .padding(.trailing, 7)
-            }
+            label
         } commands: {
-            commands
+            if isRemoving {
+                label
+            } else {
+                commands
+            }
         }
         .overlay { WorktreeConnector(isLast: isLast) }
         .buttonStyle(.icon(size: 24))
@@ -544,15 +564,37 @@ private struct WorktreeRow: View {
         .contextMenu { menuItems }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(worktree.title)
-        .accessibilityValue([subtitle, uncommittedFilesDescription(uncommittedFiles)].compactMap(\.self).joined(separator: ", "))
+        .accessibilityValue([isRemoving ? "Removing" : nil, subtitle, uncommittedFilesDescription(uncommittedFiles)].compactMap(\.self).joined(separator: ", "))
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction(.default, select)
         .accessibilityActions { menuItems }
     }
 
+    @ViewBuilder private var label: some View {
+        if isRemoving {
+            Text("Removing…")
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+                .padding(.trailing, 7)
+        } else if worktree.isPrunable {
+            Text("Folder missing")
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+                .padding(.trailing, 7)
+        } else if uncommittedFiles > 0 {
+            Text(uncommittedFiles, format: .number)
+                .font(.system(size: 13))
+                .foregroundStyle(.orange)
+                .padding(.trailing, 7)
+        }
+    }
+
+    /// A worktree whose folder is missing can only be removed.
     @ViewBuilder private var commands: some View {
-        Button(action: openInNewWindow) { Image(systemName: "macwindow.badge.plus") }
-            .help("Open in New Window")
+        if !worktree.isPrunable {
+            Button(action: openInNewWindow) { Image(systemName: "macwindow.badge.plus") }
+                .help("Open in New Window")
+        }
         RowMenu { menuItems }
     }
 
@@ -561,10 +603,15 @@ private struct WorktreeRow: View {
     }
 
     @ViewBuilder private var menuItems: some View {
-        Button("Open in New Window", action: openInNewWindow)
-        Divider()
-        Button("Show in Finder") { reveal(worktree.path) }
-        Button("Open in Terminal") { openInTerminal(worktree.path) }
+        if !worktree.isPrunable {
+            Button("Open in New Window", action: openInNewWindow)
+            Divider()
+            Button("Show in Finder") { reveal(worktree.path) }
+            Button("Open in Terminal") { openInTerminal(worktree.path) }
+            Divider()
+        }
+        Button("Remove Worktree…", action: remove)
+            .disabled(isRemoving)
     }
 }
 

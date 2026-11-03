@@ -255,6 +255,13 @@ final class RepositoryModel {
         branch.fetchByItself()
     }
 
+    /// Looks at the worktree again, because another one came or went, and a
+    /// branch may have gone with it. The refs panel says which worktree has each
+    /// branch, and history shows their badges.
+    func worktreesChanged() {
+        lookAgain()
+    }
+
     private func lookAgain() {
         refsChecks += 1
         check?.cancel()

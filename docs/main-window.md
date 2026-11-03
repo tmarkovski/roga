@@ -41,7 +41,7 @@ The list starts with the name of what the rail picked, in bold, and how many rep
 
 - A repository's row is its main worktree. Clicking it selects that worktree. Its name is bold while any of its worktrees has uncommitted files. A small triangle after the name shows or hides its linked worktrees, and a repository without any has no triangle. The refs panel's sections, a commit's message and the folders in a tree of files use the same triangle, which turns a quarter of the way around between its two directions, while what it shows or hides appears at once. After the triangle, in gray, comes the main worktree's branch unless it's `main` or `master`, or when two listed repositories have the same name, the folder it's in, as in `~/git`.
 - Its label is the main worktree's number of uncommitted files, in orange. On hover, a button takes the label's place, with a menu of Open in New Window, Show in Finder, Open in Terminal and Remove from Sidebar. A repository yaga can't find is dimmed, its label says so, its menu can find it again or remove it, and selecting it shows the same commands in the middle of the window.
-- Each linked worktree has a row under its repository, with its branch and its number of uncommitted files in orange. One thin line runs down from the repository's row past its worktrees, and turns around a rounded corner to the last one's branch. Its tooltip has its folder. On hover, the count gives way to a button that opens the worktree in a new window, and a menu of that, Show in Finder and Open in Terminal, which is also its context menu.
+- Each linked worktree has a row under its repository, with its branch and its number of uncommitted files in orange. One thin line runs down from the repository's row past its worktrees, and turns around a rounded corner to the last one's branch. Its tooltip has its folder. On hover, the count gives way to a button that opens the worktree in a new window, and a menu of that, Show in Finder, Open in Terminal and Remove Worktree…, which is also its context menu. A worktree whose folder is gone is dimmed and says **Folder missing**, and Remove Worktree… is all its menu has.
 - An expanded repository shows every linked worktree ([decision 17](decisions/0017-a-line-and-a-row-for-a-repositorys-worktrees.md)). A collapsed one has a single row in their place, with the same line, such as **3 worktrees**, and how many uncommitted files they have in orange. Clicking it expands the repository. The selected worktree always shows, even when its repository is collapsed, and the row then says **2 more worktrees**. It goes on showing after something else is selected, until the repository is expanded.
 - Repositories go from A to Z ([decision 16](decisions/0016-a-rail-of-organizations-in-the-sidebar.md)), and a new one starts collapsed. The list keeps every repository the user has added until they remove it ([decision 14](decisions/0014-the-sidebar-keeps-every-added-repository.md)).
 - With All selected, the list has every repository from A to Z, with no headers.
@@ -56,6 +56,18 @@ The button on the rail opens a popover, titled **Add to acme** with an organizat
 - **Look in Another Folder…** lists the clones in a folder the user picks, or the folder itself if it's a clone, which starts checked. **Add Selected** adds them to the sidebar and shows the first.
 
 File > Open still asks for a folder and adds its repository, from anywhere.
+
+### Removing a worktree
+
+Remove Worktree… in a linked worktree's menu runs `git worktree remove`, which deletes its folder ([decision 22](decisions/0022-remove-a-worktree-from-the-sidebar.md)). The main worktree's row doesn't offer it, and its Remove from Sidebar leaves everything on disk.
+
+- **yaga asks first, and says what would be lost.** It looks through the worktree, because git deletes some of these without refusing. The alert names the folder and lists files with uncommitted changes, untracked files, ignored files and folders, commits that only a detached `HEAD` has, a merge or rebase that's partway through, and submodules, naming up to three of each. A worktree with nothing to lose says that.
+- **The button says what it will do.** It's **Remove** when git would agree, and **Force Remove** when git would refuse, which runs `git worktree remove --force`. Cancel always leaves everything as it was.
+- **yaga looks again when the button is pressed.** If what would be lost has changed, as when an agent is still writing there, nothing is deleted, and the alert comes back with the new list and says it changed.
+- **The branch stays unless it has nothing to lose.** When the main branch has all of its commits, locally or on the remote, a second button, **Remove and Delete Branch**, deletes it too. Otherwise the alert says it stays, with its commits. A branch merged with a squash or a rebase gets no button, because git can't tell, and the main branch itself never does.
+- **While git deletes the folder**, the row says **Removing…**, and other worktrees can be removed in the meantime. Then the row goes, and a window that shows the worktree moves to the repository's main worktree.
+- **When git refuses**, an alert shows what git said and nothing changes. A locked worktree is one such case, because yaga doesn't go past a lock.
+- **A worktree whose folder is gone** has nothing to lose, so the alert says this only makes git forget it.
 
 ## The title row
 
@@ -152,3 +164,4 @@ We sketched several ways to show uncommitted changes. [Decision 15](decisions/00
 - Whether going to another commit should stay on the same file, if the commit changed it, rather than selecting the first one.
 - Whether the diff's tabs should be as wide as they are in a terminal, which is 8 columns.
 - How yaga asks for a passphrase when someone asks for a fetch, pull or push.
+- Whether removing a worktree can recognize a branch that was merged with a squash or a rebase.

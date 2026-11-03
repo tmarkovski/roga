@@ -28,14 +28,21 @@ enum ChangesLoader {
     /// and there's no list of changes. git versions that don't know the
     /// variable ignore it.
     ///
-    /// - Parameter isUpkeep: Whether nobody is waiting for the answer, which
-    ///   runs git at low priority.
+    /// - Parameters:
+    ///   - isUpkeep: Whether nobody is waiting for the answer, which runs git at
+    ///     low priority.
+    ///   - listsEveryUntrackedFile: Whether to list them even when the user
+    ///     turned off untracked files, because the answer decides whether
+    ///     they're lost.
     @concurrent
-    static func status(in directory: String, git: Git, limit: Int = statusLimit, isUpkeep: Bool = false) async throws -> WorktreeChanges {
-        var setting = GitCommand("config", "--get", "status.showUntrackedFiles", in: directory)
-        setting.successStatuses = [0, 1]
-        let value = try await git.text(setting).lowercased()
-        let untracked = ["no", "false", "off", "0"].contains(value) ? "no" : "all"
+    static func status(in directory: String, git: Git, limit: Int = statusLimit, isUpkeep: Bool = false, listsEveryUntrackedFile: Bool = false) async throws -> WorktreeChanges {
+        var untracked = "all"
+        if !listsEveryUntrackedFile {
+            var setting = GitCommand("config", "--get", "status.showUntrackedFiles", in: directory)
+            setting.successStatuses = [0, 1]
+            let value = try await git.text(setting).lowercased()
+            if ["no", "false", "off", "0"].contains(value) { untracked = "no" }
+        }
 
         var command = GitCommand(StatusParser.arguments + ["--untracked-files=" + untracked], in: directory)
         command.runsAtLowPriority = isUpkeep

@@ -108,6 +108,8 @@ public enum RepositoryError: Error, Sendable, Hashable, CustomStringConvertible 
     case tooManyChanges(limit: Int)
     /// A fetch that nobody asked for ran for longer than yaga lets it.
     case fetchTookTooLong
+    /// A branch to delete has commits that the main branch doesn't.
+    case branchNotMerged(String)
 
     public var description: String {
         switch self {
@@ -121,6 +123,8 @@ public enum RepositoryError: Error, Sendable, Hashable, CustomStringConvertible 
             "The list of files that changed takes more than \(limit >> 20) MB of text, which is too much to show. A folder of generated files may need to be ignored."
         case .fetchTookTooLong:
             "git fetch took too long, so yaga stopped it."
+        case .branchNotMerged(let branch):
+            "\(branch) has commits that the main branch doesn't, so deleting it would lose them."
         }
     }
 }

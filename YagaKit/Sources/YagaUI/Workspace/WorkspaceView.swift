@@ -167,6 +167,11 @@ public struct WorkspaceView: View {
         .onChange(of: list.resolve(window?.selection)) { _, resolved in
             if resolved != window?.selection { selection.wrappedValue = resolved }
         }
+        .onChange(of: shown?.0.worktrees) { previous, worktrees in
+            // The same repository's worktrees changed, and the refs panel says
+            // which one has each branch.
+            if previous?.first?.path == worktrees?.first?.path { shownModel?.worktreesChanged() }
+        }
         .focusedSceneValue(\.selection, selection)
         .focusedSceneValue(\.sidebarScope, scope)
         .focusedSceneValue(\.showsOrganizationRail, $showsRail)

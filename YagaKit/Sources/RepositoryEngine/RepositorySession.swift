@@ -8,9 +8,9 @@ import GitRunner
 ///
 /// For now a session lists worktrees and refs, reads history, the text of
 /// commits, the files they changed and their patches, reads what's uncommitted
-/// in a worktree, checks out branches, fetches, pulls and pushes, and keeps the
-/// commit-graph files up to date. Watching for changes comes later, as
-/// ARCHITECTURE.md describes.
+/// in a worktree, checks out branches, fetches, pulls and pushes, removes linked
+/// worktrees, and keeps the commit-graph files up to date. Watching for changes
+/// comes later, as ARCHITECTURE.md describes.
 public actor RepositorySession {
     public nonisolated let location: RepositoryLocation
     public nonisolated let git: Git
@@ -305,6 +305,48 @@ public actor RepositorySession {
     /// - Throws: `GitError` when git refuses, which says why.
     public nonisolated func create(_ branch: NewBranch, in worktree: String) async throws {
         _ = try await Self.run(branch.arguments, in: worktree, git: git)
+    }
+
+    /// Says what removing a linked worktree would lose, and whether its branch
+    /// could go too. Not being able to tell only means the branch isn't offered.
+    public nonisolated func lossesFromRemoving(worktree: String) async throws -> WorktreeLosses {
+        var losses = try await WorktreeLosses.load(in: worktree, git: git)
+        if losses.folderIsMissing { losses.branch = try await worktrees().first { $0.path == worktree }?.branch }
+        if let branch = losses.branch {
+            losses.mergedInto = try? await WorktreeLosses.mainBranch(holdingAllOf: branch, in: location.commonDirectory, git: git)
+        }
+        return losses
+    }
+
+    /// Deletes a branch, as long as the main branch has all of its commits, so
+    /// that nothing is lost. yaga looks for itself and then uses `-D`, because
+    /// `git branch -d` goes by the branch's upstream or by the `HEAD` of wherever
+    /// it runs. It would refuse a branch merged into `main` while the main worktree
+    /// is on another branch, and allow one that's pushed but not merged.
+    ///
+    /// - Parameter branch: The branch's full name.
+    /// - Throws: `RepositoryError.branchNotMerged`, or `GitError` when git refuses,
+    ///   as it does while a worktree has the branch checked out.
+    public nonisolated func deleteMergedBranch(_ branch: String) async throws {
+        guard try await WorktreeLosses.mainBranch(holdingAllOf: branch, in: location.commonDirectory, git: git) != nil else {
+            throw RepositoryError.branchNotMerged(Ref.shortName(branch))
+        }
+        _ = try await Self.run(["branch", "-D", "--end-of-options", Ref.shortName(branch)], in: location.commonDirectory, git: git)
+    }
+
+    /// Removes a linked worktree and deletes its folder. Its branch stays. Like a
+    /// checkout, this is best left to finish. It runs in the git directory,
+    /// which outlasts the worktree.
+    ///
+    /// - Parameters:
+    ///   - worktree: The worktree's folder.
+    ///   - force: Whether to delete uncommitted changes and submodules, which git
+    ///     otherwise refuses to do. A lock still stops it.
+    /// - Throws: `GitError` when git refuses, which says why. That includes the
+    ///   main worktree.
+    public nonisolated func removeWorktree(_ worktree: String, force: Bool = false) async throws {
+        let options = force ? ["--force"] : []
+        _ = try await Self.run(["worktree", "remove"] + options + ["--", worktree], in: location.commonDirectory, git: git)
     }
 
     private nonisolated static func run(_ arguments: [String], in worktree: String, git: Git) async throws -> GitResult {
