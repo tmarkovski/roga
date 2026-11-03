@@ -22,3 +22,6 @@ build/
 bench-repos/
 
 output/
+
+# The site's local preview
+.wrangler/
