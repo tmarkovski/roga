@@ -215,6 +215,12 @@ public final class RepositoryList {
         }
     }
 
+    /// Lists a repository's worktrees again, because one of them changed.
+    func refresh(repositoryAt path: String) async {
+        guard let git, let repository = repository(at: path) else { return }
+        await refresh(repository, git: git)
+    }
+
     private func refresh(_ repository: ListedRepository, git: Git) async {
         switch repository.state {
         case .opening:

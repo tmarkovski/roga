@@ -29,18 +29,28 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
         /// Says that the user selected a row, or no row. A selection made with
         /// `select(row:)` isn't reported.
         public var selectRow: (Int?) -> Void
+        /// Says that the user double-clicked the badge of a branch.
+        public var checkOut: (CommitRowContent.Badge) -> Void
 
         public init(
             count: @escaping () -> Int,
             content: @escaping (Int) -> CommitRowContent,
             loadText: @escaping (Range<Int>) async -> IndexSet,
-            selectRow: @escaping (Int?) -> Void
+            selectRow: @escaping (Int?) -> Void,
+            checkOut: @escaping (CommitRowContent.Badge) -> Void = { _ in }
         ) {
             self.count = count
             self.content = content
             self.loadText = loadText
             self.selectRow = selectRow
+            self.checkOut = checkOut
         }
+    }
+
+    /// A badge of a row.
+    struct BadgePlace: Equatable {
+        var row: Int
+        var index: Int
     }
 
     public let scrollView = NSScrollView()
@@ -53,6 +63,8 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
     private var fitGraphTask: Task<Void, Never>?
     /// Whether the code here is changing the selection, rather than the user.
     private var isSettingSelection = false
+    /// The badge the pointer is over, if double-clicking it would do something.
+    private var hoveredBadge: BadgePlace?
 
     public init(source: Source) {
         self.source = source
@@ -73,6 +85,9 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
         tableView.setAccessibilityLabel("History")
         tableView.dataSource = self
         tableView.delegate = self
+        tableView.target = self
+        tableView.doubleAction = #selector(doubleClicked)
+        tableView.pointerMoved = { [unowned self] in updateHoveredBadge(atWindowLocation: $0) }
 
         scrollView.documentView = tableView
         scrollView.drawsBackground = false
@@ -106,6 +121,7 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
         requestedRows = nil
         sizeGraph(canNarrow: true)
         loadVisibleText()
+        updateHoveredBadge()
     }
 
     /// The selected row, or nil when there's none.
@@ -132,9 +148,62 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
         source.selectRow(selectedRow)
     }
 
+    /// Finds the badge at a point in the table, if double-clicking it would do
+    /// something. It works from what the row shows, because the row may not have
+    /// a view yet while rows are being reloaded.
+    func badge(at point: NSPoint) -> BadgePlace? {
+        let row = tableView.row(at: point)
+        guard row >= 0 else { return nil }
+        let content = source.content(row)
+        guard !content.badges.isEmpty else { return nil }
+        let frame = tableView.frameOfCell(atColumn: 0, row: row)
+        let layout = CommitRowLayout(content: content, graphColumns: graphColumns, size: frame.size)
+        let inRow = NSPoint(x: point.x - frame.minX, y: point.y - frame.minY)
+        guard let index = layout.badges.firstIndex(where: { $0.contains(inRow) }), content.badges[index].canCheckOut else { return nil }
+        return BadgePlace(row: row, index: index)
+    }
+
+    /// Moves the border to the badge under the pointer, for when rows move under
+    /// the pointer rather than the other way around.
+    private func updateHoveredBadge() {
+        updateHoveredBadge(atWindowLocation: tableView.window?.mouseLocationOutsideOfEventStream)
+    }
+
+    /// Moves the border to the badge at a point in the window, or to none when
+    /// the pointer has left the table.
+    private func updateHoveredBadge(atWindowLocation location: NSPoint?) {
+        var hovered: BadgePlace?
+        if let location {
+            let point = tableView.convert(location, from: nil)
+            if tableView.visibleRect.contains(point) { hovered = badge(at: point) }
+        }
+        guard hovered != hoveredBadge else { return }
+        if let old = hoveredBadge { cell(atRow: old.row)?.hoveredBadge = nil }
+        hoveredBadge = hovered
+        if let hovered { cell(atRow: hovered.row)?.hoveredBadge = hovered.index }
+    }
+
+    private func cell(atRow row: Int) -> CommitCellView? {
+        guard row < tableView.numberOfRows else { return nil }
+        return tableView.view(atColumn: 0, row: row, makeIfNecessary: false) as? CommitCellView
+    }
+
+    @objc private func doubleClicked() {
+        guard let event = NSApp.currentEvent else { return }
+        doubleClick(at: tableView.convert(event.locationInWindow, from: nil))
+    }
+
+    /// Checks out the branch of the badge at a point in the table, if there is
+    /// one. Double-clicking anywhere else in a row does nothing.
+    func doubleClick(at point: NSPoint) {
+        guard let place = badge(at: point) else { return }
+        source.checkOut(source.content(place.row).badges[place.index])
+    }
+
     @objc private func visibleRowsMayHaveChanged(_ notification: Notification) {
         sizeGraph(canNarrow: false)
         loadVisibleText()
+        updateHoveredBadge()
 
         fitGraphTask?.cancel()
         fitGraphTask = Task { [weak self] in
@@ -189,6 +258,7 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
             ?? CommitCellView()
         view.content = source.content(row)
         view.graphColumns = graphColumns
+        view.hoveredBadge = hoveredBadge?.row == row ? hoveredBadge?.index : nil
         return view
     }
 
@@ -198,8 +268,25 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
 }
 
 /// Takes keyboard focus when it appears in a window where nothing else has
-/// it, so that the arrow keys move through history straight away.
+/// it, so that the arrow keys move through history straight away. It also says
+/// when the pointer moves over it, for the border on the badge under it.
 final class CommitTableView: NSTableView {
+    /// Says where in the window the pointer is, or nil once it has left.
+    var pointerMoved: (NSPoint?) -> Void = { _ in }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        addTrackingArea(NSTrackingArea(
+            rect: .zero,
+            options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: self
+        ))
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("The table is made in code.")
+    }
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         // SwiftUI may still be choosing a first responder, so wait a turn.
@@ -207,5 +294,20 @@ final class CommitTableView: NSTableView {
             guard let self, let window, window.firstResponder === window else { return }
             window.makeFirstResponder(self)
         }
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
+        pointerMoved(event.locationInWindow)
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event)
+        pointerMoved(event.locationInWindow)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        pointerMoved(nil)
     }
 }

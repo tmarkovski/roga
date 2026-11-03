@@ -183,18 +183,25 @@ public struct WorkspaceView: View {
            let repository = list.repository(at: selected.repository),
            case .open(let session) = repository.state,
            repository.worktrees.contains(where: { $0.path == selected.worktree }) {
-            RefsPanel(model: model(for: selected, session: session), width: width, isShown: $wantsRefsPanel) { worktree in
-                selection.wrappedValue = WorktreeSelection(repository: selected.repository, worktree: worktree)
-            }
-            .id(selected)
+            RefsPanel(model: model(for: selected, session: session), width: width, isShown: $wantsRefsPanel, showWorktree: showWorktree(of: selected))
+                .id(selected)
         } else {
             RefsPanelPlaceholder(width: width)
+        }
+    }
+
+    /// What shows another of a repository's worktrees in the window, by its folder.
+    private func showWorktree(of selected: WorktreeSelection) -> (String) -> Void {
+        { worktree in
+            selection.wrappedValue = WorktreeSelection(repository: selected.repository, worktree: worktree)
         }
     }
 
     private func model(for selected: WorktreeSelection, session: RepositorySession) -> RepositoryModel {
         recent.model(for: selected, session: session) { [list] count in
             list.setUncommittedFiles(count, in: selected)
+        } reportBranchChange: { [list] in
+            Task { await list.refresh(repositoryAt: selected.repository) }
         }
     }
 
@@ -254,7 +261,7 @@ public struct WorkspaceView: View {
             }
         case .open(let session):
             if repository.worktrees.contains(where: { $0.path == selected.worktree }) {
-                RepositoryView(model: model(for: selected, session: session))
+                RepositoryView(model: model(for: selected, session: session), showWorktree: showWorktree(of: selected))
                     .id(selected)
             } else {
                 // The worktree is gone, and resolving the selection moves the
@@ -335,18 +342,27 @@ final class RecentWorktrees {
     /// The selections, from the one shown longest ago to the latest.
     private var order: [WorktreeSelection] = []
 
-    /// - Parameter reportUncommittedFiles: What a new model calls with how many
-    ///   uncommitted files it finds.
+    /// - Parameters:
+    ///   - reportUncommittedFiles: What a new model calls with how many
+    ///     uncommitted files it finds.
+    ///   - reportBranchChange: What a new model calls when it has put the
+    ///     worktree on another branch.
     func model(
         for selection: WorktreeSelection,
         session: RepositorySession,
-        reportUncommittedFiles: @escaping (Int) -> Void = { _ in }
+        reportUncommittedFiles: @escaping (Int) -> Void = { _ in },
+        reportBranchChange: @escaping () -> Void = {}
     ) -> RepositoryModel {
         order.removeAll { $0 == selection }
         order.append(selection)
         // A repository that was removed and added again has a new session.
         if let model = models[selection], model.session === session { return model }
-        let model = RepositoryModel(session: session, worktree: selection.worktree, reportUncommittedFiles: reportUncommittedFiles)
+        let model = RepositoryModel(
+            session: session,
+            worktree: selection.worktree,
+            reportUncommittedFiles: reportUncommittedFiles,
+            reportBranchChange: reportBranchChange
+        )
         models[selection] = model
         while order.count > Self.limit {
             models[order.removeFirst()] = nil

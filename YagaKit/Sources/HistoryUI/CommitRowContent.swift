@@ -17,10 +17,23 @@ public struct CommitRowContent: Hashable {
 
         public var title: String
         public var kind: Kind
+        /// The full name of the ref, which `HEAD` doesn't have when it isn't on
+        /// a branch.
+        public var refName: String?
 
-        public init(title: String, kind: Kind) {
+        public init(title: String, kind: Kind, refName: String? = nil) {
             self.title = title
             self.kind = kind
+            self.refName = refName
+        }
+
+        /// Whether double-clicking the badge checks out its branch. There's
+        /// nothing to do for the current branch, and a tag isn't a branch.
+        var canCheckOut: Bool {
+            switch kind {
+            case .branch, .remoteBranch: true
+            case .currentBranch, .detachedHead, .tag: false
+            }
         }
     }
 

@@ -14,6 +14,8 @@ struct CommitList: NSViewRepresentable {
     /// new history puts the commit in another row, or when the commit panel
     /// goes to a parent.
     let selectedRow: Int?
+    /// Shows one of the repository's worktrees in the window, by its folder.
+    let showWorktree: (String) -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(model: model)
@@ -24,11 +26,13 @@ struct CommitList: NSViewRepresentable {
     }
 
     func updateNSView(_ view: NSScrollView, context: Context) {
+        context.coordinator.showWorktree = showWorktree
         context.coordinator.show(version, selecting: selectedRow)
     }
 
     final class Coordinator {
         let controller: CommitTableController
+        var showWorktree: (String) -> Void = { _ in }
         private var shownVersion: Int?
 
         init(model: RepositoryModel) {
@@ -38,6 +42,9 @@ struct CommitList: NSViewRepresentable {
                 loadText: { await model.loadText(for: $0) },
                 selectRow: { model.selectRow($0) }
             ))
+            controller.source.checkOut = { [unowned self] badge in
+                model.checkOut(badge) { [unowned self] in showWorktree($0) }
+            }
         }
 
         func show(_ version: Int, selecting row: Int?) {

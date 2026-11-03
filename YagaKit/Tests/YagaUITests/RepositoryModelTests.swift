@@ -75,6 +75,85 @@ struct RepositoryModelTests {
 
     typealias TestError = SelectedFileTests.TestError
 
+    /// The badge of a ref, once history has loaded.
+    func badge(_ title: String, in model: RepositoryModel) throws -> CommitRowContent.Badge {
+        try #require((0..<model.rowCount).lazy.compactMap { row in model.rowContent(row).badges.first { $0.title == title } }.first)
+    }
+
+    /// Lets a checkout and what it starts finish.
+    func finishCheckout(_ model: RepositoryModel) async {
+        await model.checkout?.value
+        await model.check?.value
+        await model.load()
+    }
+
+    @Test func showsTheBranchItChecksOut() async throws {
+        let repository = try makeTemporaryFolder() + "/basic"
+        _ = try await TestGit.make().run(GitCommand("clone", "--quiet", "--no-local", try await Fixture.repository("basic"), repository))
+        let session = try await RepositorySession.open(containing: repository, git: try await TestGit.make())
+        var branchChanges = 0
+        let model = RepositoryModel(session: session, worktree: repository, reportBranchChange: { branchChanges += 1 })
+        await model.load()
+        #expect(model.headDescription == "main")
+        let checks = model.refsChecks
+
+        model.checkOut(try badge("origin/feature", in: model)) { _ in Issue.record("It's not in another worktree.") }
+        await finishCheckout(model)
+
+        #expect(model.headDescription == "feature")
+        #expect(try badge("feature", in: model).kind == .currentBranch)
+        #expect(try badge("main", in: model).kind == .branch)
+        #expect(branchChanges == 1)
+        #expect(model.refsChecks > checks)
+        #expect(model.checkoutFailure == nil)
+        #expect(model.checkout == nil)
+    }
+
+    @Test func saysWhyACheckoutDidntWork() async throws {
+        let (model, repository) = try await modelOfACopy()
+        await model.load()
+        try await runGit("switch", "--quiet", "--create", "changed", in: repository)
+        try write("Changed\n", to: "README.md", in: repository)
+        try await runGit("commit", "--quiet", "--all", "--message=Change", in: repository)
+        try await runGit("switch", "--quiet", "main", in: repository)
+        try write("Mine\n", to: "README.md", in: repository)
+
+        model.checkOut(CommitRowContent.Badge(title: "changed", kind: .branch, refName: "refs/heads/changed")) { _ in }
+        await finishCheckout(model)
+
+        #expect(model.checkoutFailure?.branch == "changed")
+        #expect(model.checkoutFailure?.message.contains("would be overwritten") == true)
+        #expect(model.headDescription == "main")
+        #expect(model.checkout == nil)
+    }
+
+    @Test func showsTheWorktreeThatHasTheBranch() async throws {
+        let (model, repository) = try await modelOfACopy()
+        await model.load()
+        let folder = (repository as NSString).deletingLastPathComponent + "/notes"
+        try await runGit("worktree", "add", "--quiet", folder, "-b", "feature", "origin/feature", in: repository)
+
+        var shown: [String] = []
+        model.checkOut(CommitRowContent.Badge(title: "feature", kind: .branch, refName: "refs/heads/feature")) { shown.append($0) }
+        await finishCheckout(model)
+
+        #expect(shown == [folder])
+        #expect(model.headDescription == "main")
+        #expect(model.checkoutFailure == nil)
+    }
+
+    @Test func runsOneCheckoutAtATime() async throws {
+        let (model, _) = try await modelOfACopy()
+        await model.load()
+        model.checkOut(try badge("origin/feature", in: model)) { _ in }
+        let running = try #require(model.checkout)
+        model.checkOut(CommitRowContent.Badge(title: "nothing", kind: .branch, refName: "refs/heads/nothing")) { _ in }
+        #expect(model.checkout == running)
+        await finishCheckout(model)
+        #expect(model.headDescription == "feature")
+        #expect(model.checkoutFailure == nil)
+    }
+
     func write(_ text: String, to path: String, in repository: String) throws {
         try Data(text.utf8).write(to: URL(filePath: repository + "/" + path))
     }

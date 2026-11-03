@@ -23,6 +23,12 @@ final class RepositoryModel {
         var reloads: Int
     }
 
+    /// A branch that couldn't be checked out, and what git said about it.
+    struct CheckoutFailure: Equatable {
+        var branch: String
+        var message: String
+    }
+
     /// Where the repository's commit-graph files stand (decision 6).
     enum CommitGraphState: Equatable {
         case unknown
@@ -65,6 +71,11 @@ final class RepositoryModel {
     /// The selected row. It's nil while the history being loaded hasn't reached
     /// the selected commit yet, and the commit stays selected.
     private(set) var selectedRow: Int?
+    /// The branch being checked out, once that's taken long enough to mention.
+    private(set) var slowCheckout: String?
+    /// What to tell the user about a checkout that didn't work, until they've
+    /// seen it.
+    var checkoutFailure: CheckoutFailure?
 
     /// The request whose history has loaded completely.
     @ObservationIgnored private var loaded: LoadRequest?
@@ -78,6 +89,8 @@ final class RepositoryModel {
     @ObservationIgnored private let keepsCommitGraphCurrent: () -> Bool
     /// Says how many files are uncommitted, whenever that's been checked.
     @ObservationIgnored private let reportUncommittedFiles: (Int) -> Void
+    /// Says that the worktree is on another branch, because of something yaga did.
+    @ObservationIgnored private let reportBranchChange: () -> Void
     /// The line from the row for uncommitted changes down to `HEAD`.
     @ObservationIgnored private var workingTreeLine: WorkingTreeLine?
     /// The check that yaga becoming active started, which a newer one replaces.
@@ -85,6 +98,9 @@ final class RepositoryModel {
     /// The running update of the commit-graph files, which isn't tied to any
     /// view, so that it carries on when the window shows another worktree.
     @ObservationIgnored private(set) var commitGraphUpdate: Task<Void, Never>?
+    /// The running checkout. It isn't tied to any view either, because cancelling
+    /// it would stop git while it may be writing the worktree's files.
+    @ObservationIgnored private(set) var checkout: Task<Void, Never>?
 
     private struct RowText {
         var subject: String
@@ -101,12 +117,14 @@ final class RepositoryModel {
         session: RepositorySession,
         worktree: String,
         keepsCommitGraphCurrent: @escaping () -> Bool = { UserDefaults.standard.keepsCommitGraphCurrent },
-        reportUncommittedFiles: @escaping (Int) -> Void = { _ in }
+        reportUncommittedFiles: @escaping (Int) -> Void = { _ in },
+        reportBranchChange: @escaping () -> Void = {}
     ) {
         self.session = session
         self.worktree = worktree
         self.keepsCommitGraphCurrent = keepsCommitGraphCurrent
         self.reportUncommittedFiles = reportUncommittedFiles
+        self.reportBranchChange = reportBranchChange
         selectedCommit = SelectedCommit(session: session)
         selectedChanges = SelectedChanges(session: session, worktree: worktree, selectedFile: selectedCommit.selectedFile)
         refs = RefsModel(session: session, worktree: worktree)
@@ -210,10 +228,45 @@ final class RepositoryModel {
     /// Looks at the worktree again, because yaga became active and whatever
     /// the user was doing elsewhere may have changed it.
     func becameActive() {
+        lookAgain()
+    }
+
+    private func lookAgain() {
         refsChecks += 1
         check?.cancel()
         check = Task { await checkForChanges() }
     }
+
+    /// Checks out a badge's branch, unless a checkout is running already, and
+    /// shows what that changed. When another worktree has the branch checked
+    /// out, that's the one to look at, so it asks to show it instead.
+    func checkOut(_ badge: CommitRowContent.Badge, showWorktree: @escaping (String) -> Void) {
+        guard checkout == nil, let name = badge.refName else { return }
+        checkout = Task {
+            let note = Task {
+                guard (try? await Task.sleep(for: Self.slowCheckoutDelay)) != nil else { return }
+                slowCheckout = badge.title
+            }
+            do {
+                switch try await session.checkOut(ref: name, in: worktree) {
+                case .checkedOut:
+                    reportBranchChange()
+                    lookAgain()
+                case .inOtherWorktree(let folder):
+                    showWorktree(folder)
+                }
+            } catch {
+                checkoutFailure = CheckoutFailure(branch: badge.title, message: (error as? GitError)?.message ?? String(describing: error))
+            }
+            note.cancel()
+            slowCheckout = nil
+            checkout = nil
+        }
+    }
+
+    /// How long a checkout runs before the title row says so, so that a quick
+    /// one doesn't flicker there.
+    private static let slowCheckoutDelay = Duration.milliseconds(500)
 
     /// Updates the uncommitted files, and loads history again if a ref moved,
     /// such as after a commit. History has to change then too, because a row
@@ -403,7 +456,7 @@ final class RepositoryModel {
                 case .remoteBranch: .remoteBranch
                 case .tag, .other: .tag
                 }
-                return CommitRowContent.Badge(title: ref.shortName, kind: kind)
+                return CommitRowContent.Badge(title: ref.shortName, kind: kind, refName: ref.name)
             }
         }
         if history.refs.currentBranch == nil, let head = history.head {

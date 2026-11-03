@@ -165,6 +165,16 @@ public enum GitError: Error, Sendable, Hashable, CustomStringConvertible {
             return "\(command) has already exited."
         }
     }
+
+    /// What to tell someone who asked for the command: what git said, which
+    /// says what to do about it, or `description` if it said nothing.
+    public var message: String {
+        if case .failed(_, _, let errorOutput) = self {
+            let message = errorOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !message.isEmpty { return message }
+        }
+        return description
+    }
 }
 
 /// A git process that's been started for a command.

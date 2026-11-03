@@ -7,6 +7,8 @@ import SwiftUI
 /// One worktree: its history, and the commit and file selected in it.
 struct RepositoryView: View {
     let model: RepositoryModel
+    /// Shows one of the repository's worktrees in the window, by its folder.
+    let showWorktree: (String) -> Void
     @AppStorage("commitPanelHeight") private var commitPanelHeight = 340.0
     @AppStorage("commitPanelWidth") private var commitPanelWidth = 320.0
 
@@ -20,6 +22,14 @@ struct RepositoryView: View {
                 model.becameActive()
             }
             .focusedSceneValue(\.repository, model)
+            .alert(
+                "Can't Check Out \(model.checkoutFailure?.branch ?? "")",
+                isPresented: Binding { model.checkoutFailure != nil } set: { if !$0 { model.checkoutFailure = nil } },
+                presenting: model.checkoutFailure
+            ) { _ in
+            } message: { failure in
+                Text(failure.message)
+            }
     }
 
     @ViewBuilder private var content: some View {
@@ -36,7 +46,7 @@ struct RepositoryView: View {
             }
         case .ready:
             PanelSplit(lowerHeight: $commitPanelHeight) {
-                HistoryPanel(model: model)
+                HistoryPanel(model: model, showWorktree: showWorktree)
             } lower: {
                 PanelColumns(leadingWidth: $commitPanelWidth) {
                     if model.selectedChanges.isSelected {
@@ -82,13 +92,14 @@ private struct LoadingHistory: View {
 /// the right end.
 struct HistoryPanel: View {
     let model: RepositoryModel
+    let showWorktree: (String) -> Void
 
     var body: some View {
         Group {
             if let history = model.history, history.isComplete, history.rows.isEmpty, !model.hasWorkingTreeRow {
                 ContentUnavailableView("No Commits Yet", systemImage: "clock", description: Text("Commits appear here once there are some."))
             } else {
-                CommitList(model: model, version: model.historyVersion, selectedRow: model.selectedRow)
+                CommitList(model: model, version: model.historyVersion, selectedRow: model.selectedRow, showWorktree: showWorktree)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -103,6 +114,15 @@ struct HistoryCommands: ToolbarContent {
     @Bindable var model: RepositoryModel
 
     var body: some ToolbarContent {
+        if let branch = model.slowCheckout {
+            ToolbarItem {
+                Text("Checking out \(branch)…")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .sharedBackgroundVisibility(.hidden)
+        }
         if model.historyWasSlowToLoad, let explanation = model.slowHistoryExplanation {
             ToolbarItem {
                 Group {

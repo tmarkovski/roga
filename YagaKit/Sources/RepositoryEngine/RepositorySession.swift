@@ -7,8 +7,8 @@ import GitRunner
 ///
 /// For now a session lists worktrees and refs, reads history, the text of
 /// commits, the files they changed and their patches, reads what's uncommitted
-/// in a worktree, and keeps the commit-graph files up to date. Watching for changes
-/// comes later, as ARCHITECTURE.md describes.
+/// in a worktree, checks out branches, and keeps the commit-graph files up to
+/// date. Watching for changes comes later, as ARCHITECTURE.md describes.
 public actor RepositorySession {
     public nonisolated let location: RepositoryLocation
     public nonisolated let git: Git
@@ -144,6 +144,21 @@ public actor RepositorySession {
         case .worktree(let path, let group, let head):
             try await ChangesLoader.patch(of: file, in: group, head: head, directory: path, format: location.format, git: git)
         }
+    }
+
+    /// Puts a worktree on a branch, or on the local branch for a remote branch.
+    /// git refuses when the worktree's uncommitted changes would be overwritten,
+    /// and they stay as they were.
+    ///
+    /// Cancelling this stops git, which may be partway through writing files, so
+    /// it's best left to finish.
+    ///
+    /// - Parameters:
+    ///   - name: The full name of the branch or remote branch.
+    ///   - worktree: The worktree's folder.
+    /// - Throws: `GitError` when git refuses, which says why.
+    public nonisolated func checkOut(ref name: String, in worktree: String) async throws -> BranchCheckout {
+        try await BranchCheckout.run(ref: name, in: worktree, worktrees: try await worktrees(), git: git)
     }
 
     /// Writes what the repository's commit-graph files are missing, at low

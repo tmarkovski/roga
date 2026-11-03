@@ -46,6 +46,13 @@ final class CommitCellView: NSView {
         }
     }
 
+    /// The index of the badge the pointer is over, which has a border.
+    var hoveredBadge: Int? {
+        didSet {
+            if hoveredBadge != oldValue { needsDisplay = true }
+        }
+    }
+
     init() {
         super.init(frame: .zero)
         identifier = Self.identifier
@@ -59,43 +66,20 @@ final class CommitCellView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard let content else { return }
-        let inset: CGFloat = 14
-        let gap: CGFloat = 10
-        var left = inset
-        var right = bounds.width - inset
-
-        // The graph starts so that its first column lines up with the text
-        // in rows without one.
-        if graphColumns > 0 {
-            let graphX = inset - LaneRenderer.spacing / 2
-            if let lanes = content.lanes {
-                LaneRenderer.draw(lanes, columns: graphColumns, at: graphX, height: bounds.height, isHollow: content.isWorkingTree)
-            }
-            left = graphX + LaneRenderer.width(columns: graphColumns) + 6
+        let layout = CommitRowLayout(content: content, graphColumns: graphColumns, size: bounds.size)
+        if graphColumns > 0, let lanes = content.lanes {
+            LaneRenderer.draw(lanes, columns: graphColumns, at: CommitRowLayout.graphX, height: bounds.height, isHollow: content.isWorkingTree)
         }
-
-        // The columns on the right give way, starting from the author, when
-        // the row is too narrow for them and some of the subject.
-        let columns: [(text: String?, width: CGFloat, style: Style)] = [
-            (content.shortID, 72, Style.shortID),
-            (content.date, 112, Style.detail),
-            (content.author, 130, Style.detail),
-        ]
-        for column in columns {
-            guard right - column.width - gap >= left + 120 else { break }
-            right -= column.width
+        for column in layout.columns {
             if let text = column.text {
-                draw(text, at: right, width: column.width, style: column.style)
+                draw(text, at: column.x, width: column.width, style: column.style)
             }
-            right -= gap
         }
-
-        for badge in content.badges {
-            guard right - left > 40 else { break }
-            left = drawBadge(badge, at: left, maxX: right) + 5
+        for (index, frame) in layout.badges.enumerated() {
+            drawBadge(content.badges[index], in: frame, isHovered: index == hoveredBadge)
         }
-        if let subject = content.subject, right > left {
-            draw(subject, at: left, width: right - left, style: Style.subject)
+        if let subject = content.subject, layout.subjectMaxX > layout.subjectX {
+            draw(subject, at: layout.subjectX, width: layout.subjectMaxX - layout.subjectX, style: Style.subject)
         }
     }
 
@@ -104,33 +88,29 @@ final class CommitCellView: NSView {
         (text as NSString).draw(with: rect, options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], attributes: style.attributes)
     }
 
-    /// Draws a badge and returns where it ends.
-    private func drawBadge(_ badge: CommitRowContent.Badge, at x: CGFloat, maxX: CGFloat) -> CGFloat {
+    private func drawBadge(_ badge: CommitRowContent.Badge, in rect: NSRect, isHovered: Bool) {
         let color = Self.color(for: badge.kind)
         let style = Style.badge(color)
-        let icon = Self.icon(for: badge.kind, color: color)
-        let padding: CGFloat = 6
-        let iconWidth = icon.map { $0.size.width + 3 } ?? 0
-        let titleWidth = ceil((badge.title as NSString).size(withAttributes: style.attributes).width)
-        let width = min(padding + iconWidth + titleWidth + padding, maxX - x)
-        let badgeHeight: CGFloat = 18
-        let rect = NSRect(x: x, y: ((bounds.height - badgeHeight) / 2).rounded(), width: width, height: badgeHeight)
+        let padding = CommitRowLayout.badgePadding
 
         color.withAlphaComponent(0.14).setFill()
         NSBezierPath(roundedRect: rect, xRadius: 5, yRadius: 5).fill()
+        if isHovered {
+            color.withAlphaComponent(0.75).setStroke()
+            NSBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), xRadius: 4.5, yRadius: 4.5).stroke()
+        }
         var textX = rect.minX + padding
-        if let icon {
+        if let icon = Self.icon(for: badge.kind) {
             let iconRect = NSRect(
                 x: textX, y: rect.midY - icon.size.height / 2, width: icon.size.width, height: icon.size.height
             )
             icon.draw(in: iconRect.integral, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
-            textX += iconWidth
+            textX += icon.size.width + CommitRowLayout.badgeIconGap
         }
         draw(badge.title, at: textX, width: max(0, rect.maxX - padding - textX), style: style)
-        return rect.maxX
     }
 
-    private static func color(for kind: CommitRowContent.Badge.Kind) -> NSColor {
+    fileprivate static func color(for kind: CommitRowContent.Badge.Kind) -> NSColor {
         switch kind {
         case .currentBranch, .detachedHead: .systemGreen
         case .branch: .systemBlue
@@ -139,7 +119,7 @@ final class CommitCellView: NSView {
         }
     }
 
-    private static func icon(for kind: CommitRowContent.Badge.Kind, color: NSColor) -> NSImage? {
+    fileprivate static func icon(for kind: CommitRowContent.Badge.Kind) -> NSImage? {
         let symbol: (name: String, size: CGFloat, weight: NSFont.Weight)
         switch kind {
         case .currentBranch: symbol = ("checkmark", 8, .bold)
@@ -147,7 +127,7 @@ final class CommitCellView: NSView {
         case .detachedHead, .branch, .remoteBranch: return nil
         }
         let configuration = NSImage.SymbolConfiguration(pointSize: symbol.size, weight: symbol.weight)
-            .applying(NSImage.SymbolConfiguration(paletteColors: [color]))
+            .applying(NSImage.SymbolConfiguration(paletteColors: [color(for: kind)]))
         return NSImage(systemSymbolName: symbol.name, accessibilityDescription: nil)?.withSymbolConfiguration(configuration)
     }
 
@@ -176,5 +156,72 @@ final class CommitCellView: NSView {
         static func badge(_ color: NSColor) -> Style {
             Style(font: .systemFont(ofSize: 11, weight: .medium), color: color)
         }
+    }
+}
+
+/// Where the parts of a row go, which drawing it and finding what the pointer
+/// is over both need.
+struct CommitRowLayout {
+    struct Column {
+        var text: String?
+        var x: CGFloat
+        var width: CGFloat
+        var style: CommitCellView.Style
+    }
+
+    static let graphX = inset - LaneRenderer.spacing / 2
+    static let badgePadding: CGFloat = 6
+    static let badgeIconGap: CGFloat = 3
+    private static let inset: CGFloat = 14
+    private static let gap: CGFloat = 10
+
+    /// The columns on the right that fit.
+    private(set) var columns: [Column] = []
+    /// Where each badge goes, for as many of a row's badges as fit.
+    private(set) var badges: [NSRect] = []
+    private(set) var subjectX: CGFloat
+    private(set) var subjectMaxX: CGFloat
+
+    init(content: CommitRowContent, graphColumns: Int, size: NSSize) {
+        var left = Self.inset
+        var right = size.width - Self.inset
+
+        // The graph starts so that its first column lines up with the text
+        // in rows without one.
+        if graphColumns > 0 {
+            left = Self.graphX + LaneRenderer.width(columns: graphColumns) + 6
+        }
+
+        // The columns on the right give way, starting from the author, when
+        // the row is too narrow for them and some of the subject.
+        let columns: [(text: String?, width: CGFloat, style: CommitCellView.Style)] = [
+            (content.shortID, 72, CommitCellView.Style.shortID),
+            (content.date, 112, CommitCellView.Style.detail),
+            (content.author, 130, CommitCellView.Style.detail),
+        ]
+        for column in columns {
+            guard right - column.width - Self.gap >= left + 120 else { break }
+            right -= column.width
+            self.columns.append(Column(text: column.text, x: right, width: column.width, style: column.style))
+            right -= Self.gap
+        }
+
+        for badge in content.badges {
+            guard right - left > 40 else { break }
+            let width = min(Self.badgeWidth(badge), right - left)
+            let height: CGFloat = 18
+            let frame = NSRect(x: left, y: ((size.height - height) / 2).rounded(), width: width, height: height)
+            badges.append(frame)
+            left = frame.maxX + 5
+        }
+        subjectX = left
+        subjectMaxX = right
+    }
+
+    private static func badgeWidth(_ badge: CommitRowContent.Badge) -> CGFloat {
+        let style = CommitCellView.Style.badge(CommitCellView.color(for: badge.kind))
+        let iconWidth = CommitCellView.icon(for: badge.kind).map { $0.size.width + badgeIconGap } ?? 0
+        let titleWidth = ceil((badge.title as NSString).size(withAttributes: style.attributes).width)
+        return badgePadding + iconWidth + titleWidth + badgePadding
     }
 }

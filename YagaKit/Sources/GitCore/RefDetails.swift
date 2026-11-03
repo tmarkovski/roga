@@ -97,11 +97,21 @@ public struct RemoteDetails: Sendable, Hashable {
         for (name, _) in addresses { remotes[name]?.name = name }
         for var branch in branches {
             let full = branch.shortName
-            let remote = longestFirst.first { full.hasPrefix($0 + "/") } ?? String(full.prefix { $0 != "/" })
+            let remote = remoteName(of: full, amongLongestFirst: longestFirst)
             branch.shortName = String(full.dropFirst(remote.count + 1))
             remotes[remote, default: RemoteDetails(name: remote)].branches.append(branch)
         }
         return remotes.values.sorted { $0.name < $1.name }
+    }
+
+    /// Which remote a remote branch such as `origin/main` belongs to. A remote's
+    /// name can have slashes in it, so the longest one that fits wins. Without
+    /// a configured one, it's the part before the first slash, as git assumes.
+    ///
+    /// - Parameter names: The configured remotes, from the longest name to the
+    ///   shortest.
+    public static func remoteName(of branch: String, amongLongestFirst names: [String]) -> String {
+        names.first { branch.hasPrefix($0 + "/") } ?? String(branch.prefix { $0 != "/" })
     }
 }
 
