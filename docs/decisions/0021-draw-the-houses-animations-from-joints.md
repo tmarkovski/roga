@@ -31,6 +31,8 @@ We considered these ways of building it:
 
 **One setting changes the speed of all of them.** It multiplies their speed, from 0.25× to 3×. All four run above its slider in Settings, so the change shows while the slider moves, and changing it carries on from the same pose rather than jumping to another.
 
+**The house plays at least once.** When git succeeds sooner than one cycle at the speed in Settings, the action stays in the title row until the cycle is over, and only then does **✓ Pushed 1** show. Git's work is already done by then, so a local push can look slower than it was: 1.25 seconds at normal speed. A refusal or a conflict doesn't wait, because its alert has more to say than the house.
+
 **A window shows them up close.** Window > House Animations draws each one large on a moving floor, with its joints if you want them, and at 18, 22 and 28 points. It has its own pause, speed and frame slider. Its speed starts from the setting but doesn't change it, so slowing something down to look at it leaves the app alone.
 
 **Someone who asks for less motion sees one still pose**, chosen so that it still shows which way the house is working.

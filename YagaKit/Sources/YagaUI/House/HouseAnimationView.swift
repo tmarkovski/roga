@@ -1,11 +1,13 @@
+import AppKit
 import SwiftUI
 
 extension UserDefaults {
     static let houseAnimationSpeedKey = "houseAnimationSpeed"
 
-    /// How fast the house moves, as a multiple of normal speed.
+    /// How fast the house moves, as a multiple of normal speed. This reads the
+    /// value the way `@AppStorage` does, so that the two can't disagree.
     var houseAnimationSpeed: Double {
-        object(forKey: Self.houseAnimationSpeedKey) as? Double ?? 1
+        object(forKey: Self.houseAnimationSpeedKey) == nil ? 1 : double(forKey: Self.houseAnimationSpeedKey)
     }
 }
 
@@ -18,6 +20,14 @@ extension BranchModel.Action {
         case .pulling: .heave
         case .fetching, .undoingPull: .waddle
         }
+    }
+
+    /// How long the house takes to play once at the speed in Settings. Someone
+    /// who asked for less motion sees a still pose, so there's nothing to wait
+    /// for.
+    var timeToPlayHouse: Duration {
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return .zero }
+        return houseAnimation.timeToPlay(atSpeed: HouseAnimationView.clamped(UserDefaults.standard.houseAnimationSpeed))
     }
 }
 

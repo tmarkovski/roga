@@ -208,6 +208,24 @@ struct HouseAnimationTests {
         #expect(BranchModel.Action.undoingPull.houseAnimation == .waddle)
     }
 
+    @Test func playingOnceTakesOneCycleAtTheSpeed() {
+        #expect(HouseAnimation.heave.timeToPlay(atSpeed: 1) == .seconds(1.5))
+        #expect(HouseAnimation.heave.timeToPlay(atSpeed: 3) == .seconds(0.5))
+        #expect(HouseAnimation.push.timeToPlay(atSpeed: 0.5) == .seconds(2.5))
+    }
+
+    @Test func theSpeedIsNormalUntilSomeoneSetsIt() throws {
+        let name = "HouseAnimationTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        #expect(defaults.houseAnimationSpeed == 1)
+        defaults.set(2.5, forKey: UserDefaults.houseAnimationSpeedKey)
+        #expect(defaults.houseAnimationSpeed == 2.5)
+        // What @AppStorage would read as 3.
+        defaults.set("3", forKey: UserDefaults.houseAnimationSpeedKey)
+        #expect(defaults.houseAnimationSpeed == 3)
+    }
+
     @Test func aStoredSpeedStaysWithinWhatSettingsOffers() {
         #expect(HouseAnimationView.clamped(2) == 2)
         #expect(HouseAnimationView.clamped(0) == HouseAnimationView.speeds.lowerBound)

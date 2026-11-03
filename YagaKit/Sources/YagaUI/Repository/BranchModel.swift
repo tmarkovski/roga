@@ -102,6 +102,9 @@ final class BranchModel {
     @ObservationIgnored var lookAgain: () -> Void = {}
     /// Asks history to tint these commits, or none.
     @ObservationIgnored var showPreview: ([ObjectID]) -> Void = { _ in }
+    /// How long the house takes to play once for an action, which is how long
+    /// the action stays in the title row when git finishes sooner.
+    @ObservationIgnored var timeToPlayHouse: (Action) -> Duration = { $0.timeToPlayHouse }
     @ObservationIgnored private(set) var running: Task<Void, Never>?
     @ObservationIgnored private(set) var quietFetch: Task<Void, Never>?
     @ObservationIgnored private(set) var previewing: Task<Void, Never>?
@@ -283,9 +286,15 @@ final class BranchModel {
         preview(nil)
         self.action = action
         finished = nil
+        let started = ContinuousClock.now
         running = Task {
             do {
-                if let message = try await work() { show(finished: message) }
+                if let message = try await work() {
+                    // A quick git shouldn't cut the house off partway through.
+                    // Bad news doesn't wait for it.
+                    try? await Task.sleep(until: started + timeToPlayHouse(action), clock: .continuous)
+                    show(finished: message)
+                }
             } catch {
                 failure = Failure(title: title, message: (error as? GitError)?.message ?? String(describing: error))
                 if fetchesAfterFailing, fetchesByItself(), let remote = status?.remote {

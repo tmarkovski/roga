@@ -44,7 +44,10 @@ struct BranchModelTests {
     }
 
     func model(_ clones: Clones, fetches: Bool = true) -> RepositoryModel {
-        RepositoryModel(session: clones.session, worktree: clones.work, fetchesByItself: { fetches })
+        let model = RepositoryModel(session: clones.session, worktree: clones.work, fetchesByItself: { fetches })
+        // Most tests have no reason to wait for the house.
+        model.branch.timeToPlayHouse = { _ in .zero }
+        return model
     }
 
     @discardableResult
@@ -186,6 +189,57 @@ struct BranchModelTests {
         #expect(model.branch.conflict == nil)
         #expect(model.branch.failure?.title == "Can't Pull main")
         #expect(model.branch.failure?.message.isEmpty == false)
+    }
+
+    // MARK: Letting the house play
+
+    @Test func aQuickPullWaitsForTheHouseToPlayOnce() async throws {
+        let clones = try await clones()
+        try await pushFromOther(clones)
+        let model = model(clones)
+        await model.appear()
+        try await git("fetch", "--quiet", in: clones.work)
+        await model.branch.refresh()
+        model.branch.timeToPlayHouse = { action in
+            #expect(action == .pulling)
+            return .milliseconds(700)
+        }
+
+        let started = ContinuousClock.now
+        model.branch.pull()
+        #expect(model.branch.action == .pulling)
+        await model.branch.running?.value
+        #expect(ContinuousClock.now - started >= .milliseconds(700))
+        #expect(model.branch.action == nil)
+        #expect(model.branch.finished == "Pulled 1")
+    }
+
+    /// These would wait for ten minutes if they waited at all, and the suite's
+    /// time limit would fail them.
+    @Test func aRefusalDoesntWaitForTheHouse() async throws {
+        let clones = try await clones()
+        try await pushFromOther(clones)
+        try await commit("Mine", in: clones.work)
+        let model = model(clones)
+        await model.appear()
+        model.branch.timeToPlayHouse = { _ in .seconds(600) }
+        model.branch.pull(.fastForward)
+        await model.branch.running?.value
+        #expect(model.branch.failure != nil)
+        #expect(model.branch.action == nil)
+    }
+
+    @Test func aConflictDoesntWaitForTheHouse() async throws {
+        let clones = try await clones()
+        try await pushFromOther(clones, file: "conflict.txt", text: "theirs\n")
+        try await commit("Mine", in: clones.work, file: "conflict.txt", text: "mine\n")
+        let model = model(clones)
+        await model.appear()
+        model.branch.timeToPlayHouse = { _ in .seconds(600) }
+        model.branch.pull(.merge)
+        await model.branch.running?.value
+        #expect(model.branch.conflict != nil)
+        #expect(model.branch.action == nil)
     }
 
     // MARK: Pushing

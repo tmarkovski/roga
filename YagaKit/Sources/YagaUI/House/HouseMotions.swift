@@ -50,6 +50,11 @@ nonisolated enum HouseAnimation: CaseIterable, Identifiable, Sendable {
         case .waddle: WaddleMotion()
         }
     }
+
+    /// How long one cycle takes at this multiple of normal speed.
+    func timeToPlay(atSpeed speed: Double) -> Duration {
+        .seconds(motion.duration / speed)
+    }
 }
 
 /// Walking on the spot with the feet taking turns. Each foot slides along the
