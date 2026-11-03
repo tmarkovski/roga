@@ -24,3 +24,5 @@ Records aren't rewritten when a decision changes. Instead, a new record explains
 | [16](0016-a-rail-of-organizations-in-the-sidebar.md) | Pick repositories by organization with a rail in the sidebar | Folding of worktrees changed by [17](0017-a-line-and-a-row-for-a-repositorys-worktrees.md), and where an owner comes from by [18](0018-every-remote-counts-toward-a-repositorys-organization.md) |
 | [17](0017-a-line-and-a-row-for-a-repositorys-worktrees.md) | Show a repository's worktrees with a line, and collapse them into one row | Accepted |
 | [18](0018-every-remote-counts-toward-a-repositorys-organization.md) | Count every remote toward a repository's organization | Accepted |
+| [19](0019-pull-and-push-from-the-branch-in-the-title-row.md) | Pull and push from the branch in the title row | Accepted, for release 2 |
+| [20](0020-fetch-when-yaga-becomes-active.md) | Fetch by itself when yaga becomes active | Accepted, for release 2 |
