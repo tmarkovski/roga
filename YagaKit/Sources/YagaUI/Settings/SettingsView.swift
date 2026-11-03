@@ -34,6 +34,7 @@ public struct SettingsView: View {
                 Text("Fetch when yaga becomes active")
                 Text("yaga runs git fetch for the repository on screen, at most once a minute, so that it can say how far your branch is from its upstream. It only moves remote branches, and it never asks for credentials.")
             }
+            HouseAnimationSettings()
         }
         .formStyle(.grouped)
         .frame(width: 460)

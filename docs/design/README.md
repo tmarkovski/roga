@@ -32,3 +32,13 @@ All SVGs use editable paths and transparent backgrounds. Lettering is outlined a
 The current colors are orange `#D54802` and dark ink `#16150E`. Monochrome files use `currentColor`, which defaults to black. Set CSS `color` when embedding them inline, or change the fill in the file when using them through an image element.
 
 The SVGs in `branding/` are the saved designs for this exploration. Earlier generated concept boards and working scripts remain in the ignored `output/` directory and are not required to use these assets.
+
+## Animating the house — November 3, 2026
+
+The mark is one path, so it can't move its legs. For animating, the house is split into a body and two legs ([decision 21](../decisions/0021-draw-the-houses-animations-from-joints.md)).
+
+[`branding/yaga-house-body.svg`](branding/yaga-house-body.svg) is the body: the mark's own outline with the legs cut off, closed across the two places where they join it, in the same coordinates as the mark. `HouseOutline.swift` holds the same path. If the mark's house changes, both have to be cut again.
+
+The legs aren't artwork. The app draws each one from joints, which are a hip, a knee, a hock, an ankle and three toes, as lines with round ends. `HousePose.mark` places those joints in the stride the mark is drawn in, closely enough that it reads as the logo, but it isn't a trace.
+
+To add an animation, write a `HouseMotion` in `YagaKit/Sources/YagaUI/House/` that returns a pose for any moment, and add a case for it to `HouseAnimation`. It then appears in Settings and in Window > House Animations with the others, and the tests check that it loops without jumping and fits inside the frame. That window shows each animation large, with its joints, at its real sizes, and with its own pause, speed and frame slider.

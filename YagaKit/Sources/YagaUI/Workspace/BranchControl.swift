@@ -132,7 +132,8 @@ private struct BranchCounts: View {
         HStack(spacing: 2) {
             if let action = branch.action {
                 HStack(spacing: 5) {
-                    WalkingHouse()
+                    HouseAnimationView(animation: action.houseAnimation)
+                        .id(action.houseAnimation)
                     Text(action.title)
                         .foregroundStyle(.secondary)
                 }

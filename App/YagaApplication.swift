@@ -44,5 +44,13 @@ struct YagaApplication: App {
         Settings {
             SettingsView()
         }
+        // For looking at the house's animations up close. It's listed in the
+        // Window menu.
+        Window("House Animations", id: "house-animations") {
+            HouseAnimationDemo()
+        }
+        .defaultSize(width: 1000, height: 720)
+        .defaultLaunchBehavior(.suppressed)
+        .restorationBehavior(.disabled)
     }
 }

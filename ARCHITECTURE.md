@@ -94,6 +94,7 @@ yaga/
 │   │   ├── YagaUI/                     SwiftUI
 │   │   │   ├── Workspace/              windows, finding git, the sidebar and the saved list of repositories
 │   │   │   ├── Repository/             the repository model, panels, the refs panel, commit details
+│   │   │   ├── House/                  the house's joints, its animations and drawing them (decision 21)
 │   │   │   ├── Commands/               menus and keyboard shortcuts
 │   │   │   ├── Settings/
 │   │   │   └── Onboarding/             missing or outdated git
