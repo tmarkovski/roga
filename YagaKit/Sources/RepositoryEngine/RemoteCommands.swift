@@ -14,7 +14,7 @@ enum RemoteCommands {
             "fetch", "--no-write-fetch-head", "--no-auto-maintenance", "--no-recurse-submodules", remote,
             in: directory
         )
-        command.runsAtLowPriority = true
+        command.priority = .utility
         command.environment["GIT_ASKPASS"] = "/usr/bin/true"
         command.environment["SSH_ASKPASS_REQUIRE"] = "never"
         command.environment["GCM_INTERACTIVE"] = "never"

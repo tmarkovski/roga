@@ -50,7 +50,7 @@ struct WorktreeDeletionModelTests {
         await list.connect(git: try await TestGit.make())
         _ = try await list.add(folder: work)
         let repository = try #require(list.repositories.first)
-        await list.refresh(repositoryAt: repository.path)
+        await list.refresh()
         return Setup(folder: folder, remote: remote, work: work, linked: linked, list: list, repository: repository)
     }
 
@@ -68,17 +68,17 @@ struct WorktreeDeletionModelTests {
         let setup = try await setup()
         #expect(setup.repository.remoteBranches["refs/heads/topic"] == nil)
         try await runGit("push", "--quiet", "--set-upstream", "origin", "topic", in: setup.linked)
-        await setup.list.refresh(repositoryAt: setup.repository.path)
+        await setup.list.refresh()
         #expect(setup.repository.remoteBranches["refs/heads/topic"] == "refs/remotes/origin/topic")
         try await runGit("update-ref", "-d", "refs/remotes/origin/topic", in: setup.work)
-        await setup.list.refresh(repositoryAt: setup.repository.path)
+        await setup.list.refresh()
         #expect(setup.repository.remoteBranches["refs/heads/topic"] == nil)
     }
 
     @Test func aRepositoryWithoutLinkedWorktreesReadsNoRemoteBranches() async throws {
         let setup = try await setup()
         try await runGit("worktree", "remove", setup.linked, in: setup.work)
-        await setup.list.refresh(repositoryAt: setup.repository.path)
+        await setup.list.refresh()
         #expect(setup.repository.remoteBranches.isEmpty)
     }
 
@@ -198,7 +198,7 @@ struct WorktreeDeletionModelTests {
     @Test func saysWhatsLeftWhenTheBranchCantBeDeleted() async throws {
         let setup = try await setup(pushed: true)
         try await runGit("worktree", "add", "--quiet", "--force", setup.folder + "/second", "topic", in: setup.work)
-        await setup.list.refresh(repositoryAt: setup.repository.path)
+        await setup.list.refresh()
         try await setup.ask(.everything)
         await setup.confirm()
         let failure = try #require(setup.model.failure)
@@ -284,7 +284,7 @@ struct WorktreeDeletionModelTests {
         let setup = try await setup()
         try await runGit("switch", "--quiet", "--detach", in: setup.linked)
         try await commit("Detached", in: setup.linked)
-        await setup.list.refresh(repositoryAt: setup.repository.path)
+        await setup.list.refresh()
         try await setup.ask(.worktree)
         let pending = try #require(setup.model.pending)
         #expect(pending.title == "Delete the Worktree linked?")

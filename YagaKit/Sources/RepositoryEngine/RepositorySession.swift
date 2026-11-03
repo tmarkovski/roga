@@ -19,6 +19,8 @@ public actor RepositorySession {
     /// The running fetch. There's only ever one, because every worktree shares
     /// the repository's remote branches.
     private var runningFetch: Task<(any Error)?, Never>?
+    /// Whether yaga started the running fetch by itself, so nobody needs it.
+    private var runningFetchIsQuiet = false
     /// When the last quiet fetch started.
     private var lastQuietFetch: ContinuousClock.Instant?
     /// What became of the last fetch.
@@ -35,7 +37,13 @@ public actor RepositorySession {
 
     /// Finds the repository that `path` is in and starts a session for it.
     public static func open(containing path: String, git: Git) async throws -> RepositorySession {
-        try RepositorySession(location: try await RepositoryLocation.find(containing: path, git: git), git: git)
+        try await start(location: try await RepositoryLocation.find(containing: path, git: git), git: git)
+    }
+
+    /// Starts a session away from the caller's actor, because that starts git.
+    @concurrent
+    public static func start(location: RepositoryLocation, git: Git) async throws -> RepositorySession {
+        try RepositorySession(location: location, git: git)
     }
 
     /// Loads history in `sort` order. The stream yields the history once its
@@ -57,6 +65,7 @@ public actor RepositorySession {
     ///
     /// - Parameter worktree: The worktree's folder, or nil for the one the
     ///   session was opened from.
+    @concurrent
     public nonisolated func refs(in worktree: String? = nil) async throws -> RefList {
         try await RefsLoader.load(git: git, in: worktree ?? location.directory)
     }
@@ -66,6 +75,7 @@ public actor RepositorySession {
     ///
     /// - Parameter worktree: The folder of the worktree whose current branch
     ///   to read.
+    @concurrent
     public nonisolated func refDetails(in worktree: String) async throws -> RefDetails {
         var details = try await RefDetailsLoader.load(git: git, in: worktree, worktrees: try await worktrees())
         // Reading them in pieces leaves room for the commit list to read the
@@ -83,6 +93,7 @@ public actor RepositorySession {
 
     /// Lists the main worktree first, then the linked ones in the order of
     /// their names.
+    @concurrent
     public nonisolated func worktrees() async throws -> [Worktree] {
         let command = GitCommand(WorktreeListParser.arguments, in: location.commonDirectory)
         do {
@@ -167,6 +178,7 @@ public actor RepositorySession {
     ///   - name: The full name of the branch or remote branch.
     ///   - worktree: The worktree's folder.
     /// - Throws: `GitError` when git refuses, which says why.
+    @concurrent
     public nonisolated func checkOut(ref name: String, in worktree: String) async throws -> BranchCheckout {
         try await BranchCheckout.run(ref: name, in: worktree, worktrees: try await worktrees(), git: git)
     }
@@ -184,6 +196,7 @@ public actor RepositorySession {
     ///   - tip: The full name of a ref, or `HEAD`.
     ///   - limit: The most to list.
     ///   - worktree: The worktree whose `HEAD` to use.
+    @concurrent
     public nonisolated func commits(from base: String, to tip: String, limit: Int, in worktree: String) async throws -> [ObjectID] {
         let command = GitCommand("rev-list", "--max-count=\(limit)", "\(base)..\(tip)", "--", in: worktree)
         return try await git.text(command).split(separator: "\n").compactMap { ObjectID(hex: String($0)) }
@@ -210,7 +223,7 @@ public actor RepositorySession {
         lastQuietFetch = .now
         let git = git
         let command = RemoteCommands.quietFetch(from: remote, in: location.commonDirectory)
-        await runFetch { () async throws(any Error) in
+        await runFetch(isQuiet: true) { () async throws(any Error) in
             try await withThrowingTaskGroup { group in
                 group.addTask { _ = try await git.run(command) }
                 group.addTask {
@@ -228,19 +241,33 @@ public actor RepositorySession {
     ///
     /// - Throws: `GitError` when git can't fetch, which says why.
     public func fetch(from remote: String, in worktree: String) async throws {
-        _ = await runningFetch?.value
+        await clearTheWayForSomeone()
         let git = git
         let command = RemoteCommands.asked(["fetch", remote], in: worktree)
         lastQuietFetch = .now
-        if let error = await runFetch({ () async throws(any Error) in _ = try await git.run(command) }) {
+        if let error = await runFetch(isQuiet: false, { () async throws(any Error) in _ = try await git.run(command) }) {
             throw error
         }
+    }
+
+    /// Clears the way for something someone asked for, which can't run alongside
+    /// a fetch. A fetch that yaga started by itself is stopped, since nobody is
+    /// waiting for it and it may be on a slow connection, and it can run again as
+    /// soon as yaga next has a reason to fetch. One that someone asked for runs to
+    /// its end.
+    private func clearTheWayForSomeone() async {
+        guard let runningFetch else { return }
+        if runningFetchIsQuiet {
+            runningFetch.cancel()
+            lastQuietFetch = nil
+        }
+        _ = await runningFetch.value
     }
 
     /// Runs a fetch as the running one, records what became of it, and returns
     /// the error if it failed.
     @discardableResult
-    private func runFetch(_ fetch: sending @escaping () async throws(any Error) -> Void) async -> (any Error)? {
+    private func runFetch(isQuiet: Bool, _ fetch: sending @escaping () async throws(any Error) -> Void) async -> (any Error)? {
         let task = Task(priority: .utility) { () -> (any Error)? in
             do {
                 try await fetch()
@@ -250,13 +277,16 @@ public actor RepositorySession {
             }
         }
         runningFetch = task
+        runningFetchIsQuiet = isQuiet
         let failure = await task.value
         runningFetch = nil
+        runningFetchIsQuiet = false
         switch failure {
         case nil:
             fetchRecord = FetchRecord(lastFetched: Date())
         case is CancellationError:
-            // The session is closing, so nobody will read the record.
+            // The session is closing, or a quiet fetch made way for something
+            // someone asked for. Neither says anything about the remote.
             break
         case let failure?:
             fetchRecord = FetchRecord(lastFetched: lastFetch().lastFetched, failure: (failure as? GitError)?.message ?? String(describing: failure))
@@ -272,20 +302,20 @@ public actor RepositorySession {
         return FetchRecord(lastFetched: attributes?[.modificationDate] as? Date)
     }
 
-    /// Pulls a worktree's branch, once any fetch that's running has finished.
+    /// Pulls a worktree's branch, once any fetch that's running has stopped.
     /// Like a checkout, this is best left to finish.
     ///
     /// - Throws: `GitError` when git refuses or hits a conflict, which says why.
     public func pull(_ pull: Pull, in worktree: String) async throws {
-        _ = await runningFetch?.value
+        await clearTheWayForSomeone()
         _ = try await Self.run(pull.arguments, in: worktree, git: git)
     }
 
-    /// Pushes a worktree's branch, once any fetch that's running has finished.
+    /// Pushes a worktree's branch, once any fetch that's running has stopped.
     ///
     /// - Throws: `GitError` when git refuses, which says why.
     public func push(_ push: Push, in worktree: String) async throws {
-        _ = await runningFetch?.value
+        await clearTheWayForSomeone()
         _ = try await Self.run(push.arguments, in: worktree, git: git)
     }
 
@@ -295,21 +325,23 @@ public actor RepositorySession {
     ///   - name: The full name of the branch or remote branch.
     ///   - limit: The most commits to list of those it would lose.
     ///   - worktree: The worktree's folder.
+    @concurrent
     public nonisolated func prepareToDelete(ref name: String, limit: Int, in worktree: String) async throws -> BranchDeletion {
         try await BranchDeletion.prepare(ref: name, limit: limit, in: worktree, worktrees: try await worktrees(), git: git)
     }
 
-    /// Deletes a branch. Deleting one from a remote waits for any fetch that's
-    /// running to finish, because that fetch could bring the branch's copy back.
+    /// Deletes a branch. Deleting one from a remote first stops any fetch that's
+    /// running, because that fetch could bring the branch's copy back.
     ///
     /// - Throws: `GitError` when git refuses, which says why.
     public func delete(_ deletion: BranchDeletion, in worktree: String) async throws {
-        if case .remote = deletion.place { _ = await runningFetch?.value }
+        if case .remote = deletion.place { await clearTheWayForSomeone() }
         try await deletion.run(in: worktree, git: git)
     }
 
     /// Lists the remote branch each branch tracks, by their full names. It leaves
     /// out a remote branch this repository no longer has a copy of.
+    @concurrent
     public nonisolated func remoteBranches() async throws -> [String: String] {
         try await WorktreeDeletion.remoteBranches(in: location.commonDirectory, git: git)
     }
@@ -321,6 +353,7 @@ public actor RepositorySession {
     ///   - path: The worktree's folder.
     ///   - scope: How much goes with it.
     ///   - limit: The most commits and ignored files to list of those it would lose.
+    @concurrent
     public nonisolated func prepareToDelete(worktree path: String, scope: WorktreeDeletion.Scope, limit: Int) async throws -> WorktreeDeletion {
         try await WorktreeDeletion.prepare(worktree: path, scope: scope, limit: limit, in: location.commonDirectory, worktrees: try await worktrees(), git: git)
     }
@@ -329,13 +362,13 @@ public actor RepositorySession {
     /// A remote is shared, so it goes last: a worktree that git refuses to remove
     /// stops all of this before anyone else can see a change.
     ///
-    /// It first waits for any fetch that's running, which may be running in the
+    /// It first stops any fetch that's running, which may be running in the
     /// worktree's folder.
     ///
     /// - Throws: `GitError` when git refuses to remove the worktree, so nothing has
     ///   changed, or `WorktreeDeletion.Stopped` when it stopped after that.
     public func delete(_ deletion: WorktreeDeletion) async throws {
-        _ = await runningFetch?.value
+        await clearTheWayForSomeone()
         let directory = location.commonDirectory
         _ = try await Self.run(deletion.removeArguments, in: directory, git: git)
         do {
@@ -352,11 +385,13 @@ public actor RepositorySession {
     }
 
     /// Says whether a worktree is partway through a merge or a rebase.
+    @concurrent
     public nonisolated func stoppedPull(in worktree: String) async throws -> StoppedPull? {
         try await RemoteCommands.stoppedPull(in: worktree, git: git)
     }
 
     /// Goes back to before a pull that stopped partway.
+    @concurrent
     public nonisolated func undo(_ pull: StoppedPull, in worktree: String) async throws {
         _ = try await Self.run(pull.abortArguments, in: worktree, git: git)
     }
@@ -365,6 +400,7 @@ public actor RepositorySession {
     /// there or in a new worktree.
     ///
     /// - Throws: `GitError` when git refuses, which says why.
+    @concurrent
     public nonisolated func create(_ branch: NewBranch, in worktree: String) async throws {
         _ = try await Self.run(branch.arguments, in: worktree, git: git)
     }

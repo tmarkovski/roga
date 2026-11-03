@@ -54,6 +54,21 @@ struct RemoteCommandsTests {
         clones.log.entries.filter { $0.arguments.contains("fetch") }.count
     }
 
+    /// Starts a quiet fetch that won't finish by itself, because the remote takes
+    /// longer to answer than a test may run, and returns once git has started.
+    func startStuckQuietFetch(_ clones: Clones) async throws -> Task<FetchRecord, Never> {
+        let script = clones.folder + "/slow-upload-pack"
+        try "#!/bin/sh\nsleep 120\n".write(toFile: script, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: script)
+        try await runGit("config", "remote.origin.uploadpack", script, in: clones.work)
+        let session = clones.session
+        let fetch = Task { await session.fetchQuietly(from: "origin") }
+        while fetchCount(clones) == 0 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        return fetch
+    }
+
     // MARK: Where a branch stands
 
     @Test func readsWhatEachBranchTracks() async throws {
@@ -183,6 +198,31 @@ struct RemoteCommandsTests {
         let clones = try await clones()
         let record = await clones.session.fetchQuietly(from: "origin", timeLimit: .zero)
         #expect(record.failure == RepositoryError.fetchTookTooLong.description)
+    }
+
+    @Test func aPushStopsAQuietFetchRatherThanWaitingForIt() async throws {
+        let clones = try await clones()
+        let fetch = try await startStuckQuietFetch(clones)
+        try await commit("Mine", in: clones.work)
+
+        try await clones.session.push(.toUpstream, in: clones.work)
+
+        // Stopping it says nothing about the remote.
+        #expect(await fetch.value.failure == nil)
+        let local = try await head(of: clones)
+        #expect(try await runGit("rev-parse", "main", in: clones.remote) == local)
+    }
+
+    @Test func aStoppedQuietFetchDoesntCountTowardTheMinute() async throws {
+        let clones = try await clones()
+        let fetch = try await startStuckQuietFetch(clones)
+        try await commit("Mine", in: clones.work)
+        try await clones.session.push(.toUpstream, in: clones.work)
+        _ = await fetch.value
+
+        try await runGit("config", "--unset", "remote.origin.uploadpack", in: clones.work)
+        _ = await clones.session.fetchQuietly(from: "origin")
+        #expect(fetchCount(clones) == 2)
     }
 
     @Test func aFetchSomeoneAskedForThrows() async throws {

@@ -81,6 +81,15 @@ struct RepositoryModelTests {
     }
 
     /// Lets a checkout and what it starts finish.
+    /// Makes the model look at the worktree as it does when yaga becomes active,
+    /// and waits for that. A quiet fetch that finishes looks again, which replaces
+    /// the check that's running.
+    func becomeActive(_ model: RepositoryModel) async {
+        model.becameActive()
+        await model.branch.quietFetch?.value
+        await model.check?.value
+    }
+
     func finishCheckout(_ model: RepositoryModel) async {
         await model.checkout?.value
         await model.check?.value
@@ -224,8 +233,11 @@ struct RepositoryModelTests {
         try Data(text.utf8).write(to: URL(filePath: repository + "/" + path))
     }
 
-    /// Lets the panel's loads finish.
+    /// Lets the panel's loads finish. A quiet fetch that finishes looks again,
+    /// which reads the panel's files again.
     func settled(_ model: RepositoryModel) async {
+        await model.branch.quietFetch?.value
+        await model.check?.value
         await model.selectedChanges.loading?.value
         await model.selectedCommit.loading?.value
         await model.selectedFile.loading?.value
@@ -331,16 +343,14 @@ struct RepositoryModelTests {
         await settled(model)
 
         try write("new\n", to: "new.txt", in: repository)
-        model.becameActive()
-        await model.check?.value
+        await becomeActive(model)
         #expect(model.hasWorkingTreeRow)
         #expect(model.selectedRow == 3)
         #expect(model.selectedCommit.id == selected)
         #expect(selected == history.graph.id(at: history.rows[2]))
 
         try FileManager.default.removeItem(atPath: repository + "/new.txt")
-        model.becameActive()
-        await model.check?.value
+        await becomeActive(model)
         #expect(!model.hasWorkingTreeRow)
         #expect(model.selectedRow == 2)
         #expect(model.selectedCommit.id == selected)
@@ -354,8 +364,7 @@ struct RepositoryModelTests {
         await settled(model)
 
         try FileManager.default.removeItem(atPath: repository + "/new.txt")
-        model.becameActive()
-        await model.check?.value
+        await becomeActive(model)
         await settled(model)
         #expect(!model.hasWorkingTreeRow)
         #expect(model.selectedRow == nil)
@@ -418,8 +427,7 @@ struct RepositoryModelTests {
 
         // Reading the files again keeps the selected file, match or not.
         model.fileList.filter = "a-new"
-        model.becameActive()
-        await model.check?.value
+        await becomeActive(model)
         await settled(model)
         #expect(model.selectedFile.file?.path == "src/c-new.txt")
     }
@@ -445,15 +453,13 @@ struct RepositoryModelTests {
         await settled(model)
         guard case .patch(let first) = model.selectedFile.shown?.content else { throw TestError("No patch") }
 
-        model.becameActive()
-        await model.check?.value
+        await becomeActive(model)
         await settled(model)
         guard case .patch(let second) = model.selectedFile.shown?.content else { throw TestError("No patch") }
         #expect(second === first)
 
         try write("two\n", to: "new.txt", in: repository)
-        model.becameActive()
-        await model.check?.value
+        await becomeActive(model)
         await settled(model)
         guard case .patch(let third) = model.selectedFile.shown?.content else { throw TestError("No patch") }
         #expect(third !== first)
@@ -474,8 +480,7 @@ struct RepositoryModelTests {
         #expect(model.selectedFile.file?.path == "b-new.txt")
 
         try FileManager.default.removeItem(atPath: repository + "/b-new.txt")
-        model.becameActive()
-        await model.check?.value
+        await becomeActive(model)
         await settled(model)
         #expect(model.selectedFile.file?.path == "a-new.txt")
     }
@@ -494,13 +499,11 @@ struct RepositoryModelTests {
         let (model, repository) = try await modelOfACopy()
         await model.appear()
         let reloads = model.reloads
-        model.becameActive()
-        await model.check?.value
+        await becomeActive(model)
         #expect(model.reloads == reloads)
 
         try await runGit("commit", "--quiet", "--allow-empty", "--message=New", "--author=Ana <ana@example.com>", in: repository)
-        model.becameActive()
-        await model.check?.value
+        await becomeActive(model)
         #expect(model.reloads == reloads + 1)
         let count = try #require(model.history?.rows.count)
         await model.appear()

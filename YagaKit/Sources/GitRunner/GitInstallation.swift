@@ -55,6 +55,7 @@ public struct GitInstallation: Sendable, Hashable {
     ///
     /// - Parameter configuredPath: The git chosen in Settings, if any. When
     ///   it's set, yaga uses it or nothing.
+    @concurrent
     public static func locate(configuredPath: String? = nil) async throws(GitInstallationError) -> GitInstallation {
         let inherited = ProcessInfo.processInfo.environment
         let searchPath = await LoginShellPath.read() ?? inherited["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
