@@ -136,7 +136,9 @@ final class CommitCellView: NSView {
     }
 
     private func draw(_ text: String, at x: CGFloat, width: CGFloat, style: Style) {
-        let rect = NSRect(x: x, y: ((bounds.height - style.lineHeight) / 2).rounded(), width: width, height: style.lineHeight)
+        // Rounding down puts every font in the row on one baseline, level with the bottom
+        // of a badge's icons. Rounding to nearest put fonts with an odd line height 1 point lower.
+        let rect = NSRect(x: x, y: ((bounds.height - style.lineHeight) / 2).rounded(.down), width: width, height: style.lineHeight)
         (text as NSString).draw(with: rect, options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], attributes: style.attributes)
     }
 
