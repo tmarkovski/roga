@@ -24,15 +24,14 @@ struct SidebarLayoutTests {
         _ repositories: [ListedRepository],
         scope: SidebarScope = .all,
         selection: WorktreeSelection? = nil,
-        place: SidebarPlace = SidebarPlace(),
-        unfolded: Set<SidebarFold> = []
+        place: SidebarPlace = SidebarPlace()
     ) -> [String] {
-        SidebarLayout(groups: RepositoryGroups(repositories), scope: scope, selection: selection, place: place, unfolded: unfolded).items.map { item in
+        SidebarLayout(groups: RepositoryGroups(repositories), scope: scope, selection: selection, place: place).items.map { item in
             switch item {
             case .label(let title): "<\(title)>"
             case .repository(_, let title, let detail): title + (detail.map { " (\($0))" } ?? "")
-            case .worktree(_, let worktree): "  " + worktree.title
-            case .fold(_, let title, _): "~ " + title
+            case .worktree(_, let worktree, let isLast): (isLast ? "└ " : "│ ") + worktree.title
+            case .hiddenWorktrees(_, let title, let uncommittedFiles): "└ " + title + (uncommittedFiles > 0 ? " (\(uncommittedFiles))" : "")
             }
         }
     }
@@ -110,32 +109,34 @@ struct SidebarLayoutTests {
 
     // MARK: Worktrees
 
-    @Test func aCollapsedRepositoryHidesItsWorktrees() {
-        let rows = rows([repository("api", owner: "acme", linked: ["a", "b"]), repository("web", owner: "acme")], scope: .organization("acme"))
-        #expect(rows == ["api", "web"])
+    @Test func aRepositoryWithoutLinkedWorktreesHasNoRowsUnderIt() {
+        #expect(rows([repository("api", owner: "acme", isExpanded: true), repository("web", owner: "acme")], scope: .organization("acme")) == ["api", "web"])
+    }
+
+    @Test func aCollapsedRepositoryHasARowForItsWorktrees() {
+        let rows = rows([repository("api", owner: "acme", linked: ["a", "b"]), repository("web", owner: "acme", linked: ["c"])], scope: .organization("acme"))
+        #expect(rows == ["api", "└ 2 worktrees", "web", "└ 1 worktree"])
+    }
+
+    @Test func thatRowCountsTheUncommittedFilesItHides() {
+        let api = repository("api", owner: "acme", linked: ["a", "b"], uncommitted: ["api": 7, "a": 2, "b": 3])
+        #expect(rows([api, repository("web", owner: "acme")], scope: .organization("acme")) == ["api", "└ 2 worktrees (5)", "web"])
     }
 
     @Test func aCollapsedRepositoryStillShowsTheSelectedWorktree() {
-        let api = repository("api", owner: "acme", linked: ["a", "b"])
+        let api = repository("api", owner: "acme", linked: ["a", "b"], uncommitted: ["a": 2, "b": 3])
         let rows = rows([api, repository("web", owner: "acme")], scope: .organization("acme"), selection: select(api, "b"))
-        #expect(rows == ["api", "  b", "web"])
+        #expect(rows == ["api", "│ b", "└ 1 more worktree (2)", "web"])
     }
 
-    @Test func quietWorktreesFold() {
-        let api = repository("api", owner: "acme", linked: ["a", "b", "c", "d"], isExpanded: true, uncommitted: ["b": 3])
-        let rows = rows([api, repository("web", owner: "acme")], scope: .organization("acme"), selection: select(api, "d"))
-        #expect(rows == ["api", "  b", "  d", "~ 2 quiet worktrees", "web"])
+    @Test func theSelectedWorktreeEndsTheLineWhenItsTheOnlyOne() {
+        let api = repository("api", owner: "acme", linked: ["a"])
+        #expect(rows([api, repository("web", owner: "acme")], scope: .organization("acme"), selection: select(api, "a")) == ["api", "└ a", "web"])
     }
 
-    @Test func oneQuietWorktreeDoesntFold() {
-        let api = repository("api", owner: "acme", linked: ["a", "b"], isExpanded: true, uncommitted: ["b": 3])
-        #expect(rows([api, repository("web", owner: "acme")], scope: .organization("acme")) == ["api", "  a", "  b", "web"])
-    }
-
-    @Test func aFoldOpens() {
-        let api = repository("api", owner: "acme", linked: ["a", "b", "c"], isExpanded: true)
-        let rows = rows([api, repository("web", owner: "acme")], scope: .organization("acme"), unfolded: [.worktrees(api.path)])
-        #expect(rows == ["api", "  a", "  b", "  c", "~ Show fewer", "web"])
+    @Test func anExpandedRepositoryShowsEveryWorktree() {
+        let api = repository("api", owner: "acme", linked: ["a", "b", "c"], isExpanded: true, uncommitted: ["b": 3])
+        #expect(rows([api, repository("web", owner: "acme")], scope: .organization("acme")) == ["api", "│ a", "│ b", "└ c", "web"])
     }
 
     // MARK: All
@@ -157,7 +158,7 @@ struct SidebarLayoutTests {
             repository("web", owner: "acme"),
             repository("api", owner: "acme", linked: ["fix-login"], isExpanded: true),
         ])
-        #expect(rows == ["api", "  fix-login", "web"])
+        #expect(rows == ["api", "└ fix-login", "web"])
     }
 
     // MARK: Where a window is

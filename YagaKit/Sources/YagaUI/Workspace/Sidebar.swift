@@ -17,8 +17,6 @@ struct Sidebar: View {
     @Binding var place: SidebarPlace
     let showsRail: Bool
     let locate: (ListedRepository) -> Void
-    /// The folds opened in this window, which don't need to outlast it.
-    @State private var unfolded: Set<SidebarFold> = []
     @State private var isAddingRepositories = false
     @State private var adding = AddRepositoriesChoices()
     @FocusState private var isFocused: Bool
@@ -79,7 +77,7 @@ struct Sidebar: View {
     }
 
     private func rows(groups: RepositoryGroups) -> some View {
-        let layout = SidebarLayout(groups: groups, scope: scope, selection: selection, place: place, unfolded: unfolded)
+        let layout = SidebarLayout(groups: groups, scope: scope, selection: selection, place: place)
         let items = layout.items
         return ScrollViewReader { scroller in
             ScrollView {
@@ -124,18 +122,18 @@ struct Sidebar: View {
                 locate(repository)
             }
             .id(home)
-        case .worktree(let repository, let worktree):
+        case .worktree(let repository, let worktree, let isLast):
             let row = WorktreeSelection(repository: repository.path, worktree: worktree.path)
-            WorktreeRow(worktree: worktree, uncommittedFiles: repository.uncommittedFiles[worktree.path] ?? 0, isSelected: selection == row) {
+            WorktreeRow(worktree: worktree, uncommittedFiles: repository.uncommittedFiles[worktree.path] ?? 0, isSelected: selection == row, isLast: isLast) {
                 select(row)
             } openInNewWindow: {
                 openWindow(value: WorkspaceWindow(selection: row))
             }
             .id(row)
-        case .fold(let fold, let title, let isUnfolded):
-            FoldRow(title: title, isUnfolded: isUnfolded, isIndented: { if case .worktrees = fold { true } else { false } }()) {
+        case .hiddenWorktrees(let repository, let title, let uncommittedFiles):
+            HiddenWorktreesRow(title: title, uncommittedFiles: uncommittedFiles) {
                 isFocused = true
-                if isUnfolded { unfolded.remove(fold) } else { unfolded.insert(fold) }
+                list.setExpanded(true, repository)
             }
         }
     }
@@ -155,7 +153,7 @@ struct Sidebar: View {
                 switch item {
                 case .repository(let repository, _, _):
                     repository.home
-                case .worktree(let repository, let worktree) where !worktree.isPrunable:
+                case .worktree(let repository, let worktree, _) where !worktree.isPrunable:
                     WorktreeSelection(repository: repository.path, worktree: worktree.path)
                 default:
                     nil
@@ -285,15 +283,14 @@ private struct ScopeHeader<Trailing: View>: View {
     }
 }
 
-/// A row in the sidebar. It fills with gray while the pointer is over it,
-/// and a little darker while it's selected. Its top right corner shows a
-/// label, which gives way to the row's commands while the pointer is over
-/// it. The commands are 24-point buttons 4 points from the row's top and
-/// right edges.
+/// A row in the sidebar, as tall as in the Claude app's sidebar, which the
+/// wireframe follows. It fills with gray while the pointer is over it, and a
+/// little darker while it's selected. Its top right corner shows a label,
+/// which gives way to the row's commands while the pointer is over it. The
+/// commands are 24-point buttons 4 points from the row's top and right edges.
 private struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
     var isSelected = false
     var isEnabled = true
-    let height: CGFloat
     let action: () -> Void
     @ViewBuilder var content: Content
     @ViewBuilder var trailing: Trailing
@@ -317,7 +314,7 @@ private struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
         }
         .padding(.leading, 10)
         .padding(.trailing, 4)
-        .frame(height: height)
+        .frame(height: 32)
         .background {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(isSelected ? Palette.selection : isHovering && isEnabled ? Palette.hover : .clear)
@@ -331,13 +328,40 @@ private struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
     }
 }
 
-/// The heights of sidebar rows, the same as in the Claude app's sidebar,
-/// which the wireframe follows.
-private enum SidebarRowHeight {
-    /// A repository or a worktree.
-    static let regular: CGFloat = 32
-    /// A row that folds others away.
-    static let fold: CGFloat = 28
+/// The part of the line under a repository's row that a row under it draws:
+/// straight down past the row, or for the last one, around a corner toward the
+/// row's text. Each row also draws the gap above it, since a row drawn later
+/// would cover anything the one above drew over it.
+private struct WorktreeConnector: View {
+    let isLast: Bool
+    /// How far the row's text stands from the row's content, to clear the line.
+    static let textIndent: CGFloat = 20
+
+    var body: some View {
+        Line(isLast: isLast)
+            .stroke(Color.primary.opacity(0.25), lineWidth: 1)
+            .allowsHitTesting(false)
+    }
+
+    private nonisolated struct Line: Shape {
+        let isLast: Bool
+
+        func path(in rect: CGRect) -> Path {
+            // On half points, so that a line one point wide stays sharp.
+            let x: CGFloat = 14.5
+            let rowSpacing: CGFloat = 2
+            var path = Path()
+            path.move(to: CGPoint(x: x, y: rect.minY - rowSpacing))
+            if isLast {
+                let middle = rect.midY.rounded(.down) + 0.5
+                path.addArc(tangent1End: CGPoint(x: x, y: middle), tangent2End: CGPoint(x: x + 10, y: middle), radius: 6)
+                path.addLine(to: CGPoint(x: x + 10, y: middle))
+            } else {
+                path.addLine(to: CGPoint(x: x, y: rect.maxY))
+            }
+            return path
+        }
+    }
 }
 
 /// The small triangle after a name that says whether what's under it shows.
@@ -345,9 +369,28 @@ private struct Triangle: View {
     let pointsDown: Bool
 
     var body: some View {
-        Image(systemName: pointsDown ? "chevron.down" : "chevron.right")
-            .font(.system(size: 10, weight: .semibold))
+        Image(systemName: pointsDown ? "arrowtriangle.down.fill" : "arrowtriangle.right.fill")
+            .font(.system(size: 8))
             .foregroundStyle(.secondary)
+    }
+}
+
+/// The button that opens the menu of a row's commands, which shows while the
+/// pointer is over the row.
+private struct RowMenu<Items: View>: View {
+    @ViewBuilder var items: Items
+
+    var body: some View {
+        Menu {
+            items
+        } label: {
+            HoverIcon(size: 24) { Image(systemName: "ellipsis") }
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("More")
     }
 }
 
@@ -365,7 +408,7 @@ private struct RepositoryRow: View {
     let locate: () -> Void
 
     var body: some View {
-        SidebarRow(isSelected: isSelected, height: SidebarRowHeight.regular, action: select) {
+        SidebarRow(isSelected: isSelected, action: select) {
             HStack(spacing: 3) {
                 Text(title)
                     .font(.system(size: 14, weight: totalUncommittedFiles > 0 ? .semibold : .regular))
@@ -394,48 +437,21 @@ private struct RepositoryRow: View {
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
                     .padding(.trailing, 7)
-            } else {
-                HStack(spacing: 8) {
-                    if shownUncommittedFiles > 0 {
-                        Text(shownUncommittedFiles, format: .number)
-                            .foregroundStyle(.orange)
-                    }
-                    if linkedWorktrees > 0 {
-                        HStack(spacing: 4) {
-                            Image(systemName: "square.on.square")
-                            Text(linkedWorktrees, format: .number)
-                        }
-                        .foregroundStyle(.secondary)
-                    }
-                }
-                .font(.system(size: 13))
-                .padding(.trailing, 7)
+            } else if ownUncommittedFiles > 0 {
+                Text(ownUncommittedFiles, format: .number)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.orange)
+                    .padding(.trailing, 7)
             }
         } commands: {
-            if let main {
-                Button { reveal(main.path) } label: { Image(systemName: "folder") }
-                    .help("Show in Finder")
-                Button { openInTerminal(main.path) } label: { Image(systemName: "apple.terminal") }
-                    .help("Open in Terminal")
-            }
-            Menu {
-                menuItems
-            } label: {
-                HoverIcon(size: 24) { Image(systemName: "ellipsis") }
-            }
-            .menuStyle(.button)
-            .buttonStyle(.plain)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .help("More")
+            RowMenu { menuItems }
         }
-        .buttonStyle(.icon(size: 24))
         .help(repository.folder)
         .contextMenu { menuItems }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
         .accessibilityValue(
-            [detail, linkedWorktreesDescription, uncommittedFilesDescription(shownUncommittedFiles), linkedWorktrees > 0 ? (repository.isExpanded ? "Expanded" : "Collapsed") : nil, problem]
+            [detail, linkedWorktreesDescription, uncommittedFilesDescription(ownUncommittedFiles), linkedWorktrees > 0 ? (repository.isExpanded ? "Expanded" : "Collapsed") : nil, problem]
                 .compactMap(\.self)
                 .joined(separator: ", ")
         )
@@ -459,10 +475,9 @@ private struct RepositoryRow: View {
         repository.uncommittedFiles.values.reduce(0, +)
     }
 
-    /// The row counts its own files while the linked worktrees' rows count
-    /// theirs, and all of them while those rows are hidden.
-    private var shownUncommittedFiles: Int {
-        guard repository.isExpanded, let main = repository.worktrees.first else { return totalUncommittedFiles }
+    /// The row counts its own files, and the rows under it count theirs.
+    private var ownUncommittedFiles: Int {
+        guard let main = repository.worktrees.first else { return 0 }
         return repository.uncommittedFiles[main.path] ?? 0
     }
 
@@ -502,22 +517,23 @@ private struct RepositoryRow: View {
     }
 }
 
-/// A linked worktree's branch, indented under its repository. Its tooltip has
-/// its folder.
+/// A linked worktree's branch, under its repository with a line to it. Its
+/// tooltip has its folder.
 private struct WorktreeRow: View {
     let worktree: Worktree
     let uncommittedFiles: Int
     let isSelected: Bool
+    let isLast: Bool
     let select: () -> Void
     let openInNewWindow: () -> Void
 
     var body: some View {
-        SidebarRow(isSelected: isSelected, isEnabled: !worktree.isPrunable, height: SidebarRowHeight.regular, action: select) {
+        SidebarRow(isSelected: isSelected, isEnabled: !worktree.isPrunable, action: select) {
             Text(worktree.title)
                 .font(.system(size: 14))
                 .lineLimit(1)
                 .truncationMode(.middle)
-                .padding(.leading, 18)
+                .padding(.leading, WorktreeConnector.textIndent)
         } trailing: {
             if worktree.isPrunable {
                 Text("Folder missing")
@@ -533,6 +549,7 @@ private struct WorktreeRow: View {
         } commands: {
             commands
         }
+        .overlay { WorktreeConnector(isLast: isLast) }
         .buttonStyle(.icon(size: 24))
         .help(worktree.path)
         .contextMenu { menuItems }
@@ -547,8 +564,7 @@ private struct WorktreeRow: View {
     @ViewBuilder private var commands: some View {
         Button(action: openInNewWindow) { Image(systemName: "macwindow.badge.plus") }
             .help("Open in New Window")
-        Button { openInTerminal(worktree.path) } label: { Image(systemName: "apple.terminal") }
-            .help("Open in Terminal")
+        RowMenu { menuItems }
     }
 
     private var subtitle: String {
@@ -563,32 +579,40 @@ private struct WorktreeRow: View {
     }
 }
 
-/// A row that stands for the quiet worktrees or repositories, and shows them.
-private struct FoldRow: View {
+/// The row under a collapsed repository that stands for the worktrees it
+/// hides, and shows them. Its count stays on hover, since it has no commands.
+private struct HiddenWorktreesRow: View {
     let title: String
-    let isUnfolded: Bool
-    let isIndented: Bool
-    let toggle: () -> Void
+    let uncommittedFiles: Int
+    let show: () -> Void
 
     var body: some View {
-        SidebarRow(height: SidebarRowHeight.fold, action: toggle) {
-            HStack(spacing: 5) {
-                Text(title)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                Triangle(pointsDown: isUnfolded)
-            }
-            .padding(.leading, isIndented ? 18 : 0)
+        SidebarRow(action: show) {
+            Text(title)
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .padding(.leading, WorktreeConnector.textIndent)
         } trailing: {
-            EmptyView()
+            count
         } commands: {
-            EmptyView()
+            count
         }
+        .overlay { WorktreeConnector(isLast: true) }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
+        .accessibilityValue(uncommittedFilesDescription(uncommittedFiles) ?? "")
         .accessibilityAddTraits(.isButton)
-        .accessibilityAction(.default, toggle)
+        .accessibilityAction(.default, show)
+    }
+
+    @ViewBuilder private var count: some View {
+        if uncommittedFiles > 0 {
+            Text(uncommittedFiles, format: .number)
+                .font(.system(size: 13))
+                .foregroundStyle(.orange)
+                .padding(.trailing, 7)
+        }
     }
 }
 

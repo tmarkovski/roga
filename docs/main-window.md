@@ -9,16 +9,16 @@ The layout follows the Claude and ChatGPT apps. A sidebar on the left has a rail
 │ ● ● ●  ◧                     │ agents-demo  main · 128 commits              ≡ ◨ │               ⌕  ⇅  ⋯  │
 ├──────┬───────────────────────┼──────────────────────────────────────────────────┼────────────────────────┤
 │ [▣]  │ All repositories  19  │ ○  3 uncommitted files                           │ Branches ▾           4 │
-│ AC   │ api ▾           7  ⧉ 4│ ●  agent/fix-login  Add login tests      48ba644 │   main               ✓ │
-│ NO   │   agent/add-tests    4│ ●  ✓ main  Update the changelog          5405371 │   agent/add-tests   ↑1 │
-│ TM   │   agent/fix-login    3│ ●  Add parser tests                      bb3b6b6 │   agent/fix-login ↑3 ↓2│
-│ …    │   2 quiet worktrees ▸ │ ●  v0.2  Show an error when …            86b3386 │ Remotes ▾            1 │
+│ AC   │ api ▾                7│ ●  agent/fix-login  Add login tests      48ba644 │   main               ✓ │
+│ NO   │ │ agent/add-tests    4│ ●  ✓ main  Update the changelog          5405371 │   agent/add-tests   ↑1 │
+│ TM   │ │ agent/fix-login    3│ ●  Add parser tests                      bb3b6b6 │   agent/fix-login ↑3 ↓2│
+│ …    │ └ agent/rename-parser │ ●  v0.2  Show an error when …            86b3386 │ Remotes ▾            1 │
 │      │ auth  release/2.3     ├───────────────────┬──────────────────────────────┤   origin               │
 │      │ billing              1│ Commit 5405371  ⧉ │ CHANGELOG.md     ⌕  ↗  ⋯     │ Tags ▾               2 │
 │      │ docs                  ├───────────────────┼──────────────────────────────┤   v0.2                 │
 │      │ infra                 │ Update changelog  │ @@ -1,6 +1,10 @@             │   v0.1                 │
-│  +   │ web ▸          2  ⧉ 2 │ CHANGELOG.md +4 −0│   # Changelog                │ Stashes              0 │
-│      │ yaga ▸               3│                   │ + ## 0.3                     │                        │
+│  +   │ web ▸                 │ CHANGELOG.md +4 −0│   # Changelog                │ Stashes              0 │
+│      │ └ 2 worktrees        3│                   │ + ## 0.3                     │                        │
 └──────┴───────────────────────┴───────────────────┴──────────────────────────────┴────────────────────────┘
 ```
 
@@ -40,11 +40,11 @@ The rail picks which repositories the list shows ([decision 16](decisions/0016-a
 The list starts with the name of what the rail picked, in bold, and how many repositories it has. Every row in the list fills with gray while the pointer is over it, and the selected worktree's row keeps a slightly darker gray. The fill has 8-point corners and leaves 8 points on each side. Rows are 32 points tall with 2 points between them, as in the Claude app. A row's top right corner shows a label, which gives way to the row's commands on hover: 24-point buttons 4 points from the top and right edges. The sidebar draws these rows itself, because a macOS sidebar list can't, so it also handles the arrow keys: up and down move between the worktrees showing, and right and left show and hide the linked worktrees of the selected one's repository.
 
 - A repository's row is its main worktree. Clicking it selects that worktree. Its name is bold while any of its worktrees has uncommitted files. A small triangle after the name shows or hides its linked worktrees, and a repository without any has no triangle. After the triangle, in gray, comes the main worktree's branch unless it's `main` or `master`, or when two listed repositories have the same name, the folder it's in, as in `~/git`.
-- Its label is the number of uncommitted files, in orange, then the number of linked worktrees, after an icon of two overlapping squares. The number of uncommitted files is the main worktree's while the repository is expanded, and all of its worktrees' while it's collapsed. On hover, buttons for Show in Finder, Open in Terminal and a menu with those, Open in New Window and Remove from Sidebar take the label's place. A repository yaga can't find is dimmed, its label says so, its menu can find it again or remove it, and selecting it shows the same commands in the middle of the window.
-- Each linked worktree has a row under its repository, indented, with its branch and its number of uncommitted files in orange. Its tooltip has its folder. On hover, the count gives way to buttons that open the worktree in a new window or in Terminal, and its context menu has those and Show in Finder.
-- The selected worktree always shows, even when its repository is collapsed. Otherwise, worktrees with uncommitted files show, and two or more quiet ones fold into a row such as **3 quiet worktrees**, which shows them and then says **Show fewer**. A single quiet worktree just shows.
+- Its label is the main worktree's number of uncommitted files, in orange. On hover, a button takes the label's place, with a menu of Open in New Window, Show in Finder, Open in Terminal and Remove from Sidebar. A repository yaga can't find is dimmed, its label says so, its menu can find it again or remove it, and selecting it shows the same commands in the middle of the window.
+- Each linked worktree has a row under its repository, with its branch and its number of uncommitted files in orange. One thin line runs down from the repository's row past its worktrees, and turns around a rounded corner to the last one's branch. Its tooltip has its folder. On hover, the count gives way to a button that opens the worktree in a new window, and a menu of that, Show in Finder and Open in Terminal, which is also its context menu.
+- An expanded repository shows every linked worktree ([decision 17](decisions/0017-a-line-and-a-row-for-a-repositorys-worktrees.md)). A collapsed one has a single row in their place, with the same line, such as **3 worktrees**, and how many uncommitted files they have in orange. Clicking it expands the repository. The selected worktree always shows, even when its repository is collapsed, and the row then says **2 more worktrees**.
 - Repositories go from A to Z ([decision 16](decisions/0016-a-rail-of-organizations-in-the-sidebar.md)), and a new one starts collapsed. The list keeps every repository the user has added until they remove it ([decision 14](decisions/0014-the-sidebar-keeps-every-added-repository.md)).
-- With All selected, the list has every repository from A to Z, with no headers, and only worktrees fold.
+- With All selected, the list has every repository from A to Z, with no headers.
 - With Other selected, the list has **Other owners**, with repositories named as `owner/name`, and **No remote**.
 
 ### Adding repositories

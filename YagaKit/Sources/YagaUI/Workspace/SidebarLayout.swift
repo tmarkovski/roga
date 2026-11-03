@@ -130,28 +130,25 @@ struct RepositoryGroups {
     }
 }
 
-/// A row that hides others until it's clicked.
-enum SidebarFold: Hashable {
-    /// A repository's quiet worktrees, by its git directory.
-    case worktrees(String)
-}
-
 /// One row of the sidebar's list.
 enum SidebarItem: Identifiable {
     case label(String)
     /// A repository's row, which is its main worktree. `detail` is what follows
     /// its name in gray.
     case repository(ListedRepository, title: String, detail: String?)
-    case worktree(ListedRepository, Worktree)
-    /// `isUnfolded` means what it hides is showing, and it offers to hide it.
-    case fold(SidebarFold, title: String, isUnfolded: Bool)
+    /// `isLast` means nothing follows it under its repository, so the line down
+    /// from the repository's row ends here.
+    case worktree(ListedRepository, Worktree, isLast: Bool)
+    /// The row that stands for the worktrees a collapsed repository hides, with
+    /// how many uncommitted files they have. Clicking it shows them.
+    case hiddenWorktrees(ListedRepository, title: String, uncommittedFiles: Int)
 
     var id: String {
         switch self {
         case .label(let title): "label \(title)"
         case .repository(let repository, _, _): "repository \(repository.path)"
-        case .worktree(_, let worktree): "worktree \(worktree.path)"
-        case .fold(let fold, _, _): "fold \(fold)"
+        case .worktree(_, let worktree, _): "worktree \(worktree.path)"
+        case .hiddenWorktrees(let repository, _, _): "hidden worktrees \(repository.path)"
         }
     }
 }
@@ -162,12 +159,6 @@ struct SidebarLayout {
     let scope: SidebarScope
     let selection: WorktreeSelection?
     let place: SidebarPlace
-    /// The folds the user opened in this window.
-    let unfolded: Set<SidebarFold>
-
-    /// Below this many, folding saves nothing, because the row that folds them
-    /// takes the same room.
-    private static let fewestToFold = 2
 
     var items: [SidebarItem] {
         var items: [SidebarItem] = []
@@ -183,28 +174,23 @@ struct SidebarLayout {
         return items
     }
 
+    /// A collapsed repository shows only its selected worktree, and a row for
+    /// the rest.
     private func append(_ repository: ListedRepository, title: String? = nil, to items: inout [SidebarItem]) {
         items.append(.repository(repository, title: title ?? repository.name, detail: detail(of: repository)))
         let linked = repository.worktrees.filter { !$0.isMain }
-        guard repository.isExpanded else {
-            for worktree in linked where isSelected(worktree, in: repository) {
-                items.append(.worktree(repository, worktree))
-            }
-            return
+        let shown = repository.isExpanded ? linked : linked.filter { isSelected($0, in: repository) }
+        let hidden = repository.isExpanded ? [] : linked.filter { !isSelected($0, in: repository) }
+        for worktree in shown {
+            items.append(.worktree(repository, worktree, isLast: hidden.isEmpty && worktree.path == shown.last?.path))
         }
-        let fold = SidebarFold.worktrees(repository.path)
-        let quiet = linked.filter { isQuiet($0, in: repository) }
-        if quiet.count < Self.fewestToFold {
-            for worktree in linked { items.append(.worktree(repository, worktree)) }
-        } else if unfolded.contains(fold) {
-            for worktree in linked { items.append(.worktree(repository, worktree)) }
-            items.append(.fold(fold, title: "Show fewer", isUnfolded: true))
-        } else {
-            for worktree in linked where !isQuiet(worktree, in: repository) {
-                items.append(.worktree(repository, worktree))
-            }
-            items.append(.fold(fold, title: "\(quiet.count) quiet worktrees", isUnfolded: false))
-        }
+        guard !hidden.isEmpty else { return }
+        let noun = hidden.count == 1 ? "worktree" : "worktrees"
+        items.append(.hiddenWorktrees(
+            repository,
+            title: shown.isEmpty ? "\(hidden.count) \(noun)" : "\(hidden.count) more \(noun)",
+            uncommittedFiles: hidden.reduce(0) { $0 + repository.uncommittedFiles[$1.path, default: 0] }
+        ))
     }
 
     /// The folder it's in when another repository has the same name, or else
@@ -219,11 +205,5 @@ struct SidebarLayout {
 
     private func isSelected(_ worktree: Worktree, in repository: ListedRepository) -> Bool {
         selection == WorktreeSelection(repository: repository.path, worktree: worktree.path)
-    }
-
-    /// A quiet worktree can fold away. Once yaga knows what agents are doing,
-    /// that will count too.
-    private func isQuiet(_ worktree: Worktree, in repository: ListedRepository) -> Bool {
-        repository.uncommittedFiles[worktree.path, default: 0] == 0 && !isSelected(worktree, in: repository)
     }
 }
