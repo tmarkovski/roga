@@ -14,8 +14,8 @@ enum Palette {
     static let hover = Color.primary.opacity(0.075)
     /// The fill under a selected row.
     static let selection = Color.primary.opacity(0.11)
-    /// The strongest mark that isn't a color: the main button in a dialog, and
-    /// what's selected on the rail (decision 36).
+    /// The strongest mark that isn't a color: the main button in a dialog, what's
+    /// selected on the rail (decision 36), and a line that's about to be dragged.
     static let ink = gray(light: 0.102, dark: 0.925)
     /// Words and icons on top of `ink`.
     static let onInk = gray(light: 1.0, dark: 0.086)
@@ -196,25 +196,65 @@ private struct PanelDivider: View {
     /// Says how far the line has moved during a drag.
     let moved: (Double) -> Void
     let ended: () -> Void
+    @State private var isHovering = false
+    @GestureState private var isDragging = false
 
     var body: some View {
-        Rectangle()
-            .fill(Palette.separator)
-            .frame(width: axis == .horizontal ? 1 : nil, height: axis == .vertical ? 1 : nil)
+        PanelLine(axis: axis, isPointerOver: isHovering, isDragging: isDragging)
             .overlay {
                 // Easier to grab than the line, and over both panels.
                 Color.clear
                     .frame(width: axis == .horizontal ? 9 : nil, height: axis == .vertical ? 9 : nil)
                     .contentShape(Rectangle())
                     .pointerStyle(axis == .vertical ? .rowResize : .columnResize)
+                    .onHover { isHovering = $0 }
                     .gesture(
                         // The line moves during the drag, so measure from the window.
                         DragGesture(minimumDistance: 0, coordinateSpace: .global)
+                            .updating($isDragging) { _, isDragging, _ in isDragging = true }
                             .onChanged { moved(axis == .vertical ? $0.translation.height : $0.translation.width) }
                             .onEnded { _ in ended() }
                     )
             }
             .zIndex(1)
+    }
+}
+
+/// A thin line between two panels that can be dragged. It stands out once the
+/// pointer has rested on it for a moment, and while it's being dragged. A pointer
+/// on its way past leaves it alone.
+struct PanelLine: View {
+    /// The direction the line moves in.
+    let axis: Axis
+    let isPointerOver: Bool
+    var isDragging = false
+    /// Where the line stands out from, for one at the edge of what draws it. Its
+    /// extra thickness goes over the panels and doesn't move them.
+    var alignment = Alignment.center
+    @State private var hasRested = false
+
+    private var standsOut: Bool { hasRested || isDragging }
+
+    var body: some View {
+        Rectangle()
+            .fill(Palette.separator)
+            .frame(width: axis == .horizontal ? 1 : nil, height: axis == .vertical ? 1 : nil)
+            .overlay(alignment: alignment) {
+                Rectangle()
+                    .fill(Palette.ink)
+                    .frame(width: axis == .horizontal ? 2 : nil, height: axis == .vertical ? 2 : nil)
+                    .opacity(standsOut ? 1 : 0)
+                    .animation(.easeOut(duration: 0.15), value: standsOut)
+                    .allowsHitTesting(false)
+            }
+            .task(id: isPointerOver) {
+                guard isPointerOver else {
+                    hasRested = false
+                    return
+                }
+                guard (try? await Task.sleep(for: .milliseconds(200))) != nil else { return }
+                hasRested = true
+            }
     }
 }
 

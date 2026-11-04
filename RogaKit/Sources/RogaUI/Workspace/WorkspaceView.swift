@@ -20,6 +20,29 @@ public struct WorkspaceWindow: Codable, Hashable, Sendable {
     }
 }
 
+/// Whether the pointer is over the area that drags the line after the sidebar.
+/// macOS handles that drag and takes the mouse there from the views on both
+/// sides, so this goes by where the pointer is, in the area macOS 26 drags from.
+/// Only the line reads it, so that the window doesn't update each time.
+@MainActor @Observable private final class SidebarLineHover {
+    private(set) var isPointerOver = false
+    @ObservationIgnored var sidebarWidth = 0.0
+
+    func pointerMoved(toX x: Double?) {
+        let isOver = x.map { (-2.5 ..< 3).contains($0 - sidebarWidth) } ?? false
+        if isOver != isPointerOver { isPointerOver = isOver }
+    }
+}
+
+private struct SidebarLine: View {
+    let hover: SidebarLineHover
+
+    var body: some View {
+        // Nothing can draw past the sidebar, so it stands out from the edge inward.
+        PanelLine(axis: .horizontal, isPointerOver: hover.isPointerOver, alignment: .trailing)
+    }
+}
+
 /// The contents of a Roga window: the sidebar, and the worktree selected in
 /// it.
 public struct WorkspaceView: View {
@@ -36,6 +59,7 @@ public struct WorkspaceView: View {
     @State private var columnWidth: Double?
     /// The width of the middle of the window, once it's been laid out.
     @State private var middleWidth: Double?
+    @State private var sidebarLine = SidebarLineHover()
 
     public init(window: Binding<WorkspaceWindow?>) {
         _window = window
@@ -91,11 +115,10 @@ public struct WorkspaceView: View {
                 .overlay(alignment: .trailing) {
                     // A line between the sidebar and the worktree, from the
                     // top of the window to the bottom.
-                    Rectangle()
-                        .fill(Palette.separator)
-                        .frame(width: 1)
+                    SidebarLine(hover: sidebarLine)
                         .ignoresSafeArea()
                 }
+                .onGeometryChange(for: Double.self) { $0.size.width } action: { sidebarLine.sidebarWidth = $0 }
                 .toolbar(removing: .sidebarToggle)
                 .toolbar {
                     // macOS keeps the sidebar's toolbar items next to the
@@ -149,6 +172,12 @@ public struct WorkspaceView: View {
                     RefsPanelToggle(visibility: refsPanelVisibility)
                 }
                 .sharedBackgroundVisibility(.hidden)
+            }
+        }
+        .onContinuousHover { phase in
+            switch phase {
+            case .active(let location): sidebarLine.pointerMoved(toX: location.x)
+            case .ended: sidebarLine.pointerMoved(toX: nil)
             }
         }
         .navigationTitle(title)

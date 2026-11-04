@@ -86,7 +86,7 @@ The sections under history are panels: plain rectangles with a 40-point header, 
 - The panel's commands follow as icon buttons with tooltips. An icon button is a thin, dark glyph that gets a rounded gray square when the pointer is over it, like the Claude app's.
 - A menu for more commands comes last. It lists every command the panel has, including the ones shown as buttons, with their keyboard shortcuts. Every command is also in the menu bar.
 - When several things in a panel are selected, such as files in release 2, the header can switch to commands that act on the selection.
-- Dragging the lines between panels resizes them. The height and width of the commit panel are one setting each for every window. The panels above and below the line stay at least 100 points tall, and those beside it at least 180 points wide.
+- Dragging the lines between panels resizes them. A line gets thicker and turns to ink once the pointer has rested on it for a moment, and while it's being dragged, but not for a pointer that's only passing over it. The lines after the sidebar and before the refs panel do the same. The height and width of the commit panel are one setting each for every window. The panels above and below the line stay at least 100 points tall, and those beside it at least 180 points wide.
 
 ## The history panel
 
@@ -138,6 +138,7 @@ As the window gets narrower, the panel narrows to keep 400 points for the middle
 
 - Surfaces are plain, with thin gray lines between sections. The sidebar is a shade darker. Dark mode keeps the same structure in dark grays.
 - Selection is a soft gray fill, not the accent color. The rail is the one exception, with a tile in solid ink, which isn't the accent color either ([decision 36](decisions/0036-a-solid-ink-tile-for-whats-selected-on-the-rail.md)).
+- A line that can be dragged turns to the same ink while the pointer rests on it or drags it. It's 2 points thick then, drawn over the panels so that they don't move.
 - The graph and the branches use Monokai's colors, which are fixed rather than following the accent color ([decision 27](decisions/0027-give-the-graph-and-branches-monokais-colors.md)). The current branch has one color everywhere: its badge, the ring in the graph and its icon in the refs panel.
 - A file's status letter is colored by what happened to it: orange for a change, like the sidebar's counts, green for an added file, red for a deleted file or a conflict, and blue for a file that was renamed or copied. An untracked file's `?` stays gray, because git doesn't have it yet. The letter says the same thing without the color.
 - A count in the title row is orange when a click on it would run right now ([decision 19](decisions/0019-pull-and-push-from-the-branch-in-the-title-row.md)).
