@@ -89,7 +89,7 @@ final class BranchModel {
     private(set) var isFetchingByItself = false
     /// What git is doing because someone asked it to.
     private(set) var action: Action?
-    /// What just happened, as in `Pulled 3`, for a moment.
+    /// What just happened, as in `Pulled`, for a moment.
     private(set) var finished: String?
     /// What to tell the user about something that didn't work, until they've
     /// seen it.
@@ -189,7 +189,6 @@ final class BranchModel {
     }
 
     func pull(_ pull: Pull) {
-        let count = status?.behind ?? 0
         run(.pulling, failure: "Can't Pull \(branchName)") { [session, worktree] in
             let wasStopped = (try? await session.stoppedPull(in: worktree)) != nil
             do {
@@ -204,7 +203,7 @@ final class BranchModel {
                 }
                 throw error
             }
-            return count > 0 ? "Pulled \(count.formatted())" : "Pulled"
+            return "Pulled"
         }
     }
 
@@ -223,10 +222,9 @@ final class BranchModel {
     /// Pushes the way clicking `↑` does.
     func push() {
         guard let push = status?.push else { return }
-        let count = status?.ahead ?? 0
         run(.pushing, failure: "Can't Push \(branchName)", fetchesAfterFailing: true) { [session, worktree] in
             try await session.push(push, in: worktree)
-            return count > 0 ? "Pushed \(count.formatted())" : "Pushed"
+            return "Pushed"
         }
     }
 

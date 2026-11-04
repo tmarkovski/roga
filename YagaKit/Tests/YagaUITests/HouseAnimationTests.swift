@@ -208,6 +208,12 @@ struct HouseAnimationTests {
         #expect(BranchModel.Action.undoingPull.houseAnimation == .waddle)
     }
 
+    @Test func theWordsBesideTheHouseMoveTheWayItWorks() {
+        #expect(WordsArrival(.push) == .fromLeft)
+        #expect(WordsArrival(.heave) == .fromRight)
+        #expect(WordsArrival(.waddle) == .fade)
+    }
+
     @Test func playingOnceTakesOneCycleAtTheSpeed() {
         #expect(HouseAnimation.heave.timeToPlay(atSpeed: 1) == .seconds(1.5))
         #expect(HouseAnimation.heave.timeToPlay(atSpeed: 3) == .seconds(0.5))

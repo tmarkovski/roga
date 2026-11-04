@@ -126,7 +126,7 @@ struct BranchModelTests {
         #expect(model.branch.action == .pulling)
         await model.branch.running?.value
         #expect(model.branch.action == nil)
-        #expect(model.branch.finished == "Pulled 1")
+        #expect(model.branch.finished == "Pulled")
         await model.check?.value
         #expect(model.branch.status?.behind == 0)
     }
@@ -211,7 +211,7 @@ struct BranchModelTests {
         await model.branch.running?.value
         #expect(ContinuousClock.now - started >= .milliseconds(700))
         #expect(model.branch.action == nil)
-        #expect(model.branch.finished == "Pulled 1")
+        #expect(model.branch.finished == "Pulled")
     }
 
     /// These would wait for ten minutes if they waited at all, and the suite's
@@ -253,7 +253,7 @@ struct BranchModelTests {
 
         model.branch.push()
         await model.branch.running?.value
-        #expect(model.branch.finished == "Pushed 1")
+        #expect(model.branch.finished == "Pushed")
         #expect(try await git("rev-parse", "main", in: clones.remote) == mine)
     }
 

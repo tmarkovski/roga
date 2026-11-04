@@ -130,42 +130,121 @@ struct BranchMenuItems: View {
     private static let noIcon = Image(nsImage: NSImage(size: NSSize(width: 16, height: 16), flipped: false) { _ in true })
 }
 
-/// `↓3` and `↑1`, or what git is doing in their place.
+/// `↓3` and `↑1`, or what git is doing in their place. That goes in steps: the
+/// house zooms in, then the words come out beside it and move what's to their
+/// right along. When git is done the words change to what happened and the house
+/// zooms out, and when those words have had their moment, they close up again.
 private struct BranchCounts: View {
+    /// How the title row moves from one step to the next.
+    private enum Motion {
+        static let zoom = Animation.spring(duration: 0.24, bounce: 0.25)
+        /// How long the house gets to zoom in before the words start.
+        static let zoomTime = Duration.milliseconds(160)
+        static let words = Animation.snappy(duration: 0.3)
+    }
+
+    /// What's on screen, which follows the branch's activity a step at a time.
+    private struct Shown: Equatable {
+        var house: HouseAnimation?
+        /// These stay after they stop showing, so that they can close up.
+        var words = ""
+        var arrival = WordsArrival.fade
+        var showsWords = false
+        var showsCounts = true
+    }
+
+    /// What git is doing, or what it just did. The note about what it did can
+    /// start before the action ends, and the action comes first.
+    private enum Activity: Equatable {
+        case idle
+        case running(BranchModel.Action)
+        case finished(String)
+    }
+
     let branch: BranchModel
     let switchBranch: (() -> Void)?
+    @State private var shown = Shown()
+    @Environment(\.accessibilityReduceMotion) private var reducesMotion
+
+    private var activity: Activity {
+        if let action = branch.action { .running(action) }
+        else if let finished = branch.finished { .finished(finished) }
+        else { .idle }
+    }
 
     var body: some View {
-        HStack(spacing: 2) {
-            if let action = branch.action {
-                HStack(spacing: 5) {
-                    HouseAnimationView(animation: action.houseAnimation)
-                        .id(action.houseAnimation)
-                    Text(action.title)
-                        .foregroundStyle(.secondary)
+        HStack(spacing: 0) {
+            // It takes no room without a house, and its room opens and closes
+            // along with the zoom, so that the words never run into the house.
+            ZStack {
+                if let house = shown.house {
+                    HouseAnimationView(animation: house)
+                        .id(house)
+                        .padding(.leading, 4)
+                        // From its leading edge, which is where the room for it
+                        // opens and closes, so that the words can't run into it.
+                        .transition(.scale(scale: 0.2, anchor: .leading).combined(with: .opacity))
                 }
-                .padding(.horizontal, 4)
-            } else if let finished = branch.finished {
-                HStack(spacing: 5) {
-                    Icon.check.image
-                        .font(.system(size: 10, weight: .bold))
-                    Text(finished)
-                }
+            }
+            Text(shown.words)
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, 4)
-            } else if let status = branch.status {
-                if status.behind > 0 {
-                    pullCount(status)
+                .contentTransition(.interpolate)
+                .padding(.leading, 5)
+                .padding(.trailing, 4)
+                .modifier(WordsReveal(isShown: shown.showsWords, arrival: shown.arrival))
+                .accessibilityHidden(!shown.showsWords)
+            if shown.showsCounts, let status = branch.status {
+                HStack(spacing: 2) {
+                    if status.behind > 0 {
+                        pullCount(status)
+                    }
+                    if status.ahead > 0 {
+                        pushCount(status)
+                    } else if status.upstream == nil, status.push != nil {
+                        firstPush
+                    }
                 }
-                if status.ahead > 0 {
-                    pushCount(status)
-                } else if status.upstream == nil, status.push != nil {
-                    firstPush
-                }
+                .transition(.opacity)
             }
         }
         .font(.system(size: 13))
         .lineLimit(1)
+        .task(id: activity) { await show(activity) }
+    }
+
+    private func show(_ activity: Activity) async {
+        switch activity {
+        case .idle:
+            move(Motion.words) {
+                shown.house = nil
+                shown.showsWords = false
+                shown.showsCounts = true
+            }
+        case .finished(let words):
+            move(Motion.words) {
+                shown.house = nil
+                shown.words = words
+                shown.showsWords = true
+                shown.showsCounts = false
+            }
+        case .running(let action):
+            move(Motion.zoom) {
+                shown.house = action.houseAnimation
+                shown.showsWords = false
+                shown.showsCounts = false
+            }
+            if !reducesMotion {
+                guard (try? await Task.sleep(for: Motion.zoomTime)) != nil else { return }
+            }
+            shown.words = action.title
+            shown.arrival = WordsArrival(action.houseAnimation)
+            move(Motion.words) { shown.showsWords = true }
+        }
+    }
+
+    /// Someone who asked for less motion gets each step straight away.
+    private func move(_ animation: Animation, _ change: () -> Void) {
+        withAnimation(reducesMotion ? nil : animation, change)
     }
 
     @ViewBuilder private func pullCount(_ status: BranchStatus) -> some View {
@@ -225,6 +304,78 @@ private struct BranchCounts: View {
         .fixedSize()
         .help(branch.pushHelp)
         .accessibilityLabel("Push for the First Time")
+    }
+}
+
+/// How the words beside the house arrive, which says which way the commits are
+/// going, the way the house's lean does.
+enum WordsArrival: Equatable {
+    /// Out from behind the house, moving what's to their right along.
+    case fromLeft
+    /// In from the right, toward the house that's pulling them.
+    case fromRight
+    /// In place, for what has no direction to show.
+    case fade
+
+    init(_ house: HouseAnimation) {
+        switch house {
+        case .push: self = .fromLeft
+        case .heave, .tugOfWar: self = .fromRight
+        case .waddle: self = .fade
+        }
+    }
+}
+
+/// Opens room for the words and moves them in, or does the reverse.
+private struct WordsReveal: ViewModifier {
+    /// How far the words travel when they come in from the right.
+    private static let travel: CGFloat = 24
+    /// This outlasts the room opening. Most of the way would otherwise go by
+    /// while they're still faint and clipped, and what's to their right would be
+    /// moving the opposite way for all of it.
+    private static let glide = Animation.easeOut(duration: 0.45)
+
+    let isShown: Bool
+    let arrival: WordsArrival
+    @Environment(\.accessibilityReduceMotion) private var reducesMotion
+
+    func body(content: Content) -> some View {
+        PartWidth(amount: isShown ? 1 : 0, keepsTrailingEnd: arrival == .fromLeft) {
+            content
+                .offset(x: !isShown && arrival == .fromRight ? Self.travel : 0)
+                .animation(reducesMotion ? nil : Self.glide, value: isShown)
+                .opacity(isShown ? 1 : 0)
+        }
+        .clipped()
+    }
+}
+
+/// Takes up a part of its content's width, keeping one end of the content against
+/// its edge. The part is animated by laying out again on every frame, so what's
+/// beside this moves exactly with that end, rather than animating on its own and
+/// drifting ahead of it.
+private struct PartWidth: Layout {
+    var amount: Double
+    let keepsTrailingEnd: Bool
+
+    var animatableData: Double {
+        get { amount }
+        set { amount = newValue }
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let size = subviews.first?.sizeThatFits(.unspecified) ?? .zero
+        // In whole points, or the title row's width passes through fractions of
+        // a pixel on the way, and the text at its other end wobbles.
+        return CGSize(width: (size.width * amount).rounded(.up), height: size.height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(
+            at: CGPoint(x: keepsTrailingEnd ? bounds.maxX : bounds.minX, y: bounds.midY),
+            anchor: keepsTrailingEnd ? .trailing : .leading,
+            proposal: .unspecified
+        )
     }
 }
 
