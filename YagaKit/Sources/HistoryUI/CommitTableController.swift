@@ -1,5 +1,4 @@
 import AppKit
-import CommitGraph
 import MenuUI
 
 /// The commit list: a view-based `NSTableView` whose rows have a fixed
@@ -10,12 +9,9 @@ import MenuUI
 /// text of those rows and the ones around them, then redraws the rows that
 /// got their text.
 ///
-/// The graph is as wide as the rows in view need, up to
-/// `LaneRenderer.maxColumns`. While scrolling it only widens, as wider rows
-/// come into view, so the text doesn't move back and forth. Once scrolling
-/// stops, it fits the rows in view again. When the rows are reloaded with
-/// the same ones in view, such as when the rest of history arrives, it stays
-/// as it was.
+/// Each row's text starts after that row's own graph (`CommitRowLayout`), so a
+/// row looks the same whichever rows are in view, and nothing moves sideways
+/// while scrolling.
 public final class CommitTableController: NSObject, NSTableViewDataSource, NSTableViewDelegate {
     public struct Source {
         /// The number of rows.
@@ -68,8 +64,6 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
     private let tableView = CommitTableView()
     private var textTask: Task<Void, Never>?
     private var requestedRows: Range<Int>?
-    private var graphColumns = 0
-    private var fitGraphTask: Task<Void, Never>?
     /// Whether the code here is changing the selection, rather than the user.
     private var isSettingSelection = false
     /// The badge the pointer is over, if double-clicking it would do something.
@@ -122,7 +116,6 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
 
     isolated deinit {
         textTask?.cancel()
-        fitGraphTask?.cancel()
     }
 
     /// Shows new rows, such as when history is loaded again. The selected row
@@ -132,7 +125,6 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
         tableView.reloadData()
         isSettingSelection = false
         requestedRows = nil
-        sizeGraph(canNarrow: true)
         loadVisibleText()
         updateHoveredBadge()
     }
@@ -179,7 +171,7 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
         let content = source.content(row)
         guard !content.badges.isEmpty else { return nil }
         let frame = tableView.frameOfCell(atColumn: 0, row: row)
-        let layout = CommitRowLayout(content: content, graphColumns: graphColumns, size: frame.size)
+        let layout = CommitRowLayout(content: content, size: frame.size)
         let inRow = NSPoint(x: point.x - frame.minX, y: point.y - frame.minY)
         guard let index = layout.badges.firstIndex(where: { $0.contains(inRow) }), content.badges[index].canCheckOut else { return nil }
         return BadgePlace(row: row, index: index)
@@ -248,32 +240,8 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
 
     @objc private func visibleRowsMayHaveChanged(_ notification: Notification) {
         if needsToRevealSelection { revealSelectedRow() }
-        sizeGraph(canNarrow: false)
         loadVisibleText()
         updateHoveredBadge()
-
-        fitGraphTask?.cancel()
-        fitGraphTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(400))
-            guard !Task.isCancelled else { return }
-            self?.sizeGraph(canNarrow: true)
-        }
-    }
-
-    /// Makes the graph as wide as the rows in view need. Unless it can
-    /// narrow, it only gets wider.
-    private func sizeGraph(canNarrow: Bool) {
-        let visible = tableView.rows(in: tableView.visibleRect)
-        var needed = canNarrow ? 0 : graphColumns
-        for row in visible.location..<visible.location + visible.length {
-            needed = max(needed, source.content(row).lanes?.width ?? 0)
-        }
-        needed = min(needed, LaneRenderer.maxColumns)
-        guard needed != graphColumns else { return }
-        graphColumns = needed
-        for row in visible.location..<visible.location + visible.length {
-            (tableView.view(atColumn: 0, row: row, makeIfNecessary: false) as? CommitCellView)?.graphColumns = needed
-        }
     }
 
     /// Asks for the text of the visible rows, and a screen's worth above and
@@ -304,7 +272,6 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
         let view = tableView.makeView(withIdentifier: CommitCellView.identifier, owner: nil) as? CommitCellView
             ?? CommitCellView()
         view.content = source.content(row)
-        view.graphColumns = graphColumns
         view.hoveredBadge = hoveredBadge?.row == row ? hoveredBadge?.index : nil
         return view
     }

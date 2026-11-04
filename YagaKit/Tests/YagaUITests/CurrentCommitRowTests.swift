@@ -25,8 +25,9 @@ struct CurrentCommitRowTests {
         static let origin: CGFloat = 8
         let image: NSBitmapImageRep
 
-        init(_ row: LaneLayout.Row, columns: Int = 1, isHollow: Bool = false, isCurrent: Bool) throws {
-            let width = 60
+        init(_ row: LaneLayout.Row, isHollow: Bool = false, isCurrent: Bool) throws {
+            // Wide enough for the most columns a graph shows, and past them.
+            let width = 160
             image = try #require(NSBitmapImageRep(
                 bitmapDataPlanes: nil, pixelsWide: width * Self.scale, pixelsHigh: Self.height * Self.scale,
                 bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
@@ -41,7 +42,7 @@ struct CurrentCommitRowTests {
             flip.translateX(by: 0, yBy: CGFloat(Self.height))
             flip.scaleX(by: 1, yBy: -1)
             flip.concat()
-            LaneRenderer.draw(row, columns: columns, at: Self.origin, height: CGFloat(Self.height), isHollow: isHollow, isCurrent: isCurrent)
+            LaneRenderer.draw(row, at: Self.origin, height: CGFloat(Self.height), isHollow: isHollow, isCurrent: isCurrent)
             NSGraphicsContext.restoreGraphicsState()
         }
 
@@ -97,8 +98,8 @@ struct CurrentCommitRowTests {
 
     @Test func aBoldBadgeIsWideEnoughForItsTitle() throws {
         let size = NSSize(width: 1200, height: 28)
-        let bold = try #require(CommitRowLayout(content: CommitRowContent(shortID: "a", badges: [Self.currentBranch]), graphColumns: 0, size: size).badges.first)
-        let regular = try #require(CommitRowLayout(content: CommitRowContent(shortID: "a", badges: [Self.otherBranch]), graphColumns: 0, size: size).badges.first)
+        let bold = try #require(CommitRowLayout(content: CommitRowContent(shortID: "a", badges: [Self.currentBranch]), size: size).badges.first)
+        let regular = try #require(CommitRowLayout(content: CommitRowContent(shortID: "a", badges: [Self.otherBranch]), size: size).badges.first)
         // The current branch's also has room for its checkmark.
         #expect(bold.width > regular.width)
         let style = CommitCellView.BadgeLook.of(.currentBranch).style
@@ -145,10 +146,33 @@ struct CurrentCommitRowTests {
         #expect(current.isDrawn(x: Self.dotX + outer, y: Self.middle))
     }
 
+    /// The middle of a column, across the view.
+    static func x(ofColumn column: Int) -> CGFloat {
+        Drawing.origin + LaneRenderer.spacing * (CGFloat(column) + 0.5)
+    }
+
+    static func straightLine(inColumn column: Int) -> LaneLayout.Line {
+        LaneLayout.Line(top: .column(column), bottom: .column(column))
+    }
+
+    @Test func aRowDrawsAllOfItsOwnLines() throws {
+        let last = LaneRenderer.maxColumns - 1
+        let row = LaneLayout.Row(column: 0, lines: [Self.straightLine(inColumn: last)])
+        let drawing = try Drawing(row, isCurrent: true)
+        #expect(drawing.isDrawn(x: Self.x(ofColumn: last), y: Self.middle))
+    }
+
     @Test func linesStillStopAtTheEdgeOfTheGraph() throws {
-        let leavesTheGraph = LaneLayout.Row(column: 0, lines: [LaneLayout.Line(top: .column(1), bottom: .column(1))])
-        let drawing = try Drawing(leavesTheGraph, columns: 1, isCurrent: true)
-        #expect(!drawing.isDrawn(x: Drawing.origin + LaneRenderer.spacing * 1.5, y: Self.middle))
+        let leavesTheGraph = LaneLayout.Row(column: 0, lines: [Self.straightLine(inColumn: LaneRenderer.maxColumns)])
+        let drawing = try Drawing(leavesTheGraph, isCurrent: true)
+        #expect(!drawing.isDrawn(x: Self.x(ofColumn: LaneRenderer.maxColumns), y: Self.middle))
+    }
+
+    @Test func aDotPastTheEdgeOfTheGraphIsDrawnAtTheEdge() throws {
+        let row = LaneLayout.Row(column: LaneRenderer.maxColumns + 2, lines: [])
+        let drawing = try Drawing(row, isCurrent: false)
+        #expect(drawing.isDrawn(x: Self.x(ofColumn: LaneRenderer.maxColumns - 1), y: Self.middle))
+        #expect(!drawing.isDrawn(x: Self.x(ofColumn: LaneRenderer.maxColumns), y: Self.middle))
     }
 
     @Test func aHollowDotHasNoRingOfItsOwn() throws {

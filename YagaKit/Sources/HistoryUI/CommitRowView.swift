@@ -1,4 +1,5 @@
 import AppKit
+import CommitGraph
 import IconUI
 
 /// A row of the commit list. It draws the selection as a soft gray rounded
@@ -42,17 +43,6 @@ final class CommitCellView: NSView {
         }
     }
 
-    /// How many columns of the graph to show, which is the same in every
-    /// row.
-    var graphColumns = 0 {
-        didSet {
-            if graphColumns != oldValue {
-                needsDisplay = true
-                updateToolTips()
-            }
-        }
-    }
-
     /// The index of the badge the pointer is over, which has a border.
     var hoveredBadge: Int? {
         didSet {
@@ -83,7 +73,7 @@ final class CommitCellView: NSView {
     private func updateToolTips() {
         var frames: [NSRect] = []
         if let content, !content.badges.isEmpty {
-            frames = CommitRowLayout(content: content, graphColumns: graphColumns, size: bounds.size).badges
+            frames = CommitRowLayout(content: content, size: bounds.size).badges
         }
         guard frames != toolTipFrames else { return }
         toolTipFrames = frames
@@ -105,9 +95,9 @@ final class CommitCellView: NSView {
             Self.previewColor.setFill()
             NSBezierPath(roundedRect: bounds.insetBy(dx: 6, dy: 0), xRadius: 4, yRadius: 4).fill()
         }
-        let layout = CommitRowLayout(content: content, graphColumns: graphColumns, size: bounds.size)
-        if graphColumns > 0, let lanes = content.lanes {
-            LaneRenderer.draw(lanes, columns: graphColumns, at: CommitRowLayout.graphX, height: bounds.height, isHollow: content.isWorkingTree, isCurrent: content.isCurrent)
+        let layout = CommitRowLayout(content: content, size: bounds.size)
+        if let lanes = content.lanes {
+            LaneRenderer.draw(lanes, at: CommitRowLayout.graphX, height: bounds.height, isHollow: content.isWorkingTree, isCurrent: content.isCurrent)
         }
         for column in layout.columns {
             if let text = column.text {
@@ -319,6 +309,10 @@ struct CommitRowLayout {
     static let minimumBodyWidth: CGFloat = 60
     private static let inset: CGFloat = 14
     private static let gap: CGFloat = 10
+    /// The space between a row's graph and its text.
+    private static let graphGap: CGFloat = 6
+    /// The room a row's subject keeps before the columns on the right give way.
+    private static let minimumSubjectWidth: CGFloat = 120
 
     /// The columns on the right that fit.
     private(set) var columns: [Column] = []
@@ -327,25 +321,30 @@ struct CommitRowLayout {
     private(set) var subjectX: CGFloat
     private(set) var subjectMaxX: CGFloat
 
-    init(content: CommitRowContent, graphColumns: Int, size: NSSize) {
-        var left = Self.inset
+    /// Where the text starts after a graph that shows `columns` columns.
+    private static func textX(afterGraphColumns columns: Int) -> CGFloat {
+        graphX + LaneRenderer.width(columns: columns) + graphGap
+    }
+
+    init(content: CommitRowContent, size: NSSize) {
+        // The text starts after the row's own graph, so it stays in place whatever
+        // other rows are in view. The graph starts so that its first column
+        // lines up with the text in rows without one.
+        var left = content.lanes.map { Self.textX(afterGraphColumns: $0.width) } ?? Self.inset
         var right = size.width - Self.inset
 
-        // The graph starts so that its first column lines up with the text
-        // in rows without one.
-        if graphColumns > 0 {
-            left = Self.graphX + LaneRenderer.width(columns: graphColumns) + 6
-        }
-
         // The columns on the right give way, starting from the author, when
-        // the row is too narrow for them and some of the subject.
+        // the row is too narrow for them and some of the subject. That goes by the
+        // widest a graph can be rather than this row's, so that every row shows
+        // the same columns.
+        let subjectRoom = Self.textX(afterGraphColumns: LaneRenderer.maxColumns) + Self.minimumSubjectWidth
         let columns: [(text: String?, width: CGFloat, style: CommitCellView.Style)] = [
             (content.shortID, 72, CommitCellView.Style.shortID),
             (content.date, 112, CommitCellView.Style.detail),
             (content.author, 130, CommitCellView.Style.detail),
         ]
         for column in columns {
-            guard right - column.width - Self.gap >= left + 120 else { break }
+            guard right - column.width - Self.gap >= subjectRoom else { break }
             right -= column.width
             self.columns.append(Column(text: column.text, x: right, width: column.width, style: column.style))
             right -= Self.gap

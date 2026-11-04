@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Testing
+@testable import CommitGraph
 @testable import HistoryUI
 
 /// How the commit list reports its selection. Only what the user does is
@@ -152,7 +153,7 @@ struct CommitTableBadgeTests {
         /// The middle of a badge of row 1, in the table.
         func middle(ofBadge index: Int) -> NSPoint {
             let frame = table.frameOfCell(atColumn: 0, row: 1)
-            let layout = CommitRowLayout(content: CommitTableBadgeTests.content(ofRow: 1), graphColumns: 0, size: frame.size)
+            let layout = CommitRowLayout(content: CommitTableBadgeTests.content(ofRow: 1), size: frame.size)
             return NSPoint(x: frame.minX + layout.badges[index].midX, y: frame.minY + layout.badges[index].midY)
         }
     }
@@ -214,8 +215,8 @@ struct CommitTableBadgeTests {
         let size = NSSize(width: 1200, height: 28)
         let local = CommitRowContent(shortID: "a", badges: [Badge(title: "tm/fix", kind: .branch)])
         let remote = CommitRowContent(shortID: "a", badges: [Badge(title: "origin/tm/fix", kind: .remoteBranch)])
-        let localWidth = try #require(CommitRowLayout(content: local, graphColumns: 0, size: size).badges.first).width
-        let remoteWidth = try #require(CommitRowLayout(content: remote, graphColumns: 0, size: size).badges.first).width
+        let localWidth = try #require(CommitRowLayout(content: local, size: size).badges.first).width
+        let remoteWidth = try #require(CommitRowLayout(content: remote, size: size).badges.first).width
         let style = CommitCellView.BadgeLook.of(.remoteBranch).remoteStyle
         #expect(remoteWidth >= localWidth + CommitRowLayout.width(of: "origin", in: style))
     }
@@ -224,8 +225,8 @@ struct CommitTableBadgeTests {
         let plain = CommitRowContent(shortID: "abcd1234", badges: [Badge(title: "feature", kind: .branch)], subject: "A subject")
         let merged = CommitRowContent(shortID: "abcd1234", badges: [Badge(title: "feature", kind: .branch, upstream: "refs/remotes/origin/feature")], subject: "A subject")
         let size = NSSize(width: 1200, height: 28)
-        let plainWidth = try #require(CommitRowLayout(content: plain, graphColumns: 0, size: size).badges.first).width
-        let mergedWidth = try #require(CommitRowLayout(content: merged, graphColumns: 0, size: size).badges.first).width
+        let plainWidth = try #require(CommitRowLayout(content: plain, size: size).badges.first).width
+        let mergedWidth = try #require(CommitRowLayout(content: merged, size: size).badges.first).width
         #expect(mergedWidth > plainWidth)
     }
 
@@ -233,7 +234,7 @@ struct CommitTableBadgeTests {
         let cell = CommitCellView()
         cell.frame = NSRect(x: 0, y: 0, width: 1200, height: 28)
         cell.content = Self.content(ofRow: 1)
-        let layout = CommitRowLayout(content: Self.content(ofRow: 1), graphColumns: 0, size: cell.bounds.size)
+        let layout = CommitRowLayout(content: Self.content(ofRow: 1), size: cell.bounds.size)
         let second = NSPoint(x: layout.badges[1].midX, y: layout.badges[1].midY)
         #expect(cell.view(cell, stringForToolTip: 0, point: second, userData: nil) == "feature")
         #expect(cell.view(cell, stringForToolTip: 0, point: NSPoint(x: layout.badges[0].midX, y: 14), userData: nil) == "main, current branch")
@@ -300,13 +301,15 @@ struct CommitTableBadgeTests {
     @Test func missesTheGapsBetweenBadges() {
         let list = List()
         let frame = list.table.frameOfCell(atColumn: 0, row: 1)
-        let layout = CommitRowLayout(content: Self.content(ofRow: 1), graphColumns: 0, size: frame.size)
+        let layout = CommitRowLayout(content: Self.content(ofRow: 1), size: frame.size)
         let gap = (layout.badges[1].maxX + layout.badges[2].minX) / 2
         #expect(list.controller.badge(at: NSPoint(x: frame.minX + gap, y: frame.midY)) == nil)
     }
 
     @Test func keepsTheSubjectAfterTheBadges() throws {
-        let layout = CommitRowLayout(content: Self.content(ofRow: 1), graphColumns: 3, size: NSSize(width: 1200, height: 28))
+        var content = Self.content(ofRow: 1)
+        content.lanes = CommitRowIndentTests.lanes(columns: 3)
+        let layout = CommitRowLayout(content: content, size: NSSize(width: 1200, height: 28))
         #expect(layout.badges.count == Self.badges.count)
         let last = try #require(layout.badges.last)
         #expect(layout.subjectX > last.maxX)
@@ -319,8 +322,129 @@ struct CommitTableBadgeTests {
     }
 
     @Test func leavesOutBadgesThatDontFit() {
-        let layout = CommitRowLayout(content: Self.content(ofRow: 1), graphColumns: 0, size: NSSize(width: 160, height: 28))
+        let layout = CommitRowLayout(content: Self.content(ofRow: 1), size: NSSize(width: 160, height: 28))
         #expect(layout.badges.count < Self.badges.count)
         #expect(layout.badges.allSatisfy { $0.maxX <= layout.subjectMaxX })
+    }
+}
+
+/// Where a row's text starts, which depends on nothing but the row, so that it
+/// stays in place while other rows scroll past.
+@Suite(.timeLimit(.minutes(1)))
+struct CommitRowIndentTests {
+    typealias Badge = CommitRowContent.Badge
+
+    static let size = NSSize(width: 1200, height: 28)
+    static let badge = Badge(title: "feature", kind: .branch, refName: "refs/heads/feature")
+
+    /// A row with its dot in the first column and a line in each of `columns` columns.
+    static func lanes(columns: Int) -> LaneLayout.Row {
+        LaneLayout.Row(column: 0, lines: (0..<columns).map { LaneLayout.Line(top: .column($0), bottom: .column($0)) })
+    }
+
+    static func layout(columns: Int?, width: CGFloat = size.width) -> CommitRowLayout {
+        let content = CommitRowContent(
+            shortID: "abcd1234",
+            subject: "A subject",
+            author: "An author",
+            date: "A date",
+            lanes: columns.map { lanes(columns: $0) }
+        )
+        return CommitRowLayout(content: content, size: NSSize(width: width, height: size.height))
+    }
+
+    @Test func theTextMovesRightAColumnAtATime() {
+        let widths = (1...LaneRenderer.maxColumns).map { Self.layout(columns: $0).subjectX }
+        for (narrower, wider) in zip(widths, widths.dropFirst()) {
+            #expect(wider - narrower == LaneRenderer.spacing)
+        }
+    }
+
+    @Test func theTextClearsTheRightmostLine() {
+        for columns in 1...LaneRenderer.maxColumns {
+            let rightmost = CommitRowLayout.graphX + LaneRenderer.spacing * (CGFloat(columns) - 0.5)
+            #expect(Self.layout(columns: columns).subjectX > rightmost + LaneRenderer.ringRadius)
+        }
+    }
+
+    @Test func theTextFollowsTheLinesRatherThanTheDot() {
+        let dotOnTheLeft = LaneLayout.Row(column: 0, lines: [LaneLayout.Line(top: .column(4), bottom: .column(4))])
+        let dotOnTheRight = LaneLayout.Row(column: 4, lines: [])
+        let left = CommitRowLayout(content: CommitRowContent(shortID: "a", lanes: dotOnTheLeft), size: Self.size)
+        let right = CommitRowLayout(content: CommitRowContent(shortID: "a", lanes: dotOnTheRight), size: Self.size)
+        #expect(left.subjectX == right.subjectX)
+        #expect(left.subjectX == Self.layout(columns: 5).subjectX)
+    }
+
+    @Test func aRowWiderThanTheGraphShowsDoesntPushTheTextFurther() {
+        let widest = Self.layout(columns: LaneRenderer.maxColumns).subjectX
+        #expect(Self.layout(columns: LaneRenderer.maxColumns + 20).subjectX == widest)
+    }
+
+    @Test func aRowWithoutAGraphStartsAtTheInset() {
+        // The first column's dot is centered on the inset that text starts at.
+        #expect(Self.layout(columns: nil).subjectX == CommitRowLayout.graphX + LaneRenderer.spacing / 2)
+    }
+
+    @Test func badgesStartWhereTheTextWould() throws {
+        let content = CommitRowContent(shortID: "a", badges: [Self.badge], lanes: Self.lanes(columns: 4))
+        let badge = try #require(CommitRowLayout(content: content, size: Self.size).badges.first)
+        #expect(badge.minX == Self.layout(columns: 4).subjectX)
+    }
+
+    /// The row's columns on the right, as what each says and where it goes.
+    static func rightColumns(_ layout: CommitRowLayout) -> [String] {
+        layout.columns.map { "\($0.text ?? "") at \($0.x) width \($0.width)" }
+    }
+
+    @Test func everyRowShowsTheSameColumnsOnTheRight() {
+        for width in stride(from: CGFloat(200), through: 900, by: 20) {
+            let expected = Self.rightColumns(Self.layout(columns: 1, width: width))
+            for columns in [nil, 3, LaneRenderer.maxColumns, LaneRenderer.maxColumns + 20] {
+                #expect(Self.rightColumns(Self.layout(columns: columns, width: width)) == expected, "at width \(width)")
+            }
+        }
+    }
+
+    @Test func theColumnsOnTheRightLeaveEvenTheWidestRowSomeOfItsSubject() {
+        for width in stride(from: CGFloat(200), through: 900, by: 10) {
+            let layout = Self.layout(columns: LaneRenderer.maxColumns, width: width)
+            guard !layout.columns.isEmpty else { continue }
+            #expect(layout.subjectMaxX - layout.subjectX >= 120, "at width \(width)")
+        }
+    }
+
+    @Test func aRowsBadgeStaysPutWhenAWiderRowComesIntoView() throws {
+        // Row 1 needs one column, and row 40 needs the most a graph shows.
+        let content: (Int) -> CommitRowContent = { row in
+            CommitRowContent(
+                shortID: "a",
+                badges: row == 1 ? [Self.badge] : [],
+                lanes: Self.lanes(columns: row == 40 ? LaneRenderer.maxColumns : 1)
+            )
+        }
+        let controller = CommitTableController(source: CommitTableController.Source(
+            count: { 100 },
+            content: content,
+            loadText: { _ in [] },
+            selectRow: { _ in }
+        ))
+        let table = try #require(controller.scrollView.documentView as? NSTableView)
+        controller.scrollView.frame = NSRect(x: 0, y: 0, width: 800, height: 300)
+        table.tableColumns[0].width = 800
+        controller.reloadData()
+        controller.scrollView.layoutSubtreeIfNeeded()
+
+        let frame = table.frameOfCell(atColumn: 0, row: 1)
+        let badge = try #require(CommitRowLayout(content: content(1), size: frame.size).badges.first)
+        let middle = NSPoint(x: frame.minX + badge.midX, y: frame.minY + badge.midY)
+        let place = CommitTableController.BadgePlace(row: 1, index: 0)
+        #expect(controller.badge(at: middle) == place)
+
+        // Scrolling past the wide row leaves the same point on the same badge.
+        table.scrollRowToVisible(40)
+        #expect(table.rows(in: table.visibleRect).contains(40))
+        table.scrollRowToVisible(1)
+        #expect(controller.badge(at: middle) == place)
     }
 }

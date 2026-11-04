@@ -4,11 +4,11 @@ import CommitGraph
 /// Draws the graph in one row of the commit list: the lines that pass
 /// through it and the commit's dot.
 ///
-/// The commit list decides how many columns to show. Lines further right
-/// are clipped, and a dot further right is drawn at the edge.
+/// A row's graph is as wide as its own lines, up to `maxColumns`. Lines further
+/// right are clipped, and a dot further right is drawn at the edge.
 enum LaneRenderer {
     static let spacing: CGFloat = 12
-    /// The most columns the graph shows.
+    /// The most columns a row's graph shows.
     static let maxColumns = 10
     private static let dotRadius: CGFloat = 4
     /// Small enough to stay clear of the edge of a selected row's fill.
@@ -28,29 +28,29 @@ enum LaneRenderer {
         CGFloat(min(columns, maxColumns)) * spacing
     }
 
-    /// Draws `row` in a graph that shows `columns` columns and starts at
-    /// `x`, in a flipped view of the row's height.
+    /// Draws `row` in a graph that starts at `x`, in a flipped view of the row's
+    /// height.
     ///
     /// - Parameters:
     ///   - isHollow: Whether the dot is a ring, for a row that isn't a commit.
     ///     Lines start at its edge, so that it stays empty.
     ///   - isCurrent: Whether a larger ring goes around the dot, for the commit
     ///     `HEAD` is on. Lines stop at the ring, which leaves a gap around the dot.
-    static func draw(_ row: LaneLayout.Row, columns: Int, at x: CGFloat, height: CGFloat, isHollow: Bool = false, isCurrent: Bool = false) {
-        let width = width(columns: columns)
-        guard width > 0, let context = NSGraphicsContext.current else { return }
+    static func draw(_ row: LaneLayout.Row, at x: CGFloat, height: CGFloat, isHollow: Bool = false, isCurrent: Bool = false) {
+        guard let context = NSGraphicsContext.current else { return }
+        let columns = min(row.width, maxColumns)
 
         func center(_ column: Int) -> CGFloat {
             x + (CGFloat(column) + 0.5) * spacing
         }
         let middle = height / 2
-        let dot = NSPoint(x: center(min(row.column, min(columns, maxColumns) - 1)), y: middle)
+        let dot = NSPoint(x: center(min(row.column, columns - 1)), y: middle)
         let ring = NSRect(x: dot.x - ringRadius, y: dot.y - ringRadius, width: ringRadius * 2, height: ringRadius * 2)
 
         // Only the lines are clipped to the graph, because a ring in the first
         // or last column reaches a little past it.
         context.saveGraphicsState()
-        let graph = NSRect(x: x, y: 0, width: width, height: height)
+        let graph = NSRect(x: x, y: 0, width: width(columns: columns), height: height)
         graph.clip()
         if isCurrent {
             let outsideRing = NSBezierPath(rect: graph)
