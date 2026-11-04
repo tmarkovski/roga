@@ -13,6 +13,10 @@ struct RepositoryView: View {
     /// with a commit selected in it.
     let showWorktree: (String, ObjectID?) -> Void
     @AppStorage("commitPanelHeight") private var commitPanelHeight = 340.0
+    /// The same for the row for uncommitted changes, where the diff needs the room
+    /// for staging and the message needs it for writing (decision 30). It's 0 until
+    /// someone drags it.
+    @AppStorage("changesPanelHeight") private var changesPanelHeight = 0.0
     @AppStorage("commitPanelWidth") private var commitPanelWidth = 320.0
     @AppStorage(FileListSettings.layout) private var fileLayout = FileLayout.list
 
@@ -32,6 +36,10 @@ struct RepositoryView: View {
             .modifier(RepositoryDialogs(model: model))
     }
 
+    /// How much of history shows beside uncommitted changes until someone drags the
+    /// split: the row for them and four commits, enough to see a commit land.
+    private static let historyHeightWithChanges = 4.0 + 5 * 28
+
     @ViewBuilder private var content: some View {
         switch model.phase {
         case .loading:
@@ -45,17 +53,21 @@ struct RepositoryView: View {
                 Button("Try Again") { model.reload() }
             }
         case .ready:
-            PanelSplit(lowerHeight: $commitPanelHeight) {
+            let showsChanges = model.selectedChanges.isSelected
+            PanelSplit(
+                lowerHeight: showsChanges ? $changesPanelHeight : $commitPanelHeight,
+                upperHeightUntilDragged: Self.historyHeightWithChanges
+            ) {
                 HistoryPanel(model: model, showWorktree: showWorktree)
             } lower: {
                 PanelColumns(leadingWidth: $commitPanelWidth) {
-                    if model.selectedChanges.isSelected {
-                        ChangesPanel(selection: model.selectedChanges)
+                    if showsChanges {
+                        ChangesPanel(selection: model.selectedChanges, composer: model.composer)
                     } else {
                         CommitPanel(model: model)
                     }
                 } trailing: {
-                    DiffPanel(selection: model.selectedFile)
+                    DiffPanel(selection: model.selectedFile, changes: showsChanges ? model.selectedChanges : nil)
                 }
             }
         }

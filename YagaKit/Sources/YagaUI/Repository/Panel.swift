@@ -20,6 +20,9 @@ enum Palette {
             ? NSColor(srgbRed: 240 / 255, green: 129 / 255, blue: 63 / 255, alpha: 1)
             : NSColor(srgbRed: 201 / 255, green: 68 / 255, blue: 2 / 255, alpha: 1)
     })
+    /// The same orange behind white text, which stays dark enough to read in both
+    /// appearances.
+    static let actionFill = Color(nsColor: NSColor(srgbRed: 201 / 255, green: 68 / 255, blue: 2 / 255, alpha: 1))
 
     /// The current branch, in the color of its badge in history (decision 27).
     static let current = Color(nsColor: GitColors.current)
@@ -72,7 +75,10 @@ struct Panel<Leading: View, Trailing: View, Content: View>: View {
 /// to resize them. The lower one keeps its height as the window changes size,
 /// unless that would make the upper one too short.
 struct PanelSplit<Upper: View, Lower: View>: View {
+    /// The lower panel's height, or 0 until someone has dragged it, which leaves
+    /// the upper panel `upperHeightUntilDragged`.
     @Binding var lowerHeight: Double
+    var upperHeightUntilDragged = 0.0
     @ViewBuilder var upper: Upper
     @ViewBuilder var lower: Lower
     /// The lower panel's height when the current drag started.
@@ -83,7 +89,8 @@ struct PanelSplit<Upper: View, Lower: View>: View {
     var body: some View {
         GeometryReader { geometry in
             let tallest = max(Self.minimumHeight, geometry.size.height - Self.minimumHeight - 1)
-            let height = min(max(lowerHeight, Self.minimumHeight), tallest)
+            let wanted = lowerHeight > 0 ? lowerHeight : geometry.size.height - upperHeightUntilDragged - 1
+            let height = min(max(wanted, Self.minimumHeight), tallest)
             VStack(spacing: 0) {
                 upper
                     .frame(maxHeight: .infinity)
@@ -352,7 +359,7 @@ extension KeyboardShortcut {
         if modifiers.contains(.option) { symbols.append("⌥") }
         if modifiers.contains(.shift) { symbols.append("⇧") }
         if modifiers.contains(.command) { symbols.append("⌘") }
-        symbols.append(String(key.character).uppercased())
+        symbols.append(key == .return ? "↩" : String(key.character).uppercased())
         return symbols.joined(separator: "\u{2009}")
     }
 }

@@ -20,7 +20,7 @@ Records aren't rewritten when a decision changes. Instead, a new record explains
 | [12](0012-history-in-topological-order.md) | Show history in topological order by default | Accepted |
 | [13](0013-repositories-in-a-sidebar.md) | List repositories and their worktrees in a sidebar | Accepted |
 | [14](0014-the-sidebar-keeps-every-added-repository.md) | Keep every added repository in the sidebar, and save the list in Application Support | Sidebar order changed by [16](0016-a-rail-of-organizations-in-the-sidebar.md) |
-| [15](0015-uncommitted-changes-as-a-row-in-history.md) | Show uncommitted changes as a row at the top of history | Accepted |
+| [15](0015-uncommitted-changes-as-a-row-in-history.md) | Show uncommitted changes as a row at the top of history | What the panel holds and how tall it is changed by [30](0030-stage-and-commit-beside-history.md) |
 | [16](0016-a-rail-of-organizations-in-the-sidebar.md) | Pick repositories by organization with a rail in the sidebar | Folding of worktrees changed by [17](0017-a-line-and-a-row-for-a-repositorys-worktrees.md), and where an owner comes from by [18](0018-every-remote-counts-toward-a-repositorys-organization.md) |
 | [17](0017-a-line-and-a-row-for-a-repositorys-worktrees.md) | Show a repository's worktrees with a line, and collapse them into one row | Accepted |
 | [18](0018-every-remote-counts-toward-a-repositorys-organization.md) | Count every remote toward a repository's organization | Accepted |
@@ -35,3 +35,4 @@ Records aren't rewritten when a decision changes. Instead, a new record explains
 | [27](0027-give-the-graph-and-branches-monokais-colors.md) | Give the graph and the branches Monokai's colors | Accepted |
 | [28](0028-show-a-worktree-thats-stuck-partway.md) | Show a worktree that's stuck partway through | Accepted |
 | [29](0029-dialogs-that-say-what-happens-and-show-the-command.md) | Dialogs that say what happens and show the command | Accepted |
+| [30](0030-stage-and-commit-beside-history.md) | Stage and commit in the panels under history | Accepted |

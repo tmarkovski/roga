@@ -1,4 +1,5 @@
 import CommitGraph
+import GitCore
 import SwiftUI
 
 /// The menu commands for opening repositories and for their history.
@@ -42,6 +43,17 @@ public struct RepositoryCommands: Commands {
     static let pushShortcut = KeyboardShortcut("p", modifiers: [.shift, .command])
     static let fetchShortcut = KeyboardShortcut("e", modifiers: [.shift, .command])
     static let newBranchShortcut = KeyboardShortcut("b", modifiers: [.shift, .command])
+
+    /// The shortcuts for a worktree's uncommitted changes (decision 30).
+    static let goToChangesShortcut = KeyboardShortcut("u", modifiers: [.shift, .command])
+    static let stageShortcut = KeyboardShortcut("s")
+    static let stageAllShortcut = KeyboardShortcut("s", modifiers: [.option, .command])
+    static let unstageAllShortcut = KeyboardShortcut("s", modifiers: [.shift, .option, .command])
+    static let writeMessageShortcut = KeyboardShortcut("l")
+    static let commitShortcut = KeyboardShortcut(.return, modifiers: .command)
+    static let commitAndPushShortcut = KeyboardShortcut(.return, modifiers: [.shift, .command])
+    static let amendShortcut = KeyboardShortcut(.return, modifiers: [.option, .command])
+    static let undoCommitShortcut = KeyboardShortcut("z", modifiers: [.option, .command])
 
     public init(list: RepositoryList) {
         self.list = list
@@ -170,6 +182,9 @@ public struct RepositoryCommands: Commands {
             }
             Divider()
         }
+        CommandMenu("Changes") {
+            ChangesMenuItems(repository: repository)
+        }
         CommandMenu("Branch") {
             if let branch = repository?.branch {
                 BranchMenuItems(branch: branch, switchBranch: refsPanelVisibility?.fits == true ? {
@@ -194,5 +209,68 @@ public struct RepositoryCommands: Commands {
                     .disabled(true)
             }
         }
+    }
+}
+
+/// What can be done with a worktree's uncommitted changes (decision 30). It reads
+/// the worktree's model in a view of its own, so that the menu follows it.
+private struct ChangesMenuItems: View {
+    let repository: RepositoryModel?
+
+    private var changes: SelectedChanges? { repository?.selectedChanges }
+    private var composer: CommitComposer? { repository?.composer }
+
+    /// The selected file's group, while uncommitted changes are showing.
+    private var group: WorktreeChanges.Group? {
+        changes?.isSelected == true ? changes?.selectedFile.group : nil
+    }
+
+    var body: some View {
+        Button("Go to Uncommitted Changes") {
+            repository?.goToChanges()
+        }
+        .keyboardShortcut(RepositoryCommands.goToChangesShortcut)
+        .disabled(repository?.hasWorkingTreeRow != true)
+        Divider()
+        Button(group?.stageTitle ?? "Stage File") {
+            changes?.toggleSelectedFile()
+        }
+        .keyboardShortcut(RepositoryCommands.stageShortcut)
+        .disabled(group == nil)
+        Button("Stage All") {
+            changes?.toggleAll(in: group == .untracked ? .untracked : .unstaged)
+        }
+        .keyboardShortcut(RepositoryCommands.stageAllShortcut)
+        .disabled(changes?.isSelected != true || (changes?.loaded?.unstaged.isEmpty != false && changes?.loaded?.untracked.isEmpty != false))
+        Button("Unstage All") {
+            changes?.toggleAll(in: .staged)
+        }
+        .keyboardShortcut(RepositoryCommands.unstageAllShortcut)
+        .disabled(changes?.isSelected != true || changes?.loaded?.staged.isEmpty != false)
+        Divider()
+        Button("Write Commit Message") {
+            composer?.askForFocus()
+        }
+        .keyboardShortcut(RepositoryCommands.writeMessageShortcut)
+        .disabled(changes?.isSelected != true)
+        Button(composer?.action.title ?? "Commit") {
+            composer?.commit()
+        }
+        .keyboardShortcut(RepositoryCommands.commitShortcut)
+        .disabled(changes?.isSelected != true || composer?.action.isEnabled != true)
+        Button("Commit and Push") {
+            composer?.commitAndPush()
+        }
+        .keyboardShortcut(RepositoryCommands.commitAndPushShortcut)
+        .disabled(changes?.isSelected != true || composer?.action.isEnabled != true || composer?.stoppedWork != nil)
+        Toggle("Amend", isOn: Binding { composer?.isAmending == true } set: { composer?.setAmending($0) })
+            .keyboardShortcut(RepositoryCommands.amendShortcut)
+            .disabled(changes?.isSelected != true || composer?.canAmend != true)
+        Divider()
+        Button("Undo Commit") {
+            composer?.undoLastCommit()
+        }
+        .keyboardShortcut(RepositoryCommands.undoCommitShortcut)
+        .disabled(composer?.lastCommit == nil || repository?.branch.isBusy == true)
     }
 }

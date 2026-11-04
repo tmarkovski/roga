@@ -494,7 +494,7 @@ struct BranchModelTests {
         #expect(model.branch.unfinished == UnfinishedWork(work: .merge, conflicts: 0))
         #expect(model.branch.unfinished?.hasConflicts == false)
         row = model.rowContent(0)
-        #expect(row.subject == "Merging · 1 uncommitted file")
+        #expect(row.subject == "Merging · 1 uncommitted file, 1 staged")
         #expect(row.body == nil)
         #expect(!row.isWarning)
 

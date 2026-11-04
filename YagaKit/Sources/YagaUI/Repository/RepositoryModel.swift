@@ -72,6 +72,10 @@ final class RepositoryModel {
     /// How many files have uncommitted changes. While there are any, a row for
     /// them comes before the first commit.
     private(set) var uncommittedFiles = 0
+    /// How many of them have staged changes, which their row says too.
+    private(set) var stagedFiles = 0
+    /// The message of the next commit, and making it.
+    let composer: CommitComposer
     /// The selected row. It's nil while the history being loaded hasn't reached
     /// the selected commit yet, and the commit stays selected.
     private(set) var selectedRow: Int?
@@ -103,6 +107,9 @@ final class RepositoryModel {
     @ObservationIgnored private let reportBranchChange: () async -> Void
     /// The line from the row for uncommitted changes down to `HEAD`.
     @ObservationIgnored private var workingTreeLine: WorkingTreeLine?
+    /// Whether the row for uncommitted changes should be selected once it's there,
+    /// as after undoing a commit that left no row behind.
+    @ObservationIgnored private var selectsChangesWhenTheyShow = false
     /// The check that yaga becoming active started, which a newer one replaces.
     @ObservationIgnored private(set) var check: Task<Void, Never>?
     /// The running update of the commit-graph files, which isn't tied to any
@@ -131,7 +138,8 @@ final class RepositoryModel {
         reportUncommittedFiles: @escaping (Int) -> Void = { _ in },
         reportConflicts: @escaping (Bool) -> Void = { _ in },
         reportBranchChange: @escaping () async -> Void = {},
-        fetchesByItself: @escaping () -> Bool = { UserDefaults.standard.fetchesByItself }
+        fetchesByItself: @escaping () -> Bool = { UserDefaults.standard.fetchesByItself },
+        drafts: CommitDrafts = .standard
     ) {
         self.session = session
         self.worktree = worktree
@@ -143,7 +151,12 @@ final class RepositoryModel {
         selectedChanges = SelectedChanges(session: session, worktree: worktree, selectedFile: selectedCommit.selectedFile, fileList: selectedCommit.fileList)
         refs = RefsModel(session: session, worktree: worktree)
         branch = BranchModel(session: session, worktree: worktree, fetchesByItself: fetchesByItself, reportBranchChange: reportBranchChange)
-        selectedChanges.onLoad = { [weak self] count in self?.show(uncommittedFiles: count) }
+        composer = CommitComposer(session: session, worktree: worktree, branch: branch, changes: selectedChanges, drafts: drafts)
+        selectedChanges.onLoad = { [weak self] changes in self?.show(uncommittedFiles: changes.fileCount, staged: changes.staged.count) }
+        selectedChanges.onFailure = { [weak branch] title, error in branch?.failure = BranchModel.Failure(title: title, error: error, changedNothing: true) }
+        composer.currentBranch = { [weak self] in self?.history?.refs.currentBranch }
+        composer.select = { [weak self] commit in self?.selectNewCommit(commit) }
+        composer.showChanges = { [weak self] in self?.selectChangesOnceTheyShow() }
         branch.isCheckingOut = { [weak self] in self?.checkout != nil }
         branch.lookAgain = { [weak self] in self?.lookAgain() }
         branch.showChanges = { [weak self] in
@@ -186,6 +199,13 @@ final class RepositoryModel {
     var commitCountDescription: String? {
         guard let history, history.isComplete else { return nil }
         return history.rows.count == 1 ? "1 commit" : "\(history.rows.count.formatted()) commits"
+    }
+
+    /// Goes to the row for uncommitted changes, if there is one.
+    func goToChanges() {
+        guard hasWorkingTreeRow else { return }
+        selectRow(0)
+        selectedChanges.askForFocus()
     }
 
     func reload() {
@@ -328,8 +348,9 @@ final class RepositoryModel {
         let status = try? await session.status(in: worktree)
         let stopped = try? await session.stoppedWork(in: worktree)
         guard !Task.isCancelled else { return }
-        show(uncommittedFiles: status?.fileCount ?? 0)
+        show(uncommittedFiles: status?.fileCount ?? 0, staged: status?.staged.count ?? 0)
         show(unfinished: UnfinishedWork(work: stopped, conflicts: status?.conflicted.count ?? 0))
+        composer.worktreeIsPartway(through: stopped)
         selectedChanges.refresh()
     }
 
@@ -344,11 +365,15 @@ final class RepositoryModel {
 
     /// Adds or removes the row for uncommitted changes, which moves the rows
     /// below it.
-    private func show(uncommittedFiles count: Int) {
+    private func show(uncommittedFiles count: Int, staged: Int) {
         reportUncommittedFiles(count)
-        guard count != uncommittedFiles else { return }
+        guard count != uncommittedFiles || staged != stagedFiles else {
+            selectChangesIfAsked()
+            return
+        }
         let hadRow = hasWorkingTreeRow
         uncommittedFiles = count
+        stagedFiles = staged
         if hasWorkingTreeRow != hadRow {
             workingTreeLine = history.map { WorkingTreeLine(layout: $0.lanes, head: $0.head) }
             if selectedChanges.isSelected {
@@ -358,6 +383,26 @@ final class RepositoryModel {
             }
         }
         historyVersion += 1
+        selectChangesIfAsked()
+    }
+
+    private func selectChangesOnceTheyShow() {
+        selectsChangesWhenTheyShow = true
+        selectChangesIfAsked()
+    }
+
+    private func selectChangesIfAsked() {
+        guard selectsChangesWhenTheyShow, hasWorkingTreeRow else { return }
+        selectsChangesWhenTheyShow = false
+        selectRow(0)
+    }
+
+    /// Selects a commit that history doesn't have yet, because yaga just made it,
+    /// which the next load of history finds a row for.
+    private func selectNewCommit(_ id: ObjectID) {
+        selectedRow = nil
+        selectedChanges.deselect()
+        selectedCommit.show(id)
     }
 
     /// Loads history in the current order, unless it has loaded already. It
@@ -469,7 +514,8 @@ final class RepositoryModel {
     /// What a row shows, with whatever text has loaded.
     func rowContent(_ row: Int) -> CommitRowContent {
         if hasWorkingTreeRow, row == 0 {
-            let files = uncommittedFiles == 1 ? "1 uncommitted file" : "\(uncommittedFiles.formatted()) uncommitted files"
+            var files = uncommittedFiles == 1 ? "1 uncommitted file" : "\(uncommittedFiles.formatted()) uncommitted files"
+            if stagedFiles > 0 { files += ", \(stagedFiles.formatted()) staged" }
             let unfinished = branch.unfinished
             let isWarning = unfinished?.hasConflicts == true
             return CommitRowContent(

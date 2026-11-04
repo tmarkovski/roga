@@ -77,6 +77,11 @@ struct FileRows: View {
     let selectedFile: SelectedFile
     let select: (DiffFile) -> Void
     let toggleFolder: (String) -> Void
+    /// What the button on each row does, for a worktree's files. A commit's files
+    /// have none, since a commit can't be changed from here.
+    var rowAction: FileRowAction?
+    /// What the button on a folder's row does, by the folder's path.
+    var folderAction: ((String) -> Void)?
 
     /// The ID of what's at the top of the files, which the rows of a filter
     /// scroll back to.
@@ -91,12 +96,13 @@ struct FileRows: View {
                         file: file,
                         isSelected: selectedFile.group == row.group && selectedFile.file?.path == file.path,
                         depth: row.depth,
-                        showsFolder: list.rowsShowFolders
+                        showsFolder: list.rowsShowFolders,
+                        action: rowAction
                     ) {
                         select(file)
                     }
                 case .folder(let path, let title, let isCollapsed, let lines):
-                    FolderRow(path: path, title: title, isCollapsed: isCollapsed, lines: lines, depth: row.depth) {
+                    FolderRow(path: path, title: title, isCollapsed: isCollapsed, lines: lines, depth: row.depth, action: rowAction, performAction: folderAction) {
                         toggleFolder(path)
                     }
                 }
@@ -116,26 +122,71 @@ extension ScrollViewProxy {
     }
 }
 
+/// What the button on a row of a worktree's files does: staging or unstaging it
+/// (decision 30). It shows while the pointer is over the row, in place of the
+/// row's line counts, so that nothing moves.
+struct FileRowAction {
+    /// The icon, or nil for one that says what it does in words.
+    let icon: Icon?
+    /// What the button says, or its tooltip when it has an icon.
+    let title: String
+    let perform: (DiffFile) -> Void
+}
+
 /// A row's button: it fills with gray while the pointer is over it, and a little
-/// darker while it's selected.
+/// darker while it's selected. The content hears whether the small button at the
+/// end of the row is covering it.
 private struct FileRowButton<Content: View>: View {
     var isSelected = false
+    var accessoryIcon: Icon?
+    var accessoryTitle: String?
+    var accessoryLabel = ""
+    var performAccessory: (() -> Void)?
     let action: () -> Void
-    @ViewBuilder var content: Content
+    @ViewBuilder var content: (_ isShowingAccessory: Bool) -> Content
     @State private var isHovering = false
 
     var body: some View {
-        Button(action: action) {
-            content
-                .padding(.horizontal, 8)
-                .frame(height: 24)
-                .background {
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(isSelected ? Palette.selection : isHovering ? Palette.hover : .clear)
+        ZStack(alignment: .trailing) {
+            Button(action: action) {
+                content(isHovering && performAccessory != nil)
+                    .padding(.horizontal, 8)
+                    .frame(height: 24)
+                    .background {
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(isSelected ? Palette.selection : isHovering ? Palette.hover : .clear)
+                    }
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            // A double click also selects the row, which is what's wanted anyway.
+            .simultaneousGesture(TapGesture(count: 2).onEnded { performAccessory?() })
+            if isHovering, let performAccessory {
+                Button(action: performAccessory) {
+                    Group {
+                        if let accessoryIcon {
+                            accessoryIcon.image
+                                .font(.system(size: 13))
+                                .frame(width: 20, height: 20)
+                        } else {
+                            Text(accessoryTitle ?? "")
+                                .font(.system(size: 12, weight: .medium))
+                                .padding(.horizontal, 6)
+                                .frame(height: 20)
+                        }
+                    }
+                    .background {
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(Palette.hover)
+                    }
+                    .contentShape(Rectangle())
                 }
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+                .padding(.trailing, 2)
+                .help(accessoryTitle ?? "")
+                .accessibilityLabel(accessoryLabel)
+            }
         }
-        .buttonStyle(.plain)
         .padding(.horizontal, 6)
         .onHover { isHovering = $0 }
     }
@@ -156,10 +207,18 @@ private struct FolderRow: View {
     let isCollapsed: Bool
     let lines: DiffFile.LineCounts
     let depth: Int
+    var action: FileRowAction?
+    var performAction: ((String) -> Void)?
     let toggle: () -> Void
 
     var body: some View {
-        FileRowButton(action: toggle) {
+        FileRowButton(
+            accessoryIcon: action?.icon,
+            accessoryTitle: action?.title,
+            accessoryLabel: "\(action?.title ?? "") \(path)",
+            performAccessory: performAction.map { perform in { perform(path) } },
+            action: toggle
+        ) { isShowingAccessory in
             HStack(spacing: 8) {
                 Triangle(pointsDown: !isCollapsed)
                     .frame(width: 12)
@@ -173,6 +232,7 @@ private struct FolderRow: View {
                     LineCounts(added: lines.added, removed: lines.removed)
                         .font(.system(size: 12))
                         .fixedSize()
+                        .opacity(isShowingAccessory ? 0 : 1)
                 }
             }
             .padding(.leading, indent(depth))
@@ -191,11 +251,20 @@ struct ChangedFileRow: View {
     /// Whether to say which folder it's in, which the rows above it say in a
     /// tree.
     var showsFolder = true
+    /// What the button at the end of the row does, if it has one.
+    var action: FileRowAction?
     let select: () -> Void
 
     var body: some View {
-        FileRowButton(isSelected: isSelected, action: select) {
-            content
+        FileRowButton(
+            isSelected: isSelected,
+            accessoryIcon: action?.icon,
+            accessoryTitle: action?.title,
+            accessoryLabel: "\(action?.title ?? "") \(file.path)",
+            performAccessory: action.map { action in { action.perform(file) } },
+            action: select
+        ) { isShowingAccessory in
+            content(hidingCounts: isShowingAccessory)
                 .padding(.leading, indent(depth))
         }
         .help(description)
@@ -203,7 +272,7 @@ struct ChangedFileRow: View {
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
-    private var content: some View {
+    private func content(hidingCounts: Bool) -> some View {
         HStack(spacing: 8) {
             Text(file.status.letter)
                 .font(.system(size: 11.5, weight: .medium, design: .monospaced))
@@ -227,11 +296,14 @@ struct ChangedFileRow: View {
                     LineCounts(added: lines.added, removed: lines.removed)
                         .font(.system(size: 12))
                         .fixedSize()
+                        .opacity(hidingCounts ? 0 : 1)
                 } else if file.oldMode != file.newMode, file.oldMode != 0, file.newMode != 0 {
                     change("mode")
+                        .opacity(hidingCounts ? 0 : 1)
                 }
             } else {
                 change("binary")
+                    .opacity(hidingCounts ? 0 : 1)
             }
         }
     }

@@ -8,6 +8,9 @@ import SwiftUI
 /// Shows what changed in the selected file, in a commit or a worktree.
 struct DiffPanel: View {
     let selection: SelectedFile
+    /// The worktree's uncommitted changes, while they're what's showing, which
+    /// gives the header a button for staging the file.
+    var changes: SelectedChanges?
     /// Whether the header has room for the file's path beside the search box.
     @State private var hasRoomForTitle = true
 
@@ -52,6 +55,20 @@ struct DiffPanel: View {
                 hasRoomForTitle = hasRoom
             }
         } trailing: {
+            if let changes, let file = selection.file, let group = selection.group {
+                Button(group.stageTitle) { changes.toggle(file, in: group) }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12))
+                    .padding(.horizontal, 8)
+                    .frame(height: 24)
+                    .background {
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .strokeBorder(Palette.separator)
+                    }
+                    .contentShape(Rectangle())
+                    .help("\(group.stageTitle) (\(RepositoryCommands.stageShortcut.symbols))")
+                    .fixedSize()
+            }
             if selection.isFindShown {
                 Button("Previous Match", icon: .chevronUp, action: selection.findPrevious)
                     .labelStyle(.iconOnly)

@@ -21,6 +21,8 @@ final class BranchModel {
         case undoingPull
         case aborting
         case deletingFromRemote
+        case committing
+        case continuingRebase
 
         var title: String {
             switch self {
@@ -31,6 +33,8 @@ final class BranchModel {
             case .undoingPull: "Undoing…"
             case .aborting: "Aborting…"
             case .deletingFromRemote: "Deleting…"
+            case .committing: "Committing…"
+            case .continuingRebase: "Continuing…"
             }
         }
     }
@@ -97,6 +101,9 @@ final class BranchModel {
     private static let previewLimit = 1000
     /// How long what happened stays in the title row.
     private static let finishedDuration = Duration.seconds(3)
+    /// How long it stays when it comes with a button for undoing it, which takes
+    /// a moment to get to.
+    private static let undoableDuration = Duration.seconds(8)
 
     let session: RepositorySession
     /// The worktree's folder.
@@ -112,6 +119,9 @@ final class BranchModel {
     private(set) var action: Action?
     /// What just happened, as in `Pulled`, for a moment.
     private(set) var finished: String?
+    /// What takes back what just happened, as for a commit. It's set before `work`
+    /// returns, and it goes along with the words.
+    var undoFinished: (() -> Void)?
     /// What to tell the user about something that didn't work, until they've
     /// seen it.
     var failure: Failure?
@@ -411,7 +421,7 @@ final class BranchModel {
     ///   - fetchesAfterFailing: Whether a refusal may mean the counts were stale,
     ///     as a rejected push does, so a fetch should correct them.
     ///   - work: Returns what to say when it's done, if anything.
-    private func run(
+    func run(
         _ action: Action?,
         failure title: String,
         changesNothing: Bool = false,
@@ -424,6 +434,7 @@ final class BranchModel {
         preview(nil)
         self.action = action
         finished = nil
+        undoFinished = nil
         let started = ContinuousClock.now
         running = Task {
             do {
@@ -450,9 +461,11 @@ final class BranchModel {
     private func show(finished message: String) {
         finished = message
         finishedNote?.cancel()
+        let duration = undoFinished == nil ? Self.finishedDuration : Self.undoableDuration
         finishedNote = Task {
-            guard (try? await Task.sleep(for: Self.finishedDuration)) != nil else { return }
+            guard (try? await Task.sleep(for: duration)) != nil else { return }
             finished = nil
+            undoFinished = nil
         }
     }
 

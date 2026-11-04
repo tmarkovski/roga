@@ -415,6 +415,65 @@ public actor RepositorySession {
         _ = try await Self.run(branch.arguments, in: worktree, git: git)
     }
 
+    /// Puts files into a worktree's index as they are on disk now, including
+    /// removing the ones that are gone.
+    ///
+    /// - Throws: `GitError` when git refuses, which says why.
+    @concurrent
+    public nonisolated func stage(_ files: [DiffFile], in worktree: String) async throws {
+        try await IndexCommands.stage(files.map(\.path), in: worktree, git: git)
+    }
+
+    /// Puts everything in a worktree into its index.
+    ///
+    /// - Throws: `GitError` when git refuses, which says why.
+    @concurrent
+    public nonisolated func stageEverything(in worktree: String) async throws {
+        try await IndexCommands.stageEverything(in: worktree, git: git)
+    }
+
+    /// Takes files back out of a worktree's index, leaving them as they are on
+    /// disk. A file that moved takes the place it came from with it, or the old
+    /// one would stay staged as deleted.
+    ///
+    /// - Throws: `GitError` when git refuses, which says why.
+    @concurrent
+    public nonisolated func unstage(_ files: [DiffFile], in worktree: String) async throws {
+        try await IndexCommands.unstage(files.flatMap { [$0.path, $0.oldPath].compactMap(\.self) }, in: worktree, git: git)
+    }
+
+    /// Makes a commit from a worktree's index, with the user's hooks and signing.
+    /// Cancelling it stops git.
+    ///
+    /// - Throws: `GitError` when git or a hook refuses, which says why.
+    @concurrent
+    public nonisolated func commit(_ request: CommitRequest, in worktree: String) async throws -> MadeCommit {
+        try await IndexCommands.commit(request, in: worktree, git: git)
+    }
+
+    /// Takes back a commit yaga made, leaving what it had in the index.
+    ///
+    /// - Throws: `HeadMoved` when something else has moved `HEAD` since, or
+    ///   `GitError` when git refuses.
+    @concurrent
+    public nonisolated func undo(_ commit: MadeCommit, in worktree: String) async throws {
+        try await IndexCommands.undo(commit, in: worktree, git: git)
+    }
+
+    /// Goes on with a rebase that stopped, keeping its message.
+    ///
+    /// - Throws: `GitError` when git refuses or stops again, which says why.
+    @concurrent
+    public nonisolated func continueRebase(in worktree: String) async throws {
+        try await IndexCommands.continueRebase(in: worktree, git: git)
+    }
+
+    /// The message git has ready for what a worktree is partway through.
+    @concurrent
+    public nonisolated func message(for work: StoppedWork, in worktree: String) async throws -> String? {
+        try await IndexCommands.message(for: work, in: worktree, git: git)
+    }
+
     private nonisolated static func run(_ arguments: [String], in worktree: String, git: Git) async throws -> GitResult {
         try await git.run(RemoteCommands.asked(arguments, in: worktree))
     }

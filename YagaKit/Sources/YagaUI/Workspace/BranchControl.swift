@@ -187,6 +187,14 @@ private struct BranchCounts: View {
                 .padding(.trailing, 4)
                 .modifier(WordsReveal(isShown: shown.showsWords, arrival: shown.arrival))
                 .accessibilityHidden(!shown.showsWords)
+            if shown.showsWords, let undo = branch.undoFinished {
+                Button("Undo", action: undo)
+                    .buttonStyle(.plain)
+                    .fontWeight(.medium)
+                    .foregroundStyle(Palette.action)
+                    .padding(.trailing, 4)
+                    .help("Undo the Commit")
+            }
             if shown.showsCounts {
                 // A worktree that's stuck comes before anything else it could
                 // do, and during a rebase it isn't on a branch to have counts.

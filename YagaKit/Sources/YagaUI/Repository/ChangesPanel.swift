@@ -1,13 +1,25 @@
 import GitCore
+import IconUI
 import RepositoryEngine
 import SwiftUI
 
 /// Shows a worktree's uncommitted files, in the place of the commit panel while
-/// their row in history is selected. A file with both staged and unstaged
-/// changes is listed twice, and each row selects its own diff.
+/// their row in history is selected, and the message of the next commit. A file
+/// with both staged and unstaged changes is listed twice, and each row selects its
+/// own diff. Staged files stay in view right above the message (decision 30).
 struct ChangesPanel: View {
     let selection: SelectedChanges
+    let composer: CommitComposer
     @FocusState private var isFocused: Bool
+    /// How much room the lists have, which limits how much of it Staged takes.
+    @State private var listsHeight = 0.0
+
+    /// The most of the lists' room that staged files take, once they need it.
+    private static let stagedShare = 0.45
+    /// How tall a heading is with its padding, and a row, and the end of a list.
+    private static let headingHeight = 36.0
+    private static let rowHeight = 24.0
+    private static let listEnd = 6.0
 
     private var fileList: FileListModel { selection.fileList }
 
@@ -44,38 +56,58 @@ struct ChangesPanel: View {
                 if changes.fileCount == 0 {
                     note("There are no uncommitted changes.")
                 } else {
-                    list(changes)
+                    VStack(spacing: 0) {
+                        list(changes)
+                            .onGeometryChange(for: Double.self) { $0.size.height } action: { listsHeight = $0 }
+                        CommitBox(composer: composer) { isFocused = true }
+                    }
                 }
             }
         }
+        .onChange(of: selection.focusRequests) { isFocused = true }
     }
 
     private func list(_ changes: WorktreeChanges) -> some View {
         ScrollViewReader { scroller in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    let groups = SelectedChanges.groups.filter { !fileList.rows(of: changes[$0], in: $0).isEmpty }
-                    if groups.isEmpty {
-                        NoMatchingFiles(filter: fileList.filter)
-                    }
-                    ForEach(groups, id: \.self) { group in
-                        GroupOfFiles(group: group, files: changes[group], list: fileList, selectedFile: selection.selectedFile) { file in
-                            isFocused = true
-                            selection.select(file, in: group)
-                        } toggleFolder: { path in
-                            isFocused = true
-                            fileList.toggleFolder(path, in: group)
+            VStack(spacing: 0) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        let groups = SelectedChanges.groups.filter { $0 != .staged && !fileList.rows(of: changes[$0], in: $0).isEmpty }
+                        if groups.isEmpty, fileList.rows(of: changes.staged, in: .staged).isEmpty {
+                            NoMatchingFiles(filter: fileList.filter)
+                        }
+                        ForEach(groups, id: \.self) { group in
+                            groupOfFiles(group, in: changes)
                         }
                     }
+                    .padding(.bottom, Self.listEnd)
+                    .id(FileRows.top)
                 }
-                .padding(.bottom, 6)
-                .id(FileRows.top)
+                .frame(maxHeight: .infinity)
+                let staged = fileList.rows(of: changes.staged, in: .staged)
+                if !staged.isEmpty {
+                    let needed = Self.headingHeight + Double(staged.count) * Self.rowHeight + Self.listEnd
+                    Rectangle()
+                        .fill(Palette.separator)
+                        .frame(height: 1)
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 0) {
+                            groupOfFiles(.staged, in: changes)
+                        }
+                        .padding(.bottom, Self.listEnd)
+                    }
+                    .frame(height: min(needed, max(listsHeight * Self.stagedShare, Self.headingHeight + 2 * Self.rowHeight)))
+                }
             }
             .focusable()
             .focused($isFocused)
             .focusEffectDisabled()
             .onKeyPress(keys: [.upArrow, .downArrow]) { press in
                 selection.selectFile(by: press.key == .downArrow ? 1 : -1)
+                return .handled
+            }
+            .onKeyPress(.space, phases: .down) { _ in
+                selection.toggleSelectedFile()
                 return .handled
             }
             .onChange(of: selection.fileSteps) {
@@ -93,6 +125,26 @@ struct ChangesPanel: View {
                     scroller.scrollOnceLaidOut(to: FileRows.top, anchor: .top)
                 }
             }
+        }
+    }
+
+    private func groupOfFiles(_ group: WorktreeChanges.Group, in changes: WorktreeChanges) -> some View {
+        GroupOfFiles(
+            group: group,
+            files: changes[group],
+            list: fileList,
+            selectedFile: selection.selectedFile,
+            toggleAll: { selection.toggleAll(in: group) },
+            rowAction: FileRowAction(icon: group.stageIcon, title: group.stageTitle) { file in
+                selection.toggle(file, in: group)
+            },
+            folderAction: group == .conflicted ? nil : { path in selection.toggleFolder(path, in: group) }
+        ) { file in
+            isFocused = true
+            selection.select(file, in: group)
+        } toggleFolder: { path in
+            isFocused = true
+            fileList.toggleFolder(path, in: group)
         }
     }
 
@@ -120,14 +172,19 @@ struct ChangesPanel: View {
 }
 
 /// One group's title, how many files it has and how many lines they change,
-/// or as many as a filter left, and its files.
+/// or as many as a filter left, and its files. While the pointer is over the title,
+/// it offers to stage them all or take them all back out.
 private struct GroupOfFiles: View {
     let group: WorktreeChanges.Group
     let files: [DiffFile]
     let list: FileListModel
     let selectedFile: SelectedFile
+    let toggleAll: () -> Void
+    let rowAction: FileRowAction
+    let folderAction: ((String) -> Void)?
     let select: (DiffFile) -> Void
     let toggleFolder: (String) -> Void
+    @State private var isHovering = false
 
     var body: some View {
         HStack(spacing: 8) {
@@ -140,13 +197,30 @@ private struct GroupOfFiles: View {
             if lines.contains(where: { $0.added + $0.removed > 0 }) {
                 LineCounts(added: lines.reduce(0) { $0 + $1.added }, removed: lines.reduce(0) { $0 + $1.removed })
             }
+            Spacer(minLength: 0)
+            if isHovering, group != .conflicted {
+                Button(group.stageAllTitle(matching: matching.count, filter: list.filter), action: toggleAll)
+                    .buttonStyle(.plain)
+                    .fontWeight(.medium)
+                    .padding(.horizontal, 6)
+                    .frame(height: 20)
+                    .background {
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(Palette.hover)
+                    }
+                    .contentShape(Rectangle())
+                    .help(group.stageAllHelp)
+            }
         }
         .font(.system(size: 12))
+        .frame(height: 20)
         .padding(.horizontal, 14)
         .padding(.top, 10)
         .padding(.bottom, 6)
+        .contentShape(Rectangle())
+        .onHover { isHovering = $0 }
         .accessibilityAddTraits(.isHeader)
-        FileRows(list: list, rows: list.rows(of: files, in: group), selectedFile: selectedFile, select: select, toggleFolder: toggleFolder)
+        FileRows(list: list, rows: list.rows(of: files, in: group), selectedFile: selectedFile, select: select, toggleFolder: toggleFolder, rowAction: rowAction, folderAction: folderAction)
     }
 }
 
@@ -158,6 +232,40 @@ extension WorktreeChanges.Group {
         case .unstaged: "Unstaged"
         case .untracked: "Untracked"
         case .staged: "Staged"
+        }
+    }
+
+    /// What staging or unstaging a file of the group is called. Staging a conflict
+    /// tells git it's resolved.
+    var stageTitle: String {
+        switch self {
+        case .conflicted: "Mark Resolved"
+        case .unstaged, .untracked: "Stage File"
+        case .staged: "Unstage File"
+        }
+    }
+
+    /// The icon for staging a file, or nil for one that says it in words.
+    var stageIcon: Icon? {
+        switch self {
+        case .conflicted: nil
+        case .unstaged, .untracked: .stage
+        case .staged: .unstage
+        }
+    }
+
+    /// The button that stages every file a filter left, or all of them.
+    func stageAllTitle(matching count: Int, filter: String) -> String {
+        let verb = self == .staged ? "Unstage" : "Stage"
+        return filter.isEmpty ? "\(verb) All" : "\(verb) \(count.formatted()) Matching"
+    }
+
+    var stageAllHelp: String {
+        switch self {
+        case .conflicted: ""
+        case .unstaged: "Stage the changes to these files, and leave untracked files alone"
+        case .untracked: "Start tracking these files"
+        case .staged: "Take these files back out of the next commit, and leave them as they are on disk"
         }
     }
 }
