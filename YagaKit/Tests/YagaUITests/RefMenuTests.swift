@@ -51,6 +51,40 @@ struct RefMenuTests {
         #expect(runs == 1)
     }
 
+    @Test func aSubmenuHasRowsOfItsOwn() throws {
+        var runs = 0
+        let menu = RefMenu.make([.submenu("Delete", entries: [.header("main"), .command("Worktree") { runs += 1 }])])
+        let submenu = try #require(menu.items[0].submenu)
+        #expect(menu.items[0].title == "Delete")
+        #expect(heights(menu) == [28])
+        #expect(heights(submenu) == [24, 28])
+        #expect(!submenu.showsStateColumn)
+        #expect(!submenu.autoenablesItems)
+        submenu.performActionForItem(at: 1)
+        #expect(runs == 1)
+    }
+
+    @Test func aSubmenuIsAsWideAsItsOwnRows() throws {
+        let menu = RefMenu.make([
+            .submenu("Delete", entries: [.header(String(repeating: "m", count: 30)), .command("Worktree") {}]),
+        ])
+        let submenu = try #require(menu.items[0].submenu)
+        #expect(widths(menu) == [264])
+        #expect(try #require(widths(submenu).first) > 264)
+    }
+
+    @Test func aLongSubmenuTitleLeavesRoomForItsArrow() throws {
+        let title = String(repeating: "m", count: 30)
+        let plain = RefMenu.make([.command(title) {}])
+        let opening = RefMenu.make([.submenu(title, entries: [])])
+        #expect(try #require(widths(opening).first) > #require(widths(plain).first))
+    }
+
+    @Test func aDisabledSubmenuSaysSo() {
+        let menu = RefMenu.make([.submenu("Delete", isEnabled: false, entries: [.command("Worktree") {}]), .command("Copy Name") {}])
+        #expect(menu.items.map(\.isEnabled) == [false, true])
+    }
+
     @Test func aDisabledCommandSaysSo() {
         let menu = RefMenu.make([.command("Delete Branch", isEnabled: false) {}, .command("Copy Name") {}])
         #expect(!menu.autoenablesItems)

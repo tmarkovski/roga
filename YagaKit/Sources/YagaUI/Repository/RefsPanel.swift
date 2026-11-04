@@ -551,12 +551,7 @@ private struct RefRow<Trailing: View, Commands: View>: View {
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : action == nil ? [] : .isButton)
         .accessibilityAction(.default) { action?() }
         .accessibilityActions {
-            ForEach(menu.indices, id: \.self) { index in
-                if case let .command(title, _, isEnabled, action) = menu[index] {
-                    Button(title, action: action)
-                        .disabled(!isEnabled)
-                }
-            }
+            refMenuActions(menu)
         }
     }
 }
@@ -567,36 +562,6 @@ extension RefRow where Trailing == EmptyView, Commands == EmptyView {
         self.init(icon: icon, title: title, subtitle: subtitle, titleTruncation: titleTruncation) {
         } commands: {
         }
-    }
-}
-
-/// Opens a row's menu for a right-click or a Control-click, and lets every other
-/// event through to the row. SwiftUI's own context menu can't show `RefMenu`'s
-/// rows, since it builds its menu's items itself.
-private struct RefMenuArea: NSViewRepresentable {
-    let entries: [RefMenu.Entry]
-
-    func makeNSView(context: Context) -> RefMenuAreaView {
-        RefMenuAreaView()
-    }
-
-    func updateNSView(_ view: RefMenuAreaView, context: Context) {
-        view.entries = entries
-    }
-}
-
-private final class RefMenuAreaView: NSView {
-    var entries: [RefMenu.Entry] = []
-
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        guard let event = NSApp.currentEvent else { return nil }
-        let opensMenu = event.type == .rightMouseDown
-            || (event.type == .leftMouseDown && event.modifierFlags.contains(.control))
-        return opensMenu ? super.hitTest(point) : nil
-    }
-
-    override func menu(for event: NSEvent) -> NSMenu? {
-        RefMenu.make(entries)
     }
 }
 

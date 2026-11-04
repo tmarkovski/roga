@@ -1,6 +1,7 @@
 import AppKit
 import GitCore
 import IconUI
+import MenuUI
 import RepositoryEngine
 import SwiftUI
 
@@ -397,20 +398,13 @@ private struct WorktreeConnector: View {
 
 /// The button that opens the menu of a row's commands, which shows while the
 /// pointer is over the row.
-private struct RowMenu<Items: View>: View {
-    @ViewBuilder var items: Items
+private struct RowMenu: View {
+    let entries: [RefMenu.Entry]
 
     var body: some View {
-        Menu {
-            items
-        } label: {
-            HoverIcon(size: 24) { Icon.ellipsis.image }
-        }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .help("More")
+        HoverIcon(size: 24) { Icon.ellipsis.image }
+            .overlay { RefMenuArea(entries: entries, opensOnClick: true) }
+            .help("More")
         .accessibilityLabel("More")
     }
 }
@@ -465,10 +459,10 @@ private struct RepositoryRow: View {
                     .padding(.trailing, 7)
             }
         } commands: {
-            RowMenu { menuItems }
+            RowMenu(entries: menu)
         }
+        .overlay { RefMenuArea(entries: menu) }
         .help(repository.folder)
-        .contextMenu { menuItems }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
         .accessibilityValue(
@@ -482,7 +476,7 @@ private struct RepositoryRow: View {
             if linkedWorktrees > 0 {
                 Button(repository.isExpanded ? "Hide Worktrees" : "Show Worktrees", action: toggle)
             }
-            menuItems
+            refMenuActions(menu)
         }
     }
 
@@ -524,17 +518,21 @@ private struct RepositoryRow: View {
         }
     }
 
-    @ViewBuilder private var menuItems: some View {
+    private var menu: [RefMenu.Entry] {
+        var entries: [RefMenu.Entry] = []
         if let main {
-            Button("Open in New Window", action: openInNewWindow)
-            Divider()
-            Button("Show in Finder") { reveal(main.path) }
-            Button("Open in Terminal") { openInTerminal(main.path) }
+            entries += [
+                .command("Open in New Window", action: openInNewWindow),
+                .divider,
+                .command("Show in Finder") { reveal(main.path) },
+                .command("Open in Terminal") { openInTerminal(main.path) },
+                .divider,
+            ]
         } else if problem != nil {
-            Button("Locate…", action: locate)
+            entries += [.command("Locate…", action: locate), .divider]
         }
-        Divider()
-        Button("Remove from Sidebar") { list.remove(repository) }
+        entries.append(.command("Remove from Sidebar") { list.remove(repository) })
+        return entries
     }
 }
 
@@ -580,16 +578,16 @@ private struct WorktreeRow: View {
             commands
         }
         .overlay { WorktreeConnector(isLast: isLast) }
+        .overlay { RefMenuArea(entries: menu) }
         .buttonStyle(.icon(size: 24))
         .help(worktree.path)
-        .contextMenu { menuItems }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(worktree.title)
         .accessibilityValue([subtitle, uncommittedFilesDescription(uncommittedFiles)].compactMap(\.self).joined(separator: ", "))
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction(.default, select)
         .accessibilityActions {
-            placeItems
+            refMenuActions(placeEntries)
             deleteActions
         }
     }
@@ -598,7 +596,7 @@ private struct WorktreeRow: View {
         Button(action: openInNewWindow) { Icon.newWindow.image }
             .help("Open in New Window")
             .accessibilityLabel("Open in New Window")
-        RowMenu { menuItems }
+        RowMenu(entries: menu)
     }
 
     private var subtitle: String {
@@ -611,32 +609,35 @@ private struct WorktreeRow: View {
         worktree.branch != nil && worktree.head != nil
     }
 
-    @ViewBuilder private var menuItems: some View {
-        placeItems
-        Divider()
-        if hasBranch {
-            Menu("Delete") {
-                // The row's title can be cut short, so this says which branch.
-                Section(worktree.title) {
-                    Button("Worktree") { delete(.worktree) }
-                    Button("Worktree and Branch") { delete(.worktreeAndBranch) }
-                    if hasRemoteBranch {
-                        Button("Worktree, Branch and Remote Branch…") { delete(.everything) }
-                    }
-                }
-            }
-            .disabled(isDeleting)
-        } else {
-            Button("Delete Worktree") { delete(.worktree) }
-                .disabled(isDeleting)
+    private var menu: [RefMenu.Entry] {
+        guard hasBranch else {
+            return placeEntries + [
+                .divider,
+                .command("Delete Worktree", isDestructive: true, isEnabled: !isDeleting) { delete(.worktree) },
+            ]
         }
+        var deleting: [RefMenu.Entry] = [
+            // The row's title can be cut short, so this says which branch.
+            .header(worktree.title),
+            .command("Worktree", isDestructive: true) { delete(.worktree) },
+            .command("Worktree and Branch", isDestructive: true) { delete(.worktreeAndBranch) },
+        ]
+        if hasRemoteBranch {
+            deleting.append(.command("Worktree, Branch and Remote Branch…", isDestructive: true) { delete(.everything) })
+        }
+        return placeEntries + [
+            .divider,
+            .submenu("Delete", isDestructive: true, isEnabled: !isDeleting, entries: deleting),
+        ]
     }
 
-    @ViewBuilder private var placeItems: some View {
-        Button("Open in New Window", action: openInNewWindow)
-        Divider()
-        Button("Show in Finder") { reveal(worktree.path) }
-        Button("Open in Terminal") { openInTerminal(worktree.path) }
+    private var placeEntries: [RefMenu.Entry] {
+        [
+            .command("Open in New Window", action: openInNewWindow),
+            .divider,
+            .command("Show in Finder") { reveal(worktree.path) },
+            .command("Open in Terminal") { openInTerminal(worktree.path) },
+        ]
     }
 
     /// The menu's deleting commands without the submenu, which assistive apps list
