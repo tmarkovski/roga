@@ -21,6 +21,11 @@ struct RepositoryView: View {
     @AppStorage(FileListSettings.layout) private var fileLayout = FileLayout.list
 
     var body: some View {
+        // Handing the panels bindings doesn't count as reading these, so a change
+        // to one wouldn't update this view. A worktree that's loading gets other
+        // updates that cover for that. One that has already loaded may get none,
+        // and a drag would change the saved size and leave the line where it was.
+        let _ = (commitPanelHeight, changesPanelHeight, commitPanelWidth)
         content
             .task(id: model.loadRequest) {
                 model.updateCommitGraph()
