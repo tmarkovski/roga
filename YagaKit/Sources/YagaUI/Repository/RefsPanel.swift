@@ -195,7 +195,7 @@ struct RefsPanel: View {
         let otherWorktree = isCurrent ? nil : branch.worktree
         return RefRow(
             icon: .branch,
-            imageColor: isCurrent ? .green : .secondary,
+            imageColor: isCurrent ? Palette.current : .secondary,
             title: branch.shortName,
             subtitle: branch.subtitle(isCurrent: isCurrent),
             menu: branchMenu(branch, isCurrent: isCurrent, otherWorktree: otherWorktree),
@@ -574,11 +574,11 @@ private struct AheadBehind: View {
         HStack(spacing: 6) {
             if behind > 0 {
                 Text("↓\(behind)")
-                    .foregroundStyle(.red)
+                    .foregroundStyle(Palette.red)
             }
             if ahead > 0 {
                 Text("↑\(ahead)")
-                    .foregroundStyle(.green)
+                    .foregroundStyle(Palette.green)
             }
         }
         .font(.system(size: 11, design: .monospaced))

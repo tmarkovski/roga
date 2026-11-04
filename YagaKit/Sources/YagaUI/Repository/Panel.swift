@@ -1,4 +1,5 @@
 import AppKit
+import HistoryUI
 import IconUI
 import SwiftUI
 
@@ -19,6 +20,15 @@ enum Palette {
             ? NSColor(srgbRed: 240 / 255, green: 129 / 255, blue: 63 / 255, alpha: 1)
             : NSColor(srgbRed: 201 / 255, green: 68 / 255, blue: 2 / 255, alpha: 1)
     })
+
+    /// The current branch, in the color of its badge in history (decision 27).
+    static let current = Color(nsColor: GitColors.current)
+    /// What was added, and commits ahead of the upstream.
+    static let green = Color(nsColor: GitColors.green)
+    /// What was removed, and commits behind the upstream.
+    static let red = Color(nsColor: GitColors.red)
+    /// What was moved or copied.
+    static let blue = Color(nsColor: GitColors.blue)
 
     static func gray(light: CGFloat, dark: CGFloat) -> Color {
         Color(nsColor: NSColor(name: nil) { appearance in

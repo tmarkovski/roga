@@ -276,9 +276,9 @@ private extension DiffFile.Status {
     var color: Color {
         switch self {
         case .modified, .typeChanged: .orange
-        case .added: .green
-        case .deleted, .conflicted: .red
-        case .renamed, .copied: .blue
+        case .added: Palette.green
+        case .deleted, .conflicted: Palette.red
+        case .renamed, .copied: Palette.blue
         case .untracked, .other: .secondary
         }
     }
@@ -292,9 +292,9 @@ struct LineCounts: View {
     var body: some View {
         HStack(spacing: 6) {
             Text("+\(added.formatted())")
-                .foregroundStyle(added > 0 ? Color.green : Color.secondary)
+                .foregroundStyle(added > 0 ? Palette.green : Color.secondary)
             Text("−\(removed.formatted())")
-                .foregroundStyle(removed > 0 ? Color.red : Color.secondary)
+                .foregroundStyle(removed > 0 ? Palette.red : Color.secondary)
         }
         .monospacedDigit()
     }

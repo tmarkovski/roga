@@ -46,6 +46,11 @@ struct CurrentCommitRowTests {
             NSGraphicsContext.restoreGraphicsState()
         }
 
+        /// What was drawn at a point, in the color space the drawing used.
+        func color(x: CGFloat, y: CGFloat) -> NSColor? {
+            image.colorAt(x: Int(x * CGFloat(Self.scale)), y: Int(y * CGFloat(Self.scale)))
+        }
+
         func isDrawn(x: CGFloat, y: CGFloat) -> Bool {
             let color = image.colorAt(x: Int(x * CGFloat(Self.scale)), y: Int(y * CGFloat(Self.scale)))
             return (color?.alphaComponent ?? 0) > 0.5

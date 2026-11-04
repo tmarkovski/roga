@@ -173,9 +173,8 @@ final class CommitCellView: NSView {
 
     fileprivate static func icon(for kind: CommitRowContent.Badge.Kind) -> NSImage? {
         switch kind {
-        case .currentBranch: symbol(.check, size: 9, weight: .bold, for: kind)
         case .tag: symbol(.tag, size: 8.5, weight: .regular, for: kind)
-        case .detachedHead, .branch, .remoteBranch: nil
+        case .currentBranch, .detachedHead, .branch, .remoteBranch: nil
         }
     }
 
@@ -250,26 +249,12 @@ final class CommitCellView: NSView {
             remoteStyle = Style(font: .systemFont(ofSize: 11), color: text)
         }
 
-        private static func color(light: Int, dark: Int) -> NSColor {
-            func color(_ value: Int) -> NSColor {
-                NSColor(
-                    srgbRed: CGFloat(value >> 16 & 0xFF) / 255,
-                    green: CGFloat(value >> 8 & 0xFF) / 255,
-                    blue: CGFloat(value & 0xFF) / 255,
-                    alpha: 1
-                )
-            }
-            let (light, dark) = (color(light), color(dark))
-            return NSColor(name: nil) { $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light }
-        }
+        private static let plainFill = GitColors.color(light: 0xFFFFFF, dark: 0x2A2A29)
+        private static let plainEdge = GitColors.color(light: 0xBDBDB8, dark: 0x62625C)
 
-        private static let green = color(light: 0x1A7F37, dark: 0x4AD66D)
-        private static let plainFill = color(light: 0xFFFFFF, dark: 0x2A2A29)
-        private static let plainEdge = color(light: 0xBDBDB8, dark: 0x62625C)
-
-        private static let here = BadgeLook(fill: green, edge: green, text: color(light: 0xFFFFFF, dark: 0x06240F), weight: .bold)
-        private static let yours = BadgeLook(fill: plainFill, edge: plainEdge, text: color(light: 0x123FA3, dark: 0xA5C0FF))
-        private static let others = BadgeLook(fill: plainFill, edge: plainEdge, text: color(light: 0x55554F, dark: 0xC4C4BE))
+        private static let here = BadgeLook(fill: GitColors.current, edge: GitColors.current, text: GitColors.onCurrent, weight: .bold)
+        private static let yours = BadgeLook(fill: plainFill, edge: plainEdge, text: GitColors.otherBranch)
+        private static let others = BadgeLook(fill: plainFill, edge: plainEdge, text: GitColors.color(light: 0x55554F, dark: 0xC4C4BE))
 
         static func of(_ kind: CommitRowContent.Badge.Kind) -> BadgeLook {
             switch kind {

@@ -24,13 +24,6 @@ enum LaneRenderer {
     /// it goes. It's the value that fits how Fork draws these lines.
     private static let flatRun: CGFloat = 0.6
 
-    /// Each column's color, in turn. The first column, where the main line
-    /// usually runs, gets the accent color.
-    private static let palette: [NSColor] = [
-        .controlAccentColor, .systemPurple, .systemTeal, .systemOrange,
-        .systemPink, .systemGreen, .systemIndigo, .systemBrown,
-    ]
-
     /// The width of a graph that shows `columns` columns.
     static func width(columns: Int) -> CGFloat {
         CGFloat(min(columns, maxColumns)) * spacing
@@ -43,7 +36,8 @@ enum LaneRenderer {
     ///   - isHollow: Whether the dot is a ring, for a row that isn't a commit.
     ///     Lines start at its edge, so that it stays empty.
     ///   - isCurrent: Whether a larger ring goes around the dot, for the commit
-    ///     `HEAD` is on. Lines stop at the ring, which leaves a gap around the dot.
+    ///     `HEAD` is on, in the color of the current branch's badge. Lines stop at
+    ///     the ring, which leaves a gap around the dot.
     static func draw(_ row: LaneLayout.Row, at x: CGFloat, height: CGFloat, isHollow: Bool = false, isCurrent: Bool = false) {
         guard let context = NSGraphicsContext.current else { return }
         let columns = min(row.width, maxColumns)
@@ -117,24 +111,24 @@ enum LaneRenderer {
 
         let circle = NSRect(x: dot.x - dotRadius, y: dot.y - dotRadius, width: dotRadius * 2, height: dotRadius * 2)
         if isHollow {
-            stroke(circle.insetBy(dx: lineWidth / 2, dy: lineWidth / 2), column: row.column)
+            stroke(circle.insetBy(dx: lineWidth / 2, dy: lineWidth / 2), color: color(row.column))
         } else {
             color(row.column).setFill()
             NSBezierPath(ovalIn: circle).fill()
         }
         if isCurrent {
-            stroke(ring, column: row.column)
+            stroke(ring, color: GitColors.current)
         }
     }
 
-    private static func stroke(_ oval: NSRect, column: Int) {
+    private static func stroke(_ oval: NSRect, color: NSColor) {
         let path = NSBezierPath(ovalIn: oval)
         path.lineWidth = lineWidth
-        color(column).setStroke()
+        color.setStroke()
         path.stroke()
     }
 
     private static func color(_ column: Int) -> NSColor {
-        palette[column % palette.count]
+        GitColors.lanes[column % GitColors.lanes.count]
     }
 }
