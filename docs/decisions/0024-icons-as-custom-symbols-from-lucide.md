@@ -31,6 +31,8 @@ We tried these ways to bring its icons into Swift. At 16 points they all draw ne
 
 **The small triangle stays a triangle, but it's hollow now.** Lucide has no filled triangle, and a chevron would have changed what the main window's design describes, so `Icon.disclosure` is its Play icon at the heaviest weight. It keeps a hole in the middle even there, as the outline that it is.
 
+**A triangle means something folds, and a chevron means a menu opens.** The branch's chip had the same triangle as a section of the refs panel, though it folds nothing. It now has `Icon.dropdown`, a chevron, which is what any other chip that opens a menu should use.
+
 **Decision 19's meanings stay, in new drawings.** Pull's arrow lands on a node and Push's leaves it, which Lucide's `arrow-down-to-dot` and `arrow-up-from-dot` already say. Their nodes are smaller than the ones we drew. Fetch's hollow node has no match in Lucide, so it's our own icon, drawn to match. Branch is Lucide's `git-branch`, with two hollow ends rather than a solid node that forks to a hollow one, and New Branch is `git-branch-plus`.
 
 ## Consequences

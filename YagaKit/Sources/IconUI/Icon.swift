@@ -71,6 +71,9 @@ extension Icon {
     /// The small triangle beside something that folds, which Lucide draws as its Play
     /// icon. Like all of its icons it's an outline, where the system's was filled.
     public static let disclosure = play
+
+    /// The chevron on a control that opens a menu, which doesn't fold anything.
+    public static let dropdown = chevronDown
 }
 
 extension Label where Title == Text, Icon == Image {

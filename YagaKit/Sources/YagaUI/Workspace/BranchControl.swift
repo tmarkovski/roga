@@ -49,7 +49,9 @@ private struct BranchChip: View {
                     Text(worktree.title)
                         .truncationMode(.middle)
                 }
-                Triangle(pointsDown: true)
+                Icon.dropdown.image
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
             }
             .font(.system(size: 13))
             .lineLimit(1)
