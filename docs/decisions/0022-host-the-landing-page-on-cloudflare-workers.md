@@ -1,6 +1,6 @@
 # 22. Host the landing page on Cloudflare Workers, as static files
 
-Accepted on 2026-11-03.
+Accepted on 2026-11-03. [Decision 34](0034-name-the-app-roga.md) chose Roga as the name, which settles what this record left open.
 
 ## Context
 

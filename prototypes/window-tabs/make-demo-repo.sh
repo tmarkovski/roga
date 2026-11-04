@@ -20,8 +20,8 @@ commit() {
     mkdir -p "$where/$(dirname "$file")"
     echo "// $message" >> "$where/$file"
     git -C "$where" add "$file"
-    GIT_AUTHOR_NAME="$author" GIT_AUTHOR_EMAIL="$(echo "$author" | tr -cd 'a-zA-Z').example@yaga.build" \
-    GIT_COMMITTER_NAME="$author" GIT_COMMITTER_EMAIL="$(echo "$author" | tr -cd 'a-zA-Z').example@yaga.build" \
+    GIT_AUTHOR_NAME="$author" GIT_AUTHOR_EMAIL="$(echo "$author" | tr -cd 'a-zA-Z').example@roga.sh" \
+    GIT_COMMITTER_NAME="$author" GIT_COMMITTER_EMAIL="$(echo "$author" | tr -cd 'a-zA-Z').example@roga.sh" \
     GIT_AUTHOR_DATE="@$time +0000" GIT_COMMITTER_DATE="@$time +0000" \
         git -C "$where" commit -q -m "$message"
     time=$((time + 5400))

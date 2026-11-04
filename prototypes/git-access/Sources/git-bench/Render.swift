@@ -55,7 +55,7 @@ struct Render: ParsableCommand {
                 backing: .buffered,
                 defer: false
             )
-            window.title = "yaga prototype: \(engine.rawValue)"
+            window.title = "Roga prototype: \(engine.rawValue)"
             // Each view inserts new commits at the top, as it would after a fetch, and selects a
             // row in its own way.
             let actions: ViewActions

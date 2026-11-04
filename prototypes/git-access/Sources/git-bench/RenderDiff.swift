@@ -71,7 +71,7 @@ struct DiffRender: ParsableCommand {
                 backing: .buffered,
                 defer: false
             )
-            window.title = "yaga prototype: diff \(engine.rawValue)"
+            window.title = "Roga prototype: diff \(engine.rawValue)"
             _ = timer.lap() // Don't count starting AppKit and creating the window.
             var contentReady: @MainActor () -> Bool = { firstRowDrawn }
             var notes: [String] = []

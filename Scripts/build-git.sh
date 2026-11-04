@@ -1,6 +1,6 @@
 #!/bin/bash
 # Builds a release of git from source and installs it into a folder, so that
-# the tests can run against the oldest git yaga supports (decision 8).
+# the tests can run against the oldest git Roga supports (decision 8).
 #
 # Usage: Scripts/build-git.sh <version> <sha256 of the tarball> <install folder>
 #

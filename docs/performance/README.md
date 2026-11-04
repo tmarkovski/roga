@@ -1,6 +1,6 @@
 # Performance
 
-This folder records performance work on yaga: what was slow, what caused it, what changed, and the measurements that show it, so that later work can tell what's been tried and compare against real numbers. [ARCHITECTURE.md](../../ARCHITECTURE.md) describes how yaga works now, and links here for the evidence behind it.
+This folder records performance work on Roga: what was slow, what caused it, what changed, and the measurements that show it, so that later work can tell what's been tried and compare against real numbers. [ARCHITECTURE.md](../../ARCHITECTURE.md) describes how Roga works now, and links here for the evidence behind it.
 
 | Date | Analysis | Result |
 | --- | --- | --- |

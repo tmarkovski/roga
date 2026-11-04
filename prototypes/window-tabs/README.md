@@ -1,6 +1,6 @@
 # Window tabs preview
 
-This is a throwaway preview of how yaga could show repositories as native macOS window tabs. Each repository is its own window, and the windows share one tab bar, so by default you see a single window with a tab per repository. It isn't part of the app.
+This is a throwaway preview of how Roga could show repositories as native macOS window tabs. Each repository is its own window, and the windows share one tab bar, so by default you see a single window with a tab per repository. It isn't part of the app.
 
 We decided to draw our own tabs instead ([decision 10](../../docs/decisions/0010-our-own-tabs-in-one-window.md)). What the preview showed about launching and restoring windows still applies.
 
@@ -32,6 +32,6 @@ Without `--open-all`, it shows a welcome window where you choose what to open.
 ## What it showed
 
 - `NSWindow.tabbingMode = .preferred` makes new repository windows open as tabs regardless of the system's "Prefer tabs when opening documents" setting.
-- AppKit only tabs a new window into the key window. When another window is key, such as a welcome window, yaga has to add the new window to the existing tab group itself.
+- AppKit only tabs a new window into the key window. When another window is key, such as a welcome window, Roga has to add the new window to the existing tab group itself.
 - Each tab can carry a tooltip and one small accessory view, which is enough for a dot that shows uncommitted changes.
 - SwiftUI doesn't reopen a single `Window` scene, such as a welcome window, if it was closed when the app quit. The real app has to decide what to show at launch when no windows are restored.

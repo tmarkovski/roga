@@ -16,7 +16,7 @@ We considered these ways of building it:
 
 ## Decision
 
-**The body is the mark's own outline, and the legs are joints.** [`yaga-house-body.svg`](../design/branding/yaga-house-body.svg) is the mark's house with its legs cut off. Each leg is a hip, a knee, a hock, an ankle and three toes, drawn as lines with round ends, so it can move without anything being redrawn by hand. A pose says where all of that is at one moment.
+**The body is the mark's own outline, and the legs are joints.** [`yaga-house-body.svg`](../design/branding/roga-house-body.svg) is the mark's house with its legs cut off. Each leg is a hip, a knee, a hock, an ankle and three toes, drawn as lines with round ends, so it can move without anything being redrawn by hand. A pose says where all of that is at one moment.
 
 **An animation is a function from time to a pose.** Each one is a `HouseMotion`, and a new one only has to build poses from the same parts. A SwiftUI `Canvas` in a `TimelineView` draws them.
 

@@ -1,5 +1,5 @@
 // The house from the app, walking. This is the rig and the stride from
-// YagaKit/Sources/YagaUI/House/, with the same numbers, so a change to the walk
+// RogaKit/Sources/RogaUI/House/, with the same numbers, so a change to the walk
 // there has to be made here too (decision 22). Everything is in the coordinates
 // of the mark, where y grows downward and the house faces right.
 //

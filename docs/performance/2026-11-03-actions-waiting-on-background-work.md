@@ -4,11 +4,11 @@ Measured on 2026-11-03, against commit `bddca90`, on an Apple M1 Max (8 performa
 
 ## What was reported
 
-After opening the Linux repository and clicking through its uncommitted files, working in another repository felt slow. Switching branches took a while, and deleting a branch, local or remote, seemed to hang the UI a little. The guess was that git processes were blocking the UI, or that yaga was fetching or refreshing too many repositories.
+After opening the Linux repository and clicking through its uncommitted files, working in another repository felt slow. Switching branches took a while, and deleting a branch, local or remote, seemed to hang the UI a little. The guess was that git processes were blocking the UI, or that Roga was fetching or refreshing too many repositories.
 
 ## What we found
 
-Git wasn't blocking the main thread. Actions that had already finished stayed busy, because they were waiting on work running at macOS's background priority, which is very slow on this machine. The guess about refreshing was right: every time yaga became active, it rescanned every repository.
+Git wasn't blocking the main thread. Actions that had already finished stayed busy, because they were waiting on work running at macOS's background priority, which is very slow on this machine. The guess about refreshing was right: every time Roga became active, it rescanned every repository.
 
 ## Results
 
@@ -17,25 +17,25 @@ Each range covers three runs of the old code and three of the new, alternating s
 | What someone does | Before | After |
 | --- | --- | --- |
 | Check out a branch in a small repository | 206–279 | 73–133 |
-| Check out a branch just after switching back to yaga | 219–427 | 96–109 |
+| Check out a branch just after switching back to Roga | 219–427 | 96–109 |
 | Check out a branch in Linux | 2,626–3,614 | 386–469 |
 | Delete a remote branch while a quiet fetch is running | 3,731–3,912 | 1,850–1,859 |
 | Delete a remote branch with no fetch running | 1,798–1,842 | 1,366–1,850 |
 | Delete a local branch | 86–110 | 105–112 |
 
-In an earlier batch, when the machine was busier, the checkout just after switching back to yaga took 2,258 and 2,875 ms in two runs of three (273 ms in the third), against 73–78 ms with the fix to checkouts applied. That wait grows with the machine's load, so the table's "before" is close to its best case.
+In an earlier batch, when the machine was busier, the checkout just after switching back to Roga took 2,258 and 2,875 ms in two runs of three (273 ms in the third), against 73–78 ms with the fix to checkouts applied. That wait grows with the machine's load, so the table's "before" is close to its best case.
 
 Remote deletions include a server that takes a second to answer, which the test added on purpose, and about 0.7 seconds of AppKit sliding the confirmation sheet in and out.
 
-| What yaga does | Before | After |
+| What Roga does | Before | After |
 | --- | --- | --- |
 | Slowest `git status` on Linux during the run | 4.84–6.70 s | 0.53–0.59 s |
 | Most `git status` commands running at once | 18 | 5 |
 | Git processes started on the main thread | 281 of about 960 | 0 of about 940 |
-| Git processes started by three switches back to yaga | about 300 | about 300 |
+| Git processes started by three switches back to Roga | about 300 | about 300 |
 | Total main-thread stalls over 30 ms during the run | 2.8–2.9 s | 2.0–2.7 s |
 
-The last two rows barely moved, and that's expected. A switch back to yaga still starts about 100 processes, though fewer now run at once. And main-thread stalls were never what was slowing these actions down, as the next sections explain.
+The last two rows barely moved, and that's expected. A switch back to Roga still starts about 100 processes, though fewer now run at once. And main-thread stalls were never what was slowing these actions down, as the next sections explain.
 
 ## What caused it
 
@@ -52,7 +52,7 @@ That's about 15 times slower, while utility priority costs almost nothing. Backg
 
 **Linux slowed down other repositories.** Every repository's background `git status` competes for the same two cores, and Linux's is by far the largest. With Linux removed from the list, the checkout just after switching back took 190–199 ms, against 273–2,875 ms with it. The scan reaches every listed repository, so this applies whether or not Linux has been opened. We didn't test those two cases separately.
 
-**Every switch back to yaga rescanned everything, with nothing to stop a scan already running.** That's about 100 git processes for 16 repositories. In one run, three switches 1.5 seconds apart ran three scans of Linux at once, each taking 9–12 seconds rather than 0.4.
+**Every switch back to Roga rescanned everything, with nothing to stop a scan already running.** That's about 100 git processes for 16 repositories. In one run, three switches 1.5 seconds apart ran three scans of Linux at once, each taking 9–12 seconds rather than 0.4.
 
 **Remote deletions waited for quiet fetches.** Pulling, pushing, fetching and deleting from a remote all waited for any running fetch, including the quiet one that starts when a window shows a repository, at background priority. Delete a remote branch soon after arriving at a repository, and it waited for that fetch to finish. With a server that takes 4 seconds to answer, that added about 2 seconds. The limit on a quiet fetch is a minute.
 
@@ -67,7 +67,7 @@ That's about 15 times slower, while utility priority costs almost nothing. Backg
 
 1. `RepositoryList.refresh(repositoryAt:)` now returns once it has read the worktrees, and the rest carries on behind it. So checkouts and new branches no longer wait for the counts.
 2. Only one look at a repository runs at a time, and asking during one looks once more when it's done. Four repositories get looked at at once, and the others wait for their turn.
-3. `GitCommand.priority` replaces `runsAtLowPriority`, and adds utility priority. The sidebar's counts and quiet fetches use it. Updating the commit-graph files stays at background priority, because it uses far more CPU than anything else yaga runs.
+3. `GitCommand.priority` replaces `runsAtLowPriority`, and adds utility priority. The sidebar's counts and quiet fetches use it. Updating the commit-graph files stays at background priority, because it uses far more CPU than anything else Roga runs.
 4. What someone asks for now stops a quiet fetch rather than waiting for it, and a stopped fetch doesn't count toward the minute between fetches. A fetch someone asked for still runs to its end.
 5. `Git.run` and the session's nonisolated functions are `@concurrent`, and so are starting a session and finding git, so all of it leaves the main thread.
 
@@ -75,7 +75,7 @@ Tests cover the counts not holding anything up, looks being merged and limited, 
 
 ## How this was measured
 
-A scripted driver hosted the real `WorkspaceView` in an off-screen window and called the real models, in the order the report described: open Linux, select its uncommitted row and four files, switch to another repository, delete a remote branch 1.5 seconds after arriving, check out three branches, delete two local branches, delete another remote branch, switch back to yaga three times, and then do the same kinds of thing again, including on Linux.
+A scripted driver hosted the real `WorkspaceView` in an off-screen window and called the real models, in the order the report described: open Linux, select its uncommitted row and four files, switch to another repository, delete a remote branch 1.5 seconds after arriving, check out three branches, delete two local branches, delete another remote branch, switch back to Roga three times, and then do the same kinds of thing again, including on Linux.
 
 A dylib loaded with `DYLD_INSERT_LIBRARIES` logged each time the main thread stayed busy for over 30 ms, with samples of its stack, and each `posix_spawn` with its thread and duration. Timing came from each action's start until the model stopped being busy, and durations of git commands from `CommandLog`.
 
@@ -90,11 +90,11 @@ The real app target was also built from the new code and run as a copy with its 
 - That Delete was disabled or ignored during a checkout comes from reading the code, not from clicking it.
 - Machine load swung a lot through the day, with a load average from about 7 to over 50, and it changes the "before" numbers much more than the "after" ones.
 
-Some traps for anyone repeating this: a copied repository has a stale index, and yaga's `--no-optional-locks` means nothing refreshes it, so run `git update-index --refresh` in the copy first. Without that, `git status` hashes every file, and listing the uncommitted files of the partial clone of Linux hadn't finished after four minutes, most likely because `git diff-files` was downloading blobs. A driver that calls `exit` also leaves its git processes running, which starves later runs. Those two together produced the 60–240 second figures above.
+Some traps for anyone repeating this: a copied repository has a stale index, and Roga's `--no-optional-locks` means nothing refreshes it, so run `git update-index --refresh` in the copy first. Without that, `git status` hashes every file, and listing the uncommitted files of the partial clone of Linux hadn't finished after four minutes, most likely because `git diff-files` was downloading blobs. A driver that calls `exit` also leaves its git processes running, which starves later runs. Those two together produced the 60–240 second figures above.
 
 ## What's left
 
-- A switch back to yaga still starts about 100 git processes. Live refresh from file system events, which [ARCHITECTURE.md](../../ARCHITECTURE.md) already plans, would remove most of them.
+- A switch back to Roga still starts about 100 git processes. Live refresh from file system events, which [ARCHITECTURE.md](../../ARCHITECTURE.md) already plans, would remove most of them.
 - Switching repositories stalls the main thread for 150–200 ms while SwiftUI rebuilds the view, in both Debug and Release.
 - Deleting a local branch on Linux went from 128–155 ms to 213–219 ms in the table below. Most likely that's because it now starts right after the checkout before it, while history and the refs panel are still reloading, where it used to start about 3 seconds later. We didn't test this separately.
 
@@ -114,8 +114,8 @@ Times in milliseconds, for the final code. `before` and `after` are Release buil
 | Delete local, first | 86 | 107 | 109 | 107 | 107 | 109 | 108 | 127 |
 | Delete local, second | 108 | 106 | 110 | 106 | 107 | 109 | 134 | 107 |
 | Delete remote, no fetch running | 1,835 | 1,798 | 1,842 | 1,366 | 1,850 | 1,845 | 1,816 | 1,828 |
-| Delete local, after switching back to yaga | 105 | 106 | 109 | 106 | 112 | 105 | 128 | 107 |
-| Check out, after switching back to yaga | 362 | 219 | 427 | 96 | 98 | 109 | 326 | 94 |
+| Delete local, after switching back to Roga | 105 | 106 | 109 | 106 | 112 | 105 | 128 | 107 |
+| Check out, after switching back to Roga | 362 | 219 | 427 | 96 | 98 | 109 | 326 | 94 |
 | Linux: check out | 2,640 | 2,626 | 2,845 | 389 | 402 | 418 | 2,501 | 439 |
 | Linux: check out, back again | 2,817 | 2,670 | 3,614 | 386 | 469 | 398 | 2,664 | 454 |
 | Linux: delete local | 128 | 128 | 155 | 219 | 213 | 216 | 180 | 264 |

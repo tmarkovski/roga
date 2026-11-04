@@ -1,6 +1,6 @@
 # Git access prototype
 
-This is a throwaway benchmark tool for deciding how yaga reads a Git repository. It isn't part of the app, and nothing in it should be copied into the app without being rewritten properly.
+This is a throwaway benchmark tool for deciding how Roga reads a Git repository. It isn't part of the app, and nothing in it should be copied into the app without being rewritten properly.
 
 It compares three ways to load the history of `HEAD`:
 

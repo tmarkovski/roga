@@ -1,6 +1,6 @@
 # Results
 
-These results answer two questions. The first is the open question in the vision about how yaga should talk to Git. The short answer is to run the `git` binary for almost everything, read git's commit-graph file directly to get the shape of history, and not use libgit2. The second is whether SwiftUI can show the history of a very large repository. It can scroll through it smoothly, but every change to the data or the selection freezes the app for a time that grows with the number of commits, so the commit list should be an AppKit `NSTableView`. That second answer is in [Drawing the history](#drawing-the-history). A third section, [The diff view](#the-diff-view), compares an `NSTableView` with TextKit 1 and TextKit 2 for showing large diffs.
+These results answer two questions. The first is the open question in the vision about how Roga should talk to Git. The short answer is to run the `git` binary for almost everything, read git's commit-graph file directly to get the shape of history, and not use libgit2. The second is whether SwiftUI can show the history of a very large repository. It can scroll through it smoothly, but every change to the data or the selection freezes the app for a time that grows with the number of commits, so the commit list should be an AppKit `NSTableView`. That second answer is in [Drawing the history](#drawing-the-history). A third section, [The diff view](#the-diff-view), compares an `NSTableView` with TextKit 1 and TextKit 2 for showing large diffs.
 
 ## Setup
 
@@ -43,7 +43,7 @@ Once the history was ordered, laying out the graph took about 0.5 seconds for al
 
 ### What this shows
 
-**Loading the text of every commit up front is too slow to do.** Every approach that reads the author and subject of all 1.5 million commits takes about 12 seconds with git, or about 35 seconds with libgit2, and holds between 0.5 and 2.5 GB of memory. The shape of the history is cheap, but the text is expensive. yaga should load the whole shape and only the text it's about to draw. A search across all commit messages needs the text too, but it can stream it in the background.
+**Loading the text of every commit up front is too slow to do.** Every approach that reads the author and subject of all 1.5 million commits takes about 12 seconds with git, or about 35 seconds with libgit2, and holds between 0.5 and 2.5 GB of memory. The shape of the history is cheap, but the text is expensive. Roga should load the whole shape and only the text it's about to draw. A search across all commit messages needs the text too, but it can stream it in the background.
 
 **The commit-graph file is what makes large histories fast.** With one, `git log --date-order` fills the first screen in 27 ms instead of 8.8 seconds, because git uses the generation numbers stored in the file to output commits in order without walking the whole history first. Reading the file directly orders all 1.5 million commits in 372 ms using 81 MB. The commit-graph reader returned exactly the same parents as git for every commit in both repositories. Its order differed from git's only at a handful of positions where commits share a timestamp (151 of 1.5 million positions on Linux).
 
@@ -69,9 +69,9 @@ The two settings work differently:
 - **The untracked cache** is extra data that git saves in the index. Once it's there, git keeps using it by default, even for commands that don't ask for it. It needs no background process, and it alone made status on Linux about two and a half times faster.
 - **The filesystem monitor** starts a daemon for the repository that keeps running. Together with the untracked cache, it made status on Linux about five times faster.
 
-yaga can turn either one on for a single command, for example with `-c core.untrackedCache=true`, without changing the user's configuration. On a small repository the pair made status slightly slower, so yaga would only want them for large ones. Whether yaga uses them is a separate decision.
+Roga can turn either one on for a single command, for example with `-c core.untrackedCache=true`, without changing the user's configuration. On a small repository the pair made status slightly slower, so Roga would only want them for large ones. Whether Roga uses them is a separate decision.
 
-Linux has 13 files whose names differ from another file's only in case. macOS's default file system is case-insensitive, so a fresh Linux checkout on a Mac shows those 13 as modified. git reported 13 entries, while libgit2 reported 26 for the same working tree. I didn't look into why, but it's the kind of disagreement with git that yaga can't afford.
+Linux has 13 files whose names differ from another file's only in case. macOS's default file system is case-insensitive, so a fresh Linux checkout on a Mac shows those 13 as modified. git reported 13 entries, while libgit2 reported 26 for the same working tree. I didn't look into why, but it's the kind of disagreement with git that Roga can't afford.
 
 ## Diffs
 
@@ -82,7 +82,7 @@ The test was the full patch with rename detection, from Linux v6.0 to v6.1 (12,9
 | `git diff -M` | 173 ms | 2.6 s (777 MB in git) | 285 ms |
 | libgit2 | 2.6 s | 7.0 s (766 MB) | 440 ms |
 
-`git diff` streams the first file almost immediately. libgit2 finishes rename detection across the whole diff before it reports anything. Either way, a 45 MB patch is too much to load at once, so yaga should show the list of changed files first and load each file's patch when it's needed. I didn't measure that yet.
+`git diff` streams the first file almost immediately. libgit2 finishes rename detection across the whole diff before it reports anything. Either way, a 45 MB patch is too much to load at once, so Roga should show the list of changed files first and load each file's patch when it's needed. I didn't measure that yet.
 
 ## Other findings
 
@@ -210,7 +210,7 @@ For the whole diff as one document:
 
 **The table costs nothing up front.** It draws each line from the parsed bytes when the line comes into view, so it needed 1 ms to prepare even the whole diff, and it used the least memory at that size.
 
-**What the text views give for free, the table would have to build.** An `NSTextView` provides text selection across lines, copying, the find bar, and VoiceOver support. With a table, yaga would have to write all of that itself. In return, the table makes full-width line backgrounds and line numbers simple, while the text views need extra drawing code for both.
+**What the text views give for free, the table would have to build.** An `NSTextView` provides text selection across lines, copying, the find bar, and VoiceOver support. With a table, Roga would have to write all of that itself. In return, the table makes full-width line backgrounds and line numbers simple, while the text views need extra drawing code for both.
 
 **Two TextKit details matter for the real app:**
 - Asking a TextKit 2 `NSTextView` for its `layoutManager` silently switches it to TextKit 1. My first TextKit 2 run did exactly that by accident.
@@ -220,7 +220,7 @@ For the whole diff as one document:
 
 Use a TextKit 1 `NSTextView` with non-contiguous layout for the diff content. Show the changed files in a list, and load the patch for the selected file or files into the text view, as the roadmap already plans. At the sizes that approach produces, TextKit 1 prepares in tens of milliseconds even for the largest file in this release. It also gives selection, copying, find and accessibility without any custom code, which matters for a view whose whole purpose is reading code. Line numbers and full-width backgrounds need some custom drawing, through a ruler view and a layout manager subclass.
 
-The main risk is that TextKit 1 is the older text system and Apple's direction is TextKit 2. TextKit 1 is still fully supported, and the choice should be revisited if TextKit 2's handling of unwrapped text improves. If yaga ever needs to show a diff as large as a whole Linux release in one continuous view, the table remains the faster option, at the cost of building selection and find ourselves.
+The main risk is that TextKit 1 is the older text system and Apple's direction is TextKit 2. TextKit 1 is still fully supported, and the choice should be revisited if TextKit 2's handling of unwrapped text improves. If Roga ever needs to show a diff as large as a whole Linux release in one continuous view, the table remains the faster option, at the cost of building selection and find ourselves.
 
 ### Limits
 

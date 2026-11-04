@@ -1,10 +1,10 @@
 #!/bin/bash
-# Builds a release of yaga: archives the app, signs it with the Developer ID
+# Builds a release of Roga: archives the app, signs it with the Developer ID
 # certificate, notarizes and staples it, zips it, and adds it to the Sparkle
 # appcast. docs/releasing.md describes the setup it needs and how to publish
 # what it makes.
 #
-# Usage: YAGA_TEAM_ID=<team> YAGA_NOTARY_PROFILE=<profile> Scripts/release.sh
+# Usage: ROGA_TEAM_ID=<team> ROGA_NOTARY_PROFILE=<profile> Scripts/release.sh
 #
 # The version is MARKETING_VERSION from the project. The archive and the
 # exported app go to build/release/<version>. The zip and appcast.xml go to
@@ -14,20 +14,20 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-team="${YAGA_TEAM_ID:?Set YAGA_TEAM_ID to the team that owns the Developer ID certificate.}"
-notary_profile="${YAGA_NOTARY_PROFILE:?Set YAGA_NOTARY_PROFILE to a profile saved with xcrun notarytool store-credentials.}"
+team="${ROGA_TEAM_ID:?Set ROGA_TEAM_ID to the team that owns the Developer ID certificate.}"
+notary_profile="${ROGA_NOTARY_PROFILE:?Set ROGA_NOTARY_PROFILE to a profile saved with xcrun notarytool store-credentials.}"
 
 if ! /usr/libexec/PlistBuddy -c "Print :SUPublicEDKey" App/Info.plist > /dev/null 2>&1; then
     echo "App/Info.plist has no SUPublicEDKey, so this release couldn't install updates." >&2
     exit 1
 fi
 
-version="$(xcodebuild -showBuildSettings -project Yaga.xcodeproj -scheme Yaga -configuration Release 2>/dev/null \
+version="$(xcodebuild -showBuildSettings -project Roga.xcodeproj -scheme Roga -configuration Release 2>/dev/null \
     | awk '$1 == "MARKETING_VERSION" { print $3 }')"
 work="build/release/$version"
 updates="build/updates"
 derived="build/DerivedData"
-zip="$updates/yaga-$version.zip"
+zip="$updates/roga-$version.zip"
 
 if [[ -e "$zip" ]]; then
     echo "$zip already exists. Raise MARKETING_VERSION for a new release." >&2
@@ -36,14 +36,14 @@ fi
 rm -rf "$work"
 mkdir -p "$work" "$updates"
 
-echo "Archiving yaga $version"
+echo "Archiving Roga $version"
 xcodebuild archive \
-    -project Yaga.xcodeproj \
-    -scheme Yaga \
+    -project Roga.xcodeproj \
+    -scheme Roga \
     -configuration Release \
     -destination "generic/platform=macOS" \
     -derivedDataPath "$derived" \
-    -archivePath "$work/yaga.xcarchive" \
+    -archivePath "$work/roga.xcarchive" \
     -onlyUsePackageVersionsFromResolvedFile \
     DEVELOPMENT_TEAM="$team" \
     CODE_SIGN_STYLE=Manual \
@@ -68,11 +68,11 @@ EOF
 
 echo "Signing with the Developer ID certificate"
 xcodebuild -exportArchive \
-    -archivePath "$work/yaga.xcarchive" \
+    -archivePath "$work/roga.xcarchive" \
     -exportPath "$work/export" \
     -exportOptionsPlist "$work/ExportOptions.plist"
 
-app="$work/export/yaga.app"
+app="$work/export/Roga.app"
 codesign --verify --strict --deep --verbose=2 "$app"
 if ! codesign --display --verbose=2 "$app" 2>&1 | grep -q "flags=.*runtime"; then
     echo "$app isn't signed with the hardened runtime, which notarization requires." >&2
@@ -92,7 +92,7 @@ ditto -c -k --sequesterRsrc --keepParent "$app" "$zip"
     "$updates"
 
 echo
-echo "yaga $version is ready:"
+echo "Roga $version is ready:"
 echo "  $zip"
 echo "  $updates/appcast.xml"
 echo "docs/releasing.md lists the steps to publish them."

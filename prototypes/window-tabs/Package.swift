@@ -6,7 +6,7 @@ let package = Package(
     platforms: [.macOS("26.0")],
     targets: [
         .executableTarget(
-            name: "yaga-tabs",
+            name: "roga-tabs",
             swiftSettings: [.defaultIsolation(MainActor.self)]
         ),
     ]

@@ -1,12 +1,14 @@
 # Decisions
 
-This folder records the decisions that shape yaga, one file per decision, so that anyone working on the project can see what was decided and why. Each record describes the situation that prompted the decision, the decision itself, and what follows from it.
+This folder records the decisions that shape Roga, one file per decision, so that anyone working on the project can see what was decided and why. Each record describes the situation that prompted the decision, the decision itself, and what follows from it.
 
 Records aren't rewritten when a decision changes. Instead, a new record explains the change and marks the old one as superseded.
 
+Records written before [decision 34](0034-name-the-app-roga.md) call the app yaga, because that was its name at the time, and their paths and commands use the old names too.
+
 | # | Decision | Status |
 | --- | --- | --- |
-| [1](0001-distribute-outside-the-app-store.md) | Distribute outside the Mac App Store | Accepted |
+| [1](0001-distribute-outside-the-app-store.md) | Distribute outside the Mac App Store | Its download address changed by [34](0034-name-the-app-roga.md) |
 | [2](0002-minimum-macos-26.md) | Require macOS 26 or later | Accepted |
 | [3](0003-use-the-users-git.md) | Use the user's git, with a minimum version | Accepted |
 | [4](0004-apache-2-license.md) | License yaga under Apache 2.0 | Accepted |
@@ -19,7 +21,7 @@ Records aren't rewritten when a decision changes. Instead, a new record explains
 | [11](0011-thin-xcode-project-and-a-local-package.md) | Keep the Xcode project thin and the code in a local Swift package | Accepted |
 | [12](0012-history-in-topological-order.md) | Show history in topological order by default | Accepted |
 | [13](0013-repositories-in-a-sidebar.md) | List repositories and their worktrees in a sidebar | Accepted |
-| [14](0014-the-sidebar-keeps-every-added-repository.md) | Keep every added repository in the sidebar, and save the list in Application Support | Sidebar order changed by [16](0016-a-rail-of-organizations-in-the-sidebar.md) |
+| [14](0014-the-sidebar-keeps-every-added-repository.md) | Keep every added repository in the sidebar, and save the list in Application Support | Sidebar order changed by [16](0016-a-rail-of-organizations-in-the-sidebar.md), and the folder's name by [34](0034-name-the-app-roga.md) |
 | [15](0015-uncommitted-changes-as-a-row-in-history.md) | Show uncommitted changes as a row at the top of history | What the panel holds and how tall it is changed by [30](0030-stage-and-commit-beside-history.md) |
 | [16](0016-a-rail-of-organizations-in-the-sidebar.md) | Pick repositories by organization with a rail in the sidebar | Folding of worktrees changed by [17](0017-a-line-and-a-row-for-a-repositorys-worktrees.md), and where an owner comes from by [18](0018-every-remote-counts-toward-a-repositorys-organization.md) |
 | [17](0017-a-line-and-a-row-for-a-repositorys-worktrees.md) | Show a repository's worktrees with a line, and collapse them into one row | Accepted |
@@ -27,7 +29,7 @@ Records aren't rewritten when a decision changes. Instead, a new record explains
 | [19](0019-pull-and-push-from-the-branch-in-the-title-row.md) | Pull and push from the branch in the title row | The house's animation changed by [21](0021-draw-the-houses-animations-from-joints.md), its icons' drawings by [24](0024-icons-as-custom-symbols-from-lucide.md), how the house comes and goes by [25](0025-the-house-zooms-and-the-words-move-the-way-the-commits-go.md), what a stuck worktree shows by [28](0028-show-a-worktree-thats-stuck-partway.md), and how a diverged branch asks by [29](0029-dialogs-that-say-what-happens-and-show-the-command.md) |
 | [20](0020-fetch-when-yaga-becomes-active.md) | Fetch by itself when yaga becomes active | Accepted |
 | [21](0021-draw-the-houses-animations-from-joints.md) | Draw the house's animations from joints, in Swift | How the house comes and goes changed by [25](0025-the-house-zooms-and-the-words-move-the-way-the-commits-go.md), and a fetch's house removed by [26](0026-a-fetch-shows-only-its-words.md) |
-| [22](0022-host-the-landing-page-on-cloudflare-workers.md) | Host the landing page on Cloudflare Workers, as static files | Accepted |
+| [22](0022-host-the-landing-page-on-cloudflare-workers.md) | Host the landing page on Cloudflare Workers, as static files | The app's name settled by [34](0034-name-the-app-roga.md) |
 | [23](0023-one-badge-for-a-branch-and-its-upstream.md) | Show a branch and its upstream as one badge, and a commit's body after its subject | Its colors and the current branch's checkmark changed by [27](0027-give-the-graph-and-branches-monokais-colors.md) |
 | [24](0024-icons-as-custom-symbols-from-lucide.md) | Draw the app's icons as custom symbols, from Lucide | What folds changed to a chevron by [31](0031-chevrons-for-what-folds-and-lines-down-a-tree.md) |
 | [25](0025-the-house-zooms-and-the-words-move-the-way-the-commits-go.md) | Zoom the house in and out, and move the words the way the commits go | A fetch's house removed by [26](0026-a-fetch-shows-only-its-words.md) |
@@ -39,3 +41,4 @@ Records aren't rewritten when a decision changes. Instead, a new record explains
 | [31](0031-chevrons-for-what-folds-and-lines-down-a-tree.md) | Chevrons for what folds, and lines down a tree of files | Accepted |
 | [32](0032-ask-before-forcing-a-worktree-with-submodules.md) | Ask before forcing a worktree with submodules | Accepted |
 | [33](0033-one-row-in-a-menu-and-the-choice-in-the-dialog.md) | Put one row in a menu, and the choice in the dialog | Accepted |
+| [34](0034-name-the-app-roga.md) | Name the app Roga, at roga.sh | Accepted |

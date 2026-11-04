@@ -43,4 +43,4 @@ Two settings on the `roga.sh` zone can't be set from this repository, and both a
 
 ## The images
 
-`favicon.svg` is the mark from [`docs/design/branding`](../docs/design/branding), and the PNGs were rendered from the same artwork. `index.html` holds its own copies of the house's body and the wordmark, and `house.js` holds the walk from `YagaKit/Sources/YagaUI/House/`. Nothing keeps these in step automatically.
+`favicon.svg` is the mark from [`docs/design/branding`](../docs/design/branding), and the PNGs were rendered from the same artwork. `index.html` holds its own copies of the house's body and the wordmark, and `house.js` holds the walk from `RogaKit/Sources/RogaUI/House/`. Nothing keeps these in step automatically.

@@ -1,6 +1,6 @@
 # 14. Keep every added repository in the sidebar, and save the list in Application Support
 
-Accepted on 2026-11-01. This settles a question that [decision 13](0013-repositories-in-a-sidebar.md) and the [main window](../main-window.md) left open.
+Accepted on 2026-11-01. This settles a question that [decision 13](0013-repositories-in-a-sidebar.md) and the [main window](../main-window.md) left open. [Decision 34](0034-name-the-app-roga.md) changed the bundle identifier, so the folder is now `sh.roga.app`.
 
 ## Context
 

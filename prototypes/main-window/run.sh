@@ -12,20 +12,20 @@ here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/../.." && pwd)"
 
 swift build --package-path "$here" -c debug
-bin="$(swift build --package-path "$here" -c debug --show-bin-path)/yaga-main-window"
+bin="$(swift build --package-path "$here" -c debug --show-bin-path)/roga-main-window"
 
-app="$here/.build/yaga-main-window.app"
+app="$here/.build/roga-main-window.app"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS"
-cp "$bin" "$app/Contents/MacOS/yaga-main-window"
+cp "$bin" "$app/Contents/MacOS/roga-main-window"
 cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleExecutable</key><string>yaga-main-window</string>
-    <key>CFBundleIdentifier</key><string>build.yaga.preview.main-window</string>
-    <key>CFBundleName</key><string>yaga</string>
+    <key>CFBundleExecutable</key><string>roga-main-window</string>
+    <key>CFBundleIdentifier</key><string>sh.roga.preview.main-window</string>
+    <key>CFBundleName</key><string>Roga</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>0.1</string>
     <key>LSMinimumSystemVersion</key><string>26.0</string>
@@ -47,4 +47,4 @@ done
 open_all=0
 [[ " $* " == *" --open-all "* ]] && open_all=1
 list="$(IFS='|'; echo "${repos[*]}")"
-open -n "$app" --env YAGA_PREVIEW_REPOS="$list" --env YAGA_PREVIEW_OPEN_ALL="$open_all"
+open -n "$app" --env ROGA_PREVIEW_REPOS="$list" --env ROGA_PREVIEW_OPEN_ALL="$open_all"

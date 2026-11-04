@@ -1,6 +1,6 @@
 # 1. Distribute outside the Mac App Store
 
-Accepted on 2026-11-01.
+Accepted on 2026-11-01. [Decision 34](0034-name-the-app-roga.md) renamed the app and moved its address to roga.sh. The rest of this decision still holds.
 
 ## Context
 

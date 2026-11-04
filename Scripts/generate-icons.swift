@@ -3,7 +3,7 @@
 // icon there is a 24-by-24 SVG drawn with strokes, and a symbol has to be filled
 // outlines, so this draws each stroke's outline at three weights and three sizes,
 // from which the system works out the weights between them. It writes the asset
-// catalog and the enum that names its icons into YagaKit/Sources/IconUI.
+// catalog and the enum that names its icons into RogaKit/Sources/IconUI.
 //
 // Usage: Scripts/generate-icons.swift
 import CoreGraphics
@@ -11,7 +11,7 @@ import Foundation
 
 let root = URL(fileURLWithPath: #filePath).standardized.deletingLastPathComponent().deletingLastPathComponent()
 let sources = root.appendingPathComponent("docs/design/icons")
-let target = root.appendingPathComponent("YagaKit/Sources/IconUI")
+let target = root.appendingPathComponent("RogaKit/Sources/IconUI")
 
 /// The sizes a symbol's template has: where each one's baseline is, and how many
 /// of the template's units one unit of an icon's grid takes up. A template's capital
@@ -354,7 +354,7 @@ func caseName(_ name: String) -> String {
 
 let fileManager = FileManager.default
 var files: [String: URL] = [:]
-for folder in ["lucide", "yaga"] {
+for folder in ["lucide", "roga"] {
     let url = sources.appendingPathComponent(folder)
     for file in try fileManager.contentsOfDirectory(at: url, includingPropertiesForKeys: nil) where file.pathExtension == "svg" {
         let name = file.deletingPathExtension().lastPathComponent
@@ -385,7 +385,7 @@ try write("""
 // To add an icon, add its file there and run the script again.
 
 /// Every icon in the catalog, named after its file. Icon.swift has the names to use
-/// for icons that stand for something in yaga, such as `Icon.worktree`.
+/// for icons that stand for something in Roga, such as `Icon.worktree`.
 public enum Icon: String, CaseIterable, Sendable {
 \(cases)
 }

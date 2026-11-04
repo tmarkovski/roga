@@ -22,13 +22,13 @@ env:
 
 jobs:
   package:
-    name: YagaKit with git ${{ matrix.git }}
+    name: RogaKit with git ${{ matrix.git }}
     runs-on: xcode-27
     strategy:
       fail-fast: false
       matrix:
         include:
-          # The oldest git yaga supports (decision 8), built from source.
+          # The oldest git Roga supports (decision 8), built from source.
           - git: 2.44.0
             sha256: e358738dcb5b5ea340ce900a0015c03ae86e804e7ff64e47aa4631ddee681de3
           # The git that comes with the runner image, which is kept current.
@@ -53,8 +53,8 @@ jobs:
         run: echo "$HOME/git-${{ matrix.git }}/bin" >> "$GITHUB_PATH"
 
       - run: git version
-      - run: swift build --package-path YagaKit --build-tests
-      - run: swift test --package-path YagaKit --skip-build
+      - run: swift build --package-path RogaKit --build-tests
+      - run: swift test --package-path RogaKit --skip-build
 
   app:
     name: App
@@ -65,8 +65,8 @@ jobs:
       - name: Build the app
         run: >
           xcodebuild build
-          -project Yaga.xcodeproj
-          -scheme Yaga
+          -project Roga.xcodeproj
+          -scheme Roga
           -configuration Release
           -destination platform=macOS
           -derivedDataPath build/DerivedData
