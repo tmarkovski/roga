@@ -12,21 +12,23 @@ extension UserDefaults {
 }
 
 extension BranchModel.Action {
-    /// How the house moves while git does this (decision 21). Only pushing and
-    /// pulling have a direction to show.
-    var houseAnimation: HouseAnimation {
+    /// How the house moves while git does this (decision 21), or nil for a fetch,
+    /// which shows only its words (decision 26). Only pushing and pulling have a
+    /// direction to show.
+    var houseAnimation: HouseAnimation? {
         switch self {
         case .pushing, .forcePushing, .deletingFromRemote: .push
         case .pulling: .heave
-        case .fetching, .undoingPull: .waddle
+        case .undoingPull: .waddle
+        case .fetching: nil
         }
     }
 
-    /// How long the house takes to play once at the speed in Settings. Someone
-    /// who asked for less motion sees a still pose, so there's nothing to wait
-    /// for.
+    /// How long the house takes to play once at the speed in Settings. With no
+    /// house, or for someone who asked for less motion and sees a still pose,
+    /// there's nothing to wait for.
     var timeToPlayHouse: Duration {
-        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return .zero }
+        guard let houseAnimation, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return .zero }
         return houseAnimation.timeToPlay(atSpeed: HouseAnimationView.clamped(UserDefaults.standard.houseAnimationSpeed))
     }
 }

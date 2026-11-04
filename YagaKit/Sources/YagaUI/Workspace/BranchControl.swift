@@ -134,6 +134,7 @@ struct BranchMenuItems: View {
 /// house zooms in, then the words come out beside it and move what's to their
 /// right along. When git is done the words change to what happened and the house
 /// zooms out, and when those words have had their moment, they close up again.
+/// A fetch has no house, so only its words come and go.
 private struct BranchCounts: View {
     /// How the title row moves from one step to the next.
     private enum Motion {
@@ -204,7 +205,14 @@ private struct BranchCounts: View {
                         firstPush
                     }
                 }
-                .transition(.opacity)
+                // Their room opens a frame at a time, as the words' room closes,
+                // or for a moment they'd have room for both, and what's to their
+                // right would jump.
+                .transition(.asymmetric(
+                    insertion: .modifier(active: CountsOpening(amount: 0), identity: CountsOpening(amount: 1))
+                        .combined(with: .opacity),
+                    removal: .opacity
+                ))
             }
         }
         .font(.system(size: 13))
@@ -228,8 +236,22 @@ private struct BranchCounts: View {
                 shown.showsCounts = false
             }
         case .running(let action):
+            guard let house = action.houseAnimation else {
+                // Outside the animation, because turning Fetched into these moves
+                // what's to the right past where it ends up.
+                shown.words = action.title
+                shown.arrival = .fade
+                // On one curve, so that what's to the right moves steadily rather
+                // than following the counts out and then the words back.
+                move(Motion.words) {
+                    shown.house = nil
+                    shown.showsWords = true
+                    shown.showsCounts = false
+                }
+                return
+            }
             move(Motion.zoom) {
-                shown.house = action.houseAnimation
+                shown.house = house
                 shown.showsWords = false
                 shown.showsCounts = false
             }
@@ -237,7 +259,7 @@ private struct BranchCounts: View {
                 guard (try? await Task.sleep(for: Motion.zoomTime)) != nil else { return }
             }
             shown.words = action.title
-            shown.arrival = WordsArrival(action.houseAnimation)
+            shown.arrival = WordsArrival(house)
             move(Motion.words) { shown.showsWords = true }
         }
     }
@@ -307,7 +329,7 @@ private struct BranchCounts: View {
     }
 }
 
-/// How the words beside the house arrive, which says which way the commits are
+/// How the words in the title row arrive, which says which way the commits are
 /// going, the way the house's lean does.
 enum WordsArrival: Equatable {
     /// Out from behind the house, moving what's to their right along.
@@ -347,6 +369,16 @@ private struct WordsReveal: ViewModifier {
                 .opacity(isShown ? 1 : 0)
         }
         .clipped()
+    }
+}
+
+/// Opens room for the counts as they come back.
+private struct CountsOpening: ViewModifier {
+    let amount: Double
+
+    func body(content: Content) -> some View {
+        PartWidth(amount: amount, keepsTrailingEnd: false) { content }
+            .clipped()
     }
 }
 

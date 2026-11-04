@@ -204,8 +204,12 @@ struct HouseAnimationTests {
         #expect(BranchModel.Action.pushing.houseAnimation == .push)
         #expect(BranchModel.Action.forcePushing.houseAnimation == .push)
         #expect(BranchModel.Action.pulling.houseAnimation == .heave)
-        #expect(BranchModel.Action.fetching.houseAnimation == .waddle)
         #expect(BranchModel.Action.undoingPull.houseAnimation == .waddle)
+    }
+
+    @Test func aFetchHasNoHouseToWaitFor() {
+        #expect(BranchModel.Action.fetching.houseAnimation == nil)
+        #expect(BranchModel.Action.fetching.timeToPlayHouse == .zero)
     }
 
     @Test func theWordsBesideTheHouseMoveTheWayItWorks() {
