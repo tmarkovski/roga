@@ -24,7 +24,7 @@ Records aren't rewritten when a decision changes. Instead, a new record explains
 | [16](0016-a-rail-of-organizations-in-the-sidebar.md) | Pick repositories by organization with a rail in the sidebar | Folding of worktrees changed by [17](0017-a-line-and-a-row-for-a-repositorys-worktrees.md), and where an owner comes from by [18](0018-every-remote-counts-toward-a-repositorys-organization.md) |
 | [17](0017-a-line-and-a-row-for-a-repositorys-worktrees.md) | Show a repository's worktrees with a line, and collapse them into one row | Accepted |
 | [18](0018-every-remote-counts-toward-a-repositorys-organization.md) | Count every remote toward a repository's organization | Accepted |
-| [19](0019-pull-and-push-from-the-branch-in-the-title-row.md) | Pull and push from the branch in the title row | The house's animation changed by [21](0021-draw-the-houses-animations-from-joints.md), its icons' drawings by [24](0024-icons-as-custom-symbols-from-lucide.md), and how the house comes and goes by [25](0025-the-house-zooms-and-the-words-move-the-way-the-commits-go.md) |
+| [19](0019-pull-and-push-from-the-branch-in-the-title-row.md) | Pull and push from the branch in the title row | The house's animation changed by [21](0021-draw-the-houses-animations-from-joints.md), its icons' drawings by [24](0024-icons-as-custom-symbols-from-lucide.md), how the house comes and goes by [25](0025-the-house-zooms-and-the-words-move-the-way-the-commits-go.md), and what a stuck worktree shows by [28](0028-show-a-worktree-thats-stuck-partway.md) |
 | [20](0020-fetch-when-yaga-becomes-active.md) | Fetch by itself when yaga becomes active | Accepted |
 | [21](0021-draw-the-houses-animations-from-joints.md) | Draw the house's animations from joints, in Swift | How the house comes and goes changed by [25](0025-the-house-zooms-and-the-words-move-the-way-the-commits-go.md), and a fetch's house removed by [26](0026-a-fetch-shows-only-its-words.md) |
 | [22](0022-host-the-landing-page-on-cloudflare-workers.md) | Host the landing page on Cloudflare Workers, as static files | Accepted |
@@ -33,3 +33,4 @@ Records aren't rewritten when a decision changes. Instead, a new record explains
 | [25](0025-the-house-zooms-and-the-words-move-the-way-the-commits-go.md) | Zoom the house in and out, and move the words the way the commits go | A fetch's house removed by [26](0026-a-fetch-shows-only-its-words.md) |
 | [26](0026-a-fetch-shows-only-its-words.md) | A fetch shows only its words | Accepted |
 | [27](0027-give-the-graph-and-branches-monokais-colors.md) | Give the graph and the branches Monokai's colors | Accepted |
+| [28](0028-show-a-worktree-thats-stuck-partway.md) | Show a worktree that's stuck partway through | Accepted |

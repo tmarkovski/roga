@@ -150,6 +150,7 @@ struct Sidebar: View {
             WorktreeRow(
                 worktree: worktree,
                 uncommittedFiles: repository.uncommittedFiles[worktree.path] ?? 0,
+                hasConflicts: repository.conflictedWorktrees.contains(worktree.path),
                 hasRemoteBranch: worktree.branch.flatMap { repository.remoteBranches[$0] } != nil,
                 isDeleting: repository.deletingWorktrees.contains(worktree.path),
                 isSelected: selection == row,
@@ -162,8 +163,8 @@ struct Sidebar: View {
                 deletions.askToDelete(worktree, scope: scope, in: repository, list: list)
             }
             .id(row)
-        case .hiddenWorktrees(let repository, let title, let uncommittedFiles):
-            HiddenWorktreesRow(title: title, uncommittedFiles: uncommittedFiles) {
+        case .hiddenWorktrees(let repository, let title, let uncommittedFiles, let hasConflicts):
+            HiddenWorktreesRow(title: title, uncommittedFiles: uncommittedFiles, hasConflicts: hasConflicts) {
                 isFocused = true
                 list.setExpanded(true, repository)
             }
@@ -453,10 +454,7 @@ private struct RepositoryRow: View {
                     .foregroundStyle(.secondary)
                     .padding(.trailing, 7)
             } else if ownUncommittedFiles > 0 {
-                Text(ownUncommittedFiles, format: .number)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.orange)
-                    .padding(.trailing, 7)
+                UncommittedCount(count: ownUncommittedFiles, hasConflicts: ownHasConflicts)
             }
         } commands: {
             RowMenu(entries: menu)
@@ -466,7 +464,7 @@ private struct RepositoryRow: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
         .accessibilityValue(
-            [detail, linkedWorktreesDescription, uncommittedFilesDescription(ownUncommittedFiles), linkedWorktrees > 0 ? (repository.isExpanded ? "Expanded" : "Collapsed") : nil, problem]
+            [detail, linkedWorktreesDescription, uncommittedFilesDescription(ownUncommittedFiles, hasConflicts: ownHasConflicts), linkedWorktrees > 0 ? (repository.isExpanded ? "Expanded" : "Collapsed") : nil, problem]
                 .compactMap(\.self)
                 .joined(separator: ", ")
         )
@@ -494,6 +492,10 @@ private struct RepositoryRow: View {
     private var ownUncommittedFiles: Int {
         guard let main = repository.worktrees.first else { return 0 }
         return repository.uncommittedFiles[main.path] ?? 0
+    }
+
+    private var ownHasConflicts: Bool {
+        repository.worktrees.first.map { repository.conflictedWorktrees.contains($0.path) } ?? false
     }
 
     private var linkedWorktreesDescription: String? {
@@ -541,6 +543,7 @@ private struct RepositoryRow: View {
 private struct WorktreeRow: View {
     let worktree: Worktree
     let uncommittedFiles: Int
+    let hasConflicts: Bool
     /// Whether its branch tracks a remote branch, which can be deleted with it.
     let hasRemoteBranch: Bool
     let isDeleting: Bool
@@ -569,10 +572,7 @@ private struct WorktreeRow: View {
                     .foregroundStyle(.secondary)
                     .padding(.trailing, 7)
             } else if uncommittedFiles > 0 {
-                Text(uncommittedFiles, format: .number)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.orange)
-                    .padding(.trailing, 7)
+                UncommittedCount(count: uncommittedFiles, hasConflicts: hasConflicts)
             }
         } commands: {
             commands
@@ -583,7 +583,7 @@ private struct WorktreeRow: View {
         .help(worktree.path)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(worktree.title)
-        .accessibilityValue([subtitle, uncommittedFilesDescription(uncommittedFiles)].compactMap(\.self).joined(separator: ", "))
+        .accessibilityValue([subtitle, uncommittedFilesDescription(uncommittedFiles, hasConflicts: hasConflicts)].compactMap(\.self).joined(separator: ", "))
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction(.default, select)
         .accessibilityActions {
@@ -660,6 +660,7 @@ private struct WorktreeRow: View {
 private struct HiddenWorktreesRow: View {
     let title: String
     let uncommittedFiles: Int
+    let hasConflicts: Bool
     let show: () -> Void
 
     var body: some View {
@@ -677,17 +678,14 @@ private struct HiddenWorktreesRow: View {
         .overlay { WorktreeConnector(isLast: true) }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
-        .accessibilityValue(uncommittedFilesDescription(uncommittedFiles) ?? "")
+        .accessibilityValue(uncommittedFilesDescription(uncommittedFiles, hasConflicts: hasConflicts) ?? "")
         .accessibilityAddTraits(.isButton)
         .accessibilityAction(.default, show)
     }
 
     @ViewBuilder private var count: some View {
         if uncommittedFiles > 0 {
-            Text(uncommittedFiles, format: .number)
-                .font(.system(size: 13))
-                .foregroundStyle(.orange)
-                .padding(.trailing, 7)
+            UncommittedCount(count: uncommittedFiles, hasConflicts: hasConflicts)
         }
     }
 }
@@ -729,11 +727,32 @@ extension FocusedValues {
     @Entry var sidebarVisibility: Binding<NavigationSplitViewVisibility>?
 }
 
-private func uncommittedFilesDescription(_ count: Int) -> String? {
-    switch count {
+/// How many files a row's worktrees have uncommitted, in orange, or in red with a
+/// triangle when some of them have conflicts, so that a stuck worktree shows
+/// without selecting it (decision 28).
+private struct UncommittedCount: View {
+    let count: Int
+    let hasConflicts: Bool
+
+    var body: some View {
+        HStack(spacing: 3) {
+            if hasConflicts {
+                Icon.warning.image
+            }
+            Text(count, format: .number)
+        }
+        .font(.system(size: 13))
+        .foregroundStyle(hasConflicts ? Palette.red : Color.orange)
+        .padding(.trailing, 7)
+    }
+}
+
+private func uncommittedFilesDescription(_ count: Int, hasConflicts: Bool = false) -> String? {
+    let conflicts = hasConflicts ? ", with conflicts" : ""
+    return switch count {
     case 0: nil
-    case 1: "1 uncommitted file"
-    default: "\(count) uncommitted files"
+    case 1: "1 uncommitted file\(conflicts)"
+    default: "\(count) uncommitted files\(conflicts)"
     }
 }
 

@@ -175,7 +175,122 @@ struct BranchModelTests {
         await model.branch.running?.value
         #expect(model.branch.conflict == nil)
         #expect(try await git("rev-parse", "HEAD", in: clones.work) == mine)
-        #expect(try await clones.session.stoppedPull(in: clones.work) == nil)
+        #expect(try await clones.session.stoppedWork(in: clones.work) == nil)
+    }
+
+    // MARK: Unfinished work
+
+    /// Clones with a conflict waiting in `conflict.txt`, once `origin/main` is merged.
+    private func clonesAboutToConflict() async throws -> (Clones, mine: String) {
+        let clones = try await clones()
+        try await pushFromOther(clones, file: "conflict.txt", text: "theirs\n")
+        let mine = try await commit("Mine", in: clones.work, file: "conflict.txt", text: "mine\n")
+        _ = try await git("fetch", "--quiet", in: clones.work)
+        return (clones, mine)
+    }
+
+    /// Looks at the worktree again and waits until that's done. A fetch from
+    /// `appear` may still be running, and when it ends it starts this over.
+    private func look(_ model: RepositoryModel) async {
+        await model.branch.quietFetch?.value
+        model.refsChanged()
+        await model.check?.value
+    }
+
+    @Test func showsAMergeStartedSomewhereElse() async throws {
+        let (clones, mine) = try await clonesAboutToConflict()
+        let model = model(clones)
+        await model.appear()
+        #expect(model.branch.unfinished == nil)
+
+        _ = try? await git("merge", "origin/main", in: clones.work)
+        await look(model)
+        #expect(model.branch.unfinished == UnfinishedWork(work: .merge, conflicts: 1))
+        #expect(model.branch.conflict == nil)
+        var row = model.rowContent(0)
+        #expect(row.subject == "Merging · 1 conflict")
+        #expect(row.body == "· 1 uncommitted file")
+        #expect(row.isWarning)
+
+        // With no conflicts left it's still unfinished, but nothing is wrong.
+        try "both\n".write(toFile: clones.work + "/conflict.txt", atomically: true, encoding: .utf8)
+        _ = try await git("add", "conflict.txt", in: clones.work)
+        await look(model)
+        #expect(model.branch.unfinished == UnfinishedWork(work: .merge, conflicts: 0))
+        #expect(model.branch.unfinished?.hasConflicts == false)
+        row = model.rowContent(0)
+        #expect(row.subject == "Merging · 1 uncommitted file")
+        #expect(row.body == nil)
+        #expect(!row.isWarning)
+
+        model.branch.askToAbort()
+        #expect(model.branch.pendingAbort == .merge)
+        model.branch.confirmAbort()
+        #expect(model.branch.pendingAbort == nil)
+        #expect(model.branch.action == .aborting)
+        await model.branch.running?.value
+        await look(model)
+        #expect(model.branch.finished == "Aborted the merge")
+        #expect(model.branch.unfinished == nil)
+        #expect(try await git("rev-parse", "HEAD", in: clones.work) == mine)
+    }
+
+    @Test func showsARebaseWithTheBranchItsRebasing() async throws {
+        let (clones, _) = try await clonesAboutToConflict()
+        let model = model(clones)
+        await model.appear()
+
+        _ = try? await git("rebase", "origin/main", in: clones.work)
+        await look(model)
+        let unfinished = try #require(model.branch.unfinished)
+        #expect(unfinished.work == .rebase(branch: "refs/heads/main"))
+        #expect(unfinished.title == "Rebasing main · 1 conflict")
+        // A rebase stops with `HEAD` detached, so there's no branch to have counts.
+        #expect(model.branch.status == nil)
+
+        model.branch.askToAbort()
+        model.branch.confirmAbort()
+        await model.branch.running?.value
+        await look(model)
+        #expect(model.branch.finished == "Aborted the rebase")
+        #expect(model.branch.unfinished == nil)
+    }
+
+    @Test func conflictsWithoutAMergeOrARebaseHaveNothingToAbort() async throws {
+        let clones = try await clones()
+        try await commit("Base", in: clones.work, file: "conflict.txt", text: "base\n")
+        try "stashed\n".write(toFile: clones.work + "/conflict.txt", atomically: true, encoding: .utf8)
+        _ = try await git("stash", "--quiet", in: clones.work)
+        try await commit("Mine", in: clones.work, file: "conflict.txt", text: "mine\n")
+        _ = try? await git("stash", "pop", "--quiet", in: clones.work)
+        let model = model(clones)
+        await model.appear()
+        await look(model)
+
+        #expect(model.branch.unfinished == UnfinishedWork(work: nil, conflicts: 1))
+        #expect(model.branch.unfinished?.title == "1 conflict")
+        model.branch.askToAbort()
+        #expect(model.branch.pendingAbort == nil)
+    }
+
+    @Test func showingConflictsSelectsTheRowForUncommittedChanges() async throws {
+        let (clones, _) = try await clonesAboutToConflict()
+        let model = model(clones)
+        await model.appear()
+        _ = try? await git("merge", "origin/main", in: clones.work)
+        await look(model)
+        #expect(model.selectedRow != 0)
+
+        model.branch.showChanges()
+        #expect(model.selectedRow == 0)
+    }
+
+    @Test func aWorktreeThatsFineSaysNothing() async throws {
+        let clones = try await clones()
+        let model = model(clones)
+        await model.appear()
+        await look(model)
+        #expect(model.branch.unfinished == nil)
     }
 
     @Test func aPullThatFailsForAnotherReasonSaysWhatGitSaid() async throws {

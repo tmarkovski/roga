@@ -189,6 +189,19 @@ public final class RepositoryList {
         return selection
     }
 
+    /// Records whether a window found conflicts in the worktree it shows, which
+    /// may be newer than what the list last found.
+    func setHasConflicts(_ hasConflicts: Bool, in selection: WorktreeSelection) {
+        guard let repository = repository(at: selection.repository) else { return }
+        if repository.conflictedWorktrees.contains(selection.worktree) != hasConflicts {
+            if hasConflicts {
+                repository.conflictedWorktrees.insert(selection.worktree)
+            } else {
+                repository.conflictedWorktrees.remove(selection.worktree)
+            }
+        }
+    }
+
     /// Records how many uncommitted files a window found in the worktree it
     /// shows, which may be newer than what the list last counted.
     func setUncommittedFiles(_ count: Int, in selection: WorktreeSelection) {
@@ -368,13 +381,18 @@ public final class RepositoryList {
 
     /// Counts the uncommitted files of each of a repository's worktrees, one
     /// worktree at a time and at utility priority, because each one looks at every
-    /// file in the worktree. One that git can't look at has no count.
+    /// file in the worktree. One that git can't look at has no count. The same
+    /// listing says which of them have conflicts.
     private func countUncommittedFiles(in repository: ListedRepository, session: RepositorySession) async {
         var counts: [String: Int] = [:]
+        var conflicted: Set<String> = []
         for worktree in repository.worktrees where !worktree.isBare && !worktree.isPrunable {
-            if let status = try? await session.status(in: worktree.path, isUpkeep: true) { counts[worktree.path] = status.fileCount }
+            guard let status = try? await session.status(in: worktree.path, isUpkeep: true) else { continue }
+            counts[worktree.path] = status.fileCount
+            if !status.conflicted.isEmpty { conflicted.insert(worktree.path) }
         }
         if counts != repository.uncommittedFiles { repository.uncommittedFiles = counts }
+        if conflicted != repository.conflictedWorktrees { repository.conflictedWorktrees = conflicted }
     }
 
     /// Opens a session for the repository at its path, or where its bookmark
@@ -478,6 +496,8 @@ public final class ListedRepository: Identifiable {
     fileprivate(set) var worktrees: [Worktree] = []
     /// How many files have uncommitted changes in each worktree, by its folder.
     fileprivate(set) var uncommittedFiles: [String: Int] = [:]
+    /// The folders of the worktrees that have conflicts.
+    fileprivate(set) var conflictedWorktrees: Set<String> = []
     /// The remote branch each branch tracks, by their full names, once the
     /// repository has a linked worktree on a branch.
     fileprivate(set) var remoteBranches: [String: String] = [:]
@@ -500,7 +520,7 @@ public final class ListedRepository: Identifiable {
     }
 
     /// A repository that isn't in a list, for checking how a sidebar lays out.
-    init(path: String, owners: [String] = [], isExpanded: Bool = false, keptWorktrees: Set<String> = [], state: State = .opening, worktrees: [Worktree] = [], uncommittedFiles: [String: Int] = [:]) {
+    init(path: String, owners: [String] = [], isExpanded: Bool = false, keptWorktrees: Set<String> = [], state: State = .opening, worktrees: [Worktree] = [], uncommittedFiles: [String: Int] = [:], conflictedWorktrees: Set<String> = []) {
         self.path = path
         self.owners = owners
         self.isExpanded = isExpanded
@@ -508,6 +528,7 @@ public final class ListedRepository: Identifiable {
         self.state = state
         self.worktrees = worktrees
         self.uncommittedFiles = uncommittedFiles
+        self.conflictedWorktrees = conflictedWorktrees
     }
 
     var name: String { RepositoryLocation.name(gitDirectory: path) }

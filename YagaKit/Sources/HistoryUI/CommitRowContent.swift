@@ -88,6 +88,9 @@ public struct CommitRowContent: Hashable {
     /// Whether the row stands for a worktree's uncommitted changes rather than
     /// a commit, which its hollow dot shows.
     public var isWorkingTree: Bool
+    /// Whether the subject says something's wrong, as it does for a worktree
+    /// that has conflicts.
+    public var isWarning: Bool
     /// Whether the row is tinted, because a count in the title row would move
     /// the commit.
     public var isPreviewed: Bool
@@ -101,6 +104,7 @@ public struct CommitRowContent: Hashable {
         date: String? = nil,
         lanes: LaneLayout.Row? = nil,
         isWorkingTree: Bool = false,
+        isWarning: Bool = false,
         isPreviewed: Bool = false
     ) {
         self.shortID = shortID
@@ -111,6 +115,7 @@ public struct CommitRowContent: Hashable {
         self.date = date
         self.lanes = lanes
         self.isWorkingTree = isWorkingTree
+        self.isWarning = isWarning
         self.isPreviewed = isPreviewed
     }
 

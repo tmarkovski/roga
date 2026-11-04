@@ -32,7 +32,7 @@ struct SidebarLayoutTests {
             case .label(let title): "<\(title)>"
             case .repository(_, let title, let detail): title + (detail.map { " (\($0))" } ?? "")
             case .worktree(_, let worktree, let isLast): (isLast ? "└ " : "│ ") + worktree.title
-            case .hiddenWorktrees(_, let title, let uncommittedFiles): "└ " + title + (uncommittedFiles > 0 ? " (\(uncommittedFiles))" : "")
+            case .hiddenWorktrees(_, let title, let uncommittedFiles, _): "└ " + title + (uncommittedFiles > 0 ? " (\(uncommittedFiles))" : "")
             }
         }
     }
@@ -157,6 +157,27 @@ struct SidebarLayoutTests {
     @Test func thatRowCountsTheUncommittedFilesItHides() {
         let api = repository("api", owner: "acme", linked: ["a", "b"], uncommitted: ["api": 7, "a": 2, "b": 3])
         #expect(rows([api, repository("web", owner: "acme")], scope: .organization("acme")) == ["api", "└ 2 worktrees (5)", "web"])
+    }
+
+    @Test func thatRowSaysWhenAWorktreeItHidesHasConflicts() throws {
+        let worktrees = [
+            Worktree(path: "/git/api", branch: "refs/heads/main", isMain: true),
+            Worktree(path: "/git/a", branch: "refs/heads/a"),
+            Worktree(path: "/git/b", branch: "refs/heads/b"),
+        ]
+        func hidesConflicts(in conflicted: Set<String>) throws -> Bool {
+            let api = ListedRepository(path: "/git/api/.git", owners: ["acme"], worktrees: worktrees, conflictedWorktrees: conflicted)
+            let items = SidebarLayout(groups: RepositoryGroups([api]), scope: .all, selection: nil, place: SidebarPlace()).items
+            guard case .hiddenWorktrees(_, _, _, let hasConflicts) = try #require(items.last) else {
+                Issue.record("There's no row for hidden worktrees.")
+                return false
+            }
+            return hasConflicts
+        }
+        #expect(try hidesConflicts(in: ["/git/b"]))
+        #expect(try !hidesConflicts(in: []))
+        // The main worktree has its own row, so this one isn't hiding that.
+        #expect(try !hidesConflicts(in: ["/git/api"]))
     }
 
     @Test func aCollapsedRepositoryStillShowsTheSelectedWorktree() {

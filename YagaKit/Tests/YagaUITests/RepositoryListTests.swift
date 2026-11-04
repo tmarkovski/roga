@@ -180,6 +180,35 @@ struct RepositoryListTests {
         #expect(listed.uncommittedFiles[repository] == 1)
     }
 
+    @Test func findsWhichWorktreesHaveConflicts() async throws {
+        let repository = try await copyRepository(try await Fixture.repository("basic"), into: folder)
+        try await runGit("config", "user.name", "T", in: repository)
+        try await runGit("config", "user.email", "t@example.com", in: repository)
+        for (branch, text) in [("one", "one\n"), ("two", "two\n")] {
+            try await runGit("checkout", "--quiet", "-B", branch, "HEAD", in: repository)
+            try Data(text.utf8).write(to: URL(filePath: repository + "/conflict.txt"))
+            try await runGit("add", "conflict.txt", in: repository)
+            try await runGit("commit", "--quiet", "-m", branch, in: repository)
+            if branch == "one" { try await runGit("checkout", "--quiet", "HEAD~1", in: repository) }
+        }
+        let list = try await makeList()
+        _ = try await list.add(folder: repository)
+        let listed = try #require(list.repositories.first)
+        await list.refresh()
+        #expect(listed.conflictedWorktrees.isEmpty)
+
+        _ = try? await runGit("merge", "one", in: repository)
+        await list.refresh()
+        #expect(listed.conflictedWorktrees == [repository])
+
+        // A window's newer answer takes over until the list looks again.
+        let selection = WorktreeSelection(repository: listed.path, worktree: repository)
+        list.setHasConflicts(false, in: selection)
+        #expect(listed.conflictedWorktrees.isEmpty)
+        await list.refresh()
+        #expect(listed.conflictedWorktrees == [repository])
+    }
+
     @Test func countsNothingForABareRepository() async throws {
         let repository = folder + "/bare.git"
         try await TestGit.make().run(GitCommand("init", "--quiet", "--bare", repository))

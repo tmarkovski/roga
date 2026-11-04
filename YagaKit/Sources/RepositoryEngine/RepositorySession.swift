@@ -386,14 +386,14 @@ public actor RepositorySession {
 
     /// Says whether a worktree is partway through a merge or a rebase.
     @concurrent
-    public nonisolated func stoppedPull(in worktree: String) async throws -> StoppedPull? {
-        try await RemoteCommands.stoppedPull(in: worktree, git: git)
+    public nonisolated func stoppedWork(in worktree: String) async throws -> StoppedWork? {
+        try await RemoteCommands.stoppedWork(in: worktree, git: git)
     }
 
-    /// Goes back to before a pull that stopped partway.
+    /// Goes back to before a merge or a rebase that stopped partway.
     @concurrent
-    public nonisolated func undo(_ pull: StoppedPull, in worktree: String) async throws {
-        _ = try await Self.run(pull.abortArguments, in: worktree, git: git)
+    public nonisolated func abort(_ work: StoppedWork, in worktree: String) async throws {
+        _ = try await Self.run(work.abortArguments, in: worktree, git: git)
     }
 
     /// Makes a new branch on the commit a worktree is on, and switches to it

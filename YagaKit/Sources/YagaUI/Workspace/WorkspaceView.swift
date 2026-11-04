@@ -210,6 +210,8 @@ public struct WorkspaceView: View {
     private func model(for selected: WorktreeSelection, session: RepositorySession) -> RepositoryModel {
         recent.model(for: selected, session: session) { [list] count in
             list.setUncommittedFiles(count, in: selected)
+        } reportConflicts: { [list] hasConflicts in
+            list.setHasConflicts(hasConflicts, in: selected)
         } reportBranchChange: { [list] in
             await list.refresh(repositoryAt: selected.repository)
         }
@@ -380,6 +382,7 @@ final class RecentWorktrees {
     /// - Parameters:
     ///   - reportUncommittedFiles: What a new model calls with how many
     ///     uncommitted files it finds.
+    ///   - reportConflicts: What a new model calls with whether it finds conflicts.
     ///   - reportBranchChange: What a new model calls when it has put the
     ///     worktree on another branch or made a new worktree, which returns once
     ///     the sidebar knows.
@@ -387,6 +390,7 @@ final class RecentWorktrees {
         for selection: WorktreeSelection,
         session: RepositorySession,
         reportUncommittedFiles: @escaping (Int) -> Void = { _ in },
+        reportConflicts: @escaping (Bool) -> Void = { _ in },
         reportBranchChange: @escaping () async -> Void = {}
     ) -> RepositoryModel {
         order.removeAll { $0 == selection }
@@ -397,6 +401,7 @@ final class RecentWorktrees {
             session: session,
             worktree: selection.worktree,
             reportUncommittedFiles: reportUncommittedFiles,
+            reportConflicts: reportConflicts,
             reportBranchChange: reportBranchChange
         )
         models[selection] = model

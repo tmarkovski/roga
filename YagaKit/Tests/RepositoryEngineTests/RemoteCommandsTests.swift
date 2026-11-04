@@ -267,7 +267,7 @@ struct RemoteCommandsTests {
             try await clones.session.pull(.fastForward, in: clones.work)
         }
         #expect(try await head(of: clones) == mine)
-        #expect(try await clones.session.stoppedPull(in: clones.work) == nil)
+        #expect(try await clones.session.stoppedWork(in: clones.work) == nil)
     }
 
     @Test func rebasesADivergedBranch() async throws {
@@ -302,7 +302,7 @@ struct RemoteCommandsTests {
     }
 
     @Test func undoesAPullThatStoppedOnAConflict() async throws {
-        for (pull, stopped) in [(Pull.merge, StoppedPull.merge), (.rebase, .rebase)] {
+        for (pull, stopped) in [(Pull.merge, StoppedWork.merge), (.rebase, .rebase(branch: "refs/heads/main"))] {
             let clones = try await clones()
             try await pushFromOther(clones, file: "conflict.txt", text: "theirs\n")
             let mine = try await commit("Mine", in: clones.work, file: "conflict.txt", text: "mine\n")
@@ -312,13 +312,22 @@ struct RemoteCommandsTests {
             await #expect(throws: GitError.self) {
                 try await clones.session.pull(pull, in: clones.work)
             }
-            #expect(try await clones.session.stoppedPull(in: clones.work) == stopped)
+            #expect(try await clones.session.stoppedWork(in: clones.work) == stopped)
 
-            try await clones.session.undo(stopped, in: clones.work)
-            #expect(try await clones.session.stoppedPull(in: clones.work) == nil)
+            try await clones.session.abort(stopped, in: clones.work)
+            #expect(try await clones.session.stoppedWork(in: clones.work) == nil)
             #expect(try await head(of: clones) == mine)
             #expect(try String(contentsOfFile: clones.work + "/conflict.txt", encoding: .utf8) == "mine\n")
         }
+    }
+
+    @Test func aPatchBeingAppliedIsntARebase() async throws {
+        let clones = try await clones()
+        let folder = try await runGit("rev-parse", "--path-format=absolute", "--git-path", "rebase-apply", in: clones.work)
+        try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+        #expect(try await clones.session.stoppedWork(in: clones.work) == .rebase(branch: nil))
+        FileManager.default.createFile(atPath: folder + "/applying", contents: nil)
+        #expect(try await clones.session.stoppedWork(in: clones.work) == nil)
     }
 
     // MARK: Pushing

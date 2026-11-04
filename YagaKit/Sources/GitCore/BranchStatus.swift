@@ -129,10 +129,11 @@ public struct NewBranch: Sendable, Hashable {
     }
 }
 
-/// A pull that stopped partway, because of a conflict, and what undoes it.
-public enum StoppedPull: Sendable, Hashable {
+/// A merge or a rebase that a worktree is partway through, and what undoes it.
+public enum StoppedWork: Sendable, Hashable {
     case merge
-    case rebase
+    /// `branch` is the full name of the branch being rebased, when it's on one.
+    case rebase(branch: String?)
 
     public var abortArguments: [String] {
         switch self {

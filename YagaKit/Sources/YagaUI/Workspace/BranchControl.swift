@@ -194,30 +194,40 @@ private struct BranchCounts: View {
                 .padding(.trailing, 4)
                 .modifier(WordsReveal(isShown: shown.showsWords, arrival: shown.arrival))
                 .accessibilityHidden(!shown.showsWords)
-            if shown.showsCounts, let status = branch.status {
-                HStack(spacing: 2) {
-                    if status.behind > 0 {
-                        pullCount(status)
+            if shown.showsCounts {
+                // A worktree that's stuck comes before anything else it could
+                // do, and during a rebase it isn't on a branch to have counts.
+                if let unfinished = branch.unfinished {
+                    UnfinishedWorkControl(branch: branch, unfinished: unfinished)
+                        .transition(Self.countsTransition)
+                } else if let status = branch.status {
+                    HStack(spacing: 2) {
+                        if status.behind > 0 {
+                            pullCount(status)
+                        }
+                        if status.ahead > 0 {
+                            pushCount(status)
+                        } else if status.upstream == nil, status.push != nil {
+                            firstPush
+                        }
                     }
-                    if status.ahead > 0 {
-                        pushCount(status)
-                    } else if status.upstream == nil, status.push != nil {
-                        firstPush
-                    }
+                    .transition(Self.countsTransition)
                 }
-                // Their room opens a frame at a time, as the words' room closes,
-                // or for a moment they'd have room for both, and what's to their
-                // right would jump.
-                .transition(.asymmetric(
-                    insertion: .modifier(active: CountsOpening(amount: 0), identity: CountsOpening(amount: 1))
-                        .combined(with: .opacity),
-                    removal: .opacity
-                ))
             }
         }
         .font(.system(size: 13))
         .lineLimit(1)
         .task(id: activity) { await show(activity) }
+    }
+
+    /// Their room opens a frame at a time, as the words' room closes, or for a
+    /// moment they'd have room for both, and what's to their right would jump.
+    private static var countsTransition: AnyTransition {
+        .asymmetric(
+            insertion: .modifier(active: CountsOpening(amount: 0), identity: CountsOpening(amount: 1))
+                .combined(with: .opacity),
+            removal: .opacity
+        )
     }
 
     private func show(_ activity: Activity) async {
@@ -326,6 +336,54 @@ private struct BranchCounts: View {
         .fixedSize()
         .help(branch.pushHelp)
         .accessibilityLabel("Push for the First Time")
+    }
+}
+
+/// Says what the worktree is stuck partway through, in place of the counts, and
+/// opens a menu of what can be done about it (decision 28). It's red with a
+/// triangle only while there are conflicts. With none left, nothing is wrong, but
+/// it still isn't finished, so it stays in gray.
+private struct UnfinishedWorkControl: View {
+    let branch: BranchModel
+    let unfinished: UnfinishedWork
+    @State private var isHovering = false
+
+    var body: some View {
+        Menu {
+            if unfinished.hasConflicts {
+                Button("Show Conflicts", action: branch.showChanges)
+            }
+            if let work = unfinished.work {
+                if unfinished.hasConflicts { Divider() }
+                Button(work.abortTitle, action: branch.askToAbort)
+                    .disabled(branch.isBusy)
+            }
+        } label: {
+            HStack(spacing: 4) {
+                if unfinished.hasConflicts {
+                    Icon.warning.image
+                }
+                Text(unfinished.title)
+                    .monospacedDigit()
+                    .fontWeight(unfinished.hasConflicts ? .semibold : .regular)
+            }
+            .accessibilityElement(children: .ignore)
+            .foregroundStyle(unfinished.hasConflicts ? AnyShapeStyle(Palette.red) : AnyShapeStyle(.secondary))
+            .padding(.horizontal, 6)
+            .frame(minHeight: 28)
+            .background {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(isHovering ? Palette.hover : .clear)
+            }
+            .contentShape(Rectangle())
+            .onHover { isHovering = $0 }
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(unfinished.work.map { "\(unfinished.title). You can finish from the command line, or \(BranchModel.command($0.abortArguments)) goes back." } ?? unfinished.title)
+        .accessibilityLabel(unfinished.title)
     }
 }
 

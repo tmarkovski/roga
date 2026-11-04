@@ -19,6 +19,7 @@ final class BranchModel {
         case forcePushing
         case fetching
         case undoingPull
+        case aborting
         case deletingFromRemote
 
         var title: String {
@@ -28,6 +29,7 @@ final class BranchModel {
             case .forcePushing: "Force pushing…"
             case .fetching: "Fetching…"
             case .undoingPull: "Undoing…"
+            case .aborting: "Aborting…"
             case .deletingFromRemote: "Deleting…"
             }
         }
@@ -48,7 +50,7 @@ final class BranchModel {
     /// A pull that hit a conflict, which yaga can't resolve, so it asks whether
     /// to undo the pull or leave it for the command line.
     struct Conflict: Equatable {
-        var pull: StoppedPull
+        var pull: StoppedWork
         /// The files in conflict. git prints these to its standard output, which
         /// a failure doesn't keep, so they come from asking it again.
         var files: [String]
@@ -96,6 +98,11 @@ final class BranchModel {
     var failure: Failure?
     /// A pull that stopped on a conflict, until the user has said what to do.
     var conflict: Conflict?
+    /// What the worktree is stuck partway through, whoever started it, which
+    /// takes the place of the counts. The worktree's model keeps this current.
+    var unfinished: UnfinishedWork?
+    /// A merge or a rebase that's waiting for someone to agree to abort it.
+    var pendingAbort: StoppedWork?
     /// A force push that's waiting for someone to agree to it.
     var forcePush: ForcePush?
     /// A deletion that's waiting for someone to agree to it.
@@ -112,6 +119,8 @@ final class BranchModel {
     @ObservationIgnored var isCheckingOut: () -> Bool = { false }
     /// Asks the worktree's model to look at what a fetch or a pull may have moved.
     @ObservationIgnored var lookAgain: () -> Void = {}
+    /// Asks the worktree's model to select the row for uncommitted changes.
+    @ObservationIgnored var showChanges: () -> Void = {}
     /// Asks history to tint these commits, or none.
     @ObservationIgnored var showPreview: ([ObjectID]) -> Void = { _ in }
     /// How long the house takes to play once for an action, which is how long
@@ -190,13 +199,13 @@ final class BranchModel {
 
     func pull(_ pull: Pull) {
         run(.pulling, failure: "Can't Pull \(branchName)") { [session, worktree] in
-            let wasStopped = (try? await session.stoppedPull(in: worktree)) != nil
+            let wasStopped = (try? await session.stoppedWork(in: worktree)) != nil
             do {
                 try await session.pull(pull, in: worktree)
             } catch {
                 // git hit a conflict just now, so this is the pull's own mess to
                 // clean up, rather than one that was there already.
-                if !wasStopped, let stopped = try? await session.stoppedPull(in: worktree) {
+                if !wasStopped, let stopped = try? await session.stoppedWork(in: worktree) {
                     let status = try? await session.status(in: worktree)
                     self.conflict = Conflict(pull: stopped, files: status?.conflicted.map(\.path) ?? [])
                     return nil
@@ -212,8 +221,24 @@ final class BranchModel {
         guard let conflict else { return }
         self.conflict = nil
         run(.undoingPull, failure: "Can't Undo the Pull") { [session, worktree] in
-            try await session.undo(conflict.pull, in: worktree)
+            try await session.abort(conflict.pull, in: worktree)
             return "Undid the pull"
+        }
+    }
+
+    /// Asks whether to abort the merge or rebase the worktree is partway through.
+    func askToAbort() {
+        guard !isBusy, let work = unfinished?.work else { return }
+        pendingAbort = work
+    }
+
+    /// Aborts what someone agreed to abort.
+    func confirmAbort() {
+        guard let work = pendingAbort else { return }
+        pendingAbort = nil
+        run(.aborting, failure: "Can't Abort") { [session, worktree] in
+            try await session.abort(work, in: worktree)
+            return work.abortedNote
         }
     }
 

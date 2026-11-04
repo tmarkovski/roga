@@ -55,6 +55,7 @@ struct RepositoryView: View {
             } message: { conflict in
                 Text(conflictMessage(conflict))
             }
+            .modifier(AbortAlert(branch: model.branch))
             .alert(
                 "Force Push \(model.branch.forcePush?.branch ?? "")?",
                 isPresented: Binding { model.branch.forcePush != nil } set: { if !$0 { model.branch.forcePush = nil } },
@@ -262,4 +263,40 @@ struct HistoryCommands: ToolbarContent {
 extension FocusedValues {
     /// The repository in the focused window, for the menu commands.
     @Entry var repository: RepositoryModel?
+}
+
+/// Asks before aborting a merge or a rebase. What it loses is said up front, as
+/// the vision asks of destructive operations, along with the command, since it
+/// can't be taken back from here.
+private struct AbortAlert: ViewModifier {
+    let branch: BranchModel
+
+    func body(content: Content) -> some View {
+        content.alert(
+            title,
+            isPresented: Binding { branch.pendingAbort != nil } set: { if !$0 { branch.pendingAbort = nil } },
+            presenting: branch.pendingAbort
+        ) { _ in
+            Button("Abort", role: .destructive) { branch.confirmAbort() }
+            Button("Cancel", role: .cancel) {}
+        } message: { work in
+            Text(message(work))
+        }
+    }
+
+    private var title: String {
+        switch branch.pendingAbort {
+        case .merge: "Abort the Merge?"
+        case .rebase: "Abort the Rebase?"
+        case nil: ""
+        }
+    }
+
+    private func message(_ work: StoppedWork) -> String {
+        let what = switch work {
+        case .merge: "merge"
+        case .rebase: "rebase"
+        }
+        return "This goes back to before the \(what), and any conflicts you've resolved are lost.\n\n\(BranchModel.command(work.abortArguments))"
+    }
 }

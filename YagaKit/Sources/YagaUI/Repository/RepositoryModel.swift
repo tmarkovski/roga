@@ -94,6 +94,8 @@ final class RepositoryModel {
     @ObservationIgnored private let keepsCommitGraphCurrent: () -> Bool
     /// Says how many files are uncommitted, whenever that's been checked.
     @ObservationIgnored private let reportUncommittedFiles: (Int) -> Void
+    /// Says whether the worktree has conflicts, whenever that's been checked.
+    @ObservationIgnored private let reportConflicts: (Bool) -> Void
     /// Says that the worktree is on another branch, or the repository has a new
     /// worktree, because of something yaga did, and returns once the sidebar knows.
     @ObservationIgnored private let reportBranchChange: () async -> Void
@@ -125,6 +127,7 @@ final class RepositoryModel {
         worktree: String,
         keepsCommitGraphCurrent: @escaping () -> Bool = { UserDefaults.standard.keepsCommitGraphCurrent },
         reportUncommittedFiles: @escaping (Int) -> Void = { _ in },
+        reportConflicts: @escaping (Bool) -> Void = { _ in },
         reportBranchChange: @escaping () async -> Void = {},
         fetchesByItself: @escaping () -> Bool = { UserDefaults.standard.fetchesByItself }
     ) {
@@ -132,6 +135,7 @@ final class RepositoryModel {
         self.worktree = worktree
         self.keepsCommitGraphCurrent = keepsCommitGraphCurrent
         self.reportUncommittedFiles = reportUncommittedFiles
+        self.reportConflicts = reportConflicts
         self.reportBranchChange = reportBranchChange
         selectedCommit = SelectedCommit(session: session)
         selectedChanges = SelectedChanges(session: session, worktree: worktree, selectedFile: selectedCommit.selectedFile, fileList: selectedCommit.fileList)
@@ -140,6 +144,10 @@ final class RepositoryModel {
         selectedChanges.onLoad = { [weak self] count in self?.show(uncommittedFiles: count) }
         branch.isCheckingOut = { [weak self] in self?.checkout != nil }
         branch.lookAgain = { [weak self] in self?.lookAgain() }
+        branch.showChanges = { [weak self] in
+            guard let self, hasWorkingTreeRow else { return }
+            selectRow(0)
+        }
         branch.showPreview = { [weak self] commits in self?.preview(commits) }
     }
 
@@ -316,9 +324,20 @@ final class RepositoryModel {
     private func updateUncommittedFiles() async {
         // A failure is usually a bare repository, which has no files to list.
         let status = try? await session.status(in: worktree)
+        let stopped = try? await session.stoppedWork(in: worktree)
         guard !Task.isCancelled else { return }
         show(uncommittedFiles: status?.fileCount ?? 0)
+        show(unfinished: UnfinishedWork(work: stopped, conflicts: status?.conflicted.count ?? 0))
         selectedChanges.refresh()
+    }
+
+    /// Says what the worktree is stuck partway through, which the row for
+    /// uncommitted changes says too.
+    private func show(unfinished: UnfinishedWork?) {
+        reportConflicts(unfinished?.hasConflicts ?? false)
+        guard unfinished != branch.unfinished else { return }
+        branch.unfinished = unfinished
+        historyVersion += 1
     }
 
     /// Adds or removes the row for uncommitted changes, which moves the rows
@@ -448,11 +467,16 @@ final class RepositoryModel {
     /// What a row shows, with whatever text has loaded.
     func rowContent(_ row: Int) -> CommitRowContent {
         if hasWorkingTreeRow, row == 0 {
+            let files = uncommittedFiles == 1 ? "1 uncommitted file" : "\(uncommittedFiles.formatted()) uncommitted files"
+            let unfinished = branch.unfinished
+            let isWarning = unfinished?.hasConflicts == true
             return CommitRowContent(
                 shortID: "",
-                subject: uncommittedFiles == 1 ? "1 uncommitted file" : "\(uncommittedFiles.formatted()) uncommitted files",
+                subject: isWarning ? unfinished?.title : [unfinished?.verb, files].compactMap(\.self).joined(separator: " · "),
+                body: isWarning ? "· \(files)" : nil,
                 lanes: workingTreeLine?.row,
-                isWorkingTree: true
+                isWorkingTree: true,
+                isWarning: isWarning
             )
         }
         let row = row - rowOffset

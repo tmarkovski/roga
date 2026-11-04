@@ -19,7 +19,7 @@ extension BranchModel.Action {
         switch self {
         case .pushing, .forcePushing, .deletingFromRemote: .push
         case .pulling: .heave
-        case .undoingPull: .waddle
+        case .undoingPull, .aborting: .waddle
         case .fetching: nil
         }
     }

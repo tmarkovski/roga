@@ -33,9 +33,9 @@ enum RemoteCommands {
         return command
     }
 
-    /// Says whether a worktree is partway through a merge or a rebase. A pull
-    /// that hit a conflict leaves it that way.
-    static func stoppedPull(in worktree: String, git: Git) async throws -> StoppedPull? {
+    /// Says whether a worktree is partway through a merge or a rebase, whoever
+    /// started it. A pull that hit a conflict leaves it that way.
+    static func stoppedWork(in worktree: String, git: Git) async throws -> StoppedWork? {
         let command = GitCommand(
             "rev-parse", "--path-format=absolute", "--git-path", "MERGE_HEAD", "--git-path", "rebase-merge", "--git-path", "rebase-apply",
             in: worktree
@@ -43,7 +43,12 @@ enum RemoteCommands {
         let paths = try await git.text(command).split(separator: "\n").map(String.init)
         guard paths.count == 3 else { return nil }
         if FileManager.default.fileExists(atPath: paths[0]) { return .merge }
-        if paths[1...].contains(where: FileManager.default.fileExists(atPath:)) { return .rebase }
+        for folder in paths[1...] where FileManager.default.fileExists(atPath: folder) {
+            // `git am` uses this folder too, and `git rebase --abort` won't undo it.
+            if FileManager.default.fileExists(atPath: folder + "/applying") { return nil }
+            let head = (try? String(contentsOfFile: folder + "/head-name", encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return .rebase(branch: head?.hasPrefix("refs/heads/") == true ? head : nil)
+        }
         return nil
     }
 }
