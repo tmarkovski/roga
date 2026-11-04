@@ -182,3 +182,86 @@ struct CurrentCommitRowTests {
         #expect(!drawing.isDrawn(x: Self.dotX + LaneRenderer.ringRadius, y: Self.middle))
     }
 }
+
+/// The lines between a dot and another column, which stay nearly flat along the
+/// middle of the row and turn late, rather than sloping the whole way across.
+@Suite(.timeLimit(.minutes(1)))
+struct LaneCurveTests {
+    typealias Drawing = CurrentCommitRowTests.Drawing
+    typealias Line = LaneLayout.Line
+
+    static let height = CGFloat(Drawing.height)
+    static let middle = height / 2
+
+    static func x(_ column: Int) -> CGFloat {
+        CurrentCommitRowTests.x(ofColumn: column)
+    }
+
+    /// A line four columns long, halfway and three quarters of the way across.
+    /// `turn` is which way the row's middle is from the line.
+    func expectFlatThenTurning(_ drawing: Drawing, halfway: CGFloat, threeQuarters: CGFloat, turn: CGFloat) {
+        #expect(drawing.isDrawn(x: halfway, y: Self.middle + turn * 0.5))
+        #expect(!drawing.isDrawn(x: halfway, y: Self.middle + turn * 3))
+        #expect(drawing.isDrawn(x: threeQuarters, y: Self.middle + turn * 2))
+        #expect(!drawing.isDrawn(x: threeQuarters, y: Self.middle + turn * 5))
+    }
+
+    @Test func aLineLeavingTheDotToTheRightRunsFlatAndTurnsDownLate() throws {
+        let row = LaneLayout.Row(column: 0, lines: [Line(top: .commit, bottom: .column(4))])
+        let drawing = try Drawing(row, isCurrent: false)
+        expectFlatThenTurning(drawing, halfway: Self.x(2), threeQuarters: Self.x(3), turn: 1)
+        // It meets the next row's line going straight down.
+        #expect(drawing.isDrawn(x: Self.x(4), y: Self.height - 1))
+        #expect(!drawing.isDrawn(x: Self.x(4) - 2, y: Self.height - 1))
+    }
+
+    @Test func aLineLeavingTheDotToTheLeftDoesTheSame() throws {
+        let row = LaneLayout.Row(column: 4, lines: [Line(top: .commit, bottom: .column(0))])
+        let drawing = try Drawing(row, isCurrent: false)
+        expectFlatThenTurning(drawing, halfway: Self.x(2), threeQuarters: Self.x(1), turn: 1)
+        #expect(drawing.isDrawn(x: Self.x(0), y: Self.height - 1))
+        #expect(!drawing.isDrawn(x: Self.x(0) + 2, y: Self.height - 1))
+    }
+
+    @Test func aLineArrivingAtTheDotIsTheSameCurveUpsideDown() throws {
+        let row = LaneLayout.Row(column: 0, lines: [Line(top: .column(4), bottom: .commit)])
+        let drawing = try Drawing(row, isCurrent: false)
+        expectFlatThenTurning(drawing, halfway: Self.x(2), threeQuarters: Self.x(3), turn: -1)
+        #expect(drawing.isDrawn(x: Self.x(4), y: 1))
+        #expect(!drawing.isDrawn(x: Self.x(4) - 2, y: 1))
+    }
+
+    @Test func aLaneMovingOverCrossesTheMiddleOfTheRowHalfway() throws {
+        // No line touches the dot, so it doesn't turn the way those do.
+        let row = LaneLayout.Row(column: 0, lines: [Line(top: .column(4), bottom: .column(1))])
+        let drawing = try Drawing(row, isCurrent: false)
+        let halfway = (Self.x(4) + Self.x(1)) / 2
+        #expect(drawing.isDrawn(x: halfway, y: Self.middle))
+        #expect(!drawing.isDrawn(x: Self.x(3) + 4, y: Self.middle))
+        #expect(drawing.isDrawn(x: Self.x(4), y: 1))
+        #expect(drawing.isDrawn(x: Self.x(1), y: Self.height - 1))
+    }
+
+    @Test func arrowsStopShortOfALineAlongTheMiddleOfTheRow() throws {
+        let run = Line(top: .commit, bottom: .column(4))
+        let pointingDown = LaneLayout.Row(column: 0, lines: [Line(top: .column(2), bottom: .cut(2)), run])
+        let down = try Drawing(pointingDown, isCurrent: false)
+        #expect(down.isDrawn(x: Self.x(2), y: Self.middle - 4))
+        #expect(!down.isDrawn(x: Self.x(2), y: Self.middle - 1.5))
+
+        let pointingUp = LaneLayout.Row(column: 0, lines: [Line(top: .cut(2), bottom: .column(2)), run])
+        let up = try Drawing(pointingUp, isCurrent: false)
+        #expect(up.isDrawn(x: Self.x(2), y: Self.middle + 4))
+        #expect(!up.isDrawn(x: Self.x(2), y: Self.middle + 2))
+    }
+
+    @Test func aLineLeavingACurrentDotStopsAtTheRing() throws {
+        let row = LaneLayout.Row(column: 0, lines: [Line(top: .commit, bottom: .column(3))])
+        let plain = try Drawing(row, isCurrent: false)
+        let current = try Drawing(row, isCurrent: true)
+        let gap = (4 + LaneRenderer.ringRadius - 0.75) / 2
+        #expect(plain.isDrawn(x: Self.x(0) + gap, y: Self.middle))
+        #expect(!current.isDrawn(x: Self.x(0) + gap, y: Self.middle))
+        #expect(current.isDrawn(x: Self.x(0) + LaneRenderer.ringRadius + 3, y: Self.middle))
+    }
+}

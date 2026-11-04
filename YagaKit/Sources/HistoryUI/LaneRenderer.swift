@@ -15,6 +15,14 @@ enum LaneRenderer {
     static let ringRadius: CGFloat = 6
     private static let lineWidth: CGFloat = 1.5
     private static let arrowSize: CGFloat = 3
+    /// How far an arrow's tip stops short of the middle of the row, so that it
+    /// doesn't touch a line running along the middle and seem to join it.
+    private static let arrowClearance: CGFloat = 3
+    /// How far across a line between the dot and another column the curve's
+    /// control point sits. This keeps the line nearly flat at first, so that it
+    /// crosses the columns between at a right angle and turns late, however far
+    /// it goes. It's the value that fits how Fork draws these lines.
+    private static let flatRun: CGFloat = 0.6
 
     /// Each column's color, in turn. The first column, where the main line
     /// usually runs, gets the accent color.
@@ -66,18 +74,28 @@ enum LaneRenderer {
             let start: NSPoint = switch line.top {
             case .column(let column): NSPoint(x: center(column), y: 0)
             case .commit: isHollow ? NSPoint(x: dot.x, y: dot.y + dotRadius) : dot
-            case .cut(let column): NSPoint(x: center(column), y: middle)
+            case .cut(let column): NSPoint(x: center(column), y: middle + arrowClearance)
             }
             let end: NSPoint = switch line.bottom {
             case .column(let column): NSPoint(x: center(column), y: height)
             case .commit: dot
-            case .cut(let column): NSPoint(x: center(column), y: middle)
+            case .cut(let column): NSPoint(x: center(column), y: middle - arrowClearance)
             }
             path.move(to: start)
             if start.x == end.x {
                 path.line(to: end)
+            } else if case .commit = line.top {
+                // Leave the dot sideways, and turn down into the column by the
+                // row's bottom edge.
+                let flat = start.x + (end.x - start.x) * flatRun
+                path.curve(to: end, controlPoint1: NSPoint(x: flat, y: start.y), controlPoint2: NSPoint(x: end.x, y: start.y))
+            } else if case .commit = line.bottom {
+                // The same curve the other way, arriving at the dot sideways.
+                let flat = end.x + (start.x - end.x) * flatRun
+                path.curve(to: end, controlPoint1: NSPoint(x: start.x, y: end.y), controlPoint2: NSPoint(x: flat, y: end.y))
             } else {
-                // Leave and arrive straight up and down, curving between.
+                // A lane moving over, away from any dot, leaves and arrives
+                // straight up and down, curving between.
                 let turn = (start.y + end.y) / 2
                 path.curve(to: end, controlPoint1: NSPoint(x: start.x, y: turn), controlPoint2: NSPoint(x: end.x, y: turn))
             }
