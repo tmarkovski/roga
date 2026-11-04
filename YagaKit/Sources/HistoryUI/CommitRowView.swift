@@ -1,4 +1,5 @@
 import AppKit
+import IconUI
 
 /// A row of the commit list. It draws the selection as a soft gray rounded
 /// rectangle rather than in the accent color, which is kept for the graph.
@@ -182,19 +183,19 @@ final class CommitCellView: NSView {
 
     fileprivate static func icon(for kind: CommitRowContent.Badge.Kind) -> NSImage? {
         switch kind {
-        case .currentBranch: symbol("checkmark", size: 9, weight: .bold, for: kind)
-        case .tag: symbol("tag", size: 8.5, weight: .regular, for: kind)
+        case .currentBranch: symbol(.check, size: 9, weight: .bold, for: kind)
+        case .tag: symbol(.tag, size: 8.5, weight: .regular, for: kind)
         case .detachedHead, .branch, .remoteBranch: nil
         }
     }
 
     /// The mark on a badge that stands for its upstream too.
     fileprivate static func cloud(for kind: CommitRowContent.Badge.Kind) -> NSImage? {
-        symbol("cloud", size: 9.5, weight: .medium, for: kind)
+        symbol(.remote, size: 9.5, weight: .medium, for: kind)
     }
 
     private struct SymbolKey: Hashable {
-        var name: String
+        var icon: Icon
         var kind: CommitRowContent.Badge.Kind
         var isDark: Bool
     }
@@ -203,13 +204,13 @@ final class CommitCellView: NSView {
     /// more than drawing it again, and a row needs each one to lay out and to draw.
     private static var symbols: [SymbolKey: NSImage] = [:]
 
-    private static func symbol(_ name: String, size: CGFloat, weight: NSFont.Weight, for kind: CommitRowContent.Badge.Kind) -> NSImage? {
+    private static func symbol(_ icon: Icon, size: CGFloat, weight: NSFont.Weight, for kind: CommitRowContent.Badge.Kind) -> NSImage? {
         let isDark = NSAppearance.currentDrawing().bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        let key = SymbolKey(name: name, kind: kind, isDark: isDark)
+        let key = SymbolKey(icon: icon, kind: kind, isDark: isDark)
         if let symbol = symbols[key] { return symbol }
         let configuration = NSImage.SymbolConfiguration(pointSize: size, weight: weight)
             .applying(NSImage.SymbolConfiguration(paletteColors: [BadgeLook.of(kind).text]))
-        let symbol = NSImage(systemSymbolName: name, accessibilityDescription: nil)?.withSymbolConfiguration(configuration)
+        let symbol = icon.nsImage?.withSymbolConfiguration(configuration)
         symbols[key] = symbol
         return symbol
     }

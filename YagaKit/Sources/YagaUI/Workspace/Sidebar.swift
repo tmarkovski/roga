@@ -1,5 +1,6 @@
 import AppKit
 import GitCore
+import IconUI
 import RepositoryEngine
 import SwiftUI
 
@@ -31,7 +32,7 @@ struct Sidebar: View {
                 OrganizationRail(groups: groups, scope: $scope) {
                     addButton(edge: .trailing) { isPresented in
                         RailButton(title: "Add Repositories", isSelected: isPresented, action: { isAddingRepositories = true }) {
-                            Image(systemName: "plus")
+                            Icon.plus.image
                                 .font(.system(size: 15, weight: .light))
                         }
                     }
@@ -44,7 +45,7 @@ struct Sidebar: View {
                 ScopeHeader(title: scope == .all ? "All repositories" : groups.title(of: scope), count: groups.repositories(in: scope).count) {
                     if !showsRail {
                         addButton(edge: .bottom) { _ in
-                            Button("Add Repositories", systemImage: "plus") { isAddingRepositories = true }
+                            Button("Add Repositories", icon: .plus) { isAddingRepositories = true }
                                 .labelStyle(.iconOnly)
                                 .buttonStyle(.icon(size: 24))
                                 .help("Add Repositories")
@@ -217,7 +218,7 @@ private struct OrganizationRail<Add: View>: View {
             ScrollView {
                 VStack(spacing: 8) {
                     RailButton(title: groups.title(of: .all), isSelected: scope == .all) { scope = .all } label: {
-                        Image(systemName: "tray")
+                        Icon.inbox.image
                             .font(.system(size: 15, weight: .light))
                     }
                     ForEach(groups.organizations) { organization in
@@ -227,7 +228,7 @@ private struct OrganizationRail<Add: View>: View {
                     }
                     if groups.hasOthers {
                         RailButton(title: groups.title(of: .other), isSelected: scope == .other) { scope = .other } label: {
-                            Image(systemName: "ellipsis")
+                            Icon.ellipsis.image
                                 .font(.system(size: 14))
                         }
                     }
@@ -403,13 +404,14 @@ private struct RowMenu<Items: View>: View {
         Menu {
             items
         } label: {
-            HoverIcon(size: 24) { Image(systemName: "ellipsis") }
+            HoverIcon(size: 24) { Icon.ellipsis.image }
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
         .help("More")
+        .accessibilityLabel("More")
     }
 }
 
@@ -593,8 +595,9 @@ private struct WorktreeRow: View {
     }
 
     @ViewBuilder private var commands: some View {
-        Button(action: openInNewWindow) { Image(systemName: "macwindow.badge.plus") }
+        Button(action: openInNewWindow) { Icon.newWindow.image }
             .help("Open in New Window")
+            .accessibilityLabel("Open in New Window")
         RowMenu { menuItems }
     }
 
@@ -697,7 +700,7 @@ struct SidebarToggle: View {
         Button {
             visibility.toggleSidebar()
         } label: {
-            Image(systemName: "sidebar.left")
+            Icon.panelLeft.image
         }
         .buttonStyle(.icon)
         .help(visibility.sidebarCommandTitle)

@@ -1,4 +1,5 @@
 import GitCore
+import IconUI
 import SwiftUI
 
 /// The buttons in a panel's header for its list of files: one for filtering,
@@ -11,13 +12,13 @@ struct FileListCommands: View {
     @AppStorage(FileListSettings.layout) private var layout = FileLayout.list
 
     var body: some View {
-        Button(list.isFilterShown ? "Close the Filter" : "Filter Files", systemImage: "magnifyingglass") {
+        Button(list.isFilterShown ? "Close the Filter" : "Filter Files", icon: .search) {
             if list.isFilterShown { closeFilter() } else { list.showFilter() }
         }
         .labelStyle(.iconOnly)
         .buttonStyle(.icon(isOn: list.isFilterShown))
         .help(list.isFilterShown ? "Close the Filter" : "Filter Files (\(RepositoryCommands.filterFilesShortcut.symbols))")
-        Button(toggleTitle, systemImage: "list.bullet.indent") {
+        Button(toggleTitle, icon: .listTree) {
             layout = layout == .tree ? .list : .tree
         }
         .labelStyle(.iconOnly)

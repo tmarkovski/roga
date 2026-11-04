@@ -1,6 +1,7 @@
 import Foundation
 import GitCore
 import GitRunner
+import IconUI
 import RepositoryEngine
 import SwiftUI
 
@@ -221,7 +222,7 @@ public struct WorkspaceView: View {
                 .controlSize(.small)
         case .failed(let error):
             ContentUnavailableView {
-                Label("yaga Can't Use Git", systemImage: "exclamationmark.triangle")
+                Label("yaga Can't Use Git", icon: .warning)
             } description: {
                 Text(error.description)
             }
@@ -230,18 +231,18 @@ public struct WorkspaceView: View {
                 detail(repository, selected)
             } else if list.repositories.isEmpty {
                 ContentUnavailableView {
-                    Label("No Repository Open", systemImage: "folder")
+                    Label("No Repository Open", icon: .folder)
                 } description: {
                     Text("Open a repository to see its history.")
                 } actions: {
                     Button("Open Repository…", action: open)
                 }
             } else {
-                ContentUnavailableView(
-                    "No Worktree Selected",
-                    systemImage: "sidebar.left",
-                    description: Text("Choose a worktree in the sidebar to see its history.")
-                )
+                ContentUnavailableView {
+                    Label("No Worktree Selected", icon: .panelLeft)
+                } description: {
+                    Text("Choose a worktree in the sidebar to see its history.")
+                }
             }
         }
     }
@@ -253,7 +254,7 @@ public struct WorkspaceView: View {
                 .controlSize(.small)
         case .missing:
             ContentUnavailableView {
-                Label("Can't Find \(repository.name)", systemImage: "questionmark.folder")
+                Label("Can't Find \(repository.name)", icon: .folderSearch)
             } description: {
                 Text("It was at \(repository.path), and it has been moved or deleted.")
             } actions: {
@@ -262,7 +263,7 @@ public struct WorkspaceView: View {
             }
         case .failed(let message):
             ContentUnavailableView {
-                Label("Can't Show \(repository.name)", systemImage: "exclamationmark.triangle")
+                Label("Can't Show \(repository.name)", icon: .warning)
             } description: {
                 Text(message)
             } actions: {

@@ -43,13 +43,20 @@ let package = Package(
             dependencies: ["GitCore", "GitRunner", "CommitGraph"],
             swiftSettings: settings
         ),
+        // The only target with resources. It doesn't make the main actor its default,
+        // so that what SwiftPM generates to find them can be used from anywhere.
+        .target(
+            name: "IconUI",
+            resources: [.process("Icons.xcassets"), .copy("LICENSE-lucide.txt")],
+            swiftSettings: settings
+        ),
         .target(
             name: "MenuUI",
             swiftSettings: viewSettings
         ),
         .target(
             name: "HistoryUI",
-            dependencies: ["GitCore", "CommitGraph", "MenuUI"],
+            dependencies: ["GitCore", "CommitGraph", "IconUI", "MenuUI"],
             swiftSettings: viewSettings
         ),
         .target(
@@ -59,7 +66,7 @@ let package = Package(
         ),
         .target(
             name: "YagaUI",
-            dependencies: ["GitCore", "GitRunner", "CommitGraph", "RepositoryEngine", "HistoryUI", "DiffUI", "MenuUI"],
+            dependencies: ["GitCore", "GitRunner", "CommitGraph", "RepositoryEngine", "HistoryUI", "DiffUI", "IconUI", "MenuUI"],
             swiftSettings: viewSettings
         ),
         .executableTarget(
@@ -94,7 +101,7 @@ let package = Package(
         ),
         .testTarget(
             name: "YagaUITests",
-            dependencies: ["YagaUI", "HistoryUI", "DiffUI", "MenuUI", "RepositoryEngine", "CommitGraph", "GitCore", "GitRunner", "TestSupport"],
+            dependencies: ["YagaUI", "HistoryUI", "DiffUI", "IconUI", "MenuUI", "RepositoryEngine", "CommitGraph", "GitCore", "GitRunner", "TestSupport"],
             swiftSettings: viewSettings
         ),
         // Shared by the test targets: the git the tests run, and the test

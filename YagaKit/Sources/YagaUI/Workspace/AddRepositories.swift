@@ -1,4 +1,5 @@
 import Foundation
+import IconUI
 import RepositoryEngine
 import SwiftUI
 
@@ -119,7 +120,7 @@ struct AddRepositories: View {
 
     private var filterField: some View {
         HStack(spacing: 6) {
-            Image(systemName: "magnifyingglass")
+            Icon.search.image
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
             TextField("Filter repositories", text: $filter)

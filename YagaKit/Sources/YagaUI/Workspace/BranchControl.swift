@@ -1,4 +1,6 @@
+import AppKit
 import GitCore
+import IconUI
 import SwiftUI
 
 /// The branch in the title row, as a chip with a menu, and after it the counts
@@ -36,7 +38,7 @@ private struct BranchChip: View {
             BranchMenuItems(branch: branch, switchBranch: switchBranch)
         } label: {
             HStack(spacing: 5) {
-                BranchIcon.branch.image
+                Icon.branch.image
                     .foregroundStyle(.secondary)
                 if worktree.branch == nil, let head = worktree.head {
                     Text(head.hex.prefix(8))
@@ -107,20 +109,23 @@ struct BranchMenuItems: View {
                 .disabled(status.remote == nil || branch.isBusy)
             Divider()
         }
-        item("New Branch…", icon: .branch) { branch.isCreatingBranch = true }
+        item("New Branch…", icon: .newBranch) { branch.isCreatingBranch = true }
             .keyboardShortcut(RepositoryCommands.newBranchShortcut)
             .disabled(branch.isBusy)
-        item("Switch Branch…", icon: .blank) { switchBranch?() }
+        item("Switch Branch…", icon: nil) { switchBranch?() }
             .disabled(switchBranch == nil)
     }
 
     /// A menu item with its icon, which menus leave out unless told otherwise.
-    private func item(_ title: String, icon: BranchIcon, action: @escaping () -> Void) -> some View {
+    private func item(_ title: String, icon: Icon?, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Label { Text(title) } icon: { icon.image }
+            Label { Text(title) } icon: { icon?.image ?? Self.noIcon }
                 .labelStyle(.titleAndIcon)
         }
     }
+
+    /// Nothing to see, for a menu item that lines up with the ones that have an icon.
+    private static let noIcon = Image(nsImage: NSImage(size: NSSize(width: 16, height: 16), flipped: false) { _ in true })
 }
 
 /// `↓3` and `↑1`, or what git is doing in their place.
@@ -140,7 +145,7 @@ private struct BranchCounts: View {
                 .padding(.horizontal, 4)
             } else if let finished = branch.finished {
                 HStack(spacing: 5) {
-                    Image(systemName: "checkmark")
+                    Icon.check.image
                         .font(.system(size: 10, weight: .bold))
                     Text(finished)
                 }
@@ -223,7 +228,7 @@ private struct BranchCounts: View {
 
 /// An icon and a number. Orange means a click runs right now.
 private struct BranchCount: View {
-    let icon: BranchIcon
+    let icon: Icon
     let text: String
     let isOrange: Bool
     @State private var isHovering = false

@@ -1,5 +1,6 @@
 import AppKit
 import GitCore
+import IconUI
 import MenuUI
 import SwiftUI
 
@@ -63,7 +64,7 @@ struct RefsPanel: View {
                     close: closeFilter
                 )
             }
-            Button(refs.isFilterShown ? "Close the Filter" : "Filter Refs", systemImage: "magnifyingglass") {
+            Button(refs.isFilterShown ? "Close the Filter" : "Filter Refs", icon: .search) {
                 if refs.isFilterShown { closeFilter() } else { refs.showFilter() }
             }
             .labelStyle(.iconOnly)
@@ -72,23 +73,25 @@ struct RefsPanel: View {
             Menu {
                 sortPicker
             } label: {
-                HoverIcon { Image(systemName: "arrow.up.arrow.down") }
+                HoverIcon { Icon.sort.image }
             }
             .menuStyle(.button)
             .buttonStyle(.plain)
             .menuIndicator(.hidden)
             .fixedSize()
             .help("Sort Refs")
+            .accessibilityLabel("Sort Refs")
             Menu {
                 moreCommands
             } label: {
-                HoverIcon { Image(systemName: "ellipsis") }
+                HoverIcon { Icon.ellipsis.image }
             }
             .menuStyle(.button)
             .buttonStyle(.plain)
             .menuIndicator(.hidden)
             .fixedSize()
             .help("More")
+            .accessibilityLabel("More")
         }
     }
 
@@ -131,7 +134,7 @@ struct RefsPanel: View {
                     section(.remotes, count: details.remotes.count) {
                         ForEach(details.remotes, id: \.name) { remote in
                             RefRow(
-                                systemImage: "cloud",
+                                icon: .remote,
                                 title: remote.name,
                                 subtitle: remote.address ?? "Not configured any more"
                             )
@@ -147,7 +150,7 @@ struct RefsPanel: View {
                     }
                     section(.stashes, count: details.stashes.count) {
                         ForEach(details.stashes, id: \.position) { stash in
-                            RefRow(systemImage: "tray", title: stash.message, subtitle: stash.subtitle(), titleTruncation: .tail)
+                            RefRow(icon: .stash, title: stash.message, subtitle: stash.subtitle(), titleTruncation: .tail)
                         }
                     }
                 }
@@ -191,7 +194,7 @@ struct RefsPanel: View {
     private func branchRow(_ branch: BranchDetails, isCurrent: Bool) -> some View {
         let otherWorktree = isCurrent ? nil : branch.worktree
         return RefRow(
-            systemImage: "arrow.triangle.branch",
+            icon: .branch,
             imageColor: isCurrent ? .green : .secondary,
             title: branch.shortName,
             subtitle: branch.subtitle(isCurrent: isCurrent),
@@ -201,7 +204,7 @@ struct RefsPanel: View {
             action: { select(branch.name, branch.tip) }
         ) {
             if isCurrent {
-                Image(systemName: "checkmark")
+                Icon.check.image
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.secondary)
                     .accessibilityLabel("Checked out")
@@ -210,9 +213,10 @@ struct RefsPanel: View {
             }
         } commands: {
             if let otherWorktree {
-                Button { showWorktree(otherWorktree, branch.tip) } label: { Image(systemName: "arrow.right.circle") }
+                Button { showWorktree(otherWorktree, branch.tip) } label: { Icon.worktree.image }
                     .buttonStyle(.icon(size: 24))
                     .help("Show Worktree")
+                    .accessibilityLabel("Show Worktree")
             }
         }
         .id(branch.name)
@@ -243,7 +247,7 @@ struct RefsPanel: View {
 
     private func remoteBranchRow(_ branch: RemoteBranchDetails) -> some View {
         RefRow(
-            systemImage: "arrow.triangle.branch",
+            icon: .branch,
             title: branch.shortName,
             menu: [
                 // Its full name, because the row's title leaves out the remote.
@@ -270,7 +274,7 @@ struct RefsPanel: View {
 
     private func tagRow(_ tag: TagDetails) -> some View {
         RefRow(
-            systemImage: "tag",
+            icon: .tag,
             title: tag.shortName,
             subtitle: tag.subject ?? "No commit to show",
             menu: [
@@ -474,7 +478,7 @@ private struct RefSectionHeader: View {
 /// beside its first line gives way to its commands while the pointer is over
 /// it, and its second line has the whole width.
 private struct RefRow<Trailing: View, Commands: View>: View {
-    let systemImage: String
+    let icon: Icon
     var imageColor = Color.secondary
     let title: String
     var subtitle: String?
@@ -494,7 +498,7 @@ private struct RefRow<Trailing: View, Commands: View>: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: systemImage)
+            icon.image
                 .font(.system(size: 13))
                 .foregroundStyle(imageColor)
                 .frame(width: 16)
@@ -559,8 +563,8 @@ private struct RefRow<Trailing: View, Commands: View>: View {
 
 extension RefRow where Trailing == EmptyView, Commands == EmptyView {
     /// A row with nothing but its text, such as a stash's.
-    init(systemImage: String, title: String, subtitle: String, titleTruncation: Text.TruncationMode = .middle) {
-        self.init(systemImage: systemImage, title: title, subtitle: subtitle, titleTruncation: titleTruncation) {
+    init(icon: Icon, title: String, subtitle: String, titleTruncation: Text.TruncationMode = .middle) {
+        self.init(icon: icon, title: title, subtitle: subtitle, titleTruncation: titleTruncation) {
         } commands: {
         }
     }
@@ -660,7 +664,7 @@ struct RefsPanelToggle: View {
         Button {
             visibility.isWanted.wrappedValue.toggle()
         } label: {
-            Image(systemName: "sidebar.right")
+            Icon.panelRight.image
         }
         .buttonStyle(.icon)
         .disabled(!visibility.fits)

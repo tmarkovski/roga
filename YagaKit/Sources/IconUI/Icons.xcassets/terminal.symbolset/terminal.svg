@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="3300" height="2200">
+<g id="Notes"><text id="template-version" x="3036" y="100">Template v.3.0</text></g>
+<g id="Guides">
+<line id="Baseline-S" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="263" x2="3036" y1="696" y2="696"/>
+<line id="Capline-S" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="263" x2="3036" y1="625.54" y2="625.54"/>
+<line id="left-margin-Ultralight-S" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="300" x2="300" y1="596" y2="716"/>
+<line id="right-margin-Ultralight-S" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="388.32" x2="388.32" y1="596" y2="716"/>
+<line id="left-margin-Regular-S" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="1300" x2="1300" y1="596" y2="716"/>
+<line id="right-margin-Regular-S" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="1388.32" x2="1388.32" y1="596" y2="716"/>
+<line id="left-margin-Black-S" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="2300" x2="2300" y1="596" y2="716"/>
+<line id="right-margin-Black-S" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="2388.32" x2="2388.32" y1="596" y2="716"/>
+<line id="Baseline-M" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="263" x2="3036" y1="1126" y2="1126"/>
+<line id="Capline-M" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="263" x2="3036" y1="1055.54" y2="1055.54"/>
+<line id="left-margin-Ultralight-M" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="300" x2="300" y1="1026" y2="1146"/>
+<line id="right-margin-Ultralight-M" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="412.8" x2="412.8" y1="1026" y2="1146"/>
+<line id="left-margin-Regular-M" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="1300" x2="1300" y1="1026" y2="1146"/>
+<line id="right-margin-Regular-M" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="1412.8" x2="1412.8" y1="1026" y2="1146"/>
+<line id="left-margin-Black-M" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="2300" x2="2300" y1="1026" y2="1146"/>
+<line id="right-margin-Black-M" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="2412.8" x2="2412.8" y1="1026" y2="1146"/>
+<line id="Baseline-L" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="263" x2="3036" y1="1556" y2="1556"/>
+<line id="Capline-L" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="263" x2="3036" y1="1485.54" y2="1485.54"/>
+<line id="left-margin-Ultralight-L" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="300" x2="300" y1="1456" y2="1576"/>
+<line id="right-margin-Ultralight-L" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="445.44" x2="445.44" y1="1456" y2="1576"/>
+<line id="left-margin-Regular-L" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="1300" x2="1300" y1="1456" y2="1576"/>
+<line id="right-margin-Regular-L" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="1445.44" x2="1445.44" y1="1456" y2="1576"/>
+<line id="left-margin-Black-L" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="2300" x2="2300" y1="1456" y2="1576"/>
+<line id="right-margin-Black-L" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="2445.44" x2="2445.44" y1="1456" y2="1576"/>
+</g>
+<g id="Symbols">
+<g id="Ultralight-S" transform="matrix(1 0 0 1 300 696)"><path d="M44.16 -8.27L73.6 -8.27C74.26 -8.27 74.8 -8.81 74.8 -9.47C74.8 -10.13 74.26 -10.67 73.6 -10.67L44.16 -10.67C43.5 -10.67 42.96 -10.13 42.96 -9.47C42.96 -8.81 43.5 -8.27 44.16 -8.27ZM15.57 -15.98L37.65 -38.06C38.11 -38.53 38.11 -39.29 37.65 -39.76L15.57 -61.84C15.1 -62.3 14.34 -62.3 13.87 -61.84C13.41 -61.37 13.41 -60.61 13.87 -60.14L35.95 -38.06L35.95 -39.76L13.87 -17.68C13.41 -17.21 13.41 -16.45 13.87 -15.98C14.34 -15.52 15.1 -15.52 15.57 -15.98Z"/></g>
+<g id="Regular-S" transform="matrix(1 0 0 1 1300 696)"><path d="M44.16 -6.05L73.6 -6.05C75.49 -6.05 77.02 -7.58 77.02 -9.47C77.02 -11.36 75.49 -12.89 73.6 -12.89L44.16 -12.89C42.27 -12.89 40.74 -11.36 40.74 -9.47C40.74 -7.58 42.27 -6.05 44.16 -6.05ZM17.14 -14.41L39.22 -36.49C40.56 -37.83 40.56 -39.99 39.22 -41.33L17.14 -63.41C15.8 -64.75 13.64 -64.75 12.3 -63.41C10.96 -62.07 10.96 -59.91 12.3 -58.57L34.38 -36.49L34.38 -41.33L12.3 -19.25C10.96 -17.91 10.96 -15.75 12.3 -14.41C13.64 -13.07 15.8 -13.07 17.14 -14.41Z"/></g>
+<g id="Black-S" transform="matrix(1 0 0 1 2300 696)"><path d="M44.16 -3.77L73.6 -3.77C76.75 -3.77 79.3 -6.32 79.3 -9.47C79.3 -12.62 76.75 -15.17 73.6 -15.17L44.16 -15.17C41.01 -15.17 38.46 -12.62 38.46 -9.47C38.46 -6.32 41.01 -3.77 44.16 -3.77ZM18.75 -12.8L40.83 -34.88C43.06 -37.1 43.06 -40.72 40.83 -42.94L18.75 -65.02C16.53 -67.25 12.91 -67.25 10.69 -65.02C8.46 -62.8 8.46 -59.18 10.69 -56.96L32.77 -34.88L32.77 -42.94L10.69 -20.86C8.46 -18.64 8.46 -15.02 10.69 -12.8C12.91 -10.57 16.53 -10.57 18.75 -12.8Z"/></g>
+<g id="Ultralight-M" transform="matrix(1 0 0 1 300 1126)"><path d="M56.4 -0.8L94 -0.8C94.84 -0.8 95.53 -1.49 95.53 -2.33C95.53 -3.17 94.84 -3.86 94 -3.86L56.4 -3.86C55.56 -3.86 54.87 -3.17 54.87 -2.33C54.87 -1.49 55.56 -0.8 56.4 -0.8ZM19.88 -10.65L48.08 -38.85C48.68 -39.45 48.68 -40.41 48.08 -41.01L19.88 -69.21C19.28 -69.81 18.32 -69.81 17.72 -69.21C17.12 -68.61 17.12 -67.65 17.72 -67.05L45.92 -38.85L45.92 -41.01L17.72 -12.81C17.12 -12.21 17.12 -11.25 17.72 -10.65C18.32 -10.05 19.28 -10.05 19.88 -10.65Z"/></g>
+<g id="Regular-M" transform="matrix(1 0 0 1 1300 1126)"><path d="M56.4 2.04L94 2.04C96.41 2.04 98.37 0.08 98.37 -2.33C98.37 -4.74 96.41 -6.7 94 -6.7L56.4 -6.7C53.99 -6.7 52.03 -4.74 52.03 -2.33C52.03 0.08 53.99 2.04 56.4 2.04ZM21.89 -8.64L50.09 -36.84C51.8 -38.55 51.8 -41.31 50.09 -43.02L21.89 -71.22C20.18 -72.93 17.42 -72.93 15.71 -71.22C14 -69.51 14 -66.75 15.71 -65.04L43.91 -36.84L43.91 -43.02L15.71 -14.82C14 -13.11 14 -10.35 15.71 -8.64C17.42 -6.93 20.18 -6.93 21.89 -8.64Z"/></g>
+<g id="Black-M" transform="matrix(1 0 0 1 2300 1126)"><path d="M56.4 4.96L94 4.96C98.02 4.96 101.29 1.69 101.29 -2.33C101.29 -6.35 98.02 -9.61 94 -9.61L56.4 -9.61C52.38 -9.61 49.12 -6.35 49.12 -2.33C49.12 1.69 52.38 4.96 56.4 4.96ZM23.95 -6.58L52.15 -34.78C55 -37.62 55 -42.24 52.15 -45.08L23.95 -73.28C21.11 -76.13 16.49 -76.13 13.65 -73.28C10.8 -70.44 10.8 -65.82 13.65 -62.98L41.85 -34.78L41.85 -45.08L13.65 -16.88C10.8 -14.04 10.8 -9.42 13.65 -6.58C16.49 -3.73 21.11 -3.73 23.95 -6.58Z"/></g>
+<g id="Ultralight-L" transform="matrix(1 0 0 1 300 1556)"><path d="M72.72 9.16L121.2 9.16C122.29 9.16 123.17 8.28 123.17 7.19C123.17 6.1 122.29 5.22 121.2 5.22L72.72 5.22C71.63 5.22 70.75 6.1 70.75 7.19C70.75 8.28 71.63 9.16 72.72 9.16ZM25.63 -3.54L61.99 -39.9C62.76 -40.67 62.76 -41.91 61.99 -42.68L25.63 -79.04C24.86 -79.81 23.62 -79.81 22.85 -79.04C22.08 -78.27 22.08 -77.03 22.85 -76.26L59.21 -39.9L59.21 -42.68L22.85 -6.32C22.08 -5.55 22.08 -4.31 22.85 -3.54C23.62 -2.77 24.86 -2.77 25.63 -3.54Z"/></g>
+<g id="Regular-L" transform="matrix(1 0 0 1 1300 1556)"><path d="M72.72 12.83L121.2 12.83C124.31 12.83 126.84 10.3 126.84 7.19C126.84 4.08 124.31 1.55 121.2 1.55L72.72 1.55C69.61 1.55 67.08 4.08 67.08 7.19C67.08 10.3 69.61 12.83 72.72 12.83ZM28.23 -0.94L64.59 -37.3C66.79 -39.51 66.79 -43.07 64.59 -45.27L28.23 -81.63C26.02 -83.84 22.46 -83.84 20.25 -81.63C18.05 -79.43 18.05 -75.87 20.25 -73.66L56.61 -37.3L56.61 -45.27L20.25 -8.91C18.05 -6.71 18.05 -3.15 20.25 -0.94C22.46 1.26 26.02 1.26 28.23 -0.94Z"/></g>
+<g id="Black-L" transform="matrix(1 0 0 1 2300 1556)"><path d="M72.72 16.58L121.2 16.58C126.39 16.58 130.59 12.38 130.59 7.19C130.59 2 126.39 -2.2 121.2 -2.2L72.72 -2.2C67.53 -2.2 63.33 2 63.33 7.19C63.33 12.38 67.53 16.58 72.72 16.58ZM30.88 1.71L67.24 -34.65C70.91 -38.32 70.91 -44.26 67.24 -47.93L30.88 -84.29C27.21 -87.96 21.27 -87.96 17.6 -84.29C13.93 -80.62 13.93 -74.68 17.6 -71.01L53.96 -34.65L53.96 -47.93L17.6 -11.57C13.93 -7.9 13.93 -1.96 17.6 1.71C21.27 5.38 27.21 5.38 30.88 1.71Z"/></g>
+</g>
+</svg>

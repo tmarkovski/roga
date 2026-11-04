@@ -42,3 +42,15 @@ The mark is one path, so it can't move its legs. For animating, the house is spl
 The legs aren't artwork. The app draws each one from joints, which are a hip, a knee, a hock, an ankle and three toes, as lines with round ends. `HousePose.mark` places those joints in the stride the mark is drawn in, closely enough that it reads as the logo, but it isn't a trace.
 
 To add an animation, write a `HouseMotion` in `YagaKit/Sources/YagaUI/House/` that returns a pose for any moment, and add a case for it to `HouseAnimation`. It then appears in Settings and in Window > House Animations with the others, and the tests check that it loops without jumping and fits inside the frame. That window shows each animation large, with its joints, at its real sizes, and with its own pause, speed and frame slider.
+
+## Icons — November 3, 2026
+
+The app's icons start as SVGs in [`icons/`](icons/). They're drawn with strokes on a 24-by-24 grid. `icons/lucide/` holds unchanged copies from [Lucide](https://lucide.dev), and each file's first line says which release it came from. `icons/yaga/` holds our own, drawn to match. `Scripts/generate-icons.swift` turns all of them into custom symbols and names them in code ([decision 24](../decisions/0024-icons-as-custom-symbols-from-lucide.md)).
+
+To add an icon:
+
+1. Copy its SVG into `icons/lucide/`, from lucide.dev or from `icons/` in the `lucide-static` npm package, or draw one on the same grid in `icons/yaga/`. In that package, `tags.json` is the way to search, as for `git` or `version control`. Use a name from its `icon-nodes.json`, because other files in `icons/` are aliases of those, which Lucide can rename or remove.
+2. Run `Scripts/generate-icons.swift`. It stops with a message if a file has something it doesn't know how to draw.
+3. If the icon stands for something in yaga, name it in `YagaKit/Sources/IconUI/Icon.swift`, so that the thing looks the same everywhere.
+
+Lucide's `git-pull-request` icons mean a pull request on a hosting site. `git pull` is `arrow-down-to-dot`, which `Icon.swift` calls `Icon.pull`.

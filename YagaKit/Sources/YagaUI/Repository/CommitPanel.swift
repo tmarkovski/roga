@@ -1,4 +1,5 @@
 import GitCore
+import IconUI
 import SwiftUI
 
 /// Shows the commit selected in history: its message, who wrote it and when,
@@ -88,7 +89,7 @@ struct CommitPanel: View {
                         .foregroundStyle(.secondary)
                         .padding(.leading, 4)
                 }
-                Button("Copy Commit Hash", systemImage: "doc.on.doc") {
+                Button("Copy Commit Hash", icon: .copy) {
                     commit.copyHash()
                 }
                 .labelStyle(.iconOnly)

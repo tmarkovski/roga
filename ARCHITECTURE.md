@@ -80,6 +80,11 @@ yaga/
 │   │   │   ├── RepositoryWatcher.swift FSEvents
 │   │   │   ├── CommitGraphUpkeep.swift decision 6
 │   │   │   └── Snapshots.swift
+│   │   ├── IconUI/                     AppKit and SwiftUI, decision 24
+│   │   │   ├── Icon.swift              an icon as an image, and which icon stands for what in yaga
+│   │   │   ├── GeneratedIcons.swift    every icon's name, written by Scripts/generate-icons.swift
+│   │   │   ├── Icons.xcassets          every icon as a custom symbol, written by the same script
+│   │   │   └── LICENSE-lucide.txt      Lucide's license, which ships with the icons
 │   │   ├── MenuUI/                     AppKit
 │   │   │   └── RefMenu.swift           the menu for right-clicking a ref, with rows of its own
 │   │   ├── HistoryUI/                  AppKit
@@ -114,10 +119,12 @@ yaga/
 │       └── Fixtures/                   scripts that build test repositories
 ├── Scripts/
 │   ├── build-git.sh                builds an old git for CI
+│   ├── generate-icons.swift        turns the SVGs in docs/design/icons into custom symbols
 │   └── release.sh                  builds, signs and notarizes a release, and updates the appcast
 ├── .github/workflows/ci.yml
 ├── docs/
 │   ├── decisions/
+│   ├── design/icons/               the SVGs the app's icons are made from
 │   └── releasing.md
 └── prototypes/                     throwaway experiments, never imported by the app
 ```
@@ -130,8 +137,9 @@ yaga/
 | `GitRunner` | Finding git and checking its version, starting git, streaming its output, cancelling it, the long-running `cat-file` process, and the log of commands | `GitCore` | Foundation |
 | `CommitGraph` | Reading commit-graph files and split chains through memory mapping, ordering history, and laying out graph lanes | `GitCore` | Foundation |
 | `RepositoryEngine` | One session per repository: loading and caching history, refs, worktrees, status and diffs, watching the file system, keeping the commit-graph file current, and publishing snapshots | `GitCore`, `GitRunner`, `CommitGraph` | Foundation, CoreServices |
+| `IconUI` | The app's icons, as custom symbols, and which icon stands for what | nothing | AppKit, SwiftUI |
 | `MenuUI` | The menu for right-clicking a ref, which the commit list and the refs panel share | nothing | AppKit |
-| `HistoryUI` | The commit list: the table, drawing rows and graph lanes, keyboard handling and accessibility | `GitCore`, `CommitGraph`, `MenuUI` | AppKit |
+| `HistoryUI` | The commit list: the table, drawing rows and graph lanes, keyboard handling and accessibility | `GitCore`, `CommitGraph`, `IconUI`, `MenuUI` | AppKit |
 | `DiffUI` | The diff view: the TextKit 1 text view, line numbers, line backgrounds, and building attributed text | `GitCore` | AppKit |
 | `YagaUI` | Windows, the sidebar, the refs panel, details, settings, menus and onboarding, and the main-actor models that connect sessions to views | all of the above | SwiftUI, AppKit |
 | App target | The entry point, Sparkle, the Info.plist and assets | `YagaUI`, Sparkle | SwiftUI |
@@ -143,6 +151,7 @@ These rules keep the layers apart:
 - Only `GitRunner` starts processes. Views never run git. They ask a session, and the session decides what to run.
 - `HistoryUI` and `DiffUI` don't know about sessions. They take plain data and closures, so the benchmark tool can drive them with real data and no app around them.
 - Sparkle is linked only into the app target.
+- Icons come from `IconUI`, never from SF Symbols, and a test checks that (decision 24). A control with only an icon names itself with `accessibilityLabel`, because an icon says nothing to VoiceOver.
 
 <a id="windows-and-tabs"></a>
 

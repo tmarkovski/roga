@@ -2,6 +2,7 @@ import AppKit
 import CommitGraph
 import GitCore
 import GitRunner
+import IconUI
 import RepositoryEngine
 import SwiftUI
 
@@ -131,7 +132,7 @@ struct RepositoryView: View {
             LoadingHistory(explanation: model.slowHistoryExplanation)
         case .failed(let message):
             ContentUnavailableView {
-                Label("Can't Show This Repository", systemImage: "exclamationmark.triangle")
+                Label("Can't Show This Repository", icon: .warning)
             } description: {
                 Text(message)
             } actions: {
@@ -190,7 +191,11 @@ struct HistoryPanel: View {
     var body: some View {
         Group {
             if let history = model.history, history.isComplete, history.rows.isEmpty, !model.hasWorkingTreeRow {
-                ContentUnavailableView("No Commits Yet", systemImage: "clock", description: Text("Commits appear here once there are some."))
+                ContentUnavailableView {
+                    Label("No Commits Yet", icon: .clock)
+                } description: {
+                    Text("Commits appear here once there are some.")
+                }
             } else {
                 CommitList(model: model, version: model.historyVersion, selectedRow: model.selectedRow, showWorktree: showWorktree)
             }
@@ -222,7 +227,7 @@ struct HistoryCommands: ToolbarContent {
                     if model.commitGraphState == .updating {
                         Text("Writing commit-graph file…")
                     } else {
-                        Label("Opens slowly", systemImage: "tortoise")
+                        Label("Opens slowly", icon: .slow)
                             .labelStyle(.titleAndIcon)
                     }
                 }
@@ -241,7 +246,7 @@ struct HistoryCommands: ToolbarContent {
                 }
                 .pickerStyle(.inline)
             } label: {
-                HoverIcon { Image(systemName: "line.3.horizontal.decrease") }
+                HoverIcon { Icon.filter.image }
             }
             .menuStyle(.button)
             .buttonStyle(.plain)

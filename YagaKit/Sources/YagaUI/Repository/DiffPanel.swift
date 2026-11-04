@@ -1,6 +1,7 @@
 import AppKit
 import DiffUI
 import GitCore
+import IconUI
 import RepositoryEngine
 import SwiftUI
 
@@ -52,18 +53,18 @@ struct DiffPanel: View {
             }
         } trailing: {
             if selection.isFindShown {
-                Button("Previous Match", systemImage: "chevron.up", action: selection.findPrevious)
+                Button("Previous Match", icon: .chevronUp, action: selection.findPrevious)
                     .labelStyle(.iconOnly)
                     .buttonStyle(.icon)
                     .disabled(!selection.hasMatches)
                     .help("Previous Match (\(RepositoryCommands.findPreviousShortcut.symbols))")
-                Button("Next Match", systemImage: "chevron.down", action: selection.findNext)
+                Button("Next Match", icon: .chevronDown, action: selection.findNext)
                     .labelStyle(.iconOnly)
                     .buttonStyle(.icon)
                     .disabled(!selection.hasMatches)
                     .help("Next Match (\(RepositoryCommands.findNextShortcut.symbols))")
             }
-            Button(selection.isFindShown ? "Close Find" : "Find in Diff", systemImage: "magnifyingglass", action: selection.toggleFind)
+            Button(selection.isFindShown ? "Close Find" : "Find in Diff", icon: .search, action: selection.toggleFind)
                 .labelStyle(.iconOnly)
                 .buttonStyle(.icon(isOn: selection.isFindShown))
                 .disabled(!selection.canFind && !selection.isFindShown)

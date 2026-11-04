@@ -1,4 +1,5 @@
 import AppKit
+import IconUI
 import SwiftUI
 
 /// The colors of panels. Surfaces are plain, sections are separated by thin
@@ -225,8 +226,8 @@ struct Triangle: View {
     @Environment(\.accessibilityReduceMotion) private var reducesMotion
 
     var body: some View {
-        Image(systemName: "arrowtriangle.right.fill")
-            .font(.system(size: 8))
+        Icon.disclosure.image
+            .font(.system(size: 8, weight: .black))
             .foregroundStyle(.secondary)
             .rotationEffect(.degrees(pointsDown ? 90 : 0))
             .animation(reducesMotion ? nil : .easeInOut(duration: 0.18), value: pointsDown)
@@ -302,7 +303,7 @@ struct PanelSearchField: View {
                     .fixedSize()
             }
             if !text.isEmpty {
-                Button("Clear", systemImage: "xmark") {
+                Button("Clear", icon: .x) {
                     text = ""
                     isFocused = true
                 }

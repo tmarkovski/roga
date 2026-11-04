@@ -1,3 +1,4 @@
+import IconUI
 import SwiftUI
 
 /// A window for looking at the house's animations up close: each one large, with
@@ -48,7 +49,7 @@ public struct HouseAnimationDemo: View {
             Button {
                 setPlaying(!isPlaying)
             } label: {
-                Label(isPlaying ? "Pause" : "Play", systemImage: isPlaying ? "pause.fill" : "play.fill")
+                Label(isPlaying ? "Pause" : "Play", icon: isPlaying ? .pause : .play)
                     .frame(width: 64, alignment: .leading)
             }
             .keyboardShortcut(.space, modifiers: [])
