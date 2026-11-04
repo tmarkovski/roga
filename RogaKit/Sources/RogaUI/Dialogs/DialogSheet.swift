@@ -10,8 +10,8 @@ enum DialogColors {
     static let secondaryButton = Palette.gray(light: 0.937, dark: 0.231)
     /// Darker than `Color.secondary`, which is too faint for small words on a card.
     static let note = Palette.gray(light: 0.42, dark: 0.663)
-    static let ink = Palette.gray(light: 0.102, dark: 0.925)
-    static let onInk = Palette.gray(light: 1.0, dark: 0.086)
+    static let ink = Palette.ink
+    static let onInk = Palette.onInk
     static let danger = Palette.red
     static let onDanger = appearanceColor(light: 0xFFFFFF, dark: 0x272822)
     /// Monokai's background, which nearly matches the surface in dark mode, so that

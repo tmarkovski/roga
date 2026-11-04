@@ -32,7 +32,7 @@ struct Sidebar: View {
             if showsRail {
                 OrganizationRail(groups: groups, scope: $scope) {
                     addButton(edge: .trailing) { isPresented in
-                        RailButton(title: "Add Repositories", isSelected: isPresented, action: { isAddingRepositories = true }) {
+                        RailButton(title: "Add Repositories", isOpen: isPresented, action: { isAddingRepositories = true }) {
                             Icon.plus.image
                                 .font(.system(size: 15, weight: .light))
                         }
@@ -218,7 +218,7 @@ private struct OrganizationRail<Add: View>: View {
                     }
                     ForEach(groups.organizations) { organization in
                         RailButton(title: organization.name, isSelected: scope == organization.scope) { scope = organization.scope } label: {
-                            Monogram(letters: organization.monogram, size: 28, isSelected: scope == organization.scope)
+                            Monogram(letters: organization.monogram, isSelected: scope == organization.scope)
                         }
                     }
                     if groups.hasOthers {
@@ -239,10 +239,21 @@ private struct OrganizationRail<Add: View>: View {
     }
 }
 
-/// An item on the rail, which fills with gray while it's selected.
+/// The tile that an organization's letters sit on, and that anything selected on
+/// the rail sits on in ink (decision 36).
+private enum RailTile {
+    static let size: CGFloat = 28
+    static let cornerRadius = size * 0.26
+}
+
+/// An item on the rail. It fills with gray under the pointer, and the selected
+/// one is a solid ink tile instead.
 private struct RailButton<Label: View>: View {
     let title: String
-    let isSelected: Bool
+    var isSelected = false
+    /// Whether this button's popover is open, which keeps its gray without
+    /// looking like the organization that's selected.
+    var isOpen = false
     let action: () -> Void
     @ViewBuilder var label: Label
     @State private var isHovering = false
@@ -250,11 +261,17 @@ private struct RailButton<Label: View>: View {
     var body: some View {
         Button(action: action) {
             label
-                .foregroundStyle(isSelected || isHovering ? .primary : .secondary)
+                .foregroundStyle(isSelected ? AnyShapeStyle(Palette.onInk) : AnyShapeStyle(isOpen || isHovering ? .primary : .secondary))
                 .frame(width: 38, height: 38)
                 .background {
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(isSelected ? Palette.selection : isHovering ? Palette.hover : .clear)
+                    if isSelected {
+                        RoundedRectangle(cornerRadius: RailTile.cornerRadius, style: .continuous)
+                            .fill(Palette.ink)
+                            .frame(width: RailTile.size, height: RailTile.size)
+                    } else {
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            .fill(isOpen ? Palette.selection : isHovering ? Palette.hover : .clear)
+                    }
                 }
                 .contentShape(Rectangle())
         }
@@ -266,21 +283,23 @@ private struct RailButton<Label: View>: View {
     }
 }
 
-/// Two letters that stand for an organization.
+/// Two letters that stand for an organization, on a gray tile until it's
+/// selected, when `RailButton` puts them on ink.
 private struct Monogram: View {
     let letters: String
-    let size: CGFloat
     var isSelected = false
 
     var body: some View {
         Text(letters)
-            .font(.system(size: size * 0.4, weight: .bold))
+            .font(.system(size: RailTile.size * 0.4, weight: .bold))
             .lineLimit(1)
-            .foregroundStyle(isSelected ? .primary : .secondary)
-            .frame(width: size, height: size)
+            .foregroundStyle(isSelected ? AnyShapeStyle(Palette.onInk) : AnyShapeStyle(.secondary))
+            .frame(width: RailTile.size, height: RailTile.size)
             .background {
-                RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
-                    .fill(isSelected ? AnyShapeStyle(Palette.surface) : AnyShapeStyle(Palette.selection))
+                if !isSelected {
+                    RoundedRectangle(cornerRadius: RailTile.cornerRadius, style: .continuous)
+                        .fill(Palette.selection)
+                }
             }
     }
 }

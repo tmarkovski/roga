@@ -30,7 +30,7 @@ The sidebar runs the full height of the window on the left, with the traffic lig
 
 The rail picks which repositories the list shows ([decision 16](decisions/0016-a-rail-of-organizations-in-the-sidebar.md)). A thin line separates it from the list, starting under the traffic lights.
 
-- From the top, it has **All**, then each organization from A to Z, then **Other** when it has any repositories. An organization shows two letters from its name, and its tooltip has the whole name. A button at the bottom adds repositories. Items are 38 points square with 9-point corners, and the selected one fills with gray.
+- From the top, it has **All**, then each organization from A to Z, then **Other** when it has any repositories. An organization shows two letters from its name, and its tooltip has the whole name. A button at the bottom adds repositories. Items are 38 points square with 9-point corners, and they fill with gray under the pointer. The selected one is a 28-point tile in solid ink instead, with its letters or icon in white, or in near-black in dark mode ([decision 36](decisions/0036-a-solid-ink-tile-for-whats-selected-on-the-rail.md)). The button for adding repositories keeps its gray while its popover is open, because that isn't a selection.
 - An organization is the owner in any of a repository's remote URLs, with at least two repositories listed ([decision 18](decisions/0018-every-remote-counts-toward-a-repositorys-organization.md)). A repository with remotes in two organizations is listed in both. Other has the rest.
 - Clicking an organization shows the worktree last shown there, or the main worktree of its first repository. Clicking All keeps the window on what it shows. Each window remembers its own organization, and the last worktree in each.
 - View > All Repositories and the organizations after it have the shortcuts Command-1 to Command-9. View > Hide Organizations, Control-Command-O, hides the rail, which leaves All, and the button for adding repositories moves to the top of the list.
@@ -137,7 +137,7 @@ As the window gets narrower, the panel narrows to keep 400 points for the middle
 ## Colors and type
 
 - Surfaces are plain, with thin gray lines between sections. The sidebar is a shade darker. Dark mode keeps the same structure in dark grays.
-- Selection is a soft gray fill, not the accent color.
+- Selection is a soft gray fill, not the accent color. The rail is the one exception, with a tile in solid ink, which isn't the accent color either ([decision 36](decisions/0036-a-solid-ink-tile-for-whats-selected-on-the-rail.md)).
 - The graph and the branches use Monokai's colors, which are fixed rather than following the accent color ([decision 27](decisions/0027-give-the-graph-and-branches-monokais-colors.md)). The current branch has one color everywhere: its badge, the ring in the graph and its icon in the refs panel.
 - A file's status letter is colored by what happened to it: orange for a change, like the sidebar's counts, green for an added file, red for a deleted file or a conflict, and blue for a file that was renamed or copied. An untracked file's `?` stays gray, because git doesn't have it yet. The letter says the same thing without the color.
 - A count in the title row is orange when a click on it would run right now ([decision 19](decisions/0019-pull-and-push-from-the-branch-in-the-title-row.md)).
