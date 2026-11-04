@@ -311,6 +311,16 @@ public actor RepositorySession {
         _ = try await Self.run(pull.arguments, in: worktree, git: git)
     }
 
+    /// Makes this the way the repository pulls from now on, in its own git config,
+    /// because someone asked yaga to remember that (decision 29).
+    ///
+    /// - Throws: `GitError` when git can't write the config, which says why.
+    @concurrent
+    public nonisolated func remember(_ pull: Pull, in worktree: String) async throws {
+        guard let arguments = pull.rememberArguments else { return }
+        _ = try await Self.run(arguments, in: worktree, git: git)
+    }
+
     /// Pushes a worktree's branch, once any fetch that's running has stopped.
     ///
     /// - Throws: `GitError` when git refuses, which says why.

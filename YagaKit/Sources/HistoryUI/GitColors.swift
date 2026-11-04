@@ -8,7 +8,7 @@ import AppKit
 public enum GitColors {
     /// Each column of the graph, in turn. Monokai's orange isn't among them,
     /// because orange means a click would run something (decision 19).
-    static let lanes: [NSColor] = [
+    public static let lanes: [NSColor] = [
         color(light: 0xDB1C61, dark: 0xFF3478), // Pink
         color(light: 0x10819E, dark: 0x66D9EF), // Sky
         color(light: 0x608A00, dark: 0xA6E22E), // Green

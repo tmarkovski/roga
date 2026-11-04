@@ -27,6 +27,8 @@ final class RepositoryModel {
     struct CheckoutFailure: Equatable {
         var branch: String
         var message: String
+        /// What ran, by its arguments after `git`.
+        var command: [String]? = nil
     }
 
     /// Where the repository's commit-graph files stand (decision 6).
@@ -298,7 +300,7 @@ final class RepositoryModel {
                     showWorktree(folder, commit)
                 }
             } catch {
-                checkoutFailure = CheckoutFailure(branch: badge.title, message: (error as? GitError)?.message ?? String(describing: error))
+                checkoutFailure = CheckoutFailure(branch: badge.title, message: error.dialogMessage, command: error.gitArguments)
             }
             note.cancel()
             slowCheckout = nil

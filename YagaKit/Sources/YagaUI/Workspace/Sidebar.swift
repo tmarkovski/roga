@@ -57,25 +57,7 @@ struct Sidebar: View {
             }
             .frame(maxWidth: .infinity)
         }
-        .alert(
-            deletions.pending?.title ?? "",
-            isPresented: Binding { deletions.pending != nil } set: { if !$0 { deletions.pending = nil } },
-            presenting: deletions.pending
-        ) { _ in
-            Button("Delete", role: .destructive) { deletions.confirm() }
-            Button("Cancel", role: .cancel) {}
-        } message: { pending in
-            Text(WorktreeDeletionModel.message(for: pending))
-        }
-        .alert(
-            deletions.failure?.title ?? "",
-            isPresented: Binding { deletions.failure != nil } set: { if !$0 { deletions.failure = nil } },
-            presenting: deletions.failure
-        ) { _ in
-            Button("OK", role: .cancel) {}
-        } message: { failure in
-            Text(failure.message)
-        }
+        .dialog(deletions.dialog)
     }
 
     /// The button for adding repositories, with the popover it opens.

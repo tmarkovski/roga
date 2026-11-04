@@ -15,7 +15,7 @@ func chooseRepositoryFolder(message: String = "Choose a repository, or any folde
 }
 
 /// Asks for a folder and adds its repository to the sidebar, then passes
-/// the worktree the folder is in to `select`. It explains in an alert when
+/// the worktree the folder is in to `select`. It explains in a dialog when
 /// the folder isn't in a repository.
 @MainActor
 func openRepository(list: RepositoryList, select: @escaping (WorktreeSelection) -> Void) {
@@ -24,7 +24,7 @@ func openRepository(list: RepositoryList, select: @escaping (WorktreeSelection) 
         do {
             select(try await list.add(folder: folder))
         } catch {
-            showAlert("Can't Open This Folder", error)
+            showAlert("Can't open this folder", error)
         }
     }
 }
@@ -38,21 +38,37 @@ func locateRepository(_ repository: ListedRepository, list: RepositoryList, sele
         do {
             select(try await list.locate(repository, at: folder))
         } catch {
-            showAlert("Can't Open This Folder", error)
+            showAlert("Can't open this folder", error)
         }
     }
 }
 
+/// Shows a dialog from outside of any view, on the window in front. These come from
+/// the open panel, which isn't part of a view that could present one.
 @MainActor
 func showAlert(_ title: String, _ error: any Error) {
-    let alert = NSAlert()
-    alert.messageText = title
-    alert.informativeText = String(describing: error)
-    if let window = NSApp.keyWindow {
-        alert.beginSheetModal(for: window)
-    } else {
+    guard let window = NSApp.keyWindow ?? NSApp.mainWindow else {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = error.dialogMessage
         alert.runModal()
+        return
     }
+    let sheet = NSWindow(contentRect: .zero, styleMask: [.titled, .fullSizeContentView], backing: .buffered, defer: false)
+    sheet.titlebarAppearsTransparent = true
+    sheet.titleVisibility = .hidden
+    let content = DialogContent.refusal(
+        id: title,
+        title: title,
+        command: error.gitArguments,
+        said: error.dialogMessage
+    ) { [weak window, weak sheet] in
+        if let window, let sheet { window.endSheet(sheet) }
+    }
+    let host = NSHostingController(rootView: DialogSheet(content: content))
+    sheet.contentViewController = host
+    sheet.setContentSize(host.view.fittingSize)
+    window.beginSheet(sheet)
 }
 
 extension FocusedValues {

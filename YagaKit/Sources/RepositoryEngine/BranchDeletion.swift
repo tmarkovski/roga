@@ -36,7 +36,7 @@ public struct BranchDeletion: Sendable, Hashable {
         return lostCount > 0
     }
 
-    /// What deleting it runs, which the alert shows. `-D` is there because the
+    /// What deleting it runs, which the dialog shows. `-D` is there because the
     /// commits have been counted: `-d` only looks at `HEAD` and the upstream, so it
     /// refuses a branch whose commits are safe on another branch.
     public var arguments: [String] {
@@ -106,7 +106,7 @@ public struct BranchDeletion: Sendable, Hashable {
     }
 
     /// A ref can be named like an option, even if git won't create a branch with
-    /// such a name. Only those get `--end-of-options`, so that the alert shows the
+    /// such a name. Only those get `--end-of-options`, so that the dialog shows the
     /// command as someone would type it.
     private static func safe(_ shortName: String) -> [String] {
         shortName.hasPrefix("-") ? ["--end-of-options", shortName] : [shortName]

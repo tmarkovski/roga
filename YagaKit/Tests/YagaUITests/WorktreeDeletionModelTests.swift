@@ -120,7 +120,7 @@ struct WorktreeDeletionModelTests {
         try "new".write(toFile: setup.linked + "/untracked.txt", atomically: true, encoding: .utf8)
         try await setup.ask(.worktree)
         let pending = try #require(setup.model.pending)
-        #expect(pending.title == "Delete the Worktree for topic?")
+        #expect(pending.title == "Delete the worktree for topic?")
         #expect(FileManager.default.fileExists(atPath: setup.linked))
 
         await setup.confirm()
@@ -144,7 +144,7 @@ struct WorktreeDeletionModelTests {
     @Test func deletesEverythingOnceAgreed() async throws {
         let setup = try await setup(pushed: true)
         try await setup.ask(.everything)
-        #expect(setup.model.pending?.title == "Delete topic, Its Worktree and Its Remote Branch?")
+        #expect(setup.model.pending?.title == "Delete topic, its worktree and its remote branch?")
         await setup.confirm()
         #expect(setup.model.failure == nil)
         #expect(!FileManager.default.fileExists(atPath: setup.linked))
@@ -188,8 +188,8 @@ struct WorktreeDeletionModelTests {
         try await setup.ask(.everything)
         #expect(setup.model.pending == nil)
         let failure = try #require(setup.model.failure)
-        #expect(failure.title == "Can't Delete the Worktree linked")
-        #expect(failure.message.contains("agent running"))
+        #expect(failure.title == "Can't delete the worktree linked")
+        #expect(failure.said.contains("agent running"))
         #expect(setup.repository.deletingWorktrees.isEmpty)
         #expect(FileManager.default.fileExists(atPath: setup.linked))
         #expect(try await exists("refs/heads/topic", in: setup.remote))
@@ -202,9 +202,10 @@ struct WorktreeDeletionModelTests {
         try await setup.ask(.everything)
         await setup.confirm()
         let failure = try #require(setup.model.failure)
-        #expect(failure.title == "Can't Delete topic")
-        #expect(failure.message.hasPrefix("The worktree is gone, but its branch topic isn't:"))
-        #expect(failure.message.hasSuffix("origin/topic wasn't touched."))
+        #expect(failure.title == "Can't delete topic")
+        #expect(failure.summary == "The worktree is gone, but its branch topic isn't.")
+        #expect(failure.command == ["branch", "-D", "topic"])
+        #expect(failure.note == "origin/topic wasn't touched.")
         #expect(!setup.repository.worktrees.contains { $0.path == setup.linked })
     }
 
@@ -214,14 +215,15 @@ struct WorktreeDeletionModelTests {
         try FileManager.default.moveItem(atPath: setup.remote, toPath: setup.remote + ".moved")
         await setup.confirm()
         let failure = try #require(setup.model.failure)
-        #expect(failure.title == "Can't Delete origin/topic")
-        #expect(failure.message.hasPrefix("The worktree and its branch are gone, but origin/topic isn't:"))
-        #expect(failure.message.hasSuffix("To try again, use Delete from Remote… in the refs panel."))
+        #expect(failure.title == "Can't delete origin/topic")
+        #expect(failure.summary == "The worktree and its branch are gone, but origin/topic isn't.")
+        #expect(failure.command == ["push", "--delete", "origin", "refs/heads/topic"])
+        #expect(failure.note == "To try again, use Delete from Remote… in the refs panel.")
         // The refs panel's remote branch is still there to try again from.
         #expect(try await exists("refs/remotes/origin/topic", in: setup.work))
     }
 
-    // MARK: What the alert says
+    // MARK: What the dialog says
 
     @Test func saysEverythingThatGoesAndTheCommandsThatRun() async throws {
         let setup = try await setup()
@@ -232,19 +234,20 @@ struct WorktreeDeletionModelTests {
         try await commit("Only here", in: setup.linked)
         try await setup.ask(.worktreeAndBranch)
         let pending = try #require(setup.model.pending)
-        #expect(pending.title == "Delete topic and Its Worktree?")
-        #expect(WorktreeDeletionModel.message(for: pending) == """
-        1 uncommitted file goes with the folder, and git can't bring it back.
-
-        Files git ignores go with it too: .env.
-
-        1 commit isn't on any other branch or tag:
-
-        • Only here
-
-        git worktree remove --force \(setup.linked)
-        git branch -D topic
-        """)
+        #expect(pending.title == "Delete topic and its worktree?")
+        let dialog = setup.model.dialog(for: pending)
+        #expect(dialog.message?.plain == "These can't be brought back:")
+        #expect(dialog.cards.first == [
+            .fact("1 uncommitted file", "goes with the folder"),
+            .fact("Files git ignores", ".env"),
+            .fact("1 commit", "isn't on any other branch or tag"),
+        ])
+        #expect(dialog.cards.last?.count == 1)
+        #expect(dialog.terminal == [
+            .command(["worktree", "remove", "--force", setup.linked]),
+            .command(["branch", "-D", "topic"]),
+        ])
+        #expect(dialog.buttons.map(\.kind) == [.secondary, .destructive])
     }
 
     @Test func saysThatTheRemoteBranchStays() async throws {
@@ -252,9 +255,8 @@ struct WorktreeDeletionModelTests {
         try "new".write(toFile: setup.linked + "/untracked.txt", atomically: true, encoding: .utf8)
         try await setup.ask(.worktreeAndBranch)
         let pending = try #require(setup.model.pending)
-        let message = WorktreeDeletionModel.message(for: pending)
-        #expect(message.contains("Its commits are all on other branches or tags, so none are lost."))
-        #expect(message.contains("origin/topic stays."))
+        let note = setup.model.dialog(for: pending).note?.plain
+        #expect(note == "Its commits are all on other branches or tags, so none are lost. origin/topic stays.")
     }
 
     @Test func saysThatTheBranchStays() async throws {
@@ -262,22 +264,28 @@ struct WorktreeDeletionModelTests {
         try "new".write(toFile: setup.linked + "/untracked.txt", atomically: true, encoding: .utf8)
         try await setup.ask(.worktree)
         let pending = try #require(setup.model.pending)
-        #expect(WorktreeDeletionModel.message(for: pending) == """
-        1 uncommitted file goes with the folder, and git can't bring it back.
-
-        topic stays.
-
-        git worktree remove --force \(setup.linked)
-        """)
+        let dialog = setup.model.dialog(for: pending)
+        #expect(dialog.cards == [[.fact("1 uncommitted file", "goes with the folder")]])
+        #expect(dialog.note?.plain == "topic stays.")
+        #expect(dialog.terminal == [.command(["worktree", "remove", "--force", setup.linked])])
     }
 
     @Test func warnsThatDeletingFromARemoteAffectsEveryone() async throws {
         let setup = try await setup(pushed: true)
         try await setup.ask(.everything)
         let pending = try #require(setup.model.pending)
-        let message = WorktreeDeletionModel.message(for: pending)
-        #expect(message.hasPrefix("This deletes the branch on origin, for everyone who uses it."))
-        #expect(message.hasSuffix("git push --delete origin refs/heads/topic"))
+        let dialog = setup.model.dialog(for: pending)
+        #expect(dialog.message?.plain.hasPrefix("This deletes the branch on origin, for everyone who uses it.") == true)
+        #expect(dialog.terminal.last == .command(["push", "--delete", "origin", "refs/heads/topic"]))
+    }
+
+    @Test func dismissingTheDialogLeavesEverythingAsItWas() async throws {
+        let setup = try await setup(pushed: true)
+        try await setup.ask(.everything)
+        setup.model.dialog?.dismiss()
+        #expect(setup.model.pending == nil)
+        #expect(setup.model.dialog == nil)
+        #expect(FileManager.default.fileExists(atPath: setup.linked))
     }
 
     @Test func namesADetachedWorktreeByItsFolder() async throws {
@@ -287,7 +295,7 @@ struct WorktreeDeletionModelTests {
         await setup.list.refresh()
         try await setup.ask(.worktree)
         let pending = try #require(setup.model.pending)
-        #expect(pending.title == "Delete the Worktree linked?")
-        #expect(WorktreeDeletionModel.message(for: pending).contains("• Detached"))
+        #expect(pending.title == "Delete the worktree linked?")
+        #expect(pending.commits.map(\.subject) == ["Detached"])
     }
 }

@@ -45,6 +45,23 @@ final class BranchModel {
     struct Failure: Equatable {
         var title: String
         var message: String
+        /// What ran, by its arguments after `git`, which shows above what git said.
+        /// Without it, the message goes with the dialog's words.
+        var command: [String]? = nil
+        /// Whether the dialog can say that nothing changed.
+        var changedNothing = false
+
+        /// Says what went wrong with something git was asked to run.
+        init(title: String, error: any Error, changedNothing: Bool = false) {
+            self.init(title: title, message: error.dialogMessage, command: error.gitArguments, changedNothing: changedNothing)
+        }
+
+        init(title: String, message: String, command: [String]? = nil, changedNothing: Bool = false) {
+            self.title = title
+            self.message = message
+            self.command = command
+            self.changedNothing = changedNothing
+        }
     }
 
     /// A pull that hit a conflict, which yaga can't resolve, so it asks whether
@@ -54,26 +71,28 @@ final class BranchModel {
         /// The files in conflict. git prints these to its standard output, which
         /// a failure doesn't keep, so they come from asking it again.
         var files: [String]
+        /// What ran and stopped, by its arguments after `git`.
+        var ran: [String]? = nil
     }
 
     /// A force push that's waiting for someone to agree to what it overwrites.
     struct ForcePush: Equatable {
         var branch: String
         var upstream: String
-        /// How many commits it overwrites, and the subjects of the first few.
+        /// How many commits it overwrites, and the first few.
         var count: Int
-        var subjects: [String]
+        var commits: [ListedCommit]
     }
 
     /// A deletion that's waiting for someone to agree to it.
     struct PendingDeletion: Equatable {
         var deletion: BranchDeletion
-        /// The subjects of the newest commits it loses.
-        var subjects: [String]
+        /// The newest commits it loses.
+        var commits: [ListedCommit]
     }
 
-    /// The most subjects to list before a force push or a deletion.
-    private static let overwrittenLimit = 5
+    /// The most commits to list before a force push or a deletion.
+    private static let overwrittenLimit = DialogContent.listLimit
     /// The most commits to tint in history while the pointer is over a count.
     private static let previewLimit = 1000
     /// How long what happened stays in the title row.
@@ -98,6 +117,8 @@ final class BranchModel {
     var failure: Failure?
     /// A pull that stopped on a conflict, until the user has said what to do.
     var conflict: Conflict?
+    /// A pull that needs someone to choose between rebasing and merging.
+    var pullChoice: PullChoice?
     /// What the worktree is stuck partway through, whoever started it, which
     /// takes the place of the counts. The worktree's model keeps this current.
     var unfinished: UnfinishedWork?
@@ -183,7 +204,7 @@ final class BranchModel {
     /// Fetches because someone asked to.
     func fetch() {
         guard let remote = status?.remote else { return }
-        run(.fetching, failure: "Can't Fetch from \(remote)") { [session, worktree] in
+        run(.fetching, failure: "Can't fetch from \(remote)") { [session, worktree] in
             try await session.fetch(from: remote, in: worktree)
             return "Fetched"
         }
@@ -191,14 +212,36 @@ final class BranchModel {
 
     // MARK: Pulling
 
-    /// Pulls the way clicking `↓` does, which needs the user's configuration to
-    /// say how when the branch has diverged.
+    /// Pulls the way clicking `↓` does. When the branch has diverged and the user's
+    /// configuration doesn't say how, it asks.
     func pull() {
-        if let pull = status?.pull { self.pull(pull) }
+        guard let status else { return }
+        if let pull = status.pull {
+            self.pull(pull)
+        } else if status.hasDiverged {
+            askHowToPull()
+        }
     }
 
-    func pull(_ pull: Pull) {
-        run(.pulling, failure: "Can't Pull \(branchName)") { [session, worktree] in
+    /// Asks whether to rebase or merge.
+    private func askHowToPull() {
+        guard !isBusy, let status, let upstream = upstreamName else { return }
+        // The count under the pointer won't say the pointer has left.
+        preview(nil)
+        pullChoice = PullChoice(branch: branchName, upstream: upstream, behind: status.behind, ahead: status.ahead)
+    }
+
+    /// Runs the pull that someone chose, and makes it the way this repository
+    /// pulls from now on if they asked for that.
+    func confirmPull() {
+        guard let pullChoice else { return }
+        self.pullChoice = nil
+        pull(pullChoice.pick, remembering: pullChoice.remembers)
+    }
+
+    func pull(_ pull: Pull, remembering: Bool = false) {
+        run(.pulling, failure: "Can't pull \(branchName)", changesNothing: true) { [session, worktree] in
+            if remembering { try await session.remember(pull, in: worktree) }
             let wasStopped = (try? await session.stoppedWork(in: worktree)) != nil
             do {
                 try await session.pull(pull, in: worktree)
@@ -207,7 +250,7 @@ final class BranchModel {
                 // clean up, rather than one that was there already.
                 if !wasStopped, let stopped = try? await session.stoppedWork(in: worktree) {
                     let status = try? await session.status(in: worktree)
-                    self.conflict = Conflict(pull: stopped, files: status?.conflicted.map(\.path) ?? [])
+                    self.conflict = Conflict(pull: stopped, files: status?.conflicted.map(\.path) ?? [], ran: error.gitArguments)
                     return nil
                 }
                 throw error
@@ -220,7 +263,7 @@ final class BranchModel {
     func undoPull() {
         guard let conflict else { return }
         self.conflict = nil
-        run(.undoingPull, failure: "Can't Undo the Pull") { [session, worktree] in
+        run(.undoingPull, failure: "Can't undo the pull") { [session, worktree] in
             try await session.abort(conflict.pull, in: worktree)
             return "Undid the pull"
         }
@@ -236,7 +279,7 @@ final class BranchModel {
     func confirmAbort() {
         guard let work = pendingAbort else { return }
         pendingAbort = nil
-        run(.aborting, failure: "Can't Abort") { [session, worktree] in
+        run(.aborting, failure: "Can't abort") { [session, worktree] in
             try await session.abort(work, in: worktree)
             return work.abortedNote
         }
@@ -247,7 +290,7 @@ final class BranchModel {
     /// Pushes the way clicking `↑` does.
     func push() {
         guard let push = status?.push else { return }
-        run(.pushing, failure: "Can't Push \(branchName)", fetchesAfterFailing: true) { [session, worktree] in
+        run(.pushing, failure: "Can't push \(branchName)", changesNothing: true, fetchesAfterFailing: true) { [session, worktree] in
             try await session.push(push, in: worktree)
             return "Pushed"
         }
@@ -259,20 +302,25 @@ final class BranchModel {
         preview(nil)
         Task {
             let overwritten = (try? await session.commits(from: "HEAD", to: upstream, limit: Self.overwrittenLimit, in: worktree)) ?? []
-            let commits = (try? await session.commits(overwritten)) ?? []
             forcePush = ForcePush(
                 branch: Ref.shortName(status.branch),
                 upstream: Ref.shortName(upstream),
                 count: status.behind,
-                subjects: commits.compactMap { $0?.subject }
+                commits: await listed(overwritten)
             )
         }
+    }
+
+    /// What a dialog needs to name commits.
+    private func listed(_ ids: [ObjectID]) async -> [ListedCommit] {
+        let commits = (try? await session.commits(ids)) ?? []
+        return commits.compactMap { $0.map(ListedCommit.init) }
     }
 
     /// Runs the force push that was asked about.
     func confirmForcePush() {
         forcePush = nil
-        run(.forcePushing, failure: "Can't Force Push \(branchName)", fetchesAfterFailing: true) { [session, worktree] in
+        run(.forcePushing, failure: "Can't force push \(branchName)", changesNothing: true, fetchesAfterFailing: true) { [session, worktree] in
             try await session.push(.forceWithLease, in: worktree)
             return "Pushed"
         }
@@ -291,13 +339,12 @@ final class BranchModel {
             do {
                 let deletion = try await session.prepareToDelete(ref: name, limit: Self.overwrittenLimit, in: worktree)
                 if deletion.asksFirst {
-                    let commits = (try? await session.commits(deletion.lost)) ?? []
-                    pendingDeletion = PendingDeletion(deletion: deletion, subjects: commits.compactMap { $0?.subject })
+                    pendingDeletion = PendingDeletion(deletion: deletion, commits: await listed(deletion.lost))
                 } else {
                     delete(deletion)
                 }
             } catch {
-                failure = Failure(title: "Can't Delete \(Ref.shortName(name))", message: (error as? GitError)?.message ?? String(describing: error))
+                failure = Failure(title: "Can't delete \(Ref.shortName(name))", error: error, changedNothing: true)
             }
             preparingDeletion = nil
         }
@@ -315,7 +362,7 @@ final class BranchModel {
     private func delete(_ deletion: BranchDeletion) {
         var action: Action?
         if case .remote = deletion.place { action = .deletingFromRemote }
-        run(action, failure: "Can't Delete \(deletion.shortName)") { [session, worktree] in
+        run(action, failure: "Can't delete \(deletion.shortName)", changesNothing: true) { [session, worktree] in
             try await session.delete(deletion, in: worktree)
             return "Deleted \(Self.shortened(deletion.shortName))"
         }
@@ -358,13 +405,16 @@ final class BranchModel {
     /// - Parameters:
     ///   - action: What the title row shows while it runs, or nil for something
     ///     too quick to mention, which doesn't wait for the house.
-    ///   - title: What an alert says when git refuses.
+    ///   - title: What a dialog's title says when git refuses.
+    ///   - changesNothing: Whether a refusal leaves everything as it was, so that
+    ///     the dialog can say so.
     ///   - fetchesAfterFailing: Whether a refusal may mean the counts were stale,
     ///     as a rejected push does, so a fetch should correct them.
     ///   - work: Returns what to say when it's done, if anything.
     private func run(
         _ action: Action?,
         failure title: String,
+        changesNothing: Bool = false,
         fetchesAfterFailing: Bool = false,
         work: @escaping () async throws -> String?
     ) {
@@ -384,7 +434,7 @@ final class BranchModel {
                     show(finished: message)
                 }
             } catch {
-                failure = Failure(title: title, message: (error as? GitError)?.message ?? String(describing: error))
+                failure = Failure(title: title, error: error, changedNothing: changesNothing)
                 if fetchesAfterFailing, fetchesByItself(), let remote = status?.remote {
                     fetchRecord = await session.fetchQuietly(from: remote, minimumInterval: .zero)
                 }
@@ -453,7 +503,7 @@ final class BranchModel {
 
     /// A command as someone would type it.
     static func command(_ arguments: [String]) -> String {
-        "git " + arguments.joined(separator: " ")
+        ShellCommand.text(arguments)
     }
 
     /// The first line of the branch's menu: its upstream, how far the branch is

@@ -82,6 +82,16 @@ public enum Pull: Sendable, Hashable {
         case .merge: ["pull", "--no-rebase", "--ff"]
         }
     }
+
+    /// What makes this the way a repository pulls from now on, for the two ways
+    /// that someone chooses between.
+    public var rememberArguments: [String]? {
+        switch self {
+        case .rebase: ["config", "pull.rebase", "true"]
+        case .merge: ["config", "pull.rebase", "false"]
+        case .fastForward, .configured: nil
+        }
+    }
 }
 
 /// A way of pushing a worktree's branch.

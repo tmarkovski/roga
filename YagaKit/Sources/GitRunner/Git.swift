@@ -167,6 +167,16 @@ public enum GitError: Error, Sendable, Hashable, CustomStringConvertible {
         }
     }
 
+    /// The command that this is about, if there is one.
+    public var command: GitCommand? {
+        switch self {
+        case .couldNotStart(let command, _), .failed(let command, _, _), .unexpectedReply(let command, _), .sessionClosed(let command):
+            command
+        case .invalidObjectName:
+            nil
+        }
+    }
+
     /// What to tell someone who asked for the command: what git said, which
     /// says what to do about it, or `description` if it said nothing.
     public var message: String {

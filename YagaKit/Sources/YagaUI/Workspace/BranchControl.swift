@@ -87,18 +87,11 @@ struct BranchMenuItems: View {
         if let status = branch.status {
             Text(branch.summary())
             Divider()
-            if status.hasDiverged, status.pullRebase == nil, let upstream = status.upstream {
-                let name = Ref.shortName(status.branch)
-                let other = Ref.shortName(upstream)
-                item("Rebase \(name) onto \(other)", icon: .pull) { branch.pull(.rebase) }
-                    .disabled(branch.isBusy)
-                item("Merge \(other) into \(name)", icon: .pull) { branch.pull(.merge) }
-                    .disabled(branch.isBusy)
-            } else {
-                item("Pull", icon: .pull, action: branch.pull)
-                    .keyboardShortcut(RepositoryCommands.pullShortcut)
-                    .disabled(status.pull == nil || branch.isBusy)
-            }
+            // With nothing in the git config to say how, a pull asks first.
+            let asks = status.pull == nil && status.hasDiverged
+            item(asks ? "Pull…" : "Pull", icon: .pull, action: branch.pull)
+                .keyboardShortcut(RepositoryCommands.pullShortcut)
+                .disabled((status.pull == nil && !asks) || branch.isBusy)
             item("Push", icon: .push, action: branch.push)
                 .keyboardShortcut(RepositoryCommands.pushShortcut)
                 .disabled(status.push == nil || branch.isBusy)
@@ -279,23 +272,11 @@ private struct BranchCounts: View {
         withAnimation(reducesMotion ? nil : animation, change)
     }
 
-    @ViewBuilder private func pullCount(_ status: BranchStatus) -> some View {
-        let label = BranchCount(icon: .pull, text: status.behind.formatted(), isOrange: true)
-        Group {
-            if status.pull != nil {
-                Button(action: branch.pull) { label }
-                    .buttonStyle(.plain)
-            } else {
-                Menu {
-                    BranchMenuItems(branch: branch, switchBranch: switchBranch)
-                } label: {
-                    label
-                }
-                .menuStyle(.button)
-                .buttonStyle(.plain)
-                .menuIndicator(.hidden)
-            }
+    private func pullCount(_ status: BranchStatus) -> some View {
+        Button(action: branch.pull) {
+            BranchCount(icon: .pull, text: status.behind.formatted(), isOrange: true)
         }
+        .buttonStyle(.plain)
         .fixedSize()
         .help(branch.pullHelp)
         .accessibilityLabel("Pull \(status.behind.formatted())")

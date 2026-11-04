@@ -169,13 +169,288 @@ struct BranchModelTests {
         model.branch.pull(.merge)
         await model.branch.running?.value
         #expect(model.branch.failure == nil)
-        #expect(model.branch.conflict == BranchModel.Conflict(pull: .merge, files: ["conflict.txt"]))
+        #expect(model.branch.conflict == BranchModel.Conflict(pull: .merge, files: ["conflict.txt"], ran: ["pull", "--no-rebase", "--ff"]))
 
         model.branch.undoPull()
         await model.branch.running?.value
         #expect(model.branch.conflict == nil)
         #expect(try await git("rev-parse", "HEAD", in: clones.work) == mine)
         #expect(try await clones.session.stoppedWork(in: clones.work) == nil)
+    }
+
+    // MARK: Choosing how to pull
+
+    /// Clones where `main` and `origin/main` have moved apart, as yaga knows it.
+    private func divergedModel(_ clones: Clones) async throws -> RepositoryModel {
+        try await pushFromOther(clones, file: "theirs.txt", text: "theirs\n")
+        try await commit("Mine", in: clones.work, file: "mine.txt", text: "mine\n")
+        try await git("fetch", "--quiet", in: clones.work)
+        let model = model(clones, fetches: false)
+        await model.appear()
+        #expect(model.branch.status?.hasDiverged == true)
+        return model
+    }
+
+    private func dialogContent(_ model: RepositoryModel) throws -> DialogContent {
+        guard case .message(let content) = try #require(model.dialog) else {
+            Issue.record("Expected a dialog with a message")
+            throw CancellationError()
+        }
+        return content
+    }
+
+    @Test func asksHowToPullWhenTheConfigDoesntSay() async throws {
+        let clones = try await clones()
+        let model = try await divergedModel(clones)
+        model.branch.pull()
+        #expect(model.branch.action == nil)
+        #expect(model.branch.pullChoice == PullChoice(branch: "main", upstream: "origin/main", behind: 1, ahead: 1))
+        #expect(model.dialog?.id == "pull")
+
+        model.dialog?.dismiss()
+        #expect(model.branch.pullChoice == nil)
+        #expect(model.dialog == nil)
+        #expect(model.branch.status?.hasDiverged == true)
+    }
+
+    @Test func doesntAskWhenTheConfigSays() async throws {
+        let clones = try await clones()
+        try await git("config", "pull.rebase", "true", in: clones.work)
+        let model = try await divergedModel(clones)
+        model.branch.pull()
+        #expect(model.branch.pullChoice == nil)
+        await model.branch.running?.value
+        #expect(model.branch.finished == "Pulled")
+    }
+
+    @Test func theCommandAndTheButtonFollowWhatsPicked() async throws {
+        let clones = try await clones()
+        let model = try await divergedModel(clones)
+        var choice = PullChoice(branch: "main", upstream: "origin/main", behind: 3, ahead: 1)
+
+        let rebase = model.branch.dialog(for: choice)
+        #expect(rebase.title == "Pull 3 commits into main")
+        // The empty line is room for the one that remembering adds.
+        #expect(rebase.terminal == [.command(["pull", "--rebase"]), .blank])
+        #expect(CommandBlock.copied(rebase.terminal) == "git pull --rebase")
+        #expect(rebase.buttons.last?.title == "Rebase")
+        #expect(rebase.buttons.last?.kind == .primary)
+
+        choice.pick = .merge
+        choice.remembers = true
+        let merge = model.branch.dialog(for: choice)
+        #expect(merge.terminal == [.command(["config", "pull.rebase", "false"]), .command(["pull", "--no-rebase", "--ff"])])
+        #expect(merge.buttons.last?.title == "Merge")
+    }
+
+    /// A keyboard shortcut can hold on to a button's older action, so the action
+    /// has to read what's picked when it runs, rather than when it was made.
+    @Test func aButtonMadeBeforeTheToggleChangedStillRemembers() async throws {
+        let clones = try await clones()
+        let model = try await divergedModel(clones)
+        model.branch.pull()
+        let choice = try #require(model.branch.pullChoice)
+        let stale = try #require(model.branch.dialog(for: choice).buttons.last)
+        model.branch.pullChoice?.pick = .merge
+        model.branch.pullChoice?.remembers = true
+        stale.action()
+        await model.branch.running?.value
+        #expect(try await git("config", "--get", "pull.rebase", in: clones.work) == "false")
+    }
+
+    @Test func oneCommitIsSaidAsOne() async throws {
+        let clones = try await clones()
+        let model = try await divergedModel(clones)
+        let choice = PullChoice(branch: "main", upstream: "origin/main", behind: 1, ahead: 1)
+        let dialog = model.branch.dialog(for: choice)
+        #expect(dialog.title == "Pull 1 commit into main")
+        #expect(dialog.message?.plain == "main and origin/main have moved apart. origin/main has 1 commit that main doesn't, and main has 1 of its own.")
+    }
+
+    @Test func pullingWithoutRememberingLeavesTheConfigAlone() async throws {
+        let clones = try await clones()
+        let model = try await divergedModel(clones)
+        model.branch.pull()
+        model.branch.confirmPull()
+        #expect(model.branch.pullChoice == nil)
+        await model.branch.running?.value
+        #expect(model.branch.finished == "Pulled")
+        await model.check?.value
+        #expect(model.branch.status?.behind == 0)
+        #expect(model.branch.status?.pullRebase == nil)
+    }
+
+    @Test func rememberingWritesTheConfigSoItDoesntAskAgain() async throws {
+        let clones = try await clones()
+        let model = try await divergedModel(clones)
+        model.branch.pull()
+        model.branch.pullChoice?.pick = .merge
+        model.branch.pullChoice?.remembers = true
+        model.branch.confirmPull()
+        await model.branch.running?.value
+        #expect(model.branch.finished == "Pulled")
+        #expect(try await git("config", "--get", "pull.rebase", in: clones.work) == "false")
+        #expect(try await git("rev-list", "--count", "--merges", "HEAD~1..HEAD", in: clones.work) == "1")
+
+        // Moving apart again now goes straight to what was remembered.
+        try await pushFromOther(clones, file: "theirs2.txt", text: "theirs\n")
+        try await commit("Mine again", in: clones.work, file: "mine2.txt", text: "mine\n")
+        try await git("fetch", "--quiet", in: clones.work)
+        await model.branch.refresh()
+        #expect(model.branch.status?.hasDiverged == true)
+        model.branch.pull()
+        #expect(model.branch.pullChoice == nil)
+        #expect(model.branch.action == .pulling)
+        await model.branch.running?.value
+    }
+
+    @Test func aPullThatCantWriteTheConfigSaysSo() async throws {
+        let clones = try await clones()
+        let model = try await divergedModel(clones)
+        // git writes its config by renaming a lock file, which this gets in the way of.
+        try "".write(toFile: clones.work + "/.git/config.lock", atomically: true, encoding: .utf8)
+        model.branch.pull()
+        model.branch.pullChoice?.remembers = true
+        model.branch.confirmPull()
+        await model.branch.running?.value
+        #expect(model.branch.failure?.title == "Can't pull main")
+        #expect(model.branch.failure?.command == ["config", "pull.rebase", "true"])
+        #expect(model.branch.status?.hasDiverged == true)
+        try FileManager.default.removeItem(atPath: clones.work + "/.git/config.lock")
+    }
+
+    // MARK: What the dialogs say
+
+    @Test func aFailureShowsWhatRanAndWhatGitSaid() async throws {
+        let clones = try await clones()
+        try await pushFromOther(clones)
+        try await commit("Mine", in: clones.work)
+        let model = model(clones)
+        await model.appear()
+        model.branch.pull(.fastForward)
+        await model.branch.running?.value
+        let dialog = try dialogContent(model)
+        #expect(dialog.title == "Can't pull main")
+        #expect(dialog.message?.plain == "Nothing changed. What git said is below.")
+        #expect(dialog.terminal.first == .ran(["pull", "--ff-only"]))
+        guard case .output(let said) = dialog.terminal.last else {
+            Issue.record("Expected what git said")
+            return
+        }
+        #expect(said == model.branch.failure?.message)
+        #expect(dialog.buttons.map(\.title) == ["OK"])
+        dialog.buttons[0].action()
+        #expect(model.branch.failure == nil)
+    }
+
+    /// Other code can say something went wrong with only words.
+    @Test func aFailureWithOnlyWordsShowsNoTerminal() async throws {
+        let clones = try await clones()
+        let model = model(clones, fetches: false)
+        model.branch.failure = BranchModel.Failure(title: "Can't stage", message: "Something happened.")
+        let dialog = try dialogContent(model)
+        #expect(dialog.terminal.isEmpty)
+        #expect(dialog.message?.plain == "Something happened.")
+    }
+
+    @Test func aConflictListsItsFilesAndShowsWhatUndoingRuns() async throws {
+        let clones = try await clones()
+        let model = model(clones, fetches: false)
+        let files = (1...7).map { "file\($0).txt" }
+        model.branch.conflict = BranchModel.Conflict(pull: .rebase(branch: "refs/heads/main"), files: files, ran: ["pull", "--rebase"])
+        let dialog = try dialogContent(model)
+        #expect(dialog.title == "The pull stopped on a conflict")
+        #expect(dialog.message?.plain.hasPrefix("main is partway through a rebase, with 7 files in conflict.") == true)
+        #expect(dialog.cards.first?.count == 6)
+        #expect(dialog.cards.first?.last == .more("and 2 more"))
+        #expect(dialog.terminal == [
+            .ran(["pull", "--rebase"]),
+            .gap,
+            .comment("Undo the pull runs"),
+            .command(["rebase", "--abort"]),
+        ])
+        #expect(CommandBlock.copied(dialog.terminal) == "git rebase --abort")
+        #expect(dialog.buttons.map(\.title) == ["Leave it", "Undo the pull"])
+        #expect(dialog.buttons.map(\.kind) == [.secondary, .primary])
+        dialog.dismiss()
+        #expect(model.branch.conflict == nil)
+    }
+
+    @Test func abortingSaysWhatItLosesAndTheCommand() async throws {
+        let clones = try await clones()
+        let model = model(clones, fetches: false)
+        model.branch.pendingAbort = .merge
+        let dialog = try dialogContent(model)
+        #expect(dialog.title == "Abort the merge?")
+        #expect(dialog.terminal == [.command(["merge", "--abort"])])
+        #expect(dialog.buttons.map(\.title) == ["Cancel", "Abort merge"])
+        #expect(dialog.buttons.last?.kind == .destructive)
+        dialog.dismiss()
+        #expect(model.branch.pendingAbort == nil)
+    }
+
+    @Test func aForcePushSaysWhatItOverwritesWithHashes() async throws {
+        let clones = try await clones()
+        let model = model(clones, fetches: false)
+        let commits = [ListedCommit(hash: "8f3c1d20", subject: "First try")]
+        model.branch.forcePush = BranchModel.ForcePush(branch: "main", upstream: "origin/main", count: 3, commits: commits)
+        let dialog = try dialogContent(model)
+        #expect(dialog.title == "Force push main?")
+        #expect(dialog.message?.plain == "This overwrites 3 commits on origin/main, and your branch takes their place.")
+        #expect(dialog.cards == [[.commit(hash: "8f3c1d20", subject: "First try"), .more("and 2 more")]])
+        #expect(dialog.note?.plain == "git refuses if origin/main has commits that main never had.")
+        #expect(dialog.terminal == [.command(["push", "--force-with-lease", "--force-if-includes"])])
+        #expect(dialog.buttons.last?.kind == .destructive)
+    }
+
+    @Test func aForcePushThatLosesNothingSaysSo() async throws {
+        let clones = try await clones()
+        let model = model(clones, fetches: false)
+        model.branch.forcePush = BranchModel.ForcePush(branch: "main", upstream: "origin/main", count: 0, commits: [])
+        let dialog = try dialogContent(model)
+        #expect(dialog.message?.plain.hasSuffix("so none are lost.") == true)
+        #expect(dialog.cards.isEmpty)
+    }
+
+    @Test func deletingABranchSaysWhatItLosesAndShowsItsCommand() async throws {
+        let clones = try await clones()
+        _ = try await makeBranchWithACommit("other", clones)
+        let model = model(clones, fetches: false)
+        await model.appear()
+        await askToDelete("refs/heads/other", model)
+        let dialog = try dialogContent(model)
+        #expect(dialog.title == "Delete other?")
+        #expect(dialog.message?.plain == "1 commit isn't on any other branch or tag, so it goes too.")
+        #expect(dialog.terminal == [.command(["branch", "-D", "other"])])
+        #expect(dialog.cards.first?.count == 1)
+        dialog.dismiss()
+        #expect(model.branch.pendingDeletion == nil)
+        #expect(try await exists("refs/heads/other", in: clones.work))
+    }
+
+    @Test func deletingFromARemoteSaysWhoItAffects() async throws {
+        let clones = try await clones()
+        try await git("branch", "--track", "feature", "origin/feature", in: clones.work)
+        let model = model(clones, fetches: false)
+        await model.appear()
+        await askToDelete("refs/remotes/origin/feature", model)
+        let dialog = try dialogContent(model)
+        #expect(dialog.title == "Delete feature from origin?")
+        #expect(dialog.message?.plain == "This deletes the branch on origin, for everyone who uses it. Its commits are all on other branches or tags, so none are lost.")
+        #expect(dialog.terminal == [.command(["push", "--delete", "origin", "refs/heads/feature"])])
+    }
+
+    @Test func aFailedCheckoutComesFirst() async throws {
+        let clones = try await clones()
+        let model = model(clones, fetches: false)
+        model.branch.pendingAbort = .merge
+        model.checkoutFailure = RepositoryModel.CheckoutFailure(branch: "main", message: "error: no", command: ["switch", "main"])
+        let dialog = try dialogContent(model)
+        #expect(dialog.title == "Can't check out main")
+        #expect(dialog.terminal == [.ran(["switch", "main"]), .output("error: no")])
+        dialog.dismiss()
+        #expect(model.checkoutFailure == nil)
+        #expect(model.dialog?.id == "abort")
     }
 
     // MARK: Unfinished work
@@ -302,7 +577,7 @@ struct BranchModelTests {
         model.branch.pull(.fastForward)
         await model.branch.running?.value
         #expect(model.branch.conflict == nil)
-        #expect(model.branch.failure?.title == "Can't Pull main")
+        #expect(model.branch.failure?.title == "Can't pull main")
         #expect(model.branch.failure?.message.isEmpty == false)
     }
 
@@ -385,7 +660,7 @@ struct BranchModelTests {
 
         model.branch.push()
         await model.branch.running?.value
-        #expect(model.branch.failure?.title == "Can't Push main")
+        #expect(model.branch.failure?.title == "Can't push main")
         await model.check?.value
         #expect(model.branch.status?.behind == 1)
         #expect(model.branch.status?.ahead == 1)
@@ -402,7 +677,10 @@ struct BranchModelTests {
 
         model.branch.askToForcePush()
         while model.branch.forcePush == nil { await Task.yield() }
-        #expect(model.branch.forcePush == BranchModel.ForcePush(branch: "main", upstream: "origin/main", count: 1, subjects: ["First try"]))
+        #expect(model.branch.forcePush?.count == 1)
+        #expect(model.branch.forcePush?.commits.map(\.subject) == ["First try"])
+        #expect(model.branch.forcePush?.branch == "main")
+        #expect(model.branch.forcePush?.upstream == "origin/main")
         #expect(try await git("rev-parse", "main", in: clones.remote) != mine)
 
         model.branch.confirmForcePush()
@@ -461,7 +739,7 @@ struct BranchModelTests {
 
         await askToDelete("refs/heads/other", model)
         #expect(model.branch.pendingDeletion?.deletion.lostCount == 1)
-        #expect(model.branch.pendingDeletion?.subjects == ["Only on other"])
+        #expect(model.branch.pendingDeletion?.commits.map(\.subject) == ["Only on other"])
         #expect(try await exists("refs/heads/other", in: clones.work))
 
         model.branch.confirmDeletion()
@@ -511,7 +789,7 @@ struct BranchModelTests {
         let model = model(clones, fetches: false)
         await model.appear()
         await askToDelete("refs/heads/other", model)
-        // What the alert's Cancel button does through its binding.
+        // What the dialog's Cancel button does.
         model.branch.pendingDeletion = nil
         model.branch.confirmDeletion()
         #expect(model.branch.running == nil)
@@ -527,7 +805,7 @@ struct BranchModelTests {
 
         await askToDelete("refs/heads/notes", model)
         #expect(model.branch.pendingDeletion == nil)
-        #expect(model.branch.failure?.title == "Can't Delete notes")
+        #expect(model.branch.failure?.title == "Can't delete notes")
         #expect(model.branch.failure?.message.contains(folder) == true)
         #expect(try await exists("refs/heads/notes", in: clones.work))
     }
@@ -537,7 +815,7 @@ struct BranchModelTests {
         let model = model(clones, fetches: false)
         await model.appear()
         await askToDelete("refs/heads/nothing", model)
-        #expect(model.branch.failure?.title == "Can't Delete nothing")
+        #expect(model.branch.failure?.title == "Can't delete nothing")
     }
 
     @Test func refusesToDeleteWhileSomethingRuns() async throws {

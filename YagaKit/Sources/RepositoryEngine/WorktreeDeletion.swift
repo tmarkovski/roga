@@ -72,7 +72,7 @@ public struct WorktreeDeletion: Sendable, Hashable {
         ["worktree", "remove"] + (uncommittedFiles > 0 ? ["--force"] : []) + [worktree]
     }
 
-    /// Everything it runs, in order, which the alert shows.
+    /// Everything it runs, in order, which the dialog shows.
     public var commands: [[String]] {
         [removeArguments] + [branch, remoteBranch].compactMap { $0?.arguments }
     }

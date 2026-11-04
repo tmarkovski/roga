@@ -217,7 +217,7 @@ struct AddRepositories: View {
                     let added = try await list.add(folder: folder)
                     first = first ?? added
                 } catch {
-                    showAlert("Can't Add \((folder as NSString).lastPathComponent)", error)
+                    showAlert("Can't add \((folder as NSString).lastPathComponent)", error)
                 }
             }
             if let first { select(first) }
