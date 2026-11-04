@@ -231,7 +231,7 @@ private struct CommitDetails: View {
 }
 
 /// The subject of a commit that has more to its message, which hides and shows
-/// the rest. Clicking the subject does the same as the triangle after it, so
+/// the rest. Clicking the subject does the same as the chevron after it, so
 /// it's underlined while the pointer is over it. It can't be selected, because
 /// selectable text shows the text cursor, which says the click would do nothing.
 private struct CollapsibleSubject: View {
@@ -254,7 +254,7 @@ private struct CollapsibleSubject: View {
             Button {
                 isCollapsed.toggle()
             } label: {
-                Triangle(pointsDown: !isCollapsed)
+                Chevron(pointsDown: !isCollapsed)
             }
             .buttonStyle(.icon(size: 18))
             .offset(y: -1)

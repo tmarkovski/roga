@@ -197,8 +197,39 @@ private func indent(_ depth: Int) -> CGFloat {
     CGFloat(depth) * 14
 }
 
+/// The thin lines that run down a row of a tree of files, one under the chevron
+/// of each folder it's in. Each row draws its own, and rows have no gap between
+/// them, so they join into one line that ends where the folder does. They're
+/// under the row's fill, so that they still show on a selected row.
+private struct FolderGuides: View {
+    let depth: Int
+
+    var body: some View {
+        Lines(depth: depth)
+            .stroke(Color.primary.opacity(0.14), lineWidth: 1)
+            .allowsHitTesting(false)
+    }
+
+    private nonisolated struct Lines: Shape {
+        let depth: Int
+
+        func path(in rect: CGRect) -> Path {
+            var path = Path()
+            for folder in 0..<depth {
+                // The middle of the column that a folder's chevron is in, 20 points
+                // along a row at the top of the tree, and on a half point, so that
+                // a line one point wide stays sharp.
+                let x = 20.5 + CGFloat(folder) * 14
+                path.move(to: CGPoint(x: x, y: rect.minY))
+                path.addLine(to: CGPoint(x: x, y: rect.maxY))
+            }
+            return path
+        }
+    }
+}
+
 /// A folder in the tree of files, in gray like the folders everywhere else. Its
-/// triangle comes before its name, unlike the sidebar's, so that the triangles
+/// chevron comes before its name, unlike the sidebar's, so that the chevrons
 /// line up with the status letters of the files at the same depth and the rows
 /// read as a tree. A closed folder says how many lines change under it.
 private struct FolderRow: View {
@@ -220,7 +251,7 @@ private struct FolderRow: View {
             action: toggle
         ) { isShowingAccessory in
             HStack(spacing: 8) {
-                Triangle(pointsDown: !isCollapsed)
+                Chevron(pointsDown: !isCollapsed)
                     .frame(width: 12)
                 Text(title)
                     .font(.system(size: 12.5))
@@ -240,6 +271,7 @@ private struct FolderRow: View {
         .help(path)
         .accessibilityLabel(path)
         .accessibilityValue(isCollapsed ? "Collapsed" : "Expanded")
+        .background { FolderGuides(depth: depth) }
     }
 }
 
@@ -270,6 +302,7 @@ struct ChangedFileRow: View {
         .help(description)
         .accessibilityLabel(description)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .background { FolderGuides(depth: depth) }
     }
 
     private func content(hidingCounts: Bool) -> some View {

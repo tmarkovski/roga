@@ -68,11 +68,11 @@ extension Icon {
     public static let agent = bot
     public static let organization = buildingComplex
 
-    /// The small triangle beside something that folds, which Lucide draws as its Play
-    /// icon. Like all of its icons it's an outline, where the system's was filled.
-    public static let disclosure = play
+    /// The chevron beside something that folds, drawn pointing down, which is how it
+    /// looks while what it folds is showing.
+    public static let disclosure = chevronDown
 
-    /// The chevron on a control that opens a menu, which doesn't fold anything.
+    /// The chevron on a control that opens a menu.
     public static let dropdown = chevronDown
 }
 

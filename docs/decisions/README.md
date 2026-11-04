@@ -29,10 +29,11 @@ Records aren't rewritten when a decision changes. Instead, a new record explains
 | [21](0021-draw-the-houses-animations-from-joints.md) | Draw the house's animations from joints, in Swift | How the house comes and goes changed by [25](0025-the-house-zooms-and-the-words-move-the-way-the-commits-go.md), and a fetch's house removed by [26](0026-a-fetch-shows-only-its-words.md) |
 | [22](0022-host-the-landing-page-on-cloudflare-workers.md) | Host the landing page on Cloudflare Workers, as static files | Accepted |
 | [23](0023-one-badge-for-a-branch-and-its-upstream.md) | Show a branch and its upstream as one badge, and a commit's body after its subject | Its colors and the current branch's checkmark changed by [27](0027-give-the-graph-and-branches-monokais-colors.md) |
-| [24](0024-icons-as-custom-symbols-from-lucide.md) | Draw the app's icons as custom symbols, from Lucide | Accepted |
+| [24](0024-icons-as-custom-symbols-from-lucide.md) | Draw the app's icons as custom symbols, from Lucide | What folds changed to a chevron by [31](0031-chevrons-for-what-folds-and-lines-down-a-tree.md) |
 | [25](0025-the-house-zooms-and-the-words-move-the-way-the-commits-go.md) | Zoom the house in and out, and move the words the way the commits go | A fetch's house removed by [26](0026-a-fetch-shows-only-its-words.md) |
 | [26](0026-a-fetch-shows-only-its-words.md) | A fetch shows only its words | Accepted |
 | [27](0027-give-the-graph-and-branches-monokais-colors.md) | Give the graph and the branches Monokai's colors | Accepted |
 | [28](0028-show-a-worktree-thats-stuck-partway.md) | Show a worktree that's stuck partway through | Accepted |
 | [29](0029-dialogs-that-say-what-happens-and-show-the-command.md) | Dialogs that say what happens and show the command | Accepted |
 | [30](0030-stage-and-commit-beside-history.md) | Stage and commit in the panels under history | Accepted |
+| [31](0031-chevrons-for-what-folds-and-lines-down-a-tree.md) | Chevrons for what folds, and lines down a tree of files | Accepted |

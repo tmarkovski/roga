@@ -392,7 +392,7 @@ private struct RowMenu: View {
     }
 }
 
-/// A repository's row, which selects its main worktree. The triangle after its
+/// A repository's row, which selects its main worktree. The chevron after its
 /// name shows or hides its linked worktrees.
 private struct RepositoryRow: View {
     let repository: ListedRepository
@@ -414,7 +414,7 @@ private struct RepositoryRow: View {
                     .layoutPriority(1)
                 if linkedWorktrees > 0 {
                     Button(action: toggle) {
-                        Triangle(pointsDown: repository.isExpanded)
+                        Chevron(pointsDown: repository.isExpanded)
                     }
                     .buttonStyle(.icon(size: 18))
                     .help(repository.isExpanded ? "Hide Worktrees" : "Show Worktrees")

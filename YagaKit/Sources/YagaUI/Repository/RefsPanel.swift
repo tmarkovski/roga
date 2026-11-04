@@ -432,9 +432,9 @@ struct RefsPanelPlaceholder: View {
     }
 }
 
-/// A section's title with a triangle after it, and how many items it has.
+/// A section's title with a chevron after it, and how many items it has.
 /// Clicking it collapses or expands the section, unless it has nothing to show,
-/// which leaves no triangle and nothing to click. It stays in place as the
+/// which leaves no chevron and nothing to click. It stays in place as the
 /// section's rows scroll under it, so it has a background of its own.
 private struct RefSectionHeader: View {
     let section: RefsModel.Section
@@ -447,7 +447,7 @@ private struct RefSectionHeader: View {
             Text(section.title)
                 .font(.system(size: 12, weight: .semibold))
             if count > 0 {
-                Triangle(pointsDown: !isCollapsed)
+                Chevron(pointsDown: !isCollapsed)
             }
             Spacer(minLength: 8)
             Text(count, format: .number)

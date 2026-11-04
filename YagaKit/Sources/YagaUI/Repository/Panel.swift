@@ -234,19 +234,20 @@ extension ButtonStyle where Self == IconButtonStyle {
     static func icon(isOn: Bool) -> IconButtonStyle { IconButtonStyle(isOn: isOn) }
 }
 
-/// The small triangle that says whether what's under it shows. It turns a
-/// quarter of the way around between its two directions. The animation goes no
-/// further than the triangle, so what's under it still comes and goes at once.
-/// Both directions take the same room, so that nothing beside it moves.
-struct Triangle: View {
+/// The small chevron that says whether what's under it shows, at the size and
+/// weight of the one on the branch's chip. It turns a quarter of the way around
+/// between its two directions. The animation goes no further than the chevron,
+/// so what's under it still comes and goes at once. Both directions take the
+/// same room, so that nothing beside it moves.
+struct Chevron: View {
     let pointsDown: Bool
     @Environment(\.accessibilityReduceMotion) private var reducesMotion
 
     var body: some View {
         Icon.disclosure.image
-            .font(.system(size: 8, weight: .black))
+            .font(.system(size: 10, weight: .semibold))
             .foregroundStyle(.secondary)
-            .rotationEffect(.degrees(pointsDown ? 90 : 0))
+            .rotationEffect(.degrees(pointsDown ? 0 : -90))
             .animation(reducesMotion ? nil : .easeInOut(duration: 0.18), value: pointsDown)
             .frame(width: 10, height: 10)
     }
