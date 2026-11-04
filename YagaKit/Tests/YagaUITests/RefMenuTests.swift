@@ -14,6 +14,15 @@ struct RefMenuTests {
         Set(menu.items.compactMap { item in item.view.map(\.frame.width) })
     }
 
+    /// Chooses a row the way a click would. `performActionForItem(at:)` sends the
+    /// action through `NSApp`, which is nil until something in the process asks for
+    /// `NSApplication.shared`, and then it does nothing. A test run that has already
+    /// made a window has the application; one that runs these alone doesn't.
+    private func choose(at index: Int, in menu: NSMenu) {
+        _ = NSApplication.shared
+        menu.performActionForItem(at: index)
+    }
+
     @Test func aHeaderIsShorterThanTheCommandsUnderIt() {
         let menu = RefMenu.make([.header("main"), .command("Copy Name") {}, .divider, .command("Delete Branch") {}])
         #expect(heights(menu) == [24, 28, nil, 28])
@@ -47,7 +56,7 @@ struct RefMenuTests {
     @Test func choosingACommandRunsItsAction() {
         var runs = 0
         let menu = RefMenu.make([.header("main"), .command("Copy Name") { runs += 1 }])
-        menu.performActionForItem(at: 1)
+        choose(at: 1, in: menu)
         #expect(runs == 1)
     }
 
@@ -60,7 +69,7 @@ struct RefMenuTests {
         #expect(heights(submenu) == [24, 28])
         #expect(!submenu.showsStateColumn)
         #expect(!submenu.autoenablesItems)
-        submenu.performActionForItem(at: 1)
+        choose(at: 1, in: submenu)
         #expect(runs == 1)
     }
 
