@@ -27,7 +27,7 @@ roga/
 │   ├── RogaApplication.swift       entry point, scenes, Sparkle updater
 │   ├── CheckForUpdatesButton.swift
 │   ├── Info.plist                  Sparkle's feed address and public key
-│   └── Assets.xcassets             the app icon, once there is one
+│   └── AppIcon.icon                the app icon, in Icon Composer's format
 ├── RogaKit/                        the local Swift package
 │   ├── Package.swift
 │   ├── Sources/

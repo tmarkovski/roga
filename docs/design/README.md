@@ -54,3 +54,11 @@ To add an icon:
 3. If the icon stands for something in Roga, name it in `RogaKit/Sources/IconUI/Icon.swift`, so that the thing looks the same everywhere.
 
 Lucide's `git-pull-request` icons mean a pull request on a hosting site. `git pull` is `arrow-down-to-dot`, which `Icon.swift` calls `Icon.pull`.
+
+## App icon — November 4, 2026
+
+The app's icon is the house from [`branding/roga-mark.svg`](branding/roga-mark.svg), in orange on the landing page's paper color, `#FAF6EE`, the way the page's `apple-touch-icon.png` already draws it. In dark mode the paper becomes the ink color, `#16150E`, as the page's background does.
+
+The icon is in [`App/AppIcon.icon`](../../App/AppIcon.icon), in the format that Icon Composer saves, rather than as a set of PNGs in an asset catalog. Roga requires macOS 26 ([decision 2](../decisions/0002-minimum-macos-26.md)), and with this format the system draws the glass and the dark, clear and tinted versions from one SVG. Xcode also writes an `.icns` file into the app for anything that still reads one.
+
+The SVG in that folder is a copy of the mark, so a change to the mark has to be copied there too. To adjust the icon itself, such as the size of the house or its colors, open `App/AppIcon.icon` in Icon Composer, which comes with Xcode.
