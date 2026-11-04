@@ -191,6 +191,20 @@ struct CommitTableBadgeTests {
         #expect(content.branches[2].upstream == nil)
     }
 
+    @Test func otherRemotesBranchesOnABadgeKeepTheirOwnRows() {
+        let content = CommitRowContent(shortID: "abcd1234", badges: [
+            Badge(title: "main", kind: .currentBranch, refName: "refs/heads/main", upstream: "refs/remotes/origin/main", otherRemoteBranches: ["refs/remotes/upstream/main"]),
+            Badge(title: "feature", kind: .branch, refName: "refs/heads/feature", upstream: "refs/remotes/origin/feature", otherRemoteBranches: ["refs/remotes/fork/feature"]),
+        ])
+        #expect(content.branches.map(\.title) == ["main", "feature", "fork/feature", "origin/main", "upstream/main"])
+        #expect(content.branches.map(\.deleteTitle) == ["Delete Branch", "Delete…", "Delete from Remote…", "Delete from Remote…", "Delete from Remote…"])
+        #expect(content.branches.map(\.refName) == [
+            "refs/heads/main", "refs/heads/feature", "refs/remotes/fork/feature", "refs/remotes/origin/main", "refs/remotes/upstream/main",
+        ])
+        // The dialog for a branch and its upstream only asks about those two.
+        #expect(content.branches[1].upstream == "refs/remotes/origin/feature")
+    }
+
     @Test func aBranchWithoutAnUpstreamOnTheCommitKeepsItsOwnRow() {
         #expect(Badge(title: "feature", kind: .branch, refName: "refs/heads/feature").deleteTitle == "Delete Branch")
     }
@@ -199,6 +213,8 @@ struct CommitTableBadgeTests {
         #expect(Badge(title: "main", kind: .currentBranch, upstream: "refs/remotes/origin/main").spokenTitle == "main, current branch, in sync with origin/main")
         #expect(Badge(title: "main", kind: .currentBranch).spokenTitle == "main, current branch")
         #expect(Badge(title: "fix", kind: .branch, upstream: "refs/remotes/origin/fix").spokenTitle == "fix, in sync with origin/fix")
+        #expect(Badge(title: "main", kind: .currentBranch, upstream: "refs/remotes/origin/main", otherRemoteBranches: ["refs/remotes/upstream/main"]).spokenTitle == "main, current branch, in sync with origin/main and upstream/main")
+        #expect(Badge(title: "fix", kind: .branch, upstream: "refs/remotes/origin/fix", otherRemoteBranches: ["refs/remotes/backup/fix", "refs/remotes/upstream/fix"]).spokenTitle == "fix, in sync with origin/fix, backup/fix and upstream/fix")
         #expect(Badge(title: "HEAD", kind: .detachedHead).spokenTitle == "HEAD, on no branch")
         #expect(Badge(title: "v1.0", kind: .tag).spokenTitle == "v1.0")
     }
@@ -235,6 +251,21 @@ struct CommitTableBadgeTests {
         let plainWidth = try #require(CommitRowLayout(content: plain, size: size).badges.first).width
         let mergedWidth = try #require(CommitRowLayout(content: merged, size: size).badges.first).width
         #expect(mergedWidth > plainWidth)
+    }
+
+    @Test func aBadgeIsWiderForEachRemoteItStandsFor() throws {
+        func width(others: [String]) throws -> CGFloat {
+            let badge = Badge(title: "feature", kind: .branch, upstream: "refs/remotes/origin/feature", otherRemoteBranches: others)
+            let content = CommitRowContent(shortID: "abcd1234", badges: [badge], subject: "A subject")
+            return try #require(CommitRowLayout(content: content, size: NSSize(width: 1200, height: 28)).badges.first).width
+        }
+        #expect(Badge(title: "feature", kind: .branch).cloudCount == 0)
+        #expect(Badge(title: "feature", kind: .branch, upstream: "refs/remotes/origin/feature", otherRemoteBranches: ["refs/remotes/upstream/feature"]).cloudCount == 2)
+        let one = try width(others: [])
+        let two = try width(others: ["refs/remotes/upstream/feature"])
+        let three = try width(others: ["refs/remotes/backup/feature", "refs/remotes/upstream/feature"])
+        #expect(two > one)
+        #expect(three - two == two - one)
     }
 
     @Test func aBadgesTooltipSaysWhatItStandsFor() throws {

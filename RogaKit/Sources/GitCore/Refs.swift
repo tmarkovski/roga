@@ -53,12 +53,19 @@ public struct Ref: Sendable, Hashable {
     /// slash in it doesn't count, because a ref's name alone can't tell it from
     /// a branch whose name has one.
     public var upstreamOfSameName: String? {
-        guard let upstream, upstream.hasPrefix(Self.remoteBranchPrefix) else { return nil }
-        let remoteAndBranch = upstream.dropFirst(Self.remoteBranchPrefix.count)
-        guard let slash = remoteAndBranch.firstIndex(of: "/"),
-              remoteAndBranch[remoteAndBranch.index(after: slash)...] == shortName
-        else { return nil }
+        guard let upstream, Self.nameOnItsRemote(upstream) == shortName else { return nil }
         return upstream
+    }
+
+    /// What a remote's branch is called on its remote, such as `tm/fix` for
+    /// `refs/remotes/origin/tm/fix`, or nil for any other ref. It's whatever
+    /// follows the first slash, because a ref's name alone can't say where a
+    /// remote's name ends.
+    public static func nameOnItsRemote(_ name: String) -> String? {
+        guard name.hasPrefix(remoteBranchPrefix) else { return nil }
+        let remoteAndBranch = name.dropFirst(remoteBranchPrefix.count)
+        guard let slash = remoteAndBranch.firstIndex(of: "/") else { return nil }
+        return String(remoteAndBranch[remoteAndBranch.index(after: slash)...])
     }
 
     /// Shortens a full ref name, such as `refs/heads/main` to `main`.

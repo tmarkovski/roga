@@ -593,23 +593,42 @@ final class RepositoryModel {
     }
 
     /// The badges for the refs on one commit. A branch and its upstream share a
-    /// badge when they have the same name, because they're the same thing here.
-    /// Any other remote's branch keeps its own.
+    /// badge when they have the same name, because they're the same thing here,
+    /// and every other remote's branch of that name joins them. Without its
+    /// upstream on the commit, a branch has no cloud to add to, so a remote's
+    /// branch keeps its own badge.
     static func badges(for refs: [Ref], currentBranch: String?) -> [CommitRowContent.Badge] {
         var upstreams: Set<String> = []
         if refs.contains(where: { $0.upstream != nil }) {
             let names = Set(refs.map(\.name))
             upstreams = Set(refs.compactMap(\.upstreamOfSameName)).intersection(names)
         }
+        // Other remotes' branches, by what the branch that shares a badge is called.
+        var others: [String: [String]] = [:]
+        if !upstreams.isEmpty {
+            let sharing = Set(upstreams.compactMap(Ref.nameOnItsRemote))
+            for ref in refs where !upstreams.contains(ref.name) {
+                if let name = Ref.nameOnItsRemote(ref.name), sharing.contains(name) {
+                    others[name, default: []].append(ref.name)
+                }
+            }
+        }
+        let onBadges = Set(others.values.joined()).union(upstreams)
         return refs.compactMap { ref in
-            guard !upstreams.contains(ref.name) else { return nil }
+            guard !onBadges.contains(ref.name) else { return nil }
             let kind: CommitRowContent.Badge.Kind = switch ref.kind {
             case .branch: ref.name == currentBranch ? .currentBranch : .branch
             case .remoteBranch: .remoteBranch
             case .tag, .other: .tag
             }
             let upstream = ref.upstreamOfSameName.flatMap { upstreams.contains($0) ? $0 : nil }
-            return CommitRowContent.Badge(title: ref.shortName, kind: kind, refName: ref.name, upstream: upstream)
+            return CommitRowContent.Badge(
+                title: ref.shortName,
+                kind: kind,
+                refName: ref.name,
+                upstream: upstream,
+                otherRemoteBranches: upstream == nil ? [] : others[ref.shortName] ?? []
+            )
         }
     }
 

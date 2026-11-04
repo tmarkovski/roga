@@ -156,6 +156,22 @@ struct RepositoryModelTests {
         #expect(model.checkoutFailure == nil)
     }
 
+    @Test func aBadgeStandsForEveryRemoteThatHasTheBranchOnItsCommit() async throws {
+        let (model, repository) = try await modelOfACopy()
+        try await runGit("update-ref", "refs/remotes/backup/main", "main", in: repository)
+        try await runGit("update-ref", "refs/remotes/backup/mcp-dev", "main", in: repository)
+        // This one is on another commit, so it has its own badge there.
+        try await runGit("update-ref", "refs/remotes/mirror/main", "main~1", in: repository)
+        await model.load()
+
+        let main = try badge("main", in: model)
+        #expect(main.upstream == "refs/remotes/origin/main")
+        #expect(main.otherRemoteBranches == ["refs/remotes/backup/main"])
+        let row = model.rowContent(try row(of: Fixture.Basic.main, in: model))
+        #expect(row.badges.map(\.title) == ["main", "backup/mcp-dev"])
+        #expect(try badge("mirror/main", in: model).kind == .remoteBranch)
+    }
+
     @Test func selectsTheLocalBranchOfARemoteBranchItChecksOut() async throws {
         let (model, repository) = try await modelOfACopy()
         try await runGit("branch", "--no-track", "feature", "main~1", in: repository)
@@ -799,9 +815,38 @@ struct RowBadgeTests {
         #expect(titles(ref("refs/heads/fix", upstream: "refs/remotes/origin/tm/fix"), ref("refs/remotes/origin/tm/fix")) == ["fix", "origin/tm/fix"])
     }
 
-    @Test func anotherRemotesBranchKeepsItsOwnBadge() {
-        let refs = [ref("refs/heads/main", upstream: "refs/remotes/origin/main"), ref("refs/remotes/origin/main"), ref("refs/remotes/upstream/main")]
-        #expect(RepositoryModel.badges(for: refs, currentBranch: nil).map(\.title) == ["main", "upstream/main"])
+    @Test func everyRemotesBranchOfTheSameNameJoinsABranchAndItsUpstream() {
+        let badges = RepositoryModel.badges(for: [
+            ref("refs/heads/tm/fix", upstream: "refs/remotes/origin/tm/fix"),
+            ref("refs/remotes/backup/tm/fix"),
+            ref("refs/remotes/origin/tm/fix"),
+            ref("refs/remotes/upstream/tm/fix"),
+        ], currentBranch: "refs/heads/tm/fix")
+        #expect(badges.map(\.title) == ["tm/fix"])
+        #expect(badges.first?.kind == .currentBranch)
+        #expect(badges.first?.upstream == "refs/remotes/origin/tm/fix")
+        #expect(badges.first?.otherRemoteBranches == ["refs/remotes/backup/tm/fix", "refs/remotes/upstream/tm/fix"])
+    }
+
+    @Test func eachBranchTakesOnlyTheRemoteBranchesWithItsOwnName() {
+        let badges = RepositoryModel.badges(for: [
+            ref("refs/heads/feature", upstream: "refs/remotes/origin/feature"),
+            ref("refs/heads/main", upstream: "refs/remotes/origin/main"),
+            ref("refs/remotes/origin/feature"),
+            ref("refs/remotes/origin/main"),
+            ref("refs/remotes/upstream/main"),
+            ref("refs/remotes/upstream/mcp-dev"),
+            ref("refs/remotes/upstream/tm/main"),
+        ], currentBranch: nil)
+        #expect(badges.map(\.title) == ["feature", "main", "upstream/mcp-dev", "upstream/tm/main"])
+        #expect(badges.map(\.otherRemoteBranches) == [[], ["refs/remotes/upstream/main"], [], []])
+    }
+
+    @Test func anotherRemotesBranchKeepsItsOwnBadgeWithoutAnUpstreamToJoin() {
+        // The upstream has moved to another commit, so the branch has no cloud.
+        #expect(titles(ref("refs/heads/main", upstream: "refs/remotes/origin/main"), ref("refs/remotes/upstream/main")) == ["main", "upstream/main"])
+        #expect(titles(ref("refs/heads/fix"), ref("refs/remotes/origin/fix"), ref("refs/remotes/upstream/fix")) == ["fix", "origin/fix", "upstream/fix"])
+        #expect(titles(ref("refs/remotes/origin/main"), ref("refs/remotes/upstream/main")) == ["origin/main", "upstream/main"])
     }
 
     @Test func aTagIsUnaffected() {

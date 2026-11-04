@@ -1,6 +1,6 @@
 # 23. Show a branch and its upstream as one badge, and a commit's body after its subject
 
-Accepted on 2026-11-03. The options were drawn on the design canvas, with the rows and the selection from a real screenshot of history.
+Accepted on 2026-11-03. The options were drawn on the design canvas, with the rows and the selection from a real screenshot of history. [Decision 35](0035-one-cloud-for-each-remote-on-a-badge.md) changed what happens to another remote's branch of the same name, which now joins the badge with a cloud of its own. The rest of this decision still holds.
 
 ## Context
 

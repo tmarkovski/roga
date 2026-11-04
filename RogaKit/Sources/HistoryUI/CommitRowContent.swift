@@ -29,12 +29,22 @@ public struct CommitRowContent: Hashable {
         /// The full name of the remote branch that this badge stands for too,
         /// because the branch tracks it and both are on this commit.
         public var upstream: String?
+        /// The full names of other remotes' branches that this badge stands for
+        /// too, because they have the branch's name and are on this commit.
+        public var otherRemoteBranches: [String]
 
-        public init(title: String, kind: Kind, refName: String? = nil, upstream: String? = nil) {
+        public init(title: String, kind: Kind, refName: String? = nil, upstream: String? = nil, otherRemoteBranches: [String] = []) {
             self.title = title
             self.kind = kind
             self.refName = refName
             self.upstream = upstream
+            self.otherRemoteBranches = otherRemoteBranches
+        }
+
+        /// How many clouds the badge has, which is one for each remote it stands
+        /// for.
+        var cloudCount: Int {
+            upstream == nil ? 0 : 1 + otherRemoteBranches.count
         }
 
         /// Whether double-clicking the badge checks out its branch. There's
@@ -81,7 +91,11 @@ public struct CommitRowContent: Hashable {
             case .detachedHead: parts.append("on no branch")
             case .branch, .remoteBranch, .tag: break
             }
-            if let upstream { parts.append("in sync with \(Ref.shortName(upstream))") }
+            if let upstream {
+                let names = ([upstream] + otherRemoteBranches).map(Ref.shortName)
+                let list = names.dropLast().joined(separator: ", ")
+                parts.append("in sync with " + (list.isEmpty ? names[0] : "\(list) and \(names[names.count - 1])"))
+            }
             return parts.joined(separator: ", ")
         }
     }
@@ -138,14 +152,16 @@ public struct CommitRowContent: Hashable {
     /// Every branch that points to the commit, for the row's menu: local ones
     /// first, then remote ones from A to Z. A branch and its upstream share a row,
     /// whose dialog asks which go, except that the current branch can't go, so its
-    /// upstream gets a row of its own.
+    /// upstream gets a row of its own. Other remotes' branches on a badge always
+    /// have their own rows, because that dialog only asks about the upstream.
     var branches: [Badge] {
         let branches = badges.filter(\.isBranch)
         let local = branches.filter { $0.kind != .remoteBranch }
-        let upstreams = local.filter { $0.kind == .currentBranch }.compactMap { badge in
-            badge.upstream.map { Badge(title: Ref.shortName($0), kind: .remoteBranch, refName: $0) }
+        let onBadges = local.flatMap { badge in
+            badge.otherRemoteBranches + (badge.kind == .currentBranch ? badge.upstream.map { [$0] } ?? [] : [])
         }
-        let remote = branches.filter { $0.kind == .remoteBranch } + upstreams
+        let remote = branches.filter { $0.kind == .remoteBranch }
+            + onBadges.map { Badge(title: Ref.shortName($0), kind: .remoteBranch, refName: $0) }
         return local + remote.sorted { $0.title < $1.title }
     }
 

@@ -149,9 +149,15 @@ final class CommitCellView: NSView {
         }
         // The name gives way when the badge is cut short, and what follows it stays.
         var textMaxX = rect.maxX - padding
-        if badge.upstream != nil, let cloud = Self.cloud(for: badge.kind) {
-            textMaxX -= cloud.size.width + CommitRowLayout.badgeIconGap
-            draw(cloud, at: textMaxX + CommitRowLayout.badgeIconGap, in: rect)
+        if badge.cloudCount > 0, let cloud = Self.cloud(for: badge.kind) {
+            // A badge cut very short keeps as many clouds as stay inside it.
+            var x = textMaxX
+            for _ in 0..<badge.cloudCount where x - cloud.size.width >= rect.minX + padding {
+                x -= cloud.size.width
+                draw(cloud, at: x, in: rect)
+                x -= CommitRowLayout.badgeCloudGap
+            }
+            textMaxX = x + CommitRowLayout.badgeCloudGap - CommitRowLayout.badgeIconGap
         }
         let (name, remote) = badge.nameAndRemote
         if let remote {
@@ -178,7 +184,7 @@ final class CommitCellView: NSView {
         }
     }
 
-    /// The mark on a badge that stands for its upstream too.
+    /// The mark on a badge for each remote it stands for.
     fileprivate static func cloud(for kind: CommitRowContent.Badge.Kind) -> NSImage? {
         symbol(.remote, size: 9.5, weight: .medium, for: kind)
     }
@@ -287,6 +293,8 @@ struct CommitRowLayout {
     static let graphX = inset - LaneRenderer.spacing / 2
     static let badgePadding: CGFloat = 6
     static let badgeIconGap: CGFloat = 3
+    /// The space between the clouds on a badge that stands for several remotes.
+    static let badgeCloudGap: CGFloat = 1
     /// The space on each side of the line between a branch's name and its remote's.
     static let badgeDividerGap: CGFloat = 4
     /// The space between the subject and the body.
@@ -354,7 +362,8 @@ struct CommitRowLayout {
         let look = CommitCellView.BadgeLook.of(badge.kind)
         let (name, remote) = badge.nameAndRemote
         let iconWidth = CommitCellView.icon(for: badge.kind).map { $0.size.width + badgeIconGap } ?? 0
-        let cloudWidth = badge.upstream == nil ? 0 : CommitCellView.cloud(for: badge.kind).map { $0.size.width + badgeIconGap } ?? 0
+        let clouds = CGFloat(badge.cloudCount)
+        let cloudWidth = clouds == 0 ? 0 : CommitCellView.cloud(for: badge.kind).map { badgeIconGap + clouds * $0.size.width + (clouds - 1) * badgeCloudGap } ?? 0
         let remoteWidth = remote.map { badgeDividerGap + 1 + badgeDividerGap + width(of: $0, in: look.remoteStyle) } ?? 0
         return badgePadding + iconWidth + width(of: name, in: look.style) + remoteWidth + cloudWidth + badgePadding
     }

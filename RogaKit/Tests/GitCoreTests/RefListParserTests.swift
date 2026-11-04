@@ -42,6 +42,12 @@ struct RefListParserTests {
         #expect(try ref("refs/heads/tm/fix", upstream: "refs/remotes/origin/tm/fix").upstreamOfSameName == "refs/remotes/origin/tm/fix")
     }
 
+    @Test func knowsWhatARemotesBranchIsCalledOnItsRemote() {
+        #expect(Ref.nameOnItsRemote("refs/remotes/origin/tm/fix") == "tm/fix")
+        #expect(Ref.nameOnItsRemote("refs/remotes/origin") == nil)
+        #expect(Ref.nameOnItsRemote("refs/heads/tm/fix") == nil)
+    }
+
     @Test func knowsAnUpstreamOfAnotherName() throws {
         #expect(try ref("refs/heads/main", upstream: nil).upstreamOfSameName == nil)
         #expect(try ref("refs/heads/fix", upstream: "refs/remotes/origin/tm/fix").upstreamOfSameName == nil)
