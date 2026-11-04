@@ -309,6 +309,72 @@ struct CommitTableBadgeTests {
         #expect(list.controller.menu(forRow: 2) == nil)
     }
 
+    /// A right-click in the middle of a row, as the table gets it.
+    static func rightClick(onRow row: Int, in table: NSTableView) throws -> NSEvent {
+        let frame = table.rect(ofRow: row)
+        return try #require(NSEvent.mouseEvent(
+            with: .rightMouseDown,
+            location: table.convert(NSPoint(x: frame.midX, y: frame.midY), to: nil),
+            modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil,
+            eventNumber: 0, clickCount: 1, pressure: 1
+        ))
+    }
+
+    static func outlines(in table: NSTableView) -> [CommitRowOutlineView] {
+        (table.superview?.subviews ?? []).compactMap { $0 as? CommitRowOutlineView }
+    }
+
+    @Test func aRowHasAnOutlineJustOutsideItsFillWhileItsMenuIsOpen() throws {
+        let list = List()
+        let event = try Self.rightClick(onRow: 1, in: list.table)
+        let menu = try #require(list.table.menu(for: event))
+        #expect(Self.outlines(in: list.table).isEmpty)
+
+        // The event that comes with opening the menu needn't be over the row.
+        let elsewhere = try #require(NSEvent.mouseEvent(
+            with: .rightMouseDown, location: NSPoint(x: -100, y: -100), modifierFlags: [], timestamp: 0,
+            windowNumber: 0, context: nil, eventNumber: 0, clickCount: 1, pressure: 1
+        ))
+        list.table.willOpenMenu(menu, with: elsewhere)
+        let outline = try #require(Self.outlines(in: list.table).first)
+        let width = CommitRowOutlineView.lineWidth
+        let fill = CommitRowView.selectionFrame(inRow: list.table.rect(ofRow: 1))
+        #expect(outline.frame == fill.insetBy(dx: -width, dy: -width))
+        // The table draws its square outline around the row it says was clicked.
+        #expect(list.table.clickedRow == -1)
+
+        // The table puts its rows above its other views when it loads them again.
+        list.table.reloadData()
+        #expect(list.table.superview?.subviews.last === outline)
+
+        list.table.didCloseMenu(menu, with: event)
+        #expect(Self.outlines(in: list.table).isEmpty)
+    }
+
+    @Test func aRowWithoutAMenuHasNoOutlineToOpen() throws {
+        let list = List()
+        #expect(list.table.menu(for: try Self.rightClick(onRow: 0, in: list.table)) == nil)
+    }
+
+    @Test func anOutlineFollowsTheFillsCornersAndLeavesItsMiddleEmpty() throws {
+        let row = NSRect(x: 0, y: 0, width: 400, height: CommitCellView.height)
+        let outline = CommitRowOutlineView(aroundRow: row)
+        let image = try #require(outline.bitmapImageRepForCachingDisplay(in: outline.bounds))
+        outline.cacheDisplay(in: outline.bounds, to: image)
+        let scale = CGFloat(image.pixelsWide) / outline.bounds.width
+        func isDrawn(x: CGFloat, y: CGFloat) -> Bool {
+            (image.colorAt(x: Int(x * scale), y: Int(y * scale))?.alphaComponent ?? 0) > 0.5
+        }
+        // Along the straight part of an edge, where the line is, then where the fill goes.
+        let width = CommitRowOutlineView.lineWidth
+        #expect(isDrawn(x: outline.bounds.midX, y: width / 2))
+        #expect(!isDrawn(x: outline.bounds.midX, y: width + 1))
+        // Across a corner: a square line would be at the first point, and the curve is at the second.
+        #expect(!isDrawn(x: 1, y: 1))
+        #expect(isDrawn(x: 3, y: 3))
+        #expect(!isDrawn(x: 6, y: 6))
+    }
+
     @Test func checksOutTheBranchesOfTheBadgesThatHaveThem() {
         let list = List()
         for index in Self.badges.indices { list.controller.doubleClick(at: list.middle(ofBadge: index)) }

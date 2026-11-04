@@ -288,6 +288,10 @@ final class CommitTableView: NSTableView {
     var pointerMoved: (NSPoint?) -> Void = { _ in }
     /// Makes the menu for right-clicking a row, if it has one.
     var menuForRow: (Int) -> NSMenu? = { _ in nil }
+    /// The row that last asked for a menu, which is the one to outline if it opens.
+    private var rowOfMenu = -1
+    /// The line around the row whose menu is open.
+    private var rowOutline: CommitRowOutlineView?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -311,12 +315,31 @@ final class CommitTableView: NSTableView {
         }
     }
 
-    /// The table outlines the row while its menu is open, as long as it's the one
-    /// that returns the menu. A row without a menu gets no outline either.
+    /// The table only draws its own outline, which has square corners, when it's
+    /// the one that returns the menu. So this returns it without asking the table,
+    /// and the row gets a line of ours while the menu is open.
     override func menu(for event: NSEvent) -> NSMenu? {
-        let row = row(at: convert(event.locationInWindow, from: nil))
-        menu = row >= 0 ? menuForRow(row) : nil
-        return super.menu(for: event)
+        rowOfMenu = row(at: convert(event.locationInWindow, from: nil))
+        return rowOfMenu >= 0 ? menuForRow(rowOfMenu) : nil
+    }
+
+    /// This doesn't look for the row under the event it's given, because that
+    /// isn't always the event that asked for the menu. The line goes in the clip
+    /// view, which scrolls it along with the table, because loading history again
+    /// behind the menu would put the table's rows on top of a line in the table.
+    override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
+        super.willOpenMenu(menu, with: event)
+        rowOutline?.removeFromSuperview()
+        guard let clipView = enclosingScrollView?.contentView else { return }
+        let outline = CommitRowOutlineView(aroundRow: convert(rect(ofRow: rowOfMenu), to: clipView))
+        clipView.addSubview(outline)
+        rowOutline = outline
+    }
+
+    override func didCloseMenu(_ menu: NSMenu, with event: NSEvent?) {
+        super.didCloseMenu(menu, with: event)
+        rowOutline?.removeFromSuperview()
+        rowOutline = nil
     }
 
     override func mouseMoved(with event: NSEvent) {

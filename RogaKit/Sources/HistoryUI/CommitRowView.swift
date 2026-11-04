@@ -12,6 +12,13 @@ final class CommitRowView: NSTableRowView {
         return NSColor(white: isDark ? 0.245 : 0.91, alpha: 1)
     }
 
+    static let selectionRadius: CGFloat = 7
+
+    /// Where a row's fill goes, given where the row is.
+    static func selectionFrame(inRow row: NSRect) -> NSRect {
+        row.insetBy(dx: 6, dy: 0)
+    }
+
     init() {
         super.init(frame: .zero)
         identifier = Self.identifier
@@ -23,7 +30,42 @@ final class CommitRowView: NSTableRowView {
 
     override func drawSelection(in dirtyRect: NSRect) {
         Self.selectionColor.setFill()
-        NSBezierPath(roundedRect: bounds.insetBy(dx: 6, dy: 0), xRadius: 7, yRadius: 7).fill()
+        NSBezierPath(
+            roundedRect: Self.selectionFrame(inRow: bounds),
+            xRadius: Self.selectionRadius,
+            yRadius: Self.selectionRadius
+        ).fill()
+    }
+}
+
+/// The line around a row while its menu is open. It runs just outside where the
+/// row's fill goes, whether or not the row is selected, and shares its corners.
+/// That takes it over the rows on either side, so it's a view above the table
+/// rather than something a row draws.
+final class CommitRowOutlineView: NSView {
+    static let lineWidth: CGFloat = 2
+
+    init(aroundRow row: NSRect) {
+        let outset = -Self.lineWidth
+        super.init(frame: CommitRowView.selectionFrame(inRow: row).insetBy(dx: outset, dy: outset))
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("The outline is made in code.")
+    }
+
+    /// Lets the pointer through to the row.
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func draw(_ dirtyRect: NSRect) {
+        // A line is centered on its path, so the path runs along the middle of
+        // the line, with a radius that puts the line's inner edge on the fill's.
+        let middle = Self.lineWidth / 2
+        let radius = CommitRowView.selectionRadius + middle
+        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: middle, dy: middle), xRadius: radius, yRadius: radius)
+        path.lineWidth = Self.lineWidth
+        NSColor.controlAccentColor.setStroke()
+        path.stroke()
     }
 }
 
