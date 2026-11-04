@@ -9,14 +9,20 @@ import RepositoryEngine
 /// out, which every window shows.
 @Observable
 final class WorktreeDeletionModel {
-    /// A deletion that's waiting for someone to agree to it.
+    /// A deletion that's waiting for someone to choose how far it goes and agree to it.
     struct Pending {
-        var deletion: WorktreeDeletion
+        var choice: WorktreeDeletion.Choice
+        /// What's picked so far. This lives with the question rather than in the view,
+        /// so that a button reads it when it's pressed: a keyboard shortcut can keep
+        /// an older button's action.
+        var scope: WorktreeDeletion.Scope
         var title: String
-        /// The newest commits it loses.
+        /// The newest commits that going as far as possible loses.
         var commits: [ListedCommit]
         var repository: ListedRepository
         var list: RepositoryList
+
+        var deletion: WorktreeDeletion { choice.deletion(for: scope) }
     }
 
     /// Something git refused, what it said about that, and what that leaves.
@@ -41,20 +47,28 @@ final class WorktreeDeletionModel {
     /// The latest thing this started.
     @ObservationIgnored private(set) var running: Task<Void, Never>?
 
-    /// Deletes a worktree straight away when that loses nothing, and otherwise says
-    /// what it would lose and asks. Deleting from a remote always asks, because that
-    /// affects everyone who uses the remote.
-    func askToDelete(_ worktree: Worktree, scope: WorktreeDeletion.Scope, in repository: ListedRepository, list: RepositoryList) {
+    /// Asks how far to go when there's a branch that could go with the worktree. With
+    /// nothing to choose, it deletes the worktree straight away when that loses
+    /// nothing, and otherwise says what it would lose and asks. A worktree that git
+    /// will refuse gets git's answer.
+    func askToDelete(_ worktree: Worktree, in repository: ListedRepository, list: RepositoryList) {
         guard let session = repository.session, !repository.deletingWorktrees.contains(worktree.path) else { return }
-        let title = Self.title(of: worktree, scope: scope)
+        let title = Self.title(of: worktree)
         running = Task {
             do {
-                let deletion = try await session.prepareToDelete(worktree: worktree.path, scope: scope, limit: Self.listLimit)
-                if deletion.asksFirst {
-                    let commits = (try? await session.commits(deletion.lost)) ?? []
-                    pending = Pending(deletion: deletion, title: title, commits: commits.compactMap { $0.map(ListedCommit.init) }, repository: repository, list: list)
+                let choice = try await session.prepareToDelete(worktree: worktree.path, limit: Self.listLimit)
+                if choice.asksFirst {
+                    let commits = (try? await session.commits(choice.deletion(for: choice.widest).lost)) ?? []
+                    pending = Pending(
+                        choice: choice,
+                        scope: choice.startingScope,
+                        title: title,
+                        commits: commits.compactMap { $0.map(ListedCommit.init) },
+                        repository: repository,
+                        list: list
+                    )
                 } else {
-                    await delete(deletion, in: repository, list: list)
+                    await delete(choice.deletion(for: choice.startingScope), in: repository, list: list)
                 }
             } catch {
                 failure = Self.refusal(of: worktree.path, error: error)
@@ -81,15 +95,11 @@ final class WorktreeDeletionModel {
 
     // MARK: What the dialogs say
 
-    private static func title(of worktree: Worktree, scope: WorktreeDeletion.Scope) -> String {
+    private static func title(of worktree: Worktree) -> String {
         guard let branch = worktree.branch.map(Ref.shortName), worktree.head != nil else {
             return "Delete the worktree \((worktree.path as NSString).lastPathComponent)?"
         }
-        switch scope {
-        case .worktree: return "Delete the worktree for \(branch)?"
-        case .worktreeAndBranch: return "Delete \(branch) and its worktree?"
-        case .everything: return "Delete \(branch), its worktree and its remote branch?"
-        }
+        return "Delete the worktree for \(branch)?"
     }
 
     private static func refusal(of folder: String, error: any Error) -> Failure {
@@ -118,7 +128,7 @@ final class WorktreeDeletionModel {
             let name = deletion.remoteBranch?.shortName ?? ""
             return Failure(
                 title: "Can't delete \(name)",
-                summary: "The worktree and its branch are gone, but \(name) isn't.",
+                summary: deletion.branch == nil ? "The worktree is gone, but \(name) isn't." : "The worktree and its branch are gone, but \(name) isn't.",
                 command: deletion.remoteBranch?.arguments,
                 said: stopped.message,
                 note: "To try again, use Delete from Remote… in the refs panel."

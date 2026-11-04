@@ -46,6 +46,16 @@ public struct CommitRowContent: Hashable {
             }
         }
 
+        /// What the row's menu calls deleting this branch. One that stands for its
+        /// upstream too leaves the choice to a dialog.
+        var deleteTitle: String {
+            switch kind {
+            case .remoteBranch: "Delete from Remote…"
+            case .branch where upstream != nil: "Delete…"
+            default: "Delete Branch"
+            }
+        }
+
         /// Whether the row's menu lists the badge, which is every branch.
         var isBranch: Bool {
             switch kind {
@@ -126,12 +136,13 @@ public struct CommitRowContent: Hashable {
     }
 
     /// Every branch that points to the commit, for the row's menu: local ones
-    /// first, then remote ones from A to Z, including the upstreams that share a
-    /// badge with their branch.
+    /// first, then remote ones from A to Z. A branch and its upstream share a row,
+    /// whose dialog asks which go, except that the current branch can't go, so its
+    /// upstream gets a row of its own.
     var branches: [Badge] {
         let branches = badges.filter(\.isBranch)
         let local = branches.filter { $0.kind != .remoteBranch }
-        let upstreams = local.compactMap { badge in
+        let upstreams = local.filter { $0.kind == .currentBranch }.compactMap { badge in
             badge.upstream.map { Badge(title: Ref.shortName($0), kind: .remoteBranch, refName: $0) }
         }
         let remote = branches.filter { $0.kind == .remoteBranch } + upstreams

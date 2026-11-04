@@ -8,6 +8,7 @@ public struct RepositoryCommands: Commands {
     @FocusedValue(\.selection) private var selection
     @FocusedValue(\.repository) private var repository
     @FocusedValue(\.sidebarVisibility) private var sidebarVisibility
+    @FocusedValue(\.deleteSelectedWorktree) private var deleteSelectedWorktree
     @FocusedValue(\.sidebarScope) private var sidebarScope
     @FocusedValue(\.showsOrganizationRail) private var showsOrganizationRail
     @FocusedValue(\.refsPanelVisibility) private var refsPanelVisibility
@@ -17,6 +18,8 @@ public struct RepositoryCommands: Commands {
 
     /// The shortcut for opening a repository, which the sidebar shows too.
     static let openShortcut = KeyboardShortcut("o")
+    /// The shortcut for deleting the worktree selected in the sidebar (decision 33).
+    static let deleteWorktreeShortcut = KeyboardShortcut(.delete, modifiers: .command)
     /// The shortcut for copying the selected commit's hash, which the commit
     /// panel shows too.
     static let copyHashShortcut = KeyboardShortcut("c", modifiers: [.shift, .command])
@@ -75,6 +78,12 @@ public struct RepositoryCommands: Commands {
             }
             .keyboardShortcut(Self.openShortcut)
             .disabled(!list.isConnected)
+            Divider()
+            Button("Delete Worktree…") {
+                deleteSelectedWorktree?()
+            }
+            .keyboardShortcut(Self.deleteWorktreeShortcut)
+            .disabled(deleteSelectedWorktree == nil)
         }
         CommandGroup(after: .pasteboard) {
             Button("Copy Commit Hash") {

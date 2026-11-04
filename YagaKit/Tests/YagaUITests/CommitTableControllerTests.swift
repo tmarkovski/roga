@@ -175,17 +175,24 @@ struct CommitTableBadgeTests {
         #expect(items.map(\.isSectionHeader) == [true, false, true, false, true, false])
     }
 
-    @Test func aRowsMenuListsUpstreamsThatShareABadge() {
+    @Test func aBranchAndItsUpstreamShareARowUnlessTheBranchIsTheCurrentOne() {
         let content = CommitRowContent(shortID: "abcd1234", badges: [
             Badge(title: "main", kind: .currentBranch, refName: "refs/heads/main", upstream: "refs/remotes/origin/main"),
             Badge(title: "feature", kind: .branch, refName: "refs/heads/feature", upstream: "refs/remotes/origin/feature"),
             Badge(title: "upstream/main", kind: .remoteBranch, refName: "refs/remotes/upstream/main"),
         ])
-        #expect(content.branches.map(\.title) == ["main", "feature", "origin/feature", "origin/main", "upstream/main"])
-        #expect(content.branches.map(\.kind) == [.currentBranch, .branch, .remoteBranch, .remoteBranch, .remoteBranch])
+        #expect(content.branches.map(\.title) == ["main", "feature", "origin/main", "upstream/main"])
+        #expect(content.branches.map(\.kind) == [.currentBranch, .branch, .remoteBranch, .remoteBranch])
+        #expect(content.branches.map(\.deleteTitle) == ["Delete Branch", "Delete…", "Delete from Remote…", "Delete from Remote…"])
+        // The row for both still knows which remote branch it stands for.
+        #expect(content.branches[1].upstream == "refs/remotes/origin/feature")
         // Deleting from the remote acts on the upstream, not on the local branch.
-        #expect(content.branches[2].refName == "refs/remotes/origin/feature")
+        #expect(content.branches[2].refName == "refs/remotes/origin/main")
         #expect(content.branches[2].upstream == nil)
+    }
+
+    @Test func aBranchWithoutAnUpstreamOnTheCommitKeepsItsOwnRow() {
+        #expect(Badge(title: "feature", kind: .branch, refName: "refs/heads/feature").deleteTitle == "Delete Branch")
     }
 
     @Test func saysWhatABadgeStandsFor() {

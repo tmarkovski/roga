@@ -340,6 +340,19 @@ public actor RepositorySession {
         try await BranchDeletion.prepare(ref: name, limit: limit, in: worktree, worktrees: try await worktrees(), git: git)
     }
 
+    /// Finds out what deleting a branch, the remote branch it tracks or both would
+    /// come to, without changing anything.
+    ///
+    /// - Parameters:
+    ///   - branch: The branch's full name.
+    ///   - upstream: The full name of the remote branch it tracks.
+    ///   - limit: The most commits to list of those deleting both would lose.
+    ///   - worktree: The worktree's folder.
+    @concurrent
+    public nonisolated func prepareToDelete(branch: String, upstream: String, limit: Int, in worktree: String) async throws -> BranchAndUpstreamDeletion {
+        try await BranchAndUpstreamDeletion.prepare(branch: branch, upstream: upstream, limit: limit, in: worktree, worktrees: try await worktrees(), git: git)
+    }
+
     /// Deletes a branch. Deleting one from a remote first stops any fetch that's
     /// running, because that fetch could bring the branch's copy back.
     ///
@@ -349,23 +362,15 @@ public actor RepositorySession {
         try await deletion.run(in: worktree, git: git)
     }
 
-    /// Lists the remote branch each branch tracks, by their full names. It leaves
-    /// out a remote branch this repository no longer has a copy of.
-    @concurrent
-    public nonisolated func remoteBranches() async throws -> [String: String] {
-        try await WorktreeDeletion.remoteBranches(in: location.commonDirectory, git: git)
-    }
-
-    /// Finds out what deleting a linked worktree would come to, without changing
-    /// anything.
+    /// Finds out what each way of deleting a linked worktree would come to, without
+    /// changing anything.
     ///
     /// - Parameters:
     ///   - path: The worktree's folder.
-    ///   - scope: How much goes with it.
     ///   - limit: The most commits and ignored files to list of those it would lose.
     @concurrent
-    public nonisolated func prepareToDelete(worktree path: String, scope: WorktreeDeletion.Scope, limit: Int) async throws -> WorktreeDeletion {
-        try await WorktreeDeletion.prepare(worktree: path, scope: scope, limit: limit, in: location.commonDirectory, worktrees: try await worktrees(), git: git)
+    public nonisolated func prepareToDelete(worktree path: String, limit: Int) async throws -> WorktreeDeletion.Choice {
+        try await WorktreeDeletion.prepare(worktree: path, limit: limit, in: location.commonDirectory, worktrees: try await worktrees(), git: git)
     }
 
     /// Deletes a linked worktree, then its branch, then the branch on its remote.

@@ -113,6 +113,37 @@ public struct BranchDeletion: Sendable, Hashable {
     }
 }
 
+/// What deleting a branch, the remote branch it tracks or both would come to, when
+/// someone can choose.
+public struct BranchAndUpstreamDeletion: Sendable, Hashable {
+    /// Deleting only the branch.
+    public var branch: BranchDeletion
+    /// Deleting only the remote branch.
+    public var upstream: BranchDeletion
+    /// How many commits go when both do, which either alone usually keeps.
+    public var lostCount: Int
+    /// The newest of those commits.
+    public var lost: [ObjectID]
+
+    /// - Parameters:
+    ///   - branch: The branch's full name.
+    ///   - upstream: The full name of the remote branch it tracks.
+    ///   - limit: The most commits to list.
+    static func prepare(branch: String, upstream: String, limit: Int, in worktree: String, worktrees: [Worktree], git: Git) async throws -> BranchAndUpstreamDeletion {
+        async let branchAlone = BranchDeletion.prepare(ref: branch, limit: limit, in: worktree, worktrees: worktrees, git: git)
+        async let upstreamAlone = BranchDeletion.prepare(ref: upstream, limit: limit, in: worktree, worktrees: worktrees, git: git)
+        let lost = try await LostCommits.find(
+            from: [branch, upstream],
+            leaving: try await LostCommits.leaving([branch, upstream], in: worktree, git: git),
+            keeping: ["--all"],
+            limit: limit,
+            in: worktree,
+            git: git
+        )
+        return BranchAndUpstreamDeletion(branch: try await branchAlone, upstream: try await upstreamAlone, lostCount: lost.count, lost: lost.newest)
+    }
+}
+
 /// The commits that only some tips lead to, which go when those tips do.
 struct LostCommits {
     var count: Int
@@ -145,7 +176,11 @@ struct LostCommits {
     /// Adds the symbolic refs that point to refs that are going. One such as
     /// `origin/HEAD` goes when its branch goes, so it doesn't keep the commits.
     static func leaving(_ names: [String], in directory: String, git: Git) async throws -> [String] {
-        let refs = try await RefsLoader.load(git: git, in: directory)
-        return names + refs.refs.filter { $0.symbolicTarget.map(names.contains) ?? false }.map(\.name)
+        leaving(names, among: try await RefsLoader.load(git: git, in: directory).refs)
+    }
+
+    /// The same, for someone who has already listed the refs.
+    static func leaving(_ names: [String], among refs: [Ref]) -> [String] {
+        names + refs.filter { $0.symbolicTarget.map(names.contains) ?? false }.map(\.name)
     }
 }

@@ -1,5 +1,6 @@
 import Foundation
 import GitCore
+import SwiftUI
 import GitRunner
 
 /// Words in a dialog, where a name from git can be set in the font of a command,
@@ -42,6 +43,24 @@ struct DialogText: Equatable, ExpressibleByStringInterpolation {
         self.parts = parts
     }
 
+    /// The same words, with what's from git in the font of a command.
+    var attributed: AttributedString {
+        var attributed = AttributedString()
+        for part in parts {
+            switch part {
+            case .words(let words):
+                attributed += AttributedString(words)
+            case .code(let name):
+                // A word joiner, so that a line doesn't break at a name's hyphen and
+                // look like two words. It can still break at a slash.
+                var code = AttributedString(name.replacingOccurrences(of: "-", with: "-\u{2060}"))
+                code.font = .system(size: 12, design: .monospaced)
+                attributed += code
+            }
+        }
+        return attributed
+    }
+
     /// The same words without any styling.
     var plain: String {
         parts.map { part in
@@ -72,6 +91,23 @@ enum DialogRow: Equatable {
     case name(String)
     /// How many more there are than the rows show, as in `and 12 more`.
     case more(String)
+    /// What becomes of the rows under it, as in `3 commits stay on topic`. It's in
+    /// the color for what's lost when they go.
+    case heading(String, isLost: Bool)
+}
+
+/// A switch in a dialog, for something that's up to the user. It keeps its words
+/// while it flips, because a sheet can't change size.
+struct DialogSwitch {
+    var title: DialogText
+    var detail: DialogText
+    var isOn: Bool
+    /// The letter that flips it. A dialog has nothing to type in, so it needs no
+    /// modifier, and the tooltip says which it is.
+    var key: Character?
+    /// What the tooltip says, beside the key.
+    var help: String?
+    var flip: () -> Void
 }
 
 /// A line in a dialog's terminal block.
@@ -104,6 +140,7 @@ struct DialogButton {
 
     var title: String
     var kind: Kind
+    var isEnabled = true
     var action: () -> Void
 
     /// What every question offers beside what it's asking about.
@@ -121,8 +158,12 @@ struct DialogContent: Identifiable {
     var id: String
     var title: String
     var message: DialogText?
-    /// Gray cards, one after the other, between the message and the note.
+    /// Gray cards, one after the other, after the message.
     var cards: [[DialogRow]] = []
+    /// What's up to the user, in one card after those.
+    var switches: [DialogSwitch] = []
+    /// Gray cards about what the switches lead to, after them.
+    var cardsAfterSwitches: [[DialogRow]] = []
     /// A smaller gray line after the cards.
     var note: DialogText?
     var terminal: [TerminalLine] = []
@@ -174,6 +215,28 @@ extension DialogContent {
         var rows = commits.map { DialogRow.commit(hash: $0.hash, subject: $0.subject) }
         if total > commits.count { rows.append(.more("and \((total - commits.count).formatted()) more")) }
         return rows
+    }
+
+    /// Rows for the commits that a dialog's switches could lose, under words that say
+    /// what the switches do to them now. The rows don't come and go, because a sheet
+    /// can't change size, so it's only the words that change.
+    ///
+    /// - Parameters:
+    ///   - commits: The newest of the commits that going as far as possible loses.
+    ///   - total: How many of those there are.
+    ///   - losing: How many of them go with the switches as they are.
+    ///   - place: What keeps them when none go.
+    static func commitRows(_ commits: [ListedCommit], total: Int, losing: Int, stayingOn place: String?) -> [DialogRow] {
+        guard total > 0 else { return [] }
+        let heading: DialogRow
+        if losing == 0 {
+            heading = .heading((total == 1 ? "1 commit stays on " : "\(total.formatted()) commits stay on ") + (place ?? ""), isLost: false)
+        } else if losing < total {
+            heading = .heading("\(losing.formatted()) of these \(total.formatted()) commits can't be brought back", isLost: true)
+        } else {
+            heading = .heading(total == 1 ? "This commit can't be brought back" : "These \(total.formatted()) commits can't be brought back", isLost: true)
+        }
+        return [heading] + commitRows(commits, total: total)
     }
 }
 

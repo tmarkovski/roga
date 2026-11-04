@@ -54,6 +54,12 @@ struct DialogSheet<Extra: View>: View {
                 ForEach(Array(content.cards.enumerated()), id: \.offset) { _, rows in
                     DialogCard(rows: rows)
                 }
+                if !content.switches.isEmpty {
+                    DialogSwitchCard(switches: content.switches)
+                }
+                ForEach(Array(content.cardsAfterSwitches.enumerated()), id: \.offset) { _, rows in
+                    DialogCard(rows: rows)
+                }
                 extra
                 if let note = content.note {
                     words(note)
@@ -99,20 +105,7 @@ struct DialogSheet<Extra: View>: View {
     }
 
     private func words(_ text: DialogText) -> some View {
-        var attributed = AttributedString()
-        for part in text.parts {
-            switch part {
-            case .words(let words):
-                attributed += AttributedString(words)
-            case .code(let name):
-                // A word joiner, so that a line doesn't break at a name's hyphen and
-                // look like two words. It can still break at a slash.
-                var code = AttributedString(name.replacingOccurrences(of: "-", with: "-\u{2060}"))
-                code.font = .system(size: 12, design: .monospaced)
-                attributed += code
-            }
-        }
-        return Text(attributed)
+        Text(text.attributed)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -165,6 +158,62 @@ struct DialogCard: View {
         case .more(let text):
             Text(text)
                 .foregroundStyle(DialogColors.note)
+        case .heading(let text, let isLost):
+            Text(text)
+                .font(.system(size: 12.5, weight: isLost ? .medium : .regular))
+                .foregroundStyle(isLost ? DialogColors.danger : DialogColors.note)
+        }
+    }
+}
+
+/// A gray card of what's up to the user, with a line between each switch.
+struct DialogSwitchCard: View {
+    let switches: [DialogSwitch]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(switches.enumerated()), id: \.offset) { index, item in
+                if index > 0 { Divider() }
+                DialogSwitchRow(item: item)
+            }
+        }
+        .background(DialogColors.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
+private struct DialogSwitchRow: View {
+    let item: DialogSwitch
+
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(item.title.attributed)
+                    .fontWeight(.medium)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(item.detail.attributed)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(DialogColors.note)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            toggle
+        }
+        .padding(EdgeInsets(top: 9, leading: 14, bottom: 9, trailing: 14))
+    }
+
+    @ViewBuilder private var toggle: some View {
+        let toggle = Toggle(item.title.plain, isOn: Binding { item.isOn } set: { _ in item.flip() })
+            .labelsHidden()
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            .tint(DialogColors.ink)
+            .fixedSize()
+        if let key = item.key {
+            toggle
+                .keyboardShortcut(KeyEquivalent(key), modifiers: [])
+                .help("\(item.help ?? item.title.plain) (\(String(key).uppercased()))")
+        } else {
+            toggle
         }
     }
 }
@@ -186,12 +235,14 @@ private struct DialogActionButton: View {
     private var base: some View {
         Button(button.title, action: button.action)
             .buttonStyle(DialogButtonStyle(kind: button.kind))
+            .disabled(!button.isEnabled)
     }
 }
 
 /// The soft rectangles along the bottom of a dialog.
 private struct DialogButtonStyle: ButtonStyle {
     let kind: DialogButton.Kind
+    @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -201,7 +252,7 @@ private struct DialogButtonStyle: ButtonStyle {
             .frame(height: 28)
             .foregroundStyle(foreground)
             .background(background, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-            .opacity(configuration.isPressed ? 0.75 : 1)
+            .opacity(!isEnabled ? 0.45 : configuration.isPressed ? 0.75 : 1)
             .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
     }
 
@@ -223,14 +274,27 @@ private struct DialogButtonStyle: ButtonStyle {
 }
 
 extension View {
-    /// Shows a dialog for as long as there's one to show.
-    func dialog(_ content: DialogContent?) -> some View {
+    /// Shows a dialog for as long as there's one to show, and keeps it up to date
+    /// while it shows, for a dialog with switches.
+    func dialog(_ content: @escaping () -> DialogContent?) -> some View {
         sheet(item: Binding {
-            content
+            content()
         } set: { newValue in
-            if newValue == nil { content?.dismiss() }
-        }) { content in
-            DialogSheet(content: content)
+            if newValue == nil { content()?.dismiss() }
+        }) { shown in
+            LiveDialogSheet(content: content, shown: shown)
         }
+    }
+}
+
+/// Reads its dialog in its own body, because a sheet's item doesn't update what the
+/// sheet shows while its `id` stays the same.
+private struct LiveDialogSheet: View {
+    let content: () -> DialogContent?
+    /// The dialog as it was shown, for while the sheet closes and it's gone.
+    let shown: DialogContent
+
+    var body: some View {
+        DialogSheet(content: content() ?? shown)
     }
 }

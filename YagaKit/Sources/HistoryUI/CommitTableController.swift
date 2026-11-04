@@ -216,8 +216,7 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
 
     /// What right-clicking a row offers, under the name of each branch that points
     /// to its commit, so that it's clear which one an item acts on. That includes
-    /// branches whose badges don't fit in the row, and upstreams that share a badge
-    /// with their branch. A row without branches has no
+    /// branches whose badges don't fit in the row. A row without branches has no
     /// menu. The current branch's item is there but disabled, because git won't
     /// delete a branch that's checked out.
     func menu(forRow row: Int) -> NSMenu? {
@@ -228,7 +227,7 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
             if !entries.isEmpty { entries.append(.divider) }
             entries.append(.header(badge.title))
             entries.append(.command(
-                badge.kind == .remoteBranch ? "Delete from Remote…" : "Delete Branch",
+                badge.deleteTitle,
                 isDestructive: true,
                 isEnabled: badge.kind != .currentBranch && !source.isBusy()
             ) { [weak self] in

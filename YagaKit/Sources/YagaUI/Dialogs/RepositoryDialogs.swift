@@ -6,18 +6,20 @@ import SwiftUI
 enum RepositoryDialog: Identifiable {
     case message(DialogContent)
     case pull(PullChoice, dismiss: () -> Void)
+    case branchChoice(BranchModel.BranchChoice, dismiss: () -> Void)
 
     var id: String {
         switch self {
         case .message(let content): content.id
         case .pull: "pull"
+        case .branchChoice: "branchChoice"
         }
     }
 
     func dismiss() {
         switch self {
         case .message(let content): content.dismiss()
-        case .pull(_, let dismiss): dismiss()
+        case .pull(_, let dismiss), .branchChoice(_, let dismiss): dismiss()
         }
     }
 }
@@ -39,8 +41,22 @@ struct RepositoryDialogs: ViewModifier {
                 DialogSheet(content: content)
             case .pull(let choice, _):
                 PullChoiceSheet(asked: choice, branch: model.branch)
+            case .branchChoice(let choice, _):
+                BranchChoiceSheet(asked: choice, branch: model.branch)
             }
         }
+    }
+}
+
+/// Asks whether to delete a branch, the remote branch it tracks or both. It reads the
+/// choice in its own body, so that the switches show what's picked.
+private struct BranchChoiceSheet: View {
+    /// The question as it was asked, for while the sheet closes and it's gone.
+    let asked: BranchModel.BranchChoice
+    let branch: BranchModel
+
+    var body: some View {
+        DialogSheet(content: branch.dialog(for: branch.branchChoice ?? asked))
     }
 }
 
@@ -75,13 +91,16 @@ extension BranchModel {
         if let pendingAbort { return .message(dialog(forAborting: pendingAbort)) }
         if let forcePush { return .message(dialog(for: forcePush)) }
         if let pendingDeletion { return .message(dialog(for: pendingDeletion)) }
+        if let branchChoice {
+            return .branchChoice(branchChoice) { [weak self] in self?.branchChoice = nil }
+        }
         return nil
     }
 
     private func dialog(for failure: Failure) -> DialogContent {
-        let summary: DialogText? = failure.command == nil
+        let summary: DialogText? = failure.summary ?? (failure.command == nil
             ? nil
-            : failure.changedNothing ? "Nothing changed. What git said is below." : "What git said is below."
+            : failure.changedNothing ? "Nothing changed. What git said is below." : "What git said is below.")
         return .refusal(
             id: "failure",
             title: failure.title,
@@ -216,6 +235,55 @@ extension BranchModel {
         )
     }
 
+    /// Asks which of a branch and the remote branch it tracks should go. Everything
+    /// stays where it is while the switches flip, because a sheet can't change size.
+    func dialog(for choice: BranchChoice) -> DialogContent {
+        let cancel = { [weak self] in self?.branchChoice = nil; return () }
+        let deletion = choice.deletion
+        let commits = DialogContent.commitRows(
+            choice.commits,
+            total: deletion.lostCount,
+            losing: choice.lostCount,
+            stayingOn: choice.deletesBranch ? deletion.upstream.shortName : deletion.branch.shortName
+        )
+        // Each switch that's off leaves a line for its command.
+        var terminal = choice.deletions.map { TerminalLine.command($0.arguments) }
+        terminal += Array(repeating: .blank, count: 2 - terminal.count)
+        return DialogContent(
+            id: "branchChoice",
+            title: "Delete \(deletion.branch.shortName)?",
+            switches: [
+                DialogSwitch(
+                    title: "\(code: deletion.branch.shortName)",
+                    detail: .ofDeletingBranch(losing: deletion.branch.lostCount, losingWithItsRemoteBranch: deletion.lostCount, remoteBranch: deletion.upstream),
+                    isOn: choice.deletesBranch,
+                    key: "b",
+                    help: "Delete \(deletion.branch.shortName)"
+                ) { [weak self] in
+                    self?.branchChoice?.deletesBranch.toggle()
+                },
+                DialogSwitch(
+                    title: "\(code: deletion.upstream.shortName)",
+                    detail: .ofDeletingRemoteBranch(deletion.upstream),
+                    isOn: choice.deletesUpstream,
+                    key: "r",
+                    help: "Delete \(deletion.upstream.shortName)"
+                ) { [weak self] in
+                    self?.branchChoice?.deletesUpstream.toggle()
+                },
+            ],
+            cardsAfterSwitches: commits.isEmpty ? [] : [commits],
+            terminal: terminal,
+            buttons: [
+                .cancel(cancel),
+                .init(title: "Delete", kind: choice.isDestructive ? .destructive : .primary, isEnabled: !choice.deletions.isEmpty) { [weak self] in
+                    self?.confirmBranchChoice()
+                },
+            ],
+            dismiss: cancel
+        )
+    }
+
     /// Asks whether to rebase or merge. The command and the button follow what's
     /// picked, and remembering it adds the line that writes to the git config.
     func dialog(for choice: PullChoice) -> DialogContent {
@@ -260,9 +328,11 @@ extension WorktreeDeletionModel {
         return pending.map(dialog)
     }
 
-    /// What a deletion loses, as the vision asks of destructive operations, what
-    /// stays, and the commands, since this can't be taken back from here.
+    /// What's lost whatever anyone chooses, how far to go, what that loses, and the
+    /// commands, since this can't be taken back from here. Everything stays where it
+    /// is while the switches flip, because a sheet can't change size.
     func dialog(for pending: Pending) -> DialogContent {
+        let choice = pending.choice
         let deletion = pending.deletion
         let cancel = { [weak self] in self?.pending = nil; return () }
 
@@ -277,11 +347,6 @@ extension WorktreeDeletionModel {
             let names = deletion.ignored.joined(separator: ", ")
             facts.append(.fact("Files git ignores", names + (others > 0 ? " and \(others.formatted()) more" : "")))
         }
-        if deletion.lostCount > 0 {
-            facts.append(deletion.lostCount == 1
-                ? .fact("1 commit", "isn't on any other branch or tag")
-                : .fact("\(deletion.lostCount.formatted()) commits", "aren't on any other branch or tag"))
-        }
         // The words above the card only speak for what's certainly lost.
         let losesSomething = !facts.isEmpty
         if !deletion.submodules.isEmpty {
@@ -291,33 +356,84 @@ extension WorktreeDeletionModel {
         }
 
         var sentences: [DialogText] = []
-        if case .remote(let remote, _) = deletion.remoteBranch?.place {
-            sentences.append("This deletes the branch on \(code: remote), for everyone who uses it.")
-        }
         if deletion.hasSubmodules {
             sentences.append("Git only removes a worktree with submodules when it's forced. Nothing has looked inside them, so anything that's only there goes too.")
         }
         if losesSomething { sentences.append("These can't be brought back:") }
 
-        var notes: [DialogText] = []
-        if deletion.lostCount == 0, deletion.branch != nil {
-            notes.append("Its commits are all on other branches or tags, so none are lost.")
+        var switches: [DialogSwitch] = []
+        if let branch = choice.branch {
+            switches.append(DialogSwitch(
+                title: "Also delete \(code: branch.shortName)",
+                detail: .ofDeletingBranch(
+                    losing: choice.deletion(for: .worktreeAndBranch).lostCount,
+                    losingWithItsRemoteBranch: choice.deletion(for: .everything).lostCount,
+                    remoteBranch: choice.remoteBranch
+                ),
+                isOn: pending.scope.deletesBranch,
+                key: "b",
+                help: "Also delete \(branch.shortName)"
+            ) { [weak self] in
+                self?.pending?.scope.deletesBranch.toggle()
+            })
         }
-        if let staying = deletion.staying { notes.append("\(code: staying) stays.") }
+        if let remoteBranch = choice.remoteBranch {
+            switches.append(DialogSwitch(
+                title: "Also delete \(code: remoteBranch.shortName)",
+                detail: .ofDeletingRemoteBranch(remoteBranch),
+                isOn: pending.scope.deletesRemoteBranch,
+                key: "r",
+                help: "Also delete \(remoteBranch.shortName)"
+            ) { [weak self] in
+                self?.pending?.scope.deletesRemoteBranch.toggle()
+            })
+        }
 
-        let commits = DialogContent.commitRows(pending.commits, total: deletion.lostCount)
+        let commits = DialogContent.commitRows(
+            pending.commits,
+            total: choice.deletion(for: choice.widest).lostCount,
+            losing: deletion.lostCount,
+            stayingOn: pending.scope.deletesBranch ? choice.remoteBranch?.shortName : choice.branch?.shortName
+        )
+        // Each switch that's off leaves a line for its command.
+        var terminal = deletion.commands.map(TerminalLine.command)
+        terminal += Array(repeating: .blank, count: choice.mostCommands - terminal.count)
         return DialogContent(
             id: "worktreeDeletion",
             title: pending.title,
             message: .sentences(sentences),
-            cards: [facts, commits].filter { !$0.isEmpty },
-            note: .sentences(notes),
-            terminal: deletion.commands.map(TerminalLine.command),
+            cards: facts.isEmpty ? [] : [facts],
+            switches: switches,
+            cardsAfterSwitches: commits.isEmpty ? [] : [commits],
+            terminal: terminal,
             buttons: [
                 .cancel(cancel),
-                .init(title: deletion.hasSubmodules ? "Delete anyway" : "Delete", kind: .destructive) { [weak self] in self?.confirm() },
+                .init(title: deletion.hasSubmodules ? "Delete anyway" : "Delete", kind: deletion.asksFirst ? .destructive : .primary) { [weak self] in self?.confirm() },
             ],
             dismiss: cancel
         )
+    }
+}
+
+extension DialogText {
+    /// What a switch for deleting a branch says, which is true whatever the other
+    /// switch says.
+    ///
+    /// - Parameters:
+    ///   - losing: How many commits go if only the branch does.
+    ///   - losingWithItsRemoteBranch: How many go if its remote branch does too.
+    static func ofDeletingBranch(losing: Int, losingWithItsRemoteBranch: Int, remoteBranch: BranchDeletion?) -> DialogText {
+        if losing == 1 { return "1 commit isn't on any other branch or tag." }
+        if losing > 1 { return "\(losing.formatted()) commits aren't on any other branch or tag." }
+        if losingWithItsRemoteBranch > 0, let remoteBranch { return "Its commits are also on \(code: remoteBranch.shortName)." }
+        return "Its commits are all on other branches or tags."
+    }
+
+    /// What a switch for deleting a remote branch says.
+    static func ofDeletingRemoteBranch(_ deletion: BranchDeletion) -> DialogText {
+        if case .remote(let remote, _) = deletion.place {
+            return "This deletes the branch on \(code: remote), for everyone who uses it."
+        }
+        return "Its remote isn't configured any more, so only this repository's copy goes."
     }
 }

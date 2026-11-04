@@ -12,8 +12,6 @@ public enum RefMenu {
         /// A dim line that names what the commands under it act on.
         case header(String)
         case command(String, isDestructive: Bool = false, isEnabled: Bool = true, action: () -> Void)
-        /// A row that opens more rows beside it.
-        case submenu(String, isDestructive: Bool = false, isEnabled: Bool = true, entries: [Entry])
         case divider
     }
 
@@ -47,17 +45,6 @@ public enum RefMenu {
                     size: NSSize(width: width, height: Metrics.commandHeight)
                 )
                 menu.addItem(item)
-            case let .submenu(title, isDestructive, isEnabled, entries):
-                let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-                item.submenu = make(entries)
-                item.isEnabled = isEnabled
-                item.view = RowView(
-                    title: title,
-                    font: Metrics.commandFont,
-                    color: Colors.row(isDestructive: isDestructive, isEnabled: isEnabled),
-                    size: NSSize(width: width, height: Metrics.commandHeight)
-                )
-                menu.addItem(item)
             case .divider:
                 menu.addItem(.separator())
             }
@@ -76,9 +63,6 @@ private enum Metrics {
     /// From the menu's edge to the fill under a highlighted row.
     static let highlightInset = 6.0
     static let highlightRadius = 9.0
-    /// The arrow on a row that opens a submenu, and the room its title leaves for it.
-    static let arrowSize = NSSize(width: 5, height: 10)
-    static let arrowRoom = 16.0
     static let minimumWidth = 264.0
     /// A longer name gets cut short in its middle, where branch names differ least.
     static let maximumWidth = 480.0
@@ -89,7 +73,6 @@ private enum Metrics {
             switch entry {
             case let .header(title): textWidth(title, font: headerFont)
             case let .command(title, _, _, _): textWidth(title, font: commandFont)
-            case let .submenu(title, _, _, _): textWidth(title, font: commandFont) + arrowRoom
             case .divider: 0
             }
         }.max() ?? 0
@@ -175,31 +158,16 @@ private final class RowView: NSView {
                 yRadius: Metrics.highlightRadius
             ).fill()
         }
-        let hasArrow = enclosingMenuItem?.hasSubmenu == true
         let height = (title as NSString).size(withAttributes: attributes).height
         (title as NSString).draw(
             in: NSRect(
                 x: Metrics.textInset,
                 y: (bounds.height - height) / 2,
-                width: bounds.width - 2 * Metrics.textInset - (hasArrow ? Metrics.arrowRoom : 0),
+                width: bounds.width - 2 * Metrics.textInset,
                 height: height
             ),
             withAttributes: attributes
         )
-        if hasArrow { drawArrow() }
-    }
-
-    private func drawArrow() {
-        let tip = NSPoint(x: bounds.maxX - Metrics.textInset, y: bounds.midY)
-        let arrow = NSBezierPath()
-        arrow.move(to: NSPoint(x: tip.x - Metrics.arrowSize.width, y: tip.y + Metrics.arrowSize.height / 2))
-        arrow.line(to: tip)
-        arrow.line(to: NSPoint(x: tip.x - Metrics.arrowSize.width, y: tip.y - Metrics.arrowSize.height / 2))
-        arrow.lineWidth = 1.5
-        arrow.lineCapStyle = .round
-        arrow.lineJoinStyle = .round
-        color.setStroke()
-        arrow.stroke()
     }
 
     // A view in a menu gets the clicks that its item would have handled, including
@@ -214,12 +182,9 @@ private final class RowView: NSView {
 
     private func choose(_ event: NSEvent) {
         guard event.timestamp - openedAt > Self.openingClickDuration,
-              let item = enclosingMenuItem, item.isEnabled, !item.hasSubmenu, let menu = item.menu
+              let item = enclosingMenuItem, item.isEnabled, let menu = item.menu
         else { return }
-        // A row in a submenu closes the menu it came from too.
-        var outermost = menu
-        while let parent = outermost.supermenu { outermost = parent }
-        outermost.cancelTracking()
+        menu.cancelTracking()
         menu.performActionForItem(at: menu.index(of: item))
     }
 }

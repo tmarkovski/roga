@@ -1,6 +1,6 @@
 # 29. Dialogs that say what happens and show the command
 
-Accepted on 2026-11-04.
+Accepted on 2026-11-04. Partly superseded by [decision 33](0033-one-row-in-a-menu-and-the-choice-in-the-dialog.md), which opens a dialog for a deletion that loses nothing when there's a choice to make. The rest of this decision still holds.
 
 ## Context
 

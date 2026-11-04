@@ -57,7 +57,7 @@ struct Sidebar: View {
             }
             .frame(maxWidth: .infinity)
         }
-        .dialog(deletions.dialog)
+        .dialog { deletions.dialog }
     }
 
     /// The button for adding repositories, with the popover it opens.
@@ -100,6 +100,7 @@ struct Sidebar: View {
             .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow]) { press in
                 handle(press.key, items: items, scroller)
             }
+            .focusedValue(\.deleteSelectedWorktree, deleteSelectedWorktree(items: items))
             .onChange(of: scope) {
                 if let selection { scroller.scrollTo(selection) }
             }
@@ -133,7 +134,6 @@ struct Sidebar: View {
                 worktree: worktree,
                 uncommittedFiles: repository.uncommittedFiles[worktree.path] ?? 0,
                 hasConflicts: repository.conflictedWorktrees.contains(worktree.path),
-                hasRemoteBranch: worktree.branch.flatMap { repository.remoteBranches[$0] } != nil,
                 isDeleting: repository.deletingWorktrees.contains(worktree.path),
                 isSelected: selection == row,
                 isLast: isLast
@@ -141,8 +141,8 @@ struct Sidebar: View {
                 select(row)
             } openInNewWindow: {
                 openWindow(value: WorkspaceWindow(selection: row))
-            } delete: { scope in
-                deletions.askToDelete(worktree, scope: scope, in: repository, list: list)
+            } delete: {
+                deletions.askToDelete(worktree, in: repository, list: list)
             }
             .id(row)
         case .hiddenWorktrees(let repository, let title, let uncommittedFiles, let hasConflicts):
@@ -161,6 +161,17 @@ struct Sidebar: View {
     /// The up and down arrows move between the worktrees showing. The right and
     /// left arrows show and hide the linked worktrees of the selected one's
     /// repository.
+    /// What asks to delete the selected row's worktree, as its menu does, for the menu
+    /// bar's command. A main worktree has no such row, because git won't remove it.
+    private func deleteSelectedWorktree(items: [SidebarItem]) -> (() -> Void)? {
+        for case .worktree(let repository, let worktree, _) in items
+        where WorktreeSelection(repository: repository.path, worktree: worktree.path) == selection
+            && !repository.deletingWorktrees.contains(worktree.path) {
+            return { deletions.askToDelete(worktree, in: repository, list: list) }
+        }
+        return nil
+    }
+
     private func handle(_ key: KeyEquivalent, items: [SidebarItem], _ scroller: ScrollViewProxy) -> KeyPress.Result {
         switch key {
         case .upArrow, .downArrow:
@@ -526,14 +537,12 @@ private struct WorktreeRow: View {
     let worktree: Worktree
     let uncommittedFiles: Int
     let hasConflicts: Bool
-    /// Whether its branch tracks a remote branch, which can be deleted with it.
-    let hasRemoteBranch: Bool
     let isDeleting: Bool
     let isSelected: Bool
     let isLast: Bool
     let select: () -> Void
     let openInNewWindow: () -> Void
-    let delete: (WorktreeDeletion.Scope) -> Void
+    let delete: () -> Void
 
     var body: some View {
         SidebarRow(isSelected: isSelected, isEnabled: !worktree.isPrunable && !isDeleting, action: select) {
@@ -569,8 +578,7 @@ private struct WorktreeRow: View {
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction(.default, select)
         .accessibilityActions {
-            refMenuActions(placeEntries)
-            deleteActions
+            refMenuActions(menu)
         }
     }
 
@@ -591,25 +599,12 @@ private struct WorktreeRow: View {
         worktree.branch != nil && worktree.head != nil
     }
 
+    /// Its one deleting row. With a branch that could go too, the dialog asks how far
+    /// to go, which the ellipsis says. Without one, it may not ask at all.
     private var menu: [RefMenu.Entry] {
-        guard hasBranch else {
-            return placeEntries + [
-                .divider,
-                .command("Delete Worktree", isDestructive: true, isEnabled: !isDeleting) { delete(.worktree) },
-            ]
-        }
-        var deleting: [RefMenu.Entry] = [
-            // The row's title can be cut short, so this says which branch.
-            .header(worktree.title),
-            .command("Worktree", isDestructive: true) { delete(.worktree) },
-            .command("Worktree and Branch", isDestructive: true) { delete(.worktreeAndBranch) },
-        ]
-        if hasRemoteBranch {
-            deleting.append(.command("Worktree, Branch and Remote Branch…", isDestructive: true) { delete(.everything) })
-        }
-        return placeEntries + [
+        placeEntries + [
             .divider,
-            .submenu("Delete", isDestructive: true, isEnabled: !isDeleting, entries: deleting),
+            .command(hasBranch ? "Delete…" : "Delete Worktree", isDestructive: true, isEnabled: !isDeleting, action: delete),
         ]
     }
 
@@ -620,20 +615,6 @@ private struct WorktreeRow: View {
             .command("Show in Finder") { reveal(worktree.path) },
             .command("Open in Terminal") { openInTerminal(worktree.path) },
         ]
-    }
-
-    /// The menu's deleting commands without the submenu, which assistive apps list
-    /// as actions of their own.
-    @ViewBuilder private var deleteActions: some View {
-        if !isDeleting {
-            Button("Delete Worktree") { delete(.worktree) }
-            if hasBranch {
-                Button("Delete Worktree and Branch") { delete(.worktreeAndBranch) }
-                if hasRemoteBranch {
-                    Button("Delete Worktree, Branch and Remote Branch") { delete(.everything) }
-                }
-            }
-        }
     }
 }
 
@@ -707,6 +688,9 @@ extension NavigationSplitViewVisibility {
 extension FocusedValues {
     /// Whether the focused window shows its sidebar, for the View menu.
     @Entry var sidebarVisibility: Binding<NavigationSplitViewVisibility>?
+    /// What asks to delete the worktree selected in the sidebar, while the keyboard is
+    /// in the sidebar. Anywhere else Command-Delete has to stay what it is in text.
+    @Entry var deleteSelectedWorktree: (() -> Void)?
 }
 
 /// How many files a row's worktrees have uncommitted, in orange, or in red with a

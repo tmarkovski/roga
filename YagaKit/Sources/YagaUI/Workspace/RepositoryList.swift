@@ -338,7 +338,6 @@ public final class RepositoryList {
                 await takeTurnToLook()
                 repository.needsAnotherLook = false
                 await updateOwners(of: repository, session: session)
-                await updateRemoteBranches(of: repository, session: session)
                 await countUncommittedFiles(in: repository, session: session)
                 finishTurnToLook()
             } while repository.needsAnotherLook
@@ -365,18 +364,6 @@ public final class RepositoryList {
         } else {
             waitingToLook.removeFirst().resume()
         }
-    }
-
-    /// Reads which remote branches the branches of its linked worktrees track, for
-    /// their menus, which can't wait for git. It keeps what it knew when git can't
-    /// say, and deleting reads it again.
-    private func updateRemoteBranches(of repository: ListedRepository, session: RepositorySession) async {
-        guard repository.worktrees.contains(where: { !$0.isMain && $0.branch != nil }) else {
-            if !repository.remoteBranches.isEmpty { repository.remoteBranches = [:] }
-            return
-        }
-        guard let branches = try? await session.remoteBranches() else { return }
-        if branches != repository.remoteBranches { repository.remoteBranches = branches }
     }
 
     /// Counts the uncommitted files of each of a repository's worktrees, one
@@ -498,9 +485,6 @@ public final class ListedRepository: Identifiable {
     fileprivate(set) var uncommittedFiles: [String: Int] = [:]
     /// The folders of the worktrees that have conflicts.
     fileprivate(set) var conflictedWorktrees: Set<String> = []
-    /// The remote branch each branch tracks, by their full names, once the
-    /// repository has a linked worktree on a branch.
-    fileprivate(set) var remoteBranches: [String: String] = [:]
     /// The linked worktrees being deleted, by their folders.
     fileprivate(set) var deletingWorktrees: Set<String> = []
     /// How many deletions have finished, for windows to look at the repository's

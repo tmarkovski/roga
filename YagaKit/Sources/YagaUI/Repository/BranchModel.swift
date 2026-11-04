@@ -54,6 +54,8 @@ final class BranchModel {
         var command: [String]? = nil
         /// Whether the dialog can say that nothing changed.
         var changedNothing = false
+        /// What the dialog says about how far it got, in place of that.
+        var summary: DialogText? = nil
 
         /// Says what went wrong with something git was asked to run.
         init(title: String, error: any Error, changedNothing: Bool = false) {
@@ -93,6 +95,40 @@ final class BranchModel {
         var deletion: BranchDeletion
         /// The newest commits it loses.
         var commits: [ListedCommit]
+    }
+
+    /// Deleting a branch, the remote branch it tracks or both, while someone chooses.
+    struct BranchChoice: Equatable {
+        var deletion: BranchAndUpstreamDeletion
+        /// What's picked so far, which starts by staying off the remote. This lives
+        /// with the question rather than in the view, so that a button reads it when
+        /// it's pressed.
+        var deletesBranch = true
+        var deletesUpstream = false
+        /// The newest commits that deleting both loses.
+        var commits: [ListedCommit]
+
+        /// What's picked, with the remote last, because it's shared.
+        var deletions: [BranchDeletion] {
+            (deletesBranch ? [deletion.branch] : []) + (deletesUpstream ? [deletion.upstream] : [])
+        }
+
+        /// How many commits go with what's picked.
+        var lostCount: Int {
+            switch (deletesBranch, deletesUpstream) {
+            case (true, true): deletion.lostCount
+            case (true, false): deletion.branch.lostCount
+            case (false, true): deletion.upstream.lostCount
+            case (false, false): 0
+            }
+        }
+
+        /// Whether what's picked can't be brought back, or reaches a remote.
+        var isDestructive: Bool {
+            if lostCount > 0 { return true }
+            if deletesUpstream, case .remote = deletion.upstream.place { return true }
+            return false
+        }
     }
 
     /// The most commits to list before a force push or a deletion.
@@ -138,6 +174,8 @@ final class BranchModel {
     var forcePush: ForcePush?
     /// A deletion that's waiting for someone to agree to it.
     var pendingDeletion: PendingDeletion?
+    /// A deletion that's waiting for someone to choose what goes.
+    var branchChoice: BranchChoice?
     /// Whether the popover for a new branch shows.
     var isCreatingBranch = false
 
@@ -357,6 +395,53 @@ final class BranchModel {
                 failure = Failure(title: "Can't delete \(Ref.shortName(name))", error: error, changedNothing: true)
             }
             preparingDeletion = nil
+        }
+    }
+
+    /// Asks whether to delete a branch, the remote branch it tracks or both. git
+    /// refuses a branch that a worktree has checked out, so only the remote branch
+    /// is left to ask about then.
+    ///
+    /// - Parameters:
+    ///   - branch: The branch's full name.
+    ///   - upstream: The full name of the remote branch it tracks.
+    func askToDelete(branch: String, upstream: String) {
+        guard !isBusy else { return }
+        preparingDeletion = Task {
+            do {
+                let deletion = try await session.prepareToDelete(branch: branch, upstream: upstream, limit: Self.overwrittenLimit, in: worktree)
+                if deletion.branch.isCheckedOut {
+                    pendingDeletion = PendingDeletion(deletion: deletion.upstream, commits: await listed(deletion.upstream.lost))
+                } else {
+                    branchChoice = BranchChoice(deletion: deletion, commits: await listed(deletion.lost))
+                }
+            } catch {
+                failure = Failure(title: "Can't delete \(Ref.shortName(branch))", error: error, changedNothing: true)
+            }
+            preparingDeletion = nil
+        }
+    }
+
+    /// Deletes what was picked. The remote goes last, so that git refusing the branch
+    /// stops everything before anyone else sees a change.
+    func confirmBranchChoice() {
+        guard let choice = branchChoice, let first = choice.deletions.first else { return }
+        branchChoice = nil
+        let second = choice.deletions.dropFirst().first
+        var action: Action?
+        if choice.deletesUpstream, case .remote = choice.deletion.upstream.place { action = .deletingFromRemote }
+        run(action, failure: "Can't delete \(first.shortName)", changesNothing: true) { [session, worktree, weak self] in
+            try await session.delete(first, in: worktree)
+            guard let second else { return "Deleted \(Self.shortened(first.shortName))" }
+            do {
+                try await session.delete(second, in: worktree)
+            } catch {
+                var failure = Failure(title: "Can't delete \(second.shortName)", error: error)
+                failure.summary = "\(first.shortName) is gone, but \(second.shortName) isn't. What git said is below."
+                self?.failure = failure
+                return nil
+            }
+            return "Deleted \(Self.shortened(first.shortName)) and its remote branch"
         }
     }
 

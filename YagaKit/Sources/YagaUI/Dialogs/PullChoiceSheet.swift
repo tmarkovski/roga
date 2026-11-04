@@ -37,29 +37,15 @@ struct PullChoiceSheet: View {
                 card(.merge, title: "Merge", result: .merge, key: .rightArrow)
             }
             .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Remember for this repository")
-                        .fontWeight(.medium)
-                    Text("Sets pull.rebase in its git config, so yaga won't ask again.")
-                        .font(.system(size: 12.5))
-                        .foregroundStyle(DialogColors.note)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                Toggle("Remember for this repository", isOn: Binding {
-                    choice.remembers
-                } set: {
-                    branch.pullChoice?.remembers = $0
-                })
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-                    .controlSize(.small)
-                    .tint(DialogColors.ink)
-                    .fixedSize()
-            }
-            .padding(EdgeInsets(top: 9, leading: 14, bottom: 9, trailing: 14))
-            .background(DialogColors.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            DialogSwitchCard(switches: [
+                DialogSwitch(
+                    title: "Remember for this repository",
+                    detail: "Sets pull.rebase in its git config, so yaga won't ask again.",
+                    isOn: choice.remembers
+                ) {
+                    branch.pullChoice?.remembers.toggle()
+                },
+            ])
         }
     }
 

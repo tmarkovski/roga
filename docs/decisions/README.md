@@ -34,7 +34,8 @@ Records aren't rewritten when a decision changes. Instead, a new record explains
 | [26](0026-a-fetch-shows-only-its-words.md) | A fetch shows only its words | Accepted |
 | [27](0027-give-the-graph-and-branches-monokais-colors.md) | Give the graph and the branches Monokai's colors | Accepted |
 | [28](0028-show-a-worktree-thats-stuck-partway.md) | Show a worktree that's stuck partway through | Accepted |
-| [29](0029-dialogs-that-say-what-happens-and-show-the-command.md) | Dialogs that say what happens and show the command | Accepted |
+| [29](0029-dialogs-that-say-what-happens-and-show-the-command.md) | Dialogs that say what happens and show the command | Partly superseded by [33](0033-one-row-in-a-menu-and-the-choice-in-the-dialog.md) |
 | [30](0030-stage-and-commit-beside-history.md) | Stage and commit in the panels under history | Accepted |
 | [31](0031-chevrons-for-what-folds-and-lines-down-a-tree.md) | Chevrons for what folds, and lines down a tree of files | Accepted |
 | [32](0032-ask-before-forcing-a-worktree-with-submodules.md) | Ask before forcing a worktree with submodules | Accepted |
+| [33](0033-one-row-in-a-menu-and-the-choice-in-the-dialog.md) | Put one row in a menu, and the choice in the dialog | Accepted |

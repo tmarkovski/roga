@@ -55,7 +55,7 @@ struct WorktreeDeletionTests {
     }
 
     func prepare(_ scope: WorktreeDeletion.Scope, in clone: Clone, limit: Int = 5) async throws -> WorktreeDeletion {
-        try await clone.session.prepareToDelete(worktree: clone.linked, scope: scope, limit: limit)
+        try await clone.session.prepareToDelete(worktree: clone.linked, limit: limit).deletion(for: scope)
     }
 
     // MARK: The worktree alone
@@ -66,7 +66,6 @@ struct WorktreeDeletionTests {
         #expect(!deletion.asksFirst)
         #expect(deletion.branch == nil)
         #expect(deletion.remoteBranch == nil)
-        #expect(deletion.staying == "topic")
         #expect(deletion.removeArguments == ["worktree", "remove", clone.linked])
 
         try await clone.session.delete(deletion)
@@ -156,7 +155,6 @@ struct WorktreeDeletionTests {
 
         let deletion = try await prepare(.worktree, in: clone)
         #expect(deletion.branch == nil)
-        #expect(deletion.staying == nil)
         #expect(deletion.lostCount == 2)
         #expect(deletion.lost.map(\.hex) == [second, first])
         #expect(deletion.asksFirst)
@@ -226,7 +224,7 @@ struct WorktreeDeletionTests {
         try await addSubmodule(in: clone)
         let other = clone.folder + "/other"
         try await runGit("worktree", "add", "--quiet", "--detach", other, "topic", in: clone.work)
-        let deletion = try await clone.session.prepareToDelete(worktree: other, scope: .worktree, limit: 5)
+        let deletion = try await clone.session.prepareToDelete(worktree: other, limit: 5).deletion(for: .worktree)
         #expect(!deletion.hasSubmodules)
         #expect(deletion.submodules.isEmpty)
         #expect(!deletion.asksFirst)
@@ -311,7 +309,6 @@ struct WorktreeDeletionTests {
         let deletion = try await prepare(.worktreeAndBranch, in: clone)
         #expect(deletion.lostCount == 0)
         #expect(deletion.remoteBranch == nil)
-        #expect(deletion.staying == "origin/topic")
         #expect(!deletion.asksFirst)
 
         try await clone.session.delete(deletion)
@@ -323,7 +320,7 @@ struct WorktreeDeletionTests {
     @Test func aBranchWithoutCommitsHasNothingToDelete() async throws {
         let clone = try await clone()
         try await runGit("worktree", "add", "--quiet", "--orphan", "-b", "empty", clone.folder + "/empty", in: clone.work)
-        let deletion = try await clone.session.prepareToDelete(worktree: clone.folder + "/empty", scope: .worktreeAndBranch, limit: 5)
+        let deletion = try await clone.session.prepareToDelete(worktree: clone.folder + "/empty", limit: 5).deletion(for: .worktreeAndBranch)
         #expect(deletion.branch == nil)
         #expect(deletion.lostCount == 0)
 
@@ -339,7 +336,6 @@ struct WorktreeDeletionTests {
         try await push(in: clone)
         let deletion = try await prepare(.everything, in: clone)
         #expect(deletion.asksFirst)
-        #expect(deletion.staying == nil)
         #expect(deletion.commands == [
             ["worktree", "remove", clone.linked],
             ["branch", "-D", "topic"],
@@ -417,12 +413,110 @@ struct WorktreeDeletionTests {
         #expect(try await !exists("refs/heads/topic", in: clone.work))
     }
 
-    @Test func listsTheRemoteBranchesEachBranchTracks() async throws {
+    // MARK: Choosing
+
+    @Test func knowsTheRemoteBranchItsBranchTracks() async throws {
+        let clone = try await clone()
+        var choice = try await clone.session.prepareToDelete(worktree: clone.linked, limit: 5)
+        #expect(choice.branch?.ref == "refs/heads/topic")
+        #expect(choice.remoteBranch == nil)
+        #expect(choice.widest == .worktreeAndBranch)
+
+        try await push(in: clone)
+        choice = try await clone.session.prepareToDelete(worktree: clone.linked, limit: 5)
+        #expect(choice.remoteBranch?.ref == "refs/remotes/origin/topic")
+        #expect(choice.widest == .everything)
+
+        try await runGit("update-ref", "-d", "refs/remotes/origin/topic", in: clone.work)
+        choice = try await clone.session.prepareToDelete(worktree: clone.linked, limit: 5)
+        #expect(choice.remoteBranch == nil)
+    }
+
+    @Test func startsWithTheBranchWhenThatLosesNothing() async throws {
+        let clone = try await clone()
+        let choice = try await clone.session.prepareToDelete(worktree: clone.linked, limit: 5)
+        #expect(choice.startingScope == .worktreeAndBranch)
+        #expect(choice.asksFirst)
+        #expect(!choice.deletion(for: choice.startingScope).asksFirst)
+    }
+
+    @Test func startsWithoutTheBranchWhenThatLosesCommits() async throws {
+        let clone = try await clone()
+        try await commit("Only here", in: clone.linked)
+        let choice = try await clone.session.prepareToDelete(worktree: clone.linked, limit: 5)
+        #expect(choice.startingScope == .worktree)
+        #expect(choice.asksFirst)
+        #expect(!choice.deletion(for: .worktree).asksFirst)
+        #expect(choice.deletion(for: .worktreeAndBranch).asksFirst)
+    }
+
+    @Test func neverStartsByReachingARemote() async throws {
+        let clone = try await clone()
+        try await commit("Pushed", in: clone.linked)
+        try await push(in: clone)
+        let choice = try await clone.session.prepareToDelete(worktree: clone.linked, limit: 5)
+        #expect(choice.startingScope == .worktreeAndBranch)
+        #expect(choice.mostCommands == 3)
+    }
+
+    @Test func aWorktreeWithNoBranchHasNothingToChooseAndAsksOnlyAboutWhatItLoses() async throws {
+        let clone = try await clone()
+        try await runGit("switch", "--quiet", "--detach", in: clone.linked)
+        var choice = try await clone.session.prepareToDelete(worktree: clone.linked, limit: 5)
+        #expect(choice.branch == nil)
+        #expect(choice.widest == .worktree)
+        #expect(!choice.asksFirst)
+
+        try await commit("Detached", in: clone.linked)
+        choice = try await clone.session.prepareToDelete(worktree: clone.linked, limit: 5)
+        #expect(choice.asksFirst)
+        #expect(choice.deletion(for: .everything) == choice.deletion(for: .worktree))
+    }
+
+    @Test func aWorktreeGitWillRefuseAsksNothing() async throws {
+        let clone = try await clone()
+        try await runGit("worktree", "lock", clone.linked, in: clone.work)
+        let choice = try await clone.session.prepareToDelete(worktree: clone.linked, limit: 5)
+        #expect(!choice.asksFirst)
+    }
+
+    @Test func theWidestScopeLosesEverythingTheOthersDo() async throws {
+        let clone = try await clone()
+        let pushed = try await commit("Pushed", in: clone.linked)
+        try await push(in: clone)
+        let local = try await commit("Only here", in: clone.linked)
+        let choice = try await clone.session.prepareToDelete(worktree: clone.linked, limit: 5)
+        #expect(choice.deletion(for: .worktree).lostCount == 0)
+        #expect(choice.deletion(for: .worktreeAndBranch).lost.map(\.hex) == [local])
+        #expect(choice.deletion(for: WorktreeDeletion.Scope(deletesRemoteBranch: true)).lostCount == 0)
+        #expect(choice.deletion(for: choice.widest).lost.map(\.hex) == [local, pushed])
+    }
+
+    @Test func deletesTheRemoteBranchAndKeepsItsOwn() async throws {
         let clone = try await clone()
         try await push(in: clone)
-        let branches = try await clone.session.remoteBranches()
-        #expect(branches["refs/heads/topic"] == "refs/remotes/origin/topic")
-        #expect(branches["refs/heads/main"] == "refs/remotes/origin/main")
+        let choice = try await clone.session.prepareToDelete(worktree: clone.linked, limit: 5)
+        let deletion = choice.deletion(for: WorktreeDeletion.Scope(deletesRemoteBranch: true))
+        #expect(deletion.asksFirst)
+        #expect(deletion.commands == [
+            ["worktree", "remove", clone.linked],
+            ["push", "--delete", "origin", "refs/heads/topic"],
+        ])
+
+        try await clone.session.delete(deletion)
+        #expect(!folderExists(clone))
+        #expect(try await exists("refs/heads/topic", in: clone.work))
+        #expect(try await !exists("refs/heads/topic", in: clone.remote))
+    }
+
+    @Test func countsWhatOnlyTheRemoteBranchHasWhenItGoesAlone() async throws {
+        let clone = try await clone()
+        let onlyThere = try await commit("Only on the remote", in: clone.linked)
+        try await push(in: clone)
+        try await runGit("reset", "--quiet", "--hard", "HEAD~1", in: clone.linked)
+        let choice = try await clone.session.prepareToDelete(worktree: clone.linked, limit: 5)
+        let deletion = choice.deletion(for: WorktreeDeletion.Scope(deletesRemoteBranch: true))
+        #expect(deletion.lost.map(\.hex) == [onlyThere])
     }
 
     // MARK: When git refuses
@@ -447,7 +541,7 @@ struct WorktreeDeletionTests {
 
     @Test func gitRefusesTheMainWorktree() async throws {
         let clone = try await clone()
-        let deletion = try await clone.session.prepareToDelete(worktree: clone.work, scope: .worktree, limit: 5)
+        let deletion = try await clone.session.prepareToDelete(worktree: clone.work, limit: 5).deletion(for: .worktree)
         #expect(deletion.isRefused)
         await #expect(throws: GitError.self) {
             try await clone.session.delete(deletion)

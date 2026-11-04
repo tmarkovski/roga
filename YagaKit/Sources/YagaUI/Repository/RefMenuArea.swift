@@ -46,8 +46,7 @@ final class RefMenuAreaView: NSView {
     private static let gapUnderButton = 4.0
 }
 
-/// A menu's commands as actions for assistive apps. A submenu's rows are left out,
-/// since their titles can need the submenu's to make sense.
+/// A menu's commands as actions for assistive apps.
 @ViewBuilder func refMenuActions(_ entries: [RefMenu.Entry]) -> some View {
     ForEach(entries.indices, id: \.self) { index in
         if case let .command(title, _, isEnabled, action) = entries[index] {
