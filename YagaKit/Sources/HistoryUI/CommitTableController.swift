@@ -1,5 +1,6 @@
 import AppKit
 import CommitGraph
+import MenuUI
 
 /// The commit list: a view-based `NSTableView` whose rows have a fixed
 /// height and draw themselves (decision 7).
@@ -230,22 +231,19 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
     func menu(forRow row: Int) -> NSMenu? {
         let branches = source.content(row).branches
         guard !branches.isEmpty else { return nil }
-        let menu = NSMenu()
-        menu.autoenablesItems = false
+        var entries: [RefMenu.Entry] = []
         for badge in branches {
-            menu.addItem(.sectionHeader(title: badge.title))
-            let title = badge.kind == .remoteBranch ? "Delete from Remote…" : "Delete Branch"
-            let item = NSMenuItem(title: title, action: #selector(deleteBranch), keyEquivalent: "")
-            item.target = self
-            item.representedObject = badge
-            item.isEnabled = badge.kind != .currentBranch && !source.isBusy()
-            menu.addItem(item)
+            if !entries.isEmpty { entries.append(.divider) }
+            entries.append(.header(badge.title))
+            entries.append(.command(
+                badge.kind == .remoteBranch ? "Delete from Remote…" : "Delete Branch",
+                isDestructive: true,
+                isEnabled: badge.kind != .currentBranch && !source.isBusy()
+            ) { [weak self] in
+                self?.source.deleteBranch(badge)
+            })
         }
-        return menu
-    }
-
-    @objc private func deleteBranch(_ item: NSMenuItem) {
-        if let badge = item.representedObject as? CommitRowContent.Badge { source.deleteBranch(badge) }
+        return RefMenu.make(entries)
     }
 
     @objc private func visibleRowsMayHaveChanged(_ notification: Notification) {

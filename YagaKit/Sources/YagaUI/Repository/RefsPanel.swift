@@ -1,5 +1,6 @@
 import AppKit
 import GitCore
+import MenuUI
 import SwiftUI
 
 /// The panel on the right of the window, which lists the repository's branches,
@@ -194,7 +195,7 @@ struct RefsPanel: View {
             imageColor: isCurrent ? .green : .secondary,
             title: branch.shortName,
             subtitle: branch.subtitle(isCurrent: isCurrent),
-            menuTitle: branch.shortName,
+            menu: branchMenu(branch, isCurrent: isCurrent, otherWorktree: otherWorktree),
             isSelected: isSelected(branch.name, branch.tip),
             hasCommands: otherWorktree != nil,
             action: { select(branch.name, branch.tip) }
@@ -213,25 +214,46 @@ struct RefsPanel: View {
                     .buttonStyle(.icon(size: 24))
                     .help("Show Worktree")
             }
-        } menu: {
-            if let otherWorktree {
-                Button("Show Worktree") { showWorktree(otherWorktree, branch.tip) }
-                Divider()
-            }
-            Button("Copy Name") { copy(branch.shortName) }
-            Divider()
-            // git won't delete a branch that a worktree has checked out.
-            Button("Delete Branch", role: .destructive) { model.branch.askToDelete(ref: branch.name) }
-                .disabled(isCurrent || branch.worktree != nil || model.branch.isBusy)
         }
         .id(branch.name)
+    }
+
+    private func branchMenu(_ branch: BranchDetails, isCurrent: Bool, otherWorktree: String?) -> [RefMenu.Entry] {
+        var entries: [RefMenu.Entry] = [.header(branch.shortName)]
+        if let otherWorktree {
+            entries += [
+                .command("Show Worktree") { showWorktree(otherWorktree, branch.tip) },
+                .divider,
+            ]
+        }
+        entries += [
+            .command("Copy Name") { copy(branch.shortName) },
+            .divider,
+            // git won't delete a branch that a worktree has checked out.
+            .command(
+                "Delete Branch",
+                isDestructive: true,
+                isEnabled: !isCurrent && branch.worktree == nil && !model.branch.isBusy
+            ) {
+                model.branch.askToDelete(ref: branch.name)
+            },
+        ]
+        return entries
     }
 
     private func remoteBranchRow(_ branch: RemoteBranchDetails) -> some View {
         RefRow(
             systemImage: "arrow.triangle.branch",
             title: branch.shortName,
-            menuTitle: Ref.shortName(branch.name),
+            menu: [
+                // Its full name, because the row's title leaves out the remote.
+                .header(Ref.shortName(branch.name)),
+                .command("Copy Name") { copy(Ref.shortName(branch.name)) },
+                .divider,
+                .command("Delete from Remote…", isDestructive: true, isEnabled: !model.branch.isBusy) {
+                    model.branch.askToDelete(ref: branch.name)
+                },
+            ],
             isSelected: isSelected(branch.name, branch.tip),
             isIndented: true,
             action: { select(branch.name, branch.tip) }
@@ -242,11 +264,6 @@ struct RefsPanel: View {
                     .foregroundStyle(.secondary)
             }
         } commands: {
-        } menu: {
-            Button("Copy Name") { copy(Ref.shortName(branch.name)) }
-            Divider()
-            Button("Delete from Remote…", role: .destructive) { model.branch.askToDelete(ref: branch.name) }
-                .disabled(model.branch.isBusy)
         }
         .id(branch.name)
     }
@@ -256,13 +273,14 @@ struct RefsPanel: View {
             systemImage: "tag",
             title: tag.shortName,
             subtitle: tag.subject ?? "No commit to show",
-            menuTitle: tag.shortName,
+            menu: [
+                .header(tag.shortName),
+                .command("Copy Name") { copy(tag.shortName) },
+            ],
             isSelected: tag.commit.map { isSelected(tag.name, $0) } ?? false,
             action: tag.commit.map { commit in { select(tag.name, commit) } }
         ) {
         } commands: {
-        } menu: {
-            Button("Copy Name") { copy(tag.shortName) }
         }
         .id(tag.name)
     }
@@ -455,15 +473,14 @@ private struct RefSectionHeader: View {
 /// clicking it does something, and a little darker while it's selected. A label
 /// beside its first line gives way to its commands while the pointer is over
 /// it, and its second line has the whole width.
-private struct RefRow<Trailing: View, Commands: View, MenuItems: View>: View {
+private struct RefRow<Trailing: View, Commands: View>: View {
     let systemImage: String
     var imageColor = Color.secondary
     let title: String
     var subtitle: String?
-    /// What the top of the row's menu calls the ref, so that it's clear what the
-    /// menu acts on. Its full name, because a remote branch's title leaves out
-    /// the remote.
-    var menuTitle: String?
+    /// What right-clicking the row offers. Its header names the ref, so that it's
+    /// clear what the menu acts on. A row with nothing to offer has no menu.
+    var menu: [RefMenu.Entry] = []
     /// Where a title that doesn't fit gives way. A ref's name usually differs
     /// at its end, so that stays, and a sentence reads from its start.
     var titleTruncation = Text.TruncationMode.middle
@@ -473,7 +490,6 @@ private struct RefRow<Trailing: View, Commands: View, MenuItems: View>: View {
     var action: (() -> Void)?
     @ViewBuilder var trailing: Trailing
     @ViewBuilder var commands: Commands
-    @ViewBuilder var menu: MenuItems
     @State private var isHovering = false
 
     var body: some View {
@@ -519,32 +535,64 @@ private struct RefRow<Trailing: View, Commands: View, MenuItems: View>: View {
         }
         .padding(.horizontal, 6)
         .contentShape(Rectangle())
+        .overlay {
+            if !menu.isEmpty { RefMenuArea(entries: menu) }
+        }
         .onTapGesture { action?() }
         .onHover { isHovering = $0 }
         .help(title)
-        .contextMenu {
-            if let menuTitle {
-                Section(menuTitle) { menu }
-            } else {
-                menu
-            }
-        }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
         .accessibilityValue(subtitle ?? "")
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : action == nil ? [] : .isButton)
         .accessibilityAction(.default) { action?() }
-        .accessibilityActions { menu }
+        .accessibilityActions {
+            ForEach(menu.indices, id: \.self) { index in
+                if case let .command(title, _, isEnabled, action) = menu[index] {
+                    Button(title, action: action)
+                        .disabled(!isEnabled)
+                }
+            }
+        }
     }
 }
 
-extension RefRow where Trailing == EmptyView, Commands == EmptyView, MenuItems == EmptyView {
+extension RefRow where Trailing == EmptyView, Commands == EmptyView {
     /// A row with nothing but its text, such as a stash's.
     init(systemImage: String, title: String, subtitle: String, titleTruncation: Text.TruncationMode = .middle) {
         self.init(systemImage: systemImage, title: title, subtitle: subtitle, titleTruncation: titleTruncation) {
         } commands: {
-        } menu: {
         }
+    }
+}
+
+/// Opens a row's menu for a right-click or a Control-click, and lets every other
+/// event through to the row. SwiftUI's own context menu can't show `RefMenu`'s
+/// rows, since it builds its menu's items itself.
+private struct RefMenuArea: NSViewRepresentable {
+    let entries: [RefMenu.Entry]
+
+    func makeNSView(context: Context) -> RefMenuAreaView {
+        RefMenuAreaView()
+    }
+
+    func updateNSView(_ view: RefMenuAreaView, context: Context) {
+        view.entries = entries
+    }
+}
+
+private final class RefMenuAreaView: NSView {
+    var entries: [RefMenu.Entry] = []
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard let event = NSApp.currentEvent else { return nil }
+        let opensMenu = event.type == .rightMouseDown
+            || (event.type == .leftMouseDown && event.modifierFlags.contains(.control))
+        return opensMenu ? super.hitTest(point) : nil
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        RefMenu.make(entries)
     }
 }
 

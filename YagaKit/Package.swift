@@ -44,8 +44,12 @@ let package = Package(
             swiftSettings: settings
         ),
         .target(
+            name: "MenuUI",
+            swiftSettings: viewSettings
+        ),
+        .target(
             name: "HistoryUI",
-            dependencies: ["GitCore", "CommitGraph"],
+            dependencies: ["GitCore", "CommitGraph", "MenuUI"],
             swiftSettings: viewSettings
         ),
         .target(
@@ -55,7 +59,7 @@ let package = Package(
         ),
         .target(
             name: "YagaUI",
-            dependencies: ["GitCore", "GitRunner", "CommitGraph", "RepositoryEngine", "HistoryUI", "DiffUI"],
+            dependencies: ["GitCore", "GitRunner", "CommitGraph", "RepositoryEngine", "HistoryUI", "DiffUI", "MenuUI"],
             swiftSettings: viewSettings
         ),
         .executableTarget(
@@ -90,7 +94,7 @@ let package = Package(
         ),
         .testTarget(
             name: "YagaUITests",
-            dependencies: ["YagaUI", "HistoryUI", "DiffUI", "RepositoryEngine", "CommitGraph", "GitCore", "GitRunner", "TestSupport"],
+            dependencies: ["YagaUI", "HistoryUI", "DiffUI", "MenuUI", "RepositoryEngine", "CommitGraph", "GitCore", "GitRunner", "TestSupport"],
             swiftSettings: viewSettings
         ),
         // Shared by the test targets: the git the tests run, and the test

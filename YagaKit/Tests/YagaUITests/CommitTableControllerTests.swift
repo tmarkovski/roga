@@ -169,8 +169,9 @@ struct CommitTableBadgeTests {
     @Test func aRowsMenuNamesEachBranchAboveItsItem() throws {
         let list = List()
         let menu = try #require(list.controller.menu(forRow: 1))
-        #expect(menu.items.map(\.title) == ["main", "Delete Branch", "feature", "Delete Branch", "origin/feature", "Delete from Remote…"])
-        #expect(menu.items.map(\.isSectionHeader) == [true, false, true, false, true, false])
+        let items = menu.items.filter { !$0.isSeparatorItem }
+        #expect(items.map(\.title) == ["main", "Delete Branch", "feature", "Delete Branch", "origin/feature", "Delete from Remote…"])
+        #expect(items.map(\.isSectionHeader) == [true, false, true, false, true, false])
     }
 
     @Test func aRowsMenuListsUpstreamsThatShareABadge() {
@@ -241,8 +242,9 @@ struct CommitTableBadgeTests {
     @Test func aRowsMenuActsOnTheBranchOfTheChosenItem() throws {
         let list = List()
         let menu = try #require(list.controller.menu(forRow: 1))
+        let items = menu.items.filter { !$0.isSeparatorItem }
         for index in [3, 5] {
-            let item = menu.items[index]
+            let item = items[index]
             _ = (item.target as? NSObject)?.perform(item.action, with: item)
         }
         #expect(list.deleted.map(\.refName) == ["refs/heads/feature", "refs/remotes/origin/feature"])
@@ -252,14 +254,14 @@ struct CommitTableBadgeTests {
         let list = List()
         let menu = try #require(list.controller.menu(forRow: 1))
         #expect(!menu.autoenablesItems)
-        #expect(menu.items.filter { !$0.isSectionHeader }.map(\.isEnabled) == [false, true, true])
+        #expect(menu.items.filter { !$0.isSectionHeader && !$0.isSeparatorItem }.map(\.isEnabled) == [false, true, true])
     }
 
     @Test func aRowsMenuDisablesEverythingWhileSomethingRuns() throws {
         let list = List()
         list.isBusy = true
         let menu = try #require(list.controller.menu(forRow: 1))
-        #expect(menu.items.filter { !$0.isSectionHeader }.allSatisfy { !$0.isEnabled })
+        #expect(menu.items.filter { !$0.isSectionHeader && !$0.isSeparatorItem }.allSatisfy { !$0.isEnabled })
     }
 
     @Test func aRowWithoutBranchesHasNoMenu() {
