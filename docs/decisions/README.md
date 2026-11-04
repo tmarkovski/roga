@@ -37,3 +37,4 @@ Records aren't rewritten when a decision changes. Instead, a new record explains
 | [29](0029-dialogs-that-say-what-happens-and-show-the-command.md) | Dialogs that say what happens and show the command | Accepted |
 | [30](0030-stage-and-commit-beside-history.md) | Stage and commit in the panels under history | Accepted |
 | [31](0031-chevrons-for-what-folds-and-lines-down-a-tree.md) | Chevrons for what folds, and lines down a tree of files | Accepted |
+| [32](0032-ask-before-forcing-a-worktree-with-submodules.md) | Ask before forcing a worktree with submodules | Accepted |

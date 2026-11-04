@@ -279,6 +279,86 @@ struct WorktreeDeletionModelTests {
         #expect(dialog.terminal.last == .command(["push", "--delete", "origin", "refs/heads/topic"]))
     }
 
+    /// Commits submodules on `topic`, checked out in the linked worktree, which
+    /// leaves the worktree clean. git needs telling to allow a URL that's a folder.
+    func addSubmodules(_ paths: [String], in setup: Setup) async throws {
+        for path in paths {
+            try await runGit("-c", "protocol.file.allow=always", "submodule", "add", "--quiet", setup.remote, path, in: setup.linked)
+            try await commit("Add \(path)", in: setup.linked)
+        }
+    }
+
+    @Test func offersToDeleteAWorktreeWithASubmoduleAnyway() async throws {
+        let setup = try await setup()
+        try await addSubmodules(["vendor/lib"], in: setup)
+        try await setup.ask(.worktree)
+        #expect(setup.model.failure == nil)
+        let pending = try #require(setup.model.pending)
+        #expect(FileManager.default.fileExists(atPath: setup.linked))
+
+        let dialog = setup.model.dialog(for: pending)
+        #expect(dialog.title == "Delete the worktree for topic?")
+        #expect(dialog.message?.plain == "Git only removes a worktree with submodules when it's forced. Nothing has looked inside them, so anything that's only there goes too.")
+        #expect(dialog.cards == [[.fact("Submodule", "vendor/lib")]])
+        #expect(dialog.terminal == [.command(["worktree", "remove", "--force", setup.linked])])
+        #expect(dialog.buttons.map(\.title) == ["Cancel", "Delete anyway"])
+        #expect(dialog.buttons.map(\.kind) == [.secondary, .destructive])
+
+        await setup.confirm()
+        #expect(setup.model.failure == nil)
+        #expect(!FileManager.default.fileExists(atPath: setup.linked))
+        #expect(setup.repository.worktrees.map(\.path) == [setup.work])
+        #expect(try await exists("refs/heads/topic", in: setup.work))
+    }
+
+    @Test func cancellingLeavesAWorktreeWithASubmoduleAsItWas() async throws {
+        let setup = try await setup()
+        try await addSubmodules(["vendor/lib"], in: setup)
+        try await setup.ask(.worktree)
+        setup.model.dialog?.dismiss()
+        #expect(setup.model.pending == nil)
+        #expect(FileManager.default.fileExists(atPath: setup.linked + "/vendor/lib/.git"))
+    }
+
+    @Test func saysWhatElseGoesBesideASubmodule() async throws {
+        let setup = try await setup()
+        try await addSubmodules(["vendor/lib"], in: setup)
+        try "new".write(toFile: setup.linked + "/untracked.txt", atomically: true, encoding: .utf8)
+        try await setup.ask(.worktree)
+        let dialog = setup.model.dialog(for: try #require(setup.model.pending))
+        #expect(dialog.message?.plain.hasSuffix("goes too. These can't be brought back:") == true)
+        #expect(dialog.cards == [[.fact("1 uncommitted file", "goes with the folder"), .fact("Submodule", "vendor/lib")]])
+    }
+
+    @Test func countsTheSubmodulesItDoesntList() async throws {
+        let setup = try await setup()
+        let paths = (1...(DialogContent.listLimit + 2)).map { "vendor/\($0)" }
+        try await addSubmodules(paths, in: setup)
+        try await setup.ask(.worktree)
+        let dialog = setup.model.dialog(for: try #require(setup.model.pending))
+        let listed = paths.prefix(DialogContent.listLimit).joined(separator: ", ")
+        #expect(dialog.cards == [[.fact("Submodules", listed + " and 2 more")]])
+    }
+
+    @Test func aWorktreeWithoutSubmodulesKeepsItsPlainButton() async throws {
+        let setup = try await setup()
+        try "new".write(toFile: setup.linked + "/untracked.txt", atomically: true, encoding: .utf8)
+        try await setup.ask(.worktree)
+        let dialog = setup.model.dialog(for: try #require(setup.model.pending))
+        #expect(dialog.buttons.map(\.title) == ["Cancel", "Delete"])
+    }
+
+    @Test func showsWhatGitSaysAboutALockedWorktreeWithASubmoduleWithoutAsking() async throws {
+        let setup = try await setup()
+        try await addSubmodules(["vendor/lib"], in: setup)
+        try await runGit("worktree", "lock", "--reason", "agent running", setup.linked, in: setup.work)
+        try await setup.ask(.worktree)
+        #expect(setup.model.pending == nil)
+        let failure = try #require(setup.model.failure)
+        #expect(failure.said.contains("agent running"))
+        #expect(FileManager.default.fileExists(atPath: setup.linked))
+    }
+
     @Test func dismissingTheDialogLeavesEverythingAsItWas() async throws {
         let setup = try await setup(pushed: true)
         try await setup.ask(.everything)

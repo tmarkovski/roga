@@ -54,22 +54,31 @@ public struct WorktreeDeletion: Sendable, Hashable {
     public var lostCount: Int
     /// The newest of those commits.
     public var lost: [ObjectID]
+    /// Whether git counts the worktree as having submodules, which it only removes
+    /// when forced. It can without any being checked out, because `git submodule
+    /// deinit` leaves their copies in the worktree's git directory.
+    public var hasSubmodules: Bool
+    /// How many submodules are checked out in the worktree.
+    public var submoduleCount: Int
+    /// The first of them.
+    public var submodules: [String]
 
     /// Whether someone should agree to this first. Deleting from a remote affects
     /// everyone who uses it, and anything else is only worth asking about when
     /// something can't be brought back. That includes ignored files, which can be
-    /// real data rather than build products. A deletion that git will refuse needs
-    /// no question.
+    /// real data rather than build products, and submodules, because forcing git
+    /// also takes whatever is only in them, and nothing has looked. A deletion that
+    /// git will refuse needs no question.
     public var asksFirst: Bool {
         if isRefused { return false }
         if case .remote = remoteBranch?.place { return true }
-        return lostCount > 0 || uncommittedFiles > 0 || ignoredCount > 0
+        return lostCount > 0 || uncommittedFiles > 0 || ignoredCount > 0 || hasSubmodules
     }
 
-    /// What removes the worktree. A single `--force` is only for uncommitted files,
-    /// so git still refuses a locked worktree.
+    /// What removes the worktree. A single `--force` gets past uncommitted files and
+    /// submodules, and git still refuses a locked worktree.
     public var removeArguments: [String] {
-        ["worktree", "remove"] + (uncommittedFiles > 0 ? ["--force"] : []) + [worktree]
+        ["worktree", "remove"] + (uncommittedFiles > 0 || hasSubmodules ? ["--force"] : []) + [worktree]
     }
 
     /// Everything it runs, in order, which the dialog shows.
@@ -100,9 +109,12 @@ public struct WorktreeDeletion: Sendable, Hashable {
         var remoteBranch: String?
         if scope != .worktree, let branch { remoteBranch = try await remoteBranches(in: directory, git: git)[branch] }
 
+        // git doesn't look for changes or submodules in a folder that's gone.
         var changes = WorktreeChanges()
+        var submodules = Submodules()
         if FileManager.default.fileExists(atPath: path) {
             changes = try await contents(of: path, git: git)
+            submodules = try await self.submodules(of: path, git: git)
         }
 
         var leaving: [String] = []
@@ -135,7 +147,10 @@ public struct WorktreeDeletion: Sendable, Hashable {
             ignoredCount: changes.ignored.count,
             ignored: Array(changes.ignored.prefix(limit)),
             lostCount: lost.count,
-            lost: lost.newest
+            lost: lost.newest,
+            hasSubmodules: submodules.hasCopies || !submodules.checkedOut.isEmpty,
+            submoduleCount: submodules.checkedOut.count,
+            submodules: Array(submodules.checkedOut.prefix(limit))
         )
     }
 
@@ -170,5 +185,32 @@ public struct WorktreeDeletion: Sendable, Hashable {
         } catch let error as ParseError {
             throw RepositoryError.unexpectedOutput(command, error.description)
         }
+    }
+
+    /// What makes `git worktree remove` refuse a worktree unless it's forced.
+    private struct Submodules {
+        /// The ones checked out in the worktree.
+        var checkedOut: [String] = []
+        /// Whether the worktree's git directory holds copies of any.
+        var hasCopies = false
+    }
+
+    /// Looks for submodules the two ways git does, which is the folder of copies in
+    /// the worktree's git directory and any checked out in the worktree. A submodule
+    /// that was never checked out here is neither, so git doesn't mind it.
+    private static func submodules(of worktree: String, git: Git) async throws -> Submodules {
+        let list = GitCommand(SubmoduleListParser.arguments, in: worktree)
+        let recorded: [String]
+        do {
+            recorded = try SubmoduleListParser.parse(try await git.run(list).output)
+        } catch let error as ParseError {
+            throw RepositoryError.unexpectedOutput(list, error.description)
+        }
+        let copies = try await git.text(GitCommand("rev-parse", "--path-format=absolute", "--git-path", "modules", in: worktree))
+        var isFolder: ObjCBool = false
+        return Submodules(
+            checkedOut: recorded.filter { FileManager.default.fileExists(atPath: "\(worktree)/\($0)/.git") },
+            hasCopies: FileManager.default.fileExists(atPath: copies, isDirectory: &isFolder) && isFolder.boolValue
+        )
     }
 }

@@ -179,6 +179,104 @@ struct WorktreeDeletionTests {
         #expect(deletion.lostCount == 0)
     }
 
+    // MARK: Submodules
+
+    /// Commits a submodule on `topic`, checked out in the linked worktree, which
+    /// leaves the worktree clean. git needs telling to allow a URL that's a folder.
+    func addSubmodule(_ path: String = "vendor/lib", in clone: Clone) async throws {
+        try await runGit("-c", "protocol.file.allow=always", "submodule", "add", "--quiet", clone.remote, path, in: clone.linked)
+        try await commit("Add \(path)", in: clone.linked)
+    }
+
+    @Test func gitRefusesACleanWorktreeWithASubmoduleUnlessItsForced() async throws {
+        let clone = try await clone()
+        try await addSubmodule(in: clone)
+        await #expect(throws: (any Error).self) {
+            try await runGit("worktree", "remove", clone.linked, in: clone.work)
+        }
+        #expect(folderExists(clone))
+    }
+
+    @Test func asksAboutASubmoduleAndForcesItsRemoval() async throws {
+        let clone = try await clone()
+        try await addSubmodule(in: clone)
+        let deletion = try await prepare(.worktree, in: clone)
+        #expect(deletion.uncommittedFiles == 0)
+        #expect(deletion.hasSubmodules)
+        #expect(deletion.submoduleCount == 1)
+        #expect(deletion.submodules == ["vendor/lib"])
+        #expect(deletion.asksFirst)
+        #expect(deletion.removeArguments == ["worktree", "remove", "--force", clone.linked])
+
+        try await clone.session.delete(deletion)
+        #expect(!folderExists(clone))
+        #expect(try await !isListed(clone))
+    }
+
+    @Test func listsOnlyTheFirstSubmodules() async throws {
+        let clone = try await clone()
+        for name in ["a", "b", "c"] { try await addSubmodule("vendor/\(name)", in: clone) }
+        let deletion = try await prepare(.worktree, in: clone, limit: 2)
+        #expect(deletion.submodules == ["vendor/a", "vendor/b"])
+        #expect(deletion.submoduleCount == 3)
+    }
+
+    @Test func aSubmoduleThatWasNeverCheckedOutNeedsNoForce() async throws {
+        let clone = try await clone()
+        try await addSubmodule(in: clone)
+        let other = clone.folder + "/other"
+        try await runGit("worktree", "add", "--quiet", "--detach", other, "topic", in: clone.work)
+        let deletion = try await clone.session.prepareToDelete(worktree: other, scope: .worktree, limit: 5)
+        #expect(!deletion.hasSubmodules)
+        #expect(deletion.submodules.isEmpty)
+        #expect(!deletion.asksFirst)
+        #expect(deletion.removeArguments == ["worktree", "remove", other])
+
+        try await clone.session.delete(deletion)
+        #expect(!FileManager.default.fileExists(atPath: other))
+    }
+
+    @Test func aSubmoduleThatWasDeinitializedStillNeedsForce() async throws {
+        let clone = try await clone()
+        try await addSubmodule(in: clone)
+        try await runGit("submodule", "deinit", "--quiet", "--all", in: clone.linked)
+        let deletion = try await prepare(.worktree, in: clone)
+        #expect(deletion.hasSubmodules)
+        #expect(deletion.submoduleCount == 0)
+        #expect(deletion.asksFirst)
+        #expect(deletion.removeArguments == ["worktree", "remove", "--force", clone.linked])
+
+        try await clone.session.delete(deletion)
+        #expect(!folderExists(clone))
+    }
+
+    @Test func aLockedWorktreeWithASubmoduleIsStillRefused() async throws {
+        let clone = try await clone()
+        try await addSubmodule(in: clone)
+        try await runGit("worktree", "lock", "--reason", "agent running", clone.linked, in: clone.work)
+        let deletion = try await prepare(.worktree, in: clone)
+        #expect(deletion.isRefused)
+        #expect(!deletion.asksFirst)
+
+        let error = await #expect(throws: GitError.self) {
+            try await clone.session.delete(deletion)
+        }
+        #expect(error?.message.contains("agent running") == true)
+        #expect(folderExists(clone))
+    }
+
+    @Test func aWorktreeWithASubmoduleWhoseFolderIsMissingNeedsNoForce() async throws {
+        let clone = try await clone()
+        try await addSubmodule(in: clone)
+        try FileManager.default.removeItem(atPath: clone.linked)
+        let deletion = try await prepare(.worktree, in: clone)
+        #expect(!deletion.hasSubmodules)
+        #expect(!deletion.asksFirst)
+
+        try await clone.session.delete(deletion)
+        #expect(try await !isListed(clone))
+    }
+
     // MARK: The branch too
 
     @Test func deletesTheBranchOfACleanWorktreeWithoutAskingWhenItLosesNothing() async throws {

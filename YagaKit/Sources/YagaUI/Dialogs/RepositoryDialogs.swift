@@ -282,12 +282,22 @@ extension WorktreeDeletionModel {
                 ? .fact("1 commit", "isn't on any other branch or tag")
                 : .fact("\(deletion.lostCount.formatted()) commits", "aren't on any other branch or tag"))
         }
+        // The words above the card only speak for what's certainly lost.
+        let losesSomething = !facts.isEmpty
+        if !deletion.submodules.isEmpty {
+            let others = deletion.submoduleCount - deletion.submodules.count
+            let names = deletion.submodules.joined(separator: ", ")
+            facts.append(.fact(deletion.submoduleCount == 1 ? "Submodule" : "Submodules", names + (others > 0 ? " and \(others.formatted()) more" : "")))
+        }
 
         var sentences: [DialogText] = []
         if case .remote(let remote, _) = deletion.remoteBranch?.place {
             sentences.append("This deletes the branch on \(code: remote), for everyone who uses it.")
         }
-        if !facts.isEmpty { sentences.append("These can't be brought back:") }
+        if deletion.hasSubmodules {
+            sentences.append("Git only removes a worktree with submodules when it's forced. Nothing has looked inside them, so anything that's only there goes too.")
+        }
+        if losesSomething { sentences.append("These can't be brought back:") }
 
         var notes: [DialogText] = []
         if deletion.lostCount == 0, deletion.branch != nil {
@@ -305,7 +315,7 @@ extension WorktreeDeletionModel {
             terminal: deletion.commands.map(TerminalLine.command),
             buttons: [
                 .cancel(cancel),
-                .init(title: "Delete", kind: .destructive) { [weak self] in self?.confirm() },
+                .init(title: deletion.hasSubmodules ? "Delete anyway" : "Delete", kind: .destructive) { [weak self] in self?.confirm() },
             ],
             dismiss: cancel
         )
