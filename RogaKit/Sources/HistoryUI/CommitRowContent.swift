@@ -49,7 +49,7 @@ public struct CommitRowContent: Hashable {
 
         /// Whether double-clicking the badge checks out its branch. There's
         /// nothing to do for the current branch, and a tag isn't a branch.
-        var canCheckOut: Bool {
+        public var canCheckOut: Bool {
             switch kind {
             case .branch, .remoteBranch: true
             case .currentBranch, .detachedHead, .tag: false

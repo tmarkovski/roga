@@ -440,6 +440,319 @@ struct BranchModelTests {
         #expect(dialog.terminal == [.command(["push", "--delete", "origin", "refs/heads/feature"])])
     }
 
+    // MARK: Going to a commit
+
+    /// A loaded model of `work`, whose branch has all the commits on it pushed, and
+    /// then `unpushed` more.
+    private func modelToGoBack(_ clones: Clones, unpushed: Int = 0) async throws -> RepositoryModel {
+        for number in 0..<unpushed { try await commit("Unpushed \(number)", in: clones.work) }
+        let model = model(clones, fetches: false)
+        await model.appear()
+        return model
+    }
+
+    /// The row of a commit, by a revision that leads to it.
+    private func row(_ revision: String, in clones: Clones, of model: RepositoryModel) async throws -> Int {
+        let id = try #require(ObjectID(hex: try await git("rev-parse", revision, in: clones.work)))
+        let history = try #require(model.history)
+        let position = try #require(history.graph.position(of: id))
+        return try #require(history.rows.firstIndex(of: position))
+    }
+
+    private func finishGoing(_ model: RepositoryModel) async {
+        await model.checkout?.value
+        await model.branch.running?.value
+        await model.check?.value
+        await model.load()
+    }
+
+    private func notInAnotherWorktree(_ folder: String, _ commit: ObjectID?) {
+        Issue.record("It's not in another worktree.")
+    }
+
+    @Test func goesBackStraightAwayWhenEverythingIsPushed() async throws {
+        let clones = try await clones()
+        let model = try await modelToGoBack(clones)
+        let target = try await git("rev-parse", "HEAD~1", in: clones.work)
+
+        model.goToRow(try await row("HEAD~1", in: clones, of: model), showWorktree: notInAnotherWorktree)
+        await finishGoing(model)
+
+        #expect(model.dialog == nil)
+        #expect(try await git("rev-parse", "HEAD", in: clones.work) == target)
+        #expect(model.headDescription == "main")
+        #expect(model.branch.status?.behind == 1)
+        #expect(model.selectedCommit.id?.hex == target)
+    }
+
+    @Test func asksBeforeLosingCommitsThatArentPushed() async throws {
+        let clones = try await clones()
+        let model = try await modelToGoBack(clones, unpushed: 2)
+        let tip = try await git("rev-parse", "HEAD", in: clones.work)
+        let target = try await git("rev-parse", "origin/main", in: clones.work)
+
+        model.goToRow(try await row("origin/main", in: clones, of: model), showWorktree: notInAnotherWorktree)
+        await model.checkout?.value
+
+        let dialog = try dialogContent(model)
+        let short = String(target.prefix(8))
+        #expect(dialog.title == "Reset main to \(short)?")
+        #expect(dialog.message?.plain == "main moves to \(short). 2 commits aren't on a remote, another branch or a tag, so they would be lost.")
+        #expect(dialog.cards.first?.count == 2)
+        #expect(dialog.buttons.map(\.title) == ["Cancel", "Reset anyway", "Push, then reset"])
+        #expect(dialog.buttons[1].kind == .destructive)
+        #expect(dialog.buttons[2].kind == .primary)
+        #expect(dialog.terminal == [.comment("Reset anyway skips the push"), .command(["push"]), .command(["reset", "--keep", target])])
+        #expect(try await git("rev-parse", "HEAD", in: clones.work) == tip)
+        #expect(CommandBlock.copied(dialog.terminal) == "git push\ngit reset --keep \(target)")
+
+        dialog.dismiss()
+        #expect(model.dialog == nil)
+        #expect(try await git("rev-parse", "HEAD", in: clones.work) == tip)
+    }
+
+    @Test func saysOneCommitIsLost() async throws {
+        let clones = try await clones()
+        let model = try await modelToGoBack(clones, unpushed: 1)
+        model.goToRow(try await row("origin/main", in: clones, of: model), showWorktree: notInAnotherWorktree)
+        await model.checkout?.value
+        let dialog = try dialogContent(model)
+        #expect(dialog.message?.plain.hasSuffix("1 commit isn't on a remote, another branch or a tag, so it would be lost.") == true)
+        #expect(dialog.note?.plain == "git reflog can still find it for a while.")
+    }
+
+    @Test func resetsAnywayWhenAsked() async throws {
+        let clones = try await clones()
+        let model = try await modelToGoBack(clones, unpushed: 2)
+        let target = try await git("rev-parse", "origin/main", in: clones.work)
+        model.goToRow(try await row("origin/main", in: clones, of: model), showWorktree: notInAnotherWorktree)
+        await model.checkout?.value
+
+        try dialogContent(model).buttons[1].action()
+        #expect(model.dialog == nil)
+        await finishGoing(model)
+
+        #expect(try await git("rev-parse", "HEAD", in: clones.work) == target)
+        #expect(model.branch.status?.ahead == 0)
+        // Nothing leads to them any more, so history has let them go.
+        #expect(model.history?.rows.count == 4)
+    }
+
+    @Test func pushesThenResetsWhenAsked() async throws {
+        let clones = try await clones()
+        let model = try await modelToGoBack(clones, unpushed: 2)
+        let tip = try await git("rev-parse", "HEAD", in: clones.work)
+        let target = try await git("rev-parse", "origin/main", in: clones.work)
+        model.goToRow(try await row("origin/main", in: clones, of: model), showWorktree: notInAnotherWorktree)
+        await model.checkout?.value
+
+        try dialogContent(model).buttons[2].action()
+        #expect(model.branch.action == .pushing)
+        await finishGoing(model)
+
+        #expect(model.dialog == nil)
+        #expect(try await git("rev-parse", "HEAD", in: clones.work) == target)
+        #expect(try await git("rev-parse", "main", in: clones.remote) == tip)
+        #expect(model.branch.status?.behind == 2)
+        #expect(model.branch.status?.ahead == 0)
+    }
+
+    @Test func aRefusedPushLeavesTheBranchWhereItWas() async throws {
+        let clones = try await clones()
+        let model = try await modelToGoBack(clones, unpushed: 1)
+        let tip = try await git("rev-parse", "HEAD", in: clones.work)
+        model.goToRow(try await row("origin/main", in: clones, of: model), showWorktree: notInAnotherWorktree)
+        await model.checkout?.value
+        // Someone pushes after the counts were read, so the remote rejects this.
+        try await pushFromOther(clones)
+
+        try dialogContent(model).buttons[2].action()
+        await finishGoing(model)
+
+        let dialog = try dialogContent(model)
+        #expect(dialog.title == "Can't push main")
+        #expect(try await git("rev-parse", "HEAD", in: clones.work) == tip)
+    }
+
+    @Test func saysThePushWentThroughWhenTheResetDoesnt() async throws {
+        let clones = try await clones()
+        let model = try await modelToGoBack(clones, unpushed: 1)
+        model.goToRow(try await row("HEAD~1", in: clones, of: model), showWorktree: notInAnotherWorktree)
+        await model.checkout?.value
+        // A commit made while the dialog waits.
+        let new = try await commit("Made meanwhile", in: clones.work)
+
+        try dialogContent(model).buttons[2].action()
+        await finishGoing(model)
+
+        let dialog = try dialogContent(model)
+        #expect(dialog.title.hasPrefix("Can't reset main to"))
+        #expect(dialog.message?.plain == "The push went through, but main is still where it was. Something else has moved HEAD since Roga counted what this would lose, so Roga left it there.")
+        #expect(dialog.terminal.isEmpty)
+        #expect(try await git("rev-parse", "HEAD", in: clones.work) == new)
+    }
+
+    @Test func saysWhatGitSaidWhenItRefusesTheResetAfterThePush() async throws {
+        let clones = try await clones()
+        let tip = try await commit("Mine", in: clones.work, file: "mine.txt", text: "One\n")
+        let model = try await modelToGoBack(clones)
+        let target = try await git("rev-parse", "HEAD~1", in: clones.work)
+        model.goToRow(try await row("HEAD~1", in: clones, of: model), showWorktree: notInAnotherWorktree)
+        await model.checkout?.value
+        // A change that the reset would have to overwrite.
+        try "Two\n".write(toFile: clones.work + "/mine.txt", atomically: true, encoding: .utf8)
+
+        try dialogContent(model).buttons[2].action()
+        await finishGoing(model)
+
+        let dialog = try dialogContent(model)
+        #expect(dialog.title == "Can't reset main to \(target.prefix(8))")
+        #expect(dialog.message?.plain == "The push went through, but main is still where it was. What git said is below.")
+        #expect(dialog.terminal.first == .ran(["reset", "--keep", target]))
+        #expect(try await git("rev-parse", "HEAD", in: clones.work) == tip)
+        #expect(try await git("rev-parse", "main", in: clones.remote) == tip)
+    }
+
+    @Test func doesntOfferAPushGitWouldReject() async throws {
+        let clones = try await clones()
+        try await pushFromOther(clones)
+        try await git("fetch", "--quiet", in: clones.work)
+        let model = try await modelToGoBack(clones, unpushed: 1)
+        #expect(model.branch.status?.hasDiverged == true)
+
+        model.goToRow(try await row("origin/main", in: clones, of: model), showWorktree: notInAnotherWorktree)
+        await model.checkout?.value
+
+        let dialog = try dialogContent(model)
+        #expect(dialog.buttons.map(\.title) == ["Cancel", "Reset anyway"])
+        #expect(dialog.note?.plain.contains("git would reject it: origin/main has commits that main doesn't.") == true)
+        #expect(dialog.terminal.count == 1)
+    }
+
+    @Test func doesntOfferAPushWithoutARemote() async throws {
+        let clones = try await clones()
+        try await git("remote", "remove", "origin", in: clones.work)
+        let model = try await modelToGoBack(clones, unpushed: 1)
+        model.goToRow(try await row("HEAD~1", in: clones, of: model), showWorktree: notInAnotherWorktree)
+        await model.checkout?.value
+        #expect(try dialogContent(model).buttons.map(\.title) == ["Cancel", "Reset anyway"])
+    }
+
+    @Test func aRowWithAnotherBranchGoesToThatBranch() async throws {
+        let clones = try await clones()
+        try await git("branch", "older", "HEAD~1", in: clones.work)
+        let model = try await modelToGoBack(clones, unpushed: 1)
+        let tip = try await git("rev-parse", "main", in: clones.work)
+
+        model.goToRow(try await row("older", in: clones, of: model), showWorktree: notInAnotherWorktree)
+        await finishGoing(model)
+
+        #expect(model.dialog == nil)
+        #expect(model.headDescription == "older")
+        #expect(try await git("rev-parse", "main", in: clones.work) == tip)
+    }
+
+    @Test func aCommitOnAnotherLineDetachesAndLeavesTheBranch() async throws {
+        let clones = try await clones()
+        try await git("switch", "--quiet", "--create", "side", "HEAD~1", in: clones.work)
+        let onSide = try await commit("On side", in: clones.work)
+        try await commit("Further on side", in: clones.work)
+        try await git("switch", "--quiet", "main", in: clones.work)
+        let tip = try await git("rev-parse", "main", in: clones.work)
+        let model = try await modelToGoBack(clones, unpushed: 1)
+
+        model.goToRow(try await row(onSide, in: clones, of: model), showWorktree: notInAnotherWorktree)
+        await finishGoing(model)
+
+        #expect(model.dialog == nil)
+        #expect(model.headDescription == "detached at " + onSide.prefix(8))
+        #expect(try await git("rev-parse", "main~1", in: clones.work) == tip)
+    }
+
+    @Test func asksBeforeLeavingCommitsOnADetachedHead() async throws {
+        let clones = try await clones()
+        try await git("switch", "--quiet", "--detach", in: clones.work)
+        let model = try await modelToGoBack(clones, unpushed: 1)
+        let target = try await git("rev-parse", "HEAD~2", in: clones.work)
+
+        model.goToRow(try await row("HEAD~2", in: clones, of: model), showWorktree: notInAnotherWorktree)
+        await model.checkout?.value
+
+        let dialog = try dialogContent(model)
+        #expect(dialog.title == "Switch to \(target.prefix(8))?")
+        #expect(dialog.message?.plain == "HEAD isn't on a branch. 1 commit isn't on a remote, a branch or a tag, so it would be lost.")
+        #expect(dialog.buttons.map(\.title) == ["Cancel", "Switch anyway"])
+        #expect(dialog.terminal == [.command(["switch", "--detach", target])])
+
+        dialog.buttons[1].action()
+        await finishGoing(model)
+        #expect(try await git("rev-parse", "HEAD", in: clones.work) == target)
+    }
+
+    @Test func asksBeforeABranchLeavesCommitsOnADetachedHeadBehind() async throws {
+        let clones = try await clones()
+        try await git("switch", "--quiet", "--detach", in: clones.work)
+        let model = try await modelToGoBack(clones, unpushed: 1)
+        let stray = try await git("rev-parse", "HEAD", in: clones.work)
+        let badge = CommitRowContent.Badge(title: "main", kind: .branch, refName: "refs/heads/main")
+
+        model.checkOut(badge, showWorktree: notInAnotherWorktree)
+        await model.checkout?.value
+
+        let dialog = try dialogContent(model)
+        #expect(dialog.title == "Switch to main?")
+        #expect(dialog.terminal == [.command(["switch", "main"])])
+        #expect(try await git("rev-parse", "HEAD", in: clones.work) == stray)
+
+        dialog.buttons[1].action()
+        await finishGoing(model)
+        #expect(model.headDescription == "main")
+    }
+
+    @Test func aBranchChecksOutFromADetachedHeadWhenNothingIsLeftBehind() async throws {
+        let clones = try await clones()
+        try await git("switch", "--quiet", "--detach", in: clones.work)
+        let model = try await modelToGoBack(clones)
+        let badge = CommitRowContent.Badge(title: "main", kind: .branch, refName: "refs/heads/main")
+        model.checkOut(badge, showWorktree: notInAnotherWorktree)
+        await finishGoing(model)
+        #expect(model.dialog == nil)
+        #expect(model.headDescription == "main")
+    }
+
+    @Test func theCurrentCommitsRowGoesNowhere() async throws {
+        let clones = try await clones()
+        let model = try await modelToGoBack(clones)
+        model.goToRow(try await row("HEAD", in: clones, of: model), showWorktree: notInAnotherWorktree)
+        #expect(model.checkout == nil)
+    }
+
+    @Test func theRowForUncommittedChangesGoesNowhere() async throws {
+        let clones = try await clones()
+        try "Mine\n".write(toFile: clones.work + "/new.txt", atomically: true, encoding: .utf8)
+        let model = try await modelToGoBack(clones)
+        #expect(model.hasWorkingTreeRow)
+        model.goToRow(0, showWorktree: notInAnotherWorktree)
+        #expect(model.checkout == nil)
+    }
+
+    @Test func doesNothingWhileStuckPartway() async throws {
+        let clones = try await clones()
+        let model = try await modelToGoBack(clones)
+        model.branch.unfinished = UnfinishedWork(work: .merge, conflicts: 0)
+        model.goToRow(try await row("HEAD~1", in: clones, of: model), showWorktree: notInAnotherWorktree)
+        #expect(model.checkout == nil)
+    }
+
+    @Test func theUpstreamsBadgeGoesToItsCommit() async throws {
+        let clones = try await clones()
+        let model = try await modelToGoBack(clones, unpushed: 1)
+        let badge = CommitRowContent.Badge(title: "origin/main", kind: .remoteBranch, refName: "refs/remotes/origin/main")
+        model.checkOut(badge, showWorktree: notInAnotherWorktree)
+        await model.checkout?.value
+        #expect(try dialogContent(model).title.hasPrefix("Reset main to"))
+    }
+
     @Test func aFailedCheckoutComesFirst() async throws {
         let clones = try await clones()
         let model = model(clones, fetches: false)
@@ -588,6 +901,8 @@ struct BranchModelTests {
         try await pushFromOther(clones)
         let model = model(clones)
         await model.appear()
+        // The fetch it started by itself would clash with this one over the ref.
+        await model.branch.quietFetch?.value
         try await git("fetch", "--quiet", in: clones.work)
         await model.branch.refresh()
         model.branch.timeToPlayHouse = { action in

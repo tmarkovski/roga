@@ -360,7 +360,7 @@ final class BranchModel {
     }
 
     /// What a dialog needs to name commits.
-    private func listed(_ ids: [ObjectID]) async -> [ListedCommit] {
+    func listed(_ ids: [ObjectID]) async -> [ListedCommit] {
         let commits = (try? await session.commits(ids)) ?? []
         return commits.compactMap { $0.map(ListedCommit.init) }
     }
@@ -370,6 +370,25 @@ final class BranchModel {
         forcePush = nil
         run(.forcePushing, failure: "Can't force push \(branchName)", changesNothing: true, fetchesAfterFailing: true) { [session, worktree] in
             try await session.push(.forceWithLease, in: worktree)
+            return "Pushed"
+        }
+    }
+
+    /// Pushes the branch so that its commits aren't lost, then goes to a commit. If
+    /// the push is refused, nothing else happens.
+    func push(thenGoingTo commitSwitch: CommitSwitch) {
+        guard let push = status?.push else { return }
+        run(.pushing, failure: "Can't push \(branchName)", changesNothing: true, fetchesAfterFailing: true) { [session, worktree, weak self, branchName] in
+            try await session.push(push, in: worktree)
+            do {
+                try await session.run(commitSwitch, in: worktree)
+            } catch {
+                var failure = Failure(title: commitSwitch.failureTitle, error: error)
+                let stayed: DialogText = "The push went through, but \(code: branchName) is still where it was."
+                failure.summary = error.gitArguments == nil ? stayed : .sentences([stayed, "What git said is below."])
+                self?.failure = failure
+                return nil
+            }
             return "Pushed"
         }
     }

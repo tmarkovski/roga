@@ -28,6 +28,8 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
         public var selectRow: (Int?) -> Void
         /// Says that the user double-clicked the badge of a branch.
         public var checkOut: (CommitRowContent.Badge) -> Void
+        /// Says that the user double-clicked a row anywhere else.
+        public var goToRow: (Int) -> Void
         /// Says that the user chose to delete the branch of a badge.
         public var deleteBranch: (CommitRowContent.Badge) -> Void
         /// Whether something's running that deleting a branch has to wait for.
@@ -39,6 +41,7 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
             loadText: @escaping (Range<Int>) async -> IndexSet,
             selectRow: @escaping (Int?) -> Void,
             checkOut: @escaping (CommitRowContent.Badge) -> Void = { _ in },
+            goToRow: @escaping (Int) -> Void = { _ in },
             deleteBranch: @escaping (CommitRowContent.Badge) -> Void = { _ in },
             isBusy: @escaping () -> Bool = { false }
         ) {
@@ -47,6 +50,7 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
             self.loadText = loadText
             self.selectRow = selectRow
             self.checkOut = checkOut
+            self.goToRow = goToRow
             self.deleteBranch = deleteBranch
             self.isBusy = isBusy
         }
@@ -208,10 +212,15 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
     }
 
     /// Checks out the branch of the badge at a point in the table, if there is
-    /// one. Double-clicking anywhere else in a row does nothing.
+    /// one, and otherwise goes to the row there. Below the last row, this does
+    /// nothing.
     func doubleClick(at point: NSPoint) {
-        guard let place = badge(at: point) else { return }
-        source.checkOut(source.content(place.row).badges[place.index])
+        if let place = badge(at: point) {
+            source.checkOut(source.content(place.row).badges[place.index])
+        } else {
+            let row = tableView.row(at: point)
+            if row >= 0 { source.goToRow(row) }
+        }
     }
 
     /// What right-clicking a row offers, under the name of each branch that points

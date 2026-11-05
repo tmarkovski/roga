@@ -44,3 +44,4 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [34](0034-name-the-app-roga.md) | Name the app Roga, at roga.sh | Accepted |
 | [35](0035-one-cloud-for-each-remote-on-a-badge.md) | One cloud on a badge for each remote that has the branch | Accepted |
 | [36](0036-a-solid-ink-tile-for-whats-selected-on-the-rail.md) | A solid ink tile for what's selected on the rail | Accepted |
+| [37](0037-double-click-a-commit-to-go-to-it.md) | Double-click a commit to go to it | Accepted |

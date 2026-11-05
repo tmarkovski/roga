@@ -47,6 +47,9 @@ struct CommitList: NSViewRepresentable {
             controller.source.checkOut = { [unowned self] badge in
                 model.checkOut(badge) { [unowned self] in showWorktree($0, $1) }
             }
+            controller.source.goToRow = { [unowned self] row in
+                model.goToRow(row) { [unowned self] in showWorktree($0, $1) }
+            }
             controller.source.deleteBranch = { badge in
                 guard let name = badge.refName else { return }
                 if badge.kind == .branch, let upstream = badge.upstream {

@@ -130,6 +130,7 @@ struct CommitTableBadgeTests {
     /// that aren't branches, and whose row 0 has none.
     final class List {
         var checkedOut: [Badge] = []
+        var wentTo: [Int] = []
         var deleted: [Badge] = []
         var isBusy = false
         private(set) lazy var controller = CommitTableController(source: CommitTableController.Source(
@@ -138,6 +139,7 @@ struct CommitTableBadgeTests {
             loadText: { _ in [] },
             selectRow: { _ in },
             checkOut: { [unowned self] in checkedOut.append($0) },
+            goToRow: { [unowned self] in wentTo.append($0) },
             deleteBranch: { [unowned self] in deleted.append($0) },
             isBusy: { [unowned self] in isBusy }
         ))
@@ -391,14 +393,34 @@ struct CommitTableBadgeTests {
         #expect(list.controller.badge(at: list.middle(ofBadge: 4)) == nil)
     }
 
-    @Test func doesNothingAwayFromABadge() {
+    @Test func goesToTheRowAwayFromABadge() {
         let list = List()
         let frame = list.table.frameOfCell(atColumn: 0, row: 1)
         // Past the badges, and the row above, which has none.
         list.controller.doubleClick(at: NSPoint(x: frame.maxX - 20, y: frame.midY))
         list.controller.doubleClick(at: NSPoint(x: list.middle(ofBadge: 1).x, y: frame.minY - 5))
-        // Below the last row.
+        #expect(list.wentTo == [1, 0])
+        #expect(list.checkedOut.isEmpty)
+    }
+
+    @Test func goesToTheRowOnABadgeThatCantBeCheckedOut() {
+        let list = List()
+        // The current branch, a tag and a detached `HEAD`.
+        for index in [0, 3, 4] { list.controller.doubleClick(at: list.middle(ofBadge: index)) }
+        #expect(list.wentTo == [1, 1, 1])
+        #expect(list.checkedOut.isEmpty)
+    }
+
+    @Test func aBadgeThatCanBeCheckedOutDoesntGoToItsRow() {
+        let list = List()
+        list.controller.doubleClick(at: list.middle(ofBadge: 1))
+        #expect(list.wentTo.isEmpty)
+    }
+
+    @Test func doesNothingBelowTheLastRow() {
+        let list = List()
         list.controller.doubleClick(at: NSPoint(x: list.middle(ofBadge: 1).x, y: 10_000))
+        #expect(list.wentTo.isEmpty)
         #expect(list.checkedOut.isEmpty)
     }
 

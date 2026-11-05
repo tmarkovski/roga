@@ -64,7 +64,62 @@ extension RepositoryModel {
     /// What to ask or say now, if anything.
     var dialog: RepositoryDialog? {
         if let checkoutFailure { return .message(dialog(for: checkoutFailure)) }
+        if let pendingCommitSwitch { return .message(dialog(for: pendingCommitSwitch)) }
         return branch.dialog
+    }
+
+    /// What going to a commit loses, as the vision asks of destructive operations,
+    /// and a way to keep those commits by pushing them first, when git would take
+    /// the push.
+    func dialog(for pending: PendingCommitSwitch) -> DialogContent {
+        let commitSwitch = pending.commitSwitch
+        let short = commitSwitch.shortCommit
+        let cancel = { [weak self] in self?.pendingCommitSwitch = nil; return () }
+        // Detaching only loses commits when `HEAD` isn't on a branch to begin with.
+        let holders = if case .detaching = commitSwitch.way { "a remote, a branch or a tag" } else { "a remote, another branch or a tag" }
+        let lost: DialogText = commitSwitch.lostCount == 1
+            ? "1 commit isn't on \(holders), so it would be lost."
+            : "\(commitSwitch.lostCount.formatted()) commits aren't on \(holders), so they would be lost."
+        let rows = DialogContent.commitRows(pending.commits, total: commitSwitch.lostCount)
+        var notes: [DialogText] = ["\(code: "git reflog") can still find \(commitSwitch.lostCount == 1 ? "it" : "them") for a while."]
+        var terminal: [TerminalLine] = [.command(commitSwitch.arguments)]
+        var buttons = [DialogButton.cancel(cancel)]
+
+        switch commitSwitch.way {
+        case .detaching:
+            let branch = pending.checkout?.branch
+            if let branch { terminal = [.command(["switch", branch])] }
+            buttons.append(DialogButton(title: "Switch anyway", kind: .destructive) { [weak self] in self?.confirmCommitSwitch() })
+            return DialogContent(
+                id: "commitSwitch",
+                title: "Switch to \(branch ?? short)?",
+                message: .sentences(["\(code: "HEAD") isn't on a branch.", lost]),
+                cards: rows.isEmpty ? [] : [rows],
+                note: .sentences(notes),
+                terminal: terminal,
+                buttons: buttons,
+                dismiss: cancel
+            )
+        case .movingBranch(let name):
+            let name = Ref.shortName(name)
+            buttons.append(DialogButton(title: "Reset anyway", kind: .destructive) { [weak self] in self?.confirmCommitSwitch() })
+            if let push = branch.status?.push {
+                terminal = [.comment("Reset anyway skips the push"), .command(push.arguments)] + terminal
+                buttons.append(DialogButton(title: "Push, then reset", kind: .primary) { [weak self] in self?.pushThenConfirmCommitSwitch() })
+            } else if let upstream = branch.status?.upstream.map(Ref.shortName) {
+                notes.append("Pushing them first isn't offered, because git would reject it: \(code: upstream) has commits that \(code: name) doesn't.")
+            }
+            return DialogContent(
+                id: "commitSwitch",
+                title: "Reset \(name) to \(short)?",
+                message: .sentences(["\(code: name) moves to \(code: short).", lost]),
+                cards: rows.isEmpty ? [] : [rows],
+                note: .sentences(notes),
+                terminal: terminal,
+                buttons: buttons,
+                dismiss: cancel
+            )
+        }
     }
 
     private func dialog(for failure: CheckoutFailure) -> DialogContent {
@@ -76,6 +131,19 @@ extension RepositoryModel {
             said: failure.message
         ) { [weak self] in
             self?.checkoutFailure = nil
+        }
+    }
+}
+
+extension CommitSwitch {
+    /// The commit, as history shows it.
+    var shortCommit: String { String(commit.hex.prefix(8)) }
+
+    /// What a dialog says when this doesn't work.
+    var failureTitle: String {
+        switch way {
+        case .movingBranch(let branch): "Can't reset \(Ref.shortName(branch)) to \(shortCommit)"
+        case .detaching: "Can't switch to \(shortCommit)"
         }
     }
 }

@@ -31,6 +31,21 @@ final class RepositoryModel {
         var command: [String]? = nil
     }
 
+    /// Going to a commit that's waiting for someone to agree to what it loses.
+    struct PendingCommitSwitch {
+        /// A branch's badge, when checking that out is what leaves the commits behind.
+        struct Checkout {
+            /// The local branch's short name.
+            var branch: String
+            var run: () async -> Void
+        }
+
+        var commitSwitch: CommitSwitch
+        /// The newest commits it loses.
+        var commits: [ListedCommit]
+        var checkout: Checkout? = nil
+    }
+
     /// Where the repository's commit-graph files stand (decision 6).
     enum CommitGraphState: Equatable {
         case unknown
@@ -84,6 +99,8 @@ final class RepositoryModel {
     /// What to tell the user about a checkout that didn't work, until they've
     /// seen it.
     var checkoutFailure: CheckoutFailure?
+    /// Going to a commit that's waiting for someone to agree to it.
+    var pendingCommitSwitch: PendingCommitSwitch?
 
     /// The request whose history has loaded completely.
     @ObservationIgnored private var loaded: LoadRequest?
@@ -302,14 +319,40 @@ final class RepositoryModel {
     /// shows what that changed, with the branch's commit selected. For a remote
     /// branch, that may not be the commit that was clicked. When another
     /// worktree has the branch checked out, that's the one to look at, so it asks
-    /// to show it instead, with the commit to select there.
+    /// to show it instead, with the commit to select there. A remote's copy of the
+    /// current branch has nothing to check out, so that goes to its commit instead.
     func checkOut(_ badge: CommitRowContent.Badge, showWorktree: @escaping (String, ObjectID?) -> Void) {
         guard checkout == nil, branch.action == nil, let name = badge.refName else { return }
+        let commit = history?.refs.refs.first { $0.name == name }?.peeled
+        if isRemoteCopyOfCurrentBranch(name) {
+            if let commit { goTo(commit: commit) }
+            return
+        }
+        let isDetached = history?.refs.currentBranch == nil
         checkout = Task {
-            let note = Task {
-                guard (try? await Task.sleep(for: Self.slowCheckoutDelay)) != nil else { return }
-                slowCheckout = badge.title
+            // Only a detached `HEAD` can leave commits behind this way, since a branch
+            // keeps its own.
+            if isDetached, let commit,
+               let commitSwitch = try? await session.prepareToSwitch(to: commit, limit: DialogContent.listLimit, in: worktree),
+               commitSwitch.asksFirst {
+                pendingCommitSwitch = PendingCommitSwitch(
+                    commitSwitch: commitSwitch,
+                    commits: await branch.listed(commitSwitch.lost),
+                    checkout: .init(branch: Ref.nameOnItsRemote(name) ?? Ref.shortName(name)) { [weak self] in
+                        await self?.run(badge, showWorktree: showWorktree)
+                    }
+                )
+            } else {
+                await run(badge, showWorktree: showWorktree)
             }
+            checkout = nil
+        }
+    }
+
+    /// Runs the checkout of a badge's branch and shows what that changed.
+    private func run(_ badge: CommitRowContent.Badge, showWorktree: @escaping (String, ObjectID?) -> Void) async {
+        guard let name = badge.refName else { return }
+        await sayingIfSlow(badge.title) {
             do {
                 switch try await session.checkOut(ref: name, in: worktree) {
                 case .checkedOut(_, let commit):
@@ -322,10 +365,99 @@ final class RepositoryModel {
             } catch {
                 checkoutFailure = CheckoutFailure(branch: badge.title, message: error.dialogMessage, command: error.gitArguments)
             }
-            note.cancel()
-            slowCheckout = nil
+        }
+    }
+
+    /// Whether a ref is what the current branch tracks, or another remote's branch
+    /// of the same name.
+    private func isRemoteCopyOfCurrentBranch(_ name: String) -> Bool {
+        guard let refs = history?.refs, let current = refs.currentBranch, name.hasPrefix(Ref.remoteBranchPrefix) else { return false }
+        return name == refs.refs.first { $0.name == current }?.upstream || Ref.nameOnItsRemote(name) == Ref.shortName(current)
+    }
+
+    /// Goes to the commit of a row someone double-clicked away from its badges
+    /// (decision 37). The commit `HEAD` is on, and the row for uncommitted changes,
+    /// have nowhere to go. A row with another branch on it goes to that branch, as
+    /// the branch's badge does.
+    func goToRow(_ row: Int, showWorktree: @escaping (String, ObjectID?) -> Void) {
+        guard let history, row >= rowOffset, row - rowOffset < history.rows.count else { return }
+        let position = history.rows[row - rowOffset]
+        guard position != history.head else { return }
+        let other = badges[position]?.first { badge in
+            badge.canCheckOut && !(badge.refName.map(isRemoteCopyOfCurrentBranch) ?? false)
+        }
+        if let other {
+            checkOut(other, showWorktree: showWorktree)
+        } else {
+            goTo(commit: history.graph.id(at: position))
+        }
+    }
+
+    /// Goes to a commit straight away when that loses nothing, and otherwise says
+    /// what it would lose and asks. A worktree stuck partway through a merge or a
+    /// rebase has to finish that first, which git would say anyway, but only after
+    /// a question about commits that aren't really at risk.
+    func goTo(commit id: ObjectID) {
+        guard !branch.isBusy, branch.unfinished == nil, id != history?.refs.head else { return }
+        checkout = Task {
+            do {
+                let commitSwitch = try await session.prepareToSwitch(to: id, limit: DialogContent.listLimit, in: worktree)
+                if commitSwitch.asksFirst {
+                    pendingCommitSwitch = PendingCommitSwitch(commitSwitch: commitSwitch, commits: await branch.listed(commitSwitch.lost))
+                } else {
+                    await run(commitSwitch)
+                }
+            } catch {
+                branch.failure = BranchModel.Failure(title: "Can't go to \(id.hex.prefix(8))", error: error, changedNothing: true)
+            }
             checkout = nil
         }
+    }
+
+    /// Goes to the commit that was asked about, whatever that loses.
+    func confirmCommitSwitch() {
+        guard let pending = pendingCommitSwitch, !branch.isBusy else { return }
+        pendingCommitSwitch = nil
+        checkout = Task {
+            if let checkout = pending.checkout {
+                await checkout.run()
+            } else {
+                await run(pending.commitSwitch)
+            }
+            checkout = nil
+        }
+    }
+
+    /// Pushes the commits that were asked about, then goes to the commit.
+    func pushThenConfirmCommitSwitch() {
+        guard let pending = pendingCommitSwitch, !branch.isBusy else { return }
+        pendingCommitSwitch = nil
+        branch.push(thenGoingTo: pending.commitSwitch)
+    }
+
+    private func run(_ commitSwitch: CommitSwitch) async {
+        await sayingIfSlow(commitSwitch.shortCommit) {
+            do {
+                try await session.run(commitSwitch, in: worktree)
+                select(commit: commitSwitch.commit)
+                lookAgain()
+                await reportBranchChange()
+            } catch {
+                branch.failure = BranchModel.Failure(title: commitSwitch.failureTitle, error: error, changedNothing: true)
+            }
+        }
+    }
+
+    /// Says in the title row what's being checked out, once that's taken long enough
+    /// to mention.
+    private func sayingIfSlow(_ name: String, while work: () async -> Void) async {
+        let note = Task {
+            guard (try? await Task.sleep(for: Self.slowCheckoutDelay)) != nil else { return }
+            slowCheckout = name
+        }
+        await work()
+        note.cancel()
+        slowCheckout = nil
     }
 
     /// How long a checkout runs before the title row says so, so that a quick

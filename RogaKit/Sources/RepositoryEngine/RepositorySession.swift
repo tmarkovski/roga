@@ -8,7 +8,7 @@ import GitRunner
 ///
 /// For now a session lists worktrees and refs, reads history, the text of
 /// commits, the files they changed and their patches, reads what's uncommitted
-/// in a worktree, checks out and deletes branches, deletes linked worktrees,
+/// in a worktree, checks out and deletes branches, goes to commits, deletes linked worktrees,
 /// fetches, pulls and pushes, and keeps the commit-graph files up to date. Watching
 /// for changes comes later, as ARCHITECTURE.md describes.
 public actor RepositorySession {
@@ -181,6 +181,27 @@ public actor RepositorySession {
     @concurrent
     public nonisolated func checkOut(ref name: String, in worktree: String) async throws -> BranchCheckout {
         try await BranchCheckout.run(ref: name, in: worktree, worktrees: try await worktrees(), git: git)
+    }
+
+    /// Finds out what going to a commit would come to, without changing anything.
+    ///
+    /// - Parameters:
+    ///   - commit: The commit to go to.
+    ///   - limit: The most commits to list of those it would lose.
+    ///   - worktree: The worktree's folder.
+    @concurrent
+    public nonisolated func prepareToSwitch(to commit: ObjectID, limit: Int, in worktree: String) async throws -> CommitSwitch {
+        try await CommitSwitch.prepare(to: commit, limit: limit, in: worktree, worktrees: try await worktrees(), git: git)
+    }
+
+    /// Goes to a commit. git refuses when the worktree's uncommitted changes are in
+    /// the way, and nothing changes. Like a checkout, this is best left to finish.
+    ///
+    /// - Throws: `CommitSwitch.Outdated` when something else has moved `HEAD` since
+    ///   this was worked out, or `GitError` when git refuses, which says why.
+    @concurrent
+    public nonisolated func run(_ commitSwitch: CommitSwitch, in worktree: String) async throws {
+        try await commitSwitch.run(in: worktree, git: git)
     }
 
     /// Says where a worktree's branch stands against its upstream, or nil when
