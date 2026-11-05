@@ -13,8 +13,10 @@ enum SettingsColors {
     static let line = Palette.gray(light: 0.839, dark: 0.29)
     /// The lines between rows, and around the sidebar and the header.
     static let hairline = Palette.gray(light: 0.918, dark: 0.224)
+    /// Behind the sidebar, a shade off the page beside it.
+    static let sidebar = Palette.gray(light: 0.965, dark: 0.141)
     /// Under the page that's showing.
-    static let selectedPage = Palette.gray(light: 0.925, dark: 0.227)
+    static let selectedPage = Palette.gray(light: 0.898, dark: 0.227)
     /// Under a page while the pointer is over it, lighter than the selected one.
     static let hover = Color(nsColor: NSColor(name: nil) { appearance in
         appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua

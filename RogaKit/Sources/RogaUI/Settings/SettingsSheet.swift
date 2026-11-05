@@ -155,14 +155,18 @@ struct SettingsSheet: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            HStack(spacing: 0) {
-                SettingsSidebar(page: $page, query: $query)
-                    .frame(width: 216)
-                Rectangle()
-                    .fill(SettingsColors.hairline)
-                    .frame(width: 1)
+        HStack(spacing: 0) {
+            // The sidebar runs the sheet's full height, with the search field
+            // at its top, level with the page's title.
+            SettingsSidebar(page: $page, query: $query)
+                .frame(width: 216)
+                .frame(maxHeight: .infinity)
+                .background(SettingsColors.sidebar)
+            Rectangle()
+                .fill(SettingsColors.hairline)
+                .frame(width: 1)
+            VStack(spacing: 0) {
+                titleBar
                 ScrollView(.vertical) {
                     content
                         .padding(EdgeInsets(top: 22, leading: 28, bottom: 28, trailing: 28))
@@ -176,9 +180,14 @@ struct SettingsSheet: View {
         .presentationSizing(.fitted)
     }
 
-    private var header: some View {
+    /// The page's name, rather than "Settings", which the sheet already is.
+    private var title: String {
+        trimmedQuery.isEmpty ? page.title : "Search"
+    }
+
+    private var titleBar: some View {
         HStack(spacing: 12) {
-            Text("Settings")
+            Text(title)
                 .font(.system(size: 15, weight: .semibold))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityAddTraits(.isHeader)
@@ -193,7 +202,7 @@ struct SettingsSheet: View {
             .help("Close")
             .accessibilityLabel("Close")
         }
-        .padding(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 14))
+        .padding(EdgeInsets(top: 0, leading: 28, bottom: 0, trailing: 14))
         .frame(height: 52)
         .overlay(alignment: .bottom) {
             Rectangle()
@@ -277,7 +286,7 @@ private struct SettingsSidebar: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             search
-                .padding(.bottom, 10)
+                .padding(.bottom, 12)
             ForEach(Array(SettingsPage.groups.enumerated()), id: \.offset) { index, group in
                 if index > 0 {
                     Rectangle()
@@ -301,7 +310,7 @@ private struct SettingsSidebar: View {
                     .padding(EdgeInsets(top: 12, leading: 10, bottom: 2, trailing: 10))
             }
         }
-        .padding(EdgeInsets(top: 14, leading: 12, bottom: 12, trailing: 12))
+        .padding(EdgeInsets(top: 11, leading: 12, bottom: 12, trailing: 12))
     }
 
     private var search: some View {
