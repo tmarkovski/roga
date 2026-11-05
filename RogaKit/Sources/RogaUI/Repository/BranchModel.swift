@@ -207,6 +207,10 @@ final class BranchModel {
     /// How long the house takes to play once for an action, which is how long
     /// the action stays in the title row when git finishes sooner.
     @ObservationIgnored var timeToPlayHouse: (Action) -> Duration = { $0.timeToPlayHouse }
+    /// How long what happened stays in the title row, given whether it can be
+    /// undone. Tests stretch it, so that a slow run doesn't see it go before
+    /// they look.
+    @ObservationIgnored var timeToShowFinished: (_ canUndo: Bool) -> Duration = { $0 ? BranchModel.undoableDuration : BranchModel.finishedDuration }
     @ObservationIgnored private(set) var running: Task<Void, Never>?
     /// Finding out what deleting a branch would come to.
     @ObservationIgnored private(set) var preparingDeletion: Task<Void, Never>?
@@ -609,7 +613,7 @@ final class BranchModel {
     private func show(finished message: String) {
         finished = message
         finishedNote?.cancel()
-        let duration = undoFinished == nil ? Self.finishedDuration : Self.undoableDuration
+        let duration = timeToShowFinished(undoFinished != nil)
         finishedNote = Task {
             guard (try? await Task.sleep(for: duration)) != nil else { return }
             finished = nil

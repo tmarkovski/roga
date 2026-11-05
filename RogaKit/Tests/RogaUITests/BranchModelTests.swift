@@ -47,8 +47,10 @@ struct BranchModelTests {
 
     func model(_ clones: Clones, fetches: Bool = true) -> RepositoryModel {
         let model = RepositoryModel(session: clones.session, worktree: clones.work, fetchesByItself: { fetches })
-        // Most tests have no reason to wait for the house.
+        // Most tests have no reason to wait for the house, and on a slow run
+        // what happened mustn't go from the title row before they look.
         model.branch.timeToPlayHouse = { _ in .zero }
+        model.branch.timeToShowFinished = { _ in .seconds(600) }
         return model
     }
 

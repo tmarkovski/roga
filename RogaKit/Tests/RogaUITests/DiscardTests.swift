@@ -88,6 +88,7 @@ struct DiscardTests {
         let session = try await RepositorySession.open(containing: path, git: git, trash: trash)
         let model = RepositoryModel(session: session, worktree: path, fetchesByItself: { false }, drafts: .none)
         model.branch.timeToPlayHouse = { _ in .zero }
+        model.branch.timeToShowFinished = { _ in .seconds(600) }
         let work = Worktree(model: model, path: path)
         for (file, text) in files { try work.write(text, to: file) }
         try await work.git("add", "--all")

@@ -35,6 +35,7 @@ struct CommitComposerTests {
         let session = try await RepositorySession.open(containing: path, git: try await TestGit.make())
         let model = RepositoryModel(session: session, worktree: path, fetchesByItself: { false }, drafts: drafts)
         model.branch.timeToPlayHouse = { _ in .zero }
+        model.branch.timeToShowFinished = { _ in .seconds(600) }
         return Worktree(model: model, path: path)
     }
 
