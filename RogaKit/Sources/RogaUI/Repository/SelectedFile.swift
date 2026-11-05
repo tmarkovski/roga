@@ -77,9 +77,9 @@ final class SelectedFile {
     /// is selected, because a cancelled load can take a while to finish, and
     /// the next file may already be showing when this would go off.
     @ObservationIgnored private var patience: Task<Void, any Error>?
-    /// What git printed for the patch showing, for telling whether looking at
-    /// the file again found anything new.
-    @ObservationIgnored private var shownPatch: [UInt8]?
+    /// The patch showing, for telling whether looking at the file again found
+    /// anything new, and for cutting a hunk out of.
+    @ObservationIgnored private(set) var shownPatch: FilePatch?
     /// The search for the latest text, which typing more cancels.
     @ObservationIgnored private(set) var searching: Task<Void, Never>?
     @ObservationIgnored private let session: RepositorySession
@@ -256,8 +256,8 @@ final class SelectedFile {
         do {
             let patch = try await session.patch(of: file, from: source)
             try Task.checkCancellation()
-            if isRefresh, let shown, patch.bytes == shownPatch {
-                finishLoading(Shown(file: file, source: source, content: shown.content, isUpdate: true), patch: patch.bytes)
+            if isRefresh, let shown, patch.bytes == shownPatch?.bytes {
+                finishLoading(Shown(file: file, source: source, content: shown.content, isUpdate: true), patch: patch)
                 return
             }
             let content: Content = if patch.lines.isEmpty {
@@ -266,14 +266,14 @@ final class SelectedFile {
                 .patch(await DiffTextBuilder.document(for: patch))
             }
             try Task.checkCancellation()
-            finishLoading(Shown(file: file, source: source, content: content, isUpdate: isRefresh), patch: patch.bytes)
+            finishLoading(Shown(file: file, source: source, content: content, isUpdate: isRefresh), patch: patch)
         } catch is CancellationError {
         } catch {
             finishLoading(Shown(file: file, source: source, content: .failed(String(describing: error))), patch: nil)
         }
     }
 
-    private func finishLoading(_ shown: Shown, patch: [UInt8]?) {
+    private func finishLoading(_ shown: Shown, patch: FilePatch?) {
         patience?.cancel()
         self.shown = shown
         shownPatch = patch

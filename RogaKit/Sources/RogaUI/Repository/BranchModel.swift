@@ -169,7 +169,7 @@ final class BranchModel {
     private(set) var finished: String?
     /// What takes back what just happened, as for a commit. It's set before `work`
     /// returns, and it goes along with the words.
-    var undoFinished: (() -> Void)?
+    var undoFinished: FinishedUndo?
     /// What to tell the user about something that didn't work, until they've
     /// seen it.
     var failure: Failure?
@@ -591,6 +591,19 @@ final class BranchModel {
             lookAgain()
             await reportBranchChange()
         }
+    }
+
+    /// The button that takes back what the title row says just happened.
+    struct FinishedUndo {
+        /// What its tooltip says.
+        let help: String
+        let perform: () -> Void
+    }
+
+    /// Says in the title row what just happened, when it didn't go through `run`.
+    func announce(_ message: String, undo: FinishedUndo?) {
+        undoFinished = undo
+        show(finished: message)
     }
 
     private func show(finished message: String) {

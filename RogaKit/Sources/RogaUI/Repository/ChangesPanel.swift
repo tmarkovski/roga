@@ -1,3 +1,5 @@
+import AppKit
+import DiffUI
 import GitCore
 import IconUI
 import RepositoryEngine
@@ -42,6 +44,17 @@ struct ChangesPanel: View {
                     .padding(.leading, 4)
             }
         } trailing: {
+            if selection.loaded?.hasSomethingToDiscard == true {
+                let canDiscard = selection.canDiscardEverything()
+                Button("Discard All Changes", icon: .discard) { selection.askToDiscardEverything() }
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(.icon)
+                    .foregroundStyle(Palette.red)
+                    .disabled(!canDiscard)
+                    .help(canDiscard
+                        ? "Discard All Changes… (\(RepositoryCommands.discardAllShortcut.symbols))"
+                        : "Finish or abort what's running before discarding everything")
+            }
             FileListCommands(list: fileList, closeFilter: closeFilter)
         } content: {
             switch selection.files {
@@ -135,10 +148,25 @@ struct ChangesPanel: View {
             list: fileList,
             selectedFile: selection.selectedFile,
             toggleAll: { selection.toggleAll(in: group) },
-            rowAction: FileRowAction(icon: group.stageIcon, title: group.stageTitle) { file in
+            discardAll: { selection.askToDiscardAll(in: group) },
+            rowAction: FileRowAction(icon: group.stageIcon, title: group.stageTitle, perform: { file in
                 selection.toggle(file, in: group)
-            },
-            folderAction: group == .conflicted ? nil : { path in selection.toggleFolder(path, in: group) }
+            }, discard: { file in
+                guard let way = group.discarding(file) else { return nil }
+                return RowDiscard(icon: way.icon, title: way.fileTitle) {
+                    // The next row moves up under the pointer, and that's not what a
+                    // double-click meant to take.
+                    guard NSApp.currentEvent?.isRepeatedClick != true else { return }
+                    selection.discard(file, in: group)
+                }
+            }),
+            folderAction: group == .conflicted ? nil : { path in selection.toggleFolder(path, in: group) },
+            folderDiscard: group.folderDiscard.map { way in { path in
+                RowDiscard(icon: way.icon, title: way.folderTitle) {
+                    guard NSApp.currentEvent?.isRepeatedClick != true else { return }
+                    selection.askToDiscardFolder(path, in: group)
+                }
+            } }
         ) { file in
             isFocused = true
             selection.select(file, in: group)
@@ -180,8 +208,10 @@ private struct GroupOfFiles: View {
     let list: FileListModel
     let selectedFile: SelectedFile
     let toggleAll: () -> Void
+    let discardAll: () -> Void
     let rowAction: FileRowAction
     let folderAction: ((String) -> Void)?
+    let folderDiscard: ((String) -> RowDiscard)?
     let select: (DiffFile) -> Void
     let toggleFolder: (String) -> Void
     @State private var isHovering = false
@@ -191,25 +221,56 @@ private struct GroupOfFiles: View {
             let matching = list.matching(files, in: group)
             Text(group.title)
                 .fontWeight(.medium)
+                .lineLimit(1)
             Text(matching.count, format: .number)
                 .foregroundStyle(.secondary)
             let lines = matching.compactMap(\.lines)
             if lines.contains(where: { $0.added + $0.removed > 0 }) {
-                LineCounts(added: lines.reduce(0) { $0 + $1.added }, removed: lines.reduce(0) { $0 + $1.removed })
+                // Numbers cut short would say the wrong thing, so in a narrow panel they
+                // go away while the buttons need the room.
+                ViewThatFits(in: .horizontal) {
+                    LineCounts(added: lines.reduce(0) { $0 + $1.added }, removed: lines.reduce(0) { $0 + $1.removed })
+                        .fixedSize()
+                    Color.clear.frame(width: 0, height: 0)
+                }
             }
             Spacer(minLength: 0)
             if isHovering, group != .conflicted {
-                Button(group.stageAllTitle(matching: matching.count, filter: list.filter), action: toggleAll)
-                    .buttonStyle(.plain)
-                    .fontWeight(.medium)
-                    .padding(.horizontal, 6)
-                    .frame(height: 20)
-                    .background {
-                        RoundedRectangle(cornerRadius: 5, style: .continuous)
-                            .fill(Palette.hover)
+                let discardable = matching.filter { group.discarding($0) != nil }.count
+                let discardTitle = group.discardAllTitle(matching: discardable, filter: list.filter)
+                let stageButton = headingButton(group.stageAllTitle(matching: matching.count, filter: list.filter), help: group.stageAllHelp, action: toggleAll)
+                    .fixedSize()
+                // It says less in a narrow panel, because two buttons cut short say nothing.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 4) {
+                        if discardable > 0 {
+                            headingButton(discardTitle, help: group.discardAllHelp, action: discardAll)
+                                .foregroundStyle(Palette.red)
+                                .fixedSize()
+                        }
+                        stageButton
                     }
-                    .contentShape(Rectangle())
-                    .help(group.stageAllHelp)
+                    HStack(spacing: 4) {
+                        if discardable > 0, let way = group.folderDiscard {
+                            Button(action: discardAll) {
+                                way.icon.image
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(Palette.red)
+                                    .frame(width: 20, height: 20)
+                                    .background {
+                                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                            .fill(Palette.hover)
+                                    }
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .help(discardTitle)
+                            .accessibilityLabel(discardTitle)
+                        }
+                        stageButton
+                    }
+                }
+                .layoutPriority(1)
             }
         }
         .font(.system(size: 12))
@@ -220,7 +281,22 @@ private struct GroupOfFiles: View {
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
         .accessibilityAddTraits(.isHeader)
-        FileRows(list: list, rows: list.rows(of: files, in: group), selectedFile: selectedFile, select: select, toggleFolder: toggleFolder, rowAction: rowAction, folderAction: folderAction)
+        FileRows(list: list, rows: list.rows(of: files, in: group), selectedFile: selectedFile, select: select, toggleFolder: toggleFolder, rowAction: rowAction, folderAction: folderAction, folderDiscard: folderDiscard)
+    }
+
+    private func headingButton(_ title: String, help: String, action: @escaping () -> Void) -> some View {
+        Button(title, action: action)
+            .buttonStyle(.plain)
+            .fontWeight(.medium)
+            .lineLimit(1)
+            .padding(.horizontal, 6)
+            .frame(height: 20)
+            .background {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(Palette.hover)
+            }
+            .contentShape(Rectangle())
+            .help(help)
     }
 }
 
@@ -260,12 +336,56 @@ extension WorktreeChanges.Group {
         return filter.isEmpty ? "\(verb) All" : "\(verb) \(count.formatted()) Matching"
     }
 
+    /// How a folder of the group gets discarded, or nil when it can't be.
+    var folderDiscard: FileDiscard? {
+        switch self {
+        case .unstaged: .restore
+        case .untracked: .trash
+        case .conflicted, .staged: nil
+        }
+    }
+
+    /// The button that discards every file a filter left, or all of them. It asks
+    /// first, which is what the three dots say.
+    func discardAllTitle(matching count: Int, filter: String) -> String {
+        filter.isEmpty ? "Discard All…" : "Discard \(count.formatted()) Matching…"
+    }
+
+    var discardAllHelp: String {
+        self == .untracked ? "Move these files to the Trash" : "Throw away the changes to these files, and leave what's staged"
+    }
+
     var stageAllHelp: String {
         switch self {
         case .conflicted: ""
         case .unstaged: "Stage the changes to these files, and leave untracked files alone"
         case .untracked: "Start tracking these files"
         case .staged: "Take these files back out of the next commit, and leave them as they are on disk"
+        }
+    }
+}
+
+extension FileDiscard {
+    var icon: Icon {
+        switch self {
+        case .restore: .discard
+        case .trash: .trash
+        }
+    }
+
+    /// What discarding a file this way is called.
+    var fileTitle: String {
+        switch self {
+        case .restore: "Discard File"
+        case .trash: "Move to Trash"
+        }
+    }
+
+    /// What discarding a folder this way is called. It usually asks first.
+    var folderTitle: String {
+        switch self {
+        case .restore: "Discard Folder…"
+        case .trash: "Move Folder to Trash…"
         }
     }
 }

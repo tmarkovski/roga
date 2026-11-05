@@ -57,6 +57,9 @@ public struct RepositoryCommands: Commands {
     static let commitAndPushShortcut = KeyboardShortcut(.return, modifiers: [.shift, .command])
     static let amendShortcut = KeyboardShortcut(.return, modifiers: [.option, .command])
     static let undoCommitShortcut = KeyboardShortcut("z", modifiers: [.option, .command])
+    static let discardFileShortcut = KeyboardShortcut(.delete, modifiers: [.option, .command])
+    static let discardAllShortcut = KeyboardShortcut(.delete, modifiers: [.shift, .option, .command])
+    static let undoDiscardShortcut = KeyboardShortcut("z", modifiers: [.shift, .option, .command])
 
     public init(list: RepositoryList) {
         self.list = list
@@ -234,6 +237,11 @@ private struct ChangesMenuItems: View {
         changes?.isSelected == true ? changes?.selectedFile.group : nil
     }
 
+    private var discardFileTitle: String {
+        guard let group, let file = changes?.selectedFile.file, let way = group.discarding(file) else { return FileDiscard.restore.fileTitle }
+        return way.fileTitle
+    }
+
     var body: some View {
         Button("Go to Uncommitted Changes") {
             repository?.goToChanges()
@@ -256,6 +264,22 @@ private struct ChangesMenuItems: View {
         }
         .keyboardShortcut(RepositoryCommands.unstageAllShortcut)
         .disabled(changes?.isSelected != true || changes?.loaded?.staged.isEmpty != false)
+        Divider()
+        Button(discardFileTitle) {
+            changes?.discardSelectedFile()
+        }
+        .keyboardShortcut(RepositoryCommands.discardFileShortcut)
+        .disabled(changes?.isSelected != true || changes?.canDiscardSelectedFile != true)
+        Button("Discard All Changes…") {
+            changes?.askToDiscardEverything()
+        }
+        .keyboardShortcut(RepositoryCommands.discardAllShortcut)
+        .disabled(repository?.hasWorkingTreeRow != true || changes?.canDiscardEverything() != true)
+        Button("Undo Discard") {
+            changes?.undoDiscard()
+        }
+        .keyboardShortcut(RepositoryCommands.undoDiscardShortcut)
+        .disabled(changes?.discards.isEmpty != false)
         Divider()
         Button("Write Commit Message") {
             composer?.askForFocus()

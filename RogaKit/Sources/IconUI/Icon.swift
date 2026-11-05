@@ -58,6 +58,7 @@ extension Icon {
     public static let deleted = fileMinus
     public static let stage = squarePlus
     public static let unstage = squareMinus
+    public static let discard = undo2
 
     // Commands and states that aren't only about git.
     public static let warning = triangleAlert

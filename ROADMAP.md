@@ -65,7 +65,7 @@ Release 1 can ship without the next two items. They're built last, and if they a
 
 ## Release 2: working with changes
 
-- Stage and unstage by hunk or line, and discard changes. Staging by file, committing and amending came first (decision 30).
+- Stage and unstage by hunk or line. Staging by file, committing and amending came first (decision 30), and discarding after that (decision 39).
 - Rename branches, start a branch from any commit, and switch branches from the keyboard.
 - Ask for a passphrase when git needs one to fetch, pull or push (decision 20).
 - Clone a repository into a folder the user chooses, using the user's own credential helpers and SSH setup, and add it to the sidebar. Its action goes under opening a repository at the top of the sidebar.

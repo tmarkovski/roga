@@ -306,7 +306,7 @@ final class CommitComposer {
         draftBeforeAmending = nil
         phase = .idle
         self.message = ""
-        branch.undoFinished = made.previous == nil ? nil : { [weak self] in self?.undoLastCommit() }
+        branch.undoFinished = made.previous == nil ? nil : .init(help: "Undo the Commit") { [weak self] in self?.undoLastCommit() }
     }
 
     /// Takes back the latest commit made here, leaving its files staged, and puts

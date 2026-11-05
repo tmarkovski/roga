@@ -35,6 +35,10 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
         public var deleteBranches: ([String]) -> Void
         /// Whether something's running that deleting a branch has to wait for.
         public var isBusy: () -> Bool
+        /// Says that the user chose to discard everything uncommitted.
+        public var discardChanges: () -> Void
+        /// Whether everything uncommitted can go now.
+        public var canDiscardChanges: () -> Bool
 
         public init(
             count: @escaping () -> Int,
@@ -44,7 +48,9 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
             checkOut: @escaping (CommitRowContent.Badge) -> Void = { _ in },
             goToRow: @escaping (Int) -> Void = { _ in },
             deleteBranches: @escaping ([String]) -> Void = { _ in },
-            isBusy: @escaping () -> Bool = { false }
+            isBusy: @escaping () -> Bool = { false },
+            discardChanges: @escaping () -> Void = {},
+            canDiscardChanges: @escaping () -> Bool = { true }
         ) {
             self.count = count
             self.content = content
@@ -54,6 +60,8 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
             self.goToRow = goToRow
             self.deleteBranches = deleteBranches
             self.isBusy = isBusy
+            self.discardChanges = discardChanges
+            self.canDiscardChanges = canDiscardChanges
         }
     }
 
@@ -230,6 +238,13 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
     /// that could go has no menu.
     func menu(forRow row: Int) -> NSMenu? {
         let content = source.content(row)
+        if content.isWorkingTree {
+            return RefMenu.make([
+                .command("Discard All Changes…", isDestructive: true, isEnabled: source.canDiscardChanges()) { [weak self] in
+                    self?.source.discardChanges()
+                },
+            ])
+        }
         guard content.hasBranchThatCanGo else { return nil }
         let branches = content.branches
         return RefMenu.make([

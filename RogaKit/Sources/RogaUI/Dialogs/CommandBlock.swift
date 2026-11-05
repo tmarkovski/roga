@@ -151,7 +151,7 @@ enum ShellCommand {
     }
 
     private static let dangerousOptions: Set<String> = [
-        "-D", "--force", "--force-with-lease", "--force-if-includes", "--delete", "--abort",
+        "-D", "--force", "--force-with-lease", "--force-if-includes", "--delete", "--abort", "--hard", "--worktree",
     ]
     /// Subcommands whose next word is part of the command, as in `git worktree remove`.
     private static let subcommandsWithVerbs: Set<String> = ["worktree", "remote", "stash"]

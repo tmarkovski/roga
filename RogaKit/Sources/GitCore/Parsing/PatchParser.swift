@@ -73,6 +73,11 @@ public enum PatchParser {
         return FilePatch(bytes: output, lines: lines, isBinary: isBinary)
     }
 
+    /// Reads a hunk's header in what git printed.
+    static func hunkRanges(of line: Range<Int>, in bytes: [UInt8]) -> (old: Int, oldCount: Int, new: Int, newCount: Int)? {
+        bytes.withUnsafeBufferPointer { hunk($0, line) }
+    }
+
     /// Reads `@@ -12,5 +12,6 @@`, where a count of 1 can be left out.
     private static func hunk(_ bytes: UnsafeBufferPointer<UInt8>, _ line: Range<Int>) -> (old: Int, oldCount: Int, new: Int, newCount: Int)? {
         var position = line.lowerBound

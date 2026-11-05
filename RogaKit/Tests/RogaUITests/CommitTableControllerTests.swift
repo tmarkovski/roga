@@ -299,6 +299,28 @@ struct CommitTableBadgeTests {
         #expect(!menu.items[0].isEnabled)
     }
 
+    @Test func theRowForUncommittedChangesOffersToDiscardThem() throws {
+        var discards = 0
+        var canDiscard = true
+        let controller = CommitTableController(source: CommitTableController.Source(
+            count: { 1 },
+            content: { _ in CommitRowContent(shortID: "", isWorkingTree: true) },
+            loadText: { _ in [] },
+            selectRow: { _ in },
+            discardChanges: { discards += 1 },
+            canDiscardChanges: { canDiscard }
+        ))
+        let menu = try #require(controller.menu(forRow: 0))
+        #expect(menu.items.map(\.title) == ["Discard All Changes…"])
+        #expect(menu.items[0].isEnabled)
+        _ = (menu.items[0].target as? NSObject)?.perform(menu.items[0].action, with: menu.items[0])
+        #expect(discards == 1)
+
+        // A merge that's stuck, or something running, has to finish first.
+        canDiscard = false
+        #expect(try #require(controller.menu(forRow: 0)).items[0].isEnabled == false)
+    }
+
     @Test func aRowWithoutBranchesHasNoMenu() {
         let list = List()
         #expect(list.controller.menu(forRow: 0) == nil)

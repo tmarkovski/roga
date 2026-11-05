@@ -150,6 +150,132 @@ struct DiffTextControllerTests {
         #expect(abs(text(of: controller).frame.height - rows) <= DiffStyle.lineHeight + 8)
     }
 
+    // MARK: Hunks
+
+    /// Two hunks of 20 lines each, which is taller than the view that's used here.
+    func twoHunks() throws -> DiffDocument {
+        let hunk = { (start: Int) in "@@ -\(start),20 +\(start),20 @@\n" + (0..<20).map { " line \(start + $0)\n" }.joined() }
+        return try document(hunk(1) + hunk(40))
+    }
+
+    func controller(showing document: DiffDocument) -> DiffTextController {
+        let controller = DiffTextController()
+        controller.view.frame = NSRect(x: 0, y: 0, width: 600, height: 200)
+        controller.view.layoutSubtreeIfNeeded()
+        controller.show(document)
+        return controller
+    }
+
+    @Test func findsTheHunkOfARow() throws {
+        let document = try twoHunks()
+        #expect(document.hunkHeaders == [0, 21])
+        #expect(document.hunkHeader(atRow: 0) == 0)
+        #expect(document.hunkHeader(atRow: 20) == 0)
+        #expect(document.hunkHeader(atRow: 21) == 21)
+        #expect(document.hunkHeader(atRow: 41) == 21)
+        #expect(document.hunkHeader(atRow: 42) == nil)
+        #expect(document.hunkHeader(atRow: -1) == nil)
+    }
+
+    @Test func aRowIsWhereTheTextIsWithoutAskingForLayout() throws {
+        // The button works out where a band is from its row, which is only right
+        // while every line is one row of the same height.
+        let document = try twoHunks()
+        let controller = controller(showing: document)
+        let text = text(of: controller)
+        for row in document.hunkHeaders {
+            let glyph = document.layoutManager.glyphIndexForCharacter(at: document.lineStarts[row])
+            let fragment = document.layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+            let top = text.textContainerOrigin.y + fragment.minY
+            #expect(top == text.textContainerOrigin.y + CGFloat(row) * DiffStyle.lineHeight)
+            #expect(controller.hunkHeader(atTextY: top + 1) == row)
+            #expect(fragment.height == DiffStyle.lineHeight)
+        }
+    }
+
+    @Test func theButtonShowsOnTheBandOfTheHunkUnderThePointer() throws {
+        let controller = controller(showing: try twoHunks())
+        controller.discardHunk = { _ in }
+        let origin = text(of: controller).textContainerOrigin.y
+        // A line of the first hunk, with its band in view.
+        controller.showHunkButton(atTextY: origin + DiffStyle.lineHeight * 5)
+        #expect(!controller.hunkButton.isHidden)
+        #expect(controller.hunkButton.header == 0)
+        // It's in the band: the view isn't flipped, and the band is the top row.
+        let clip = controller.scrollView.contentView
+        let visible = controller.view.convert(clip.bounds, from: clip)
+        #expect(abs(controller.hunkButton.frame.midY - (visible.maxY - 4 - DiffStyle.lineHeight / 2)) <= 1)
+        #expect(controller.hunkButton.frame.height <= DiffStyle.lineHeight)
+        #expect(abs(controller.hunkButton.frame.maxX - (visible.maxX - 6)) < 1)
+    }
+
+    @Test func theButtonStaysAtTheEdgeAsTheTextScrollsSideways() throws {
+        let long = "@@ -1 +1 @@\n-" + String(repeating: "x", count: 500) + "\n+y\n"
+        let controller = controller(showing: try document(long))
+        controller.discardHunk = { _ in }
+        let origin = text(of: controller).textContainerOrigin.y
+        controller.showHunkButton(atTextY: origin)
+        let before = controller.hunkButton.frame
+        let clip = controller.scrollView.contentView
+        clip.scroll(to: NSPoint(x: 400, y: 0))
+        controller.showHunkButton(atTextY: origin)
+        #expect(controller.hunkButton.frame == before)
+    }
+
+    @Test func noButtonWhileTheBandIsScrolledAway() throws {
+        let document = try twoHunks()
+        let controller = controller(showing: document)
+        controller.discardHunk = { _ in }
+        let text = text(of: controller)
+        let clip = controller.scrollView.contentView
+        clip.scroll(to: NSPoint(x: 0, y: DiffStyle.lineHeight * 6))
+        // A line of the first hunk, whose band has gone off the top.
+        controller.showHunkButton(atTextY: text.textContainerOrigin.y + DiffStyle.lineHeight * 8)
+        #expect(controller.hunkButton.isHidden)
+    }
+
+    @Test func noButtonOrMenuItemWhenHunksCantBeDiscarded() throws {
+        let controller = controller(showing: try twoHunks())
+        let y = text(of: controller).textContainerOrigin.y + 1
+        controller.showHunkButton(atTextY: y)
+        #expect(controller.hunkButton.isHidden)
+        #expect(controller.hunkMenuItem(atTextY: y) == nil)
+    }
+
+    @Test func noButtonPastTheEndOfThePatch() throws {
+        let controller = controller(showing: try document())
+        controller.discardHunk = { _ in }
+        controller.showHunkButton(atTextY: 1000)
+        #expect(controller.hunkButton.isHidden)
+        #expect(controller.hunkMenuItem(atTextY: 1000) == nil)
+    }
+
+    @Test func theMenuItemTakesTheHunkUnderThePointer() throws {
+        let controller = controller(showing: try twoHunks())
+        var discarded: [Int] = []
+        controller.discardHunk = { discarded.append($0) }
+        let y = text(of: controller).textContainerOrigin.y + DiffStyle.lineHeight * 30
+        let item = try #require(controller.hunkMenuItem(atTextY: y))
+        #expect(item.title == "Discard Hunk")
+        _ = (item.target as? NSObject)?.perform(item.action, with: item)
+        #expect(discarded == [21])
+    }
+
+    @Test func theButtonTakesTheHunkItsOn() throws {
+        let controller = controller(showing: try twoHunks())
+        var discarded: [Int] = []
+        controller.discardHunk = { discarded.append($0) }
+        controller.showHunkButton(atTextY: text(of: controller).textContainerOrigin.y + 1)
+        controller.hunkButton.performClick(nil)
+        #expect(discarded == [0])
+    }
+
+    @Test func theButtonFitsInABand() {
+        let button = HunkButton()
+        #expect(button.size.height < DiffStyle.lineHeight)
+        #expect(button.size.width > 30)
+    }
+
     @Test func staysAsWideAsTheViewForShortLines() throws {
         let controller = DiffTextController()
         controller.view.frame = NSRect(x: 0, y: 0, width: 600, height: 400)

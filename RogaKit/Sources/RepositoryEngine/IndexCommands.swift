@@ -128,7 +128,7 @@ enum IndexCommands {
         return ObjectID(hex: try await git.text(command))
     }
 
-    private static func run(_ arguments: [String], paths: [String]?, in worktree: String, git: Git) async throws {
+    static func run(_ arguments: [String], paths: [String]?, in worktree: String, git: Git) async throws {
         var command = RemoteCommands.asked(arguments, in: worktree)
         // A file can be called `*.txt`, and `:(top)a` is a file's name here too.
         command.environment["GIT_LITERAL_PATHSPECS"] = "1"
@@ -139,7 +139,7 @@ enum IndexCommands {
 
     /// Runs a command that needs the index, waiting for any other git that has it,
     /// such as an agent's, for a moment before giving up.
-    private static func runningThroughLocks(_ command: GitCommand, input: [UInt8]?, git: Git) async throws -> GitResult {
+    static func runningThroughLocks(_ command: GitCommand, input: [UInt8]?, git: Git) async throws -> GitResult {
         var delay = lockRetryDelay
         for _ in 0..<lockRetries {
             do {

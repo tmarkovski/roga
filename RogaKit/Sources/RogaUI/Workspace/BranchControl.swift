@@ -188,12 +188,12 @@ private struct BranchCounts: View {
                 .modifier(WordsReveal(isShown: shown.showsWords, arrival: shown.arrival))
                 .accessibilityHidden(!shown.showsWords)
             if shown.showsWords, let undo = branch.undoFinished {
-                Button("Undo", action: undo)
+                Button("Undo", action: undo.perform)
                     .buttonStyle(.plain)
                     .fontWeight(.medium)
                     .foregroundStyle(Palette.action)
                     .padding(.trailing, 4)
-                    .help("Undo the Commit")
+                    .help(undo.help)
             }
             if shown.showsCounts {
                 // A worktree that's stuck comes before anything else it could

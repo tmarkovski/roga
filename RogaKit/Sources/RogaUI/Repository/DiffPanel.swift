@@ -95,7 +95,8 @@ struct DiffPanel: View {
                         isUpdate: selection.shown?.isUpdate == true,
                         matches: selection.matches,
                         matchSteps: selection.matchSteps,
-                        findCloses: selection.findCloses
+                        findCloses: selection.findCloses,
+                        discardHunk: changes?.hunkDiscard
                     )
                 case .note(let text):
                     note(text)
@@ -184,6 +185,7 @@ private struct DiffText: NSViewRepresentable {
     let matches: SelectedFile.Matches?
     let matchSteps: Int
     let findCloses: Int
+    let discardHunk: ((Int) -> Void)?
 
     func makeCoordinator() -> Coordinator {
         Coordinator(matchSteps: matchSteps, findCloses: findCloses)
@@ -196,6 +198,7 @@ private struct DiffText: NSViewRepresentable {
     func updateNSView(_ view: NSView, context: Context) {
         let controller = context.coordinator.controller
         controller.show(document, keepingPosition: isUpdate)
+        controller.discardHunk = discardHunk
         // Before the marks go away, since closing selects the current one.
         context.coordinator.update(findCloses: findCloses)
         // What's marked can be from the document before this one, until the

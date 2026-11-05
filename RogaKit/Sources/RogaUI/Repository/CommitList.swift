@@ -52,6 +52,8 @@ struct CommitList: NSViewRepresentable {
             }
             controller.source.deleteBranches = { model.askToDeleteBranches($0) }
             controller.source.isBusy = { model.branch.isBusy }
+            controller.source.discardChanges = { model.selectedChanges.askToDiscardEverything() }
+            controller.source.canDiscardChanges = { model.selectedChanges.canDiscardEverything() }
         }
 
         func show(_ version: Int, selecting row: Int?) {

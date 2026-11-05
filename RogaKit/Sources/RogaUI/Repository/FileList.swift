@@ -82,6 +82,8 @@ struct FileRows: View {
     var rowAction: FileRowAction?
     /// What the button on a folder's row does, by the folder's path.
     var folderAction: ((String) -> Void)?
+    /// The button before that, for throwing away what's in the folder.
+    var folderDiscard: ((String) -> RowDiscard)?
 
     /// The ID of what's at the top of the files, which the rows of a filter
     /// scroll back to.
@@ -102,7 +104,7 @@ struct FileRows: View {
                         select(file)
                     }
                 case .folder(let path, let title, let isCollapsed, let lines):
-                    FolderRow(path: path, title: title, isCollapsed: isCollapsed, lines: lines, depth: row.depth, action: rowAction, performAction: folderAction) {
+                    FolderRow(path: path, title: title, isCollapsed: isCollapsed, lines: lines, depth: row.depth, action: rowAction, performAction: folderAction, discard: folderDiscard?(path)) {
                         toggleFolder(path)
                     }
                 }
@@ -131,17 +133,29 @@ struct FileRowAction {
     /// What the button says, or its tooltip when it has an icon.
     let title: String
     let perform: (DiffFile) -> Void
+    /// The button before it, for throwing the file's changes away, if it has one.
+    var discard: ((DiffFile) -> RowDiscard?)?
+}
+
+/// The button on a row for throwing away what it's about (decision 39). It comes
+/// before the one for staging, so that the one for staging doesn't move, and it's red.
+struct RowDiscard {
+    let icon: Icon
+    let title: String
+    let perform: () -> Void
 }
 
 /// A row's button: it fills with gray while the pointer is over it, and a little
-/// darker while it's selected. The content hears whether the small button at the
-/// end of the row is covering it.
+/// darker while it's selected. The content hears whether the small buttons at the
+/// end of the row are covering it.
 private struct FileRowButton<Content: View>: View {
     var isSelected = false
     var accessoryIcon: Icon?
     var accessoryTitle: String?
     var accessoryLabel = ""
     var performAccessory: (() -> Void)?
+    var discard: RowDiscard?
+    var discardLabel = ""
     let action: () -> Void
     @ViewBuilder var content: (_ isShowingAccessory: Bool) -> Content
     @State private var isHovering = false
@@ -149,7 +163,7 @@ private struct FileRowButton<Content: View>: View {
     var body: some View {
         ZStack(alignment: .trailing) {
             Button(action: action) {
-                content(isHovering && performAccessory != nil)
+                content(isHovering && (performAccessory != nil || discard != nil))
                     .padding(.horizontal, 8)
                     .frame(height: 24)
                     .background {
@@ -161,30 +175,50 @@ private struct FileRowButton<Content: View>: View {
             .buttonStyle(.plain)
             // A double click also selects the row, which is what's wanted anyway.
             .simultaneousGesture(TapGesture(count: 2).onEnded { performAccessory?() })
-            if isHovering, let performAccessory {
-                Button(action: performAccessory) {
-                    Group {
-                        if let accessoryIcon {
-                            accessoryIcon.image
+            if isHovering {
+                HStack(spacing: 2) {
+                    if let discard {
+                        Button(action: discard.perform) {
+                            discard.icon.image
                                 .font(.system(size: 13))
+                                .foregroundStyle(Palette.red)
                                 .frame(width: 20, height: 20)
-                        } else {
-                            Text(accessoryTitle ?? "")
-                                .font(.system(size: 12, weight: .medium))
-                                .padding(.horizontal, 6)
-                                .frame(height: 20)
+                                .background {
+                                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                        .fill(Palette.hover)
+                                }
+                                .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
+                        .help(discard.title)
+                        .accessibilityLabel(discardLabel)
                     }
-                    .background {
-                        RoundedRectangle(cornerRadius: 5, style: .continuous)
-                            .fill(Palette.hover)
+                    if let performAccessory {
+                        Button(action: performAccessory) {
+                            Group {
+                                if let accessoryIcon {
+                                    accessoryIcon.image
+                                        .font(.system(size: 13))
+                                        .frame(width: 20, height: 20)
+                                } else {
+                                    Text(accessoryTitle ?? "")
+                                        .font(.system(size: 12, weight: .medium))
+                                        .padding(.horizontal, 6)
+                                        .frame(height: 20)
+                                }
+                            }
+                            .background {
+                                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                    .fill(Palette.hover)
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help(accessoryTitle ?? "")
+                        .accessibilityLabel(accessoryLabel)
                     }
-                    .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
                 .padding(.trailing, 2)
-                .help(accessoryTitle ?? "")
-                .accessibilityLabel(accessoryLabel)
             }
         }
         .padding(.horizontal, 6)
@@ -240,6 +274,7 @@ private struct FolderRow: View {
     let depth: Int
     var action: FileRowAction?
     var performAction: ((String) -> Void)?
+    var discard: RowDiscard?
     let toggle: () -> Void
 
     var body: some View {
@@ -248,6 +283,8 @@ private struct FolderRow: View {
             accessoryTitle: action?.title,
             accessoryLabel: "\(action?.title ?? "") \(path)",
             performAccessory: performAction.map { perform in { perform(path) } },
+            discard: discard,
+            discardLabel: "\(discard?.title ?? "") \(path)",
             action: toggle
         ) { isShowingAccessory in
             HStack(spacing: 8) {
@@ -288,15 +325,18 @@ struct ChangedFileRow: View {
     let select: () -> Void
 
     var body: some View {
+        let discard = action?.discard?(file)
         FileRowButton(
             isSelected: isSelected,
             accessoryIcon: action?.icon,
             accessoryTitle: action?.title,
             accessoryLabel: "\(action?.title ?? "") \(file.path)",
             performAccessory: action.map { action in { action.perform(file) } },
+            discard: discard,
+            discardLabel: "\(discard?.title ?? "") \(file.path)",
             action: select
         ) { isShowingAccessory in
-            content(hidingCounts: isShowingAccessory)
+            content(hidingCounts: isShowingAccessory, reservingRoom: isShowingAccessory && discard != nil)
                 .padding(.leading, indent(depth))
         }
         .help(description)
@@ -305,7 +345,9 @@ struct ChangedFileRow: View {
         .background { FolderGuides(depth: depth) }
     }
 
-    private func content(hidingCounts: Bool) -> some View {
+    /// - Parameter reservingRoom: Whether two buttons cover the end of the row, which
+    ///   short counts have no room for, so that a long name stops before them.
+    private func content(hidingCounts: Bool, reservingRoom: Bool) -> some View {
         HStack(spacing: 8) {
             Text(file.status.letter)
                 .font(.system(size: 11.5, weight: .medium, design: .monospaced))
@@ -322,24 +364,30 @@ struct ChangedFileRow: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
             Spacer(minLength: 8)
-            if let lines = file.lines {
-                if lines.added + lines.removed > 0 {
-                    // The name gives way in a narrow panel or a deep folder,
-                    // because numbers cut short would say the wrong thing.
-                    LineCounts(added: lines.added, removed: lines.removed)
-                        .font(.system(size: 12))
-                        .fixedSize()
-                        .opacity(hidingCounts ? 0 : 1)
-                } else if file.oldMode != file.newMode, file.oldMode != 0, file.newMode != 0 {
-                    change("mode")
+            HStack(spacing: 0) {
+                if let lines = file.lines {
+                    if lines.added + lines.removed > 0 {
+                        // The name gives way in a narrow panel or a deep folder,
+                        // because numbers cut short would say the wrong thing.
+                        LineCounts(added: lines.added, removed: lines.removed)
+                            .font(.system(size: 12))
+                            .fixedSize()
+                            .opacity(hidingCounts ? 0 : 1)
+                    } else if file.oldMode != file.newMode, file.oldMode != 0, file.newMode != 0 {
+                        change("mode")
+                            .opacity(hidingCounts ? 0 : 1)
+                    }
+                } else {
+                    change("binary")
                         .opacity(hidingCounts ? 0 : 1)
                 }
-            } else {
-                change("binary")
-                    .opacity(hidingCounts ? 0 : 1)
             }
+            .frame(minWidth: reservingRoom ? Self.roomForTwoButtons : nil, alignment: .trailing)
         }
     }
+
+    /// How far into a row's content two small buttons reach from its end.
+    private static let roomForTwoButtons = 36.0
 
     private func change(_ text: String) -> some View {
         Text(text)

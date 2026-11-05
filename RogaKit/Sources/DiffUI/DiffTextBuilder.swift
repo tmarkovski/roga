@@ -75,6 +75,8 @@ nonisolated public final class DiffDocument: @unchecked Sendable {
     let columns: Int
     /// The parts of changed lines that differ from the other side, in order.
     let changedWords: [NSRange]
+    /// Which lines are hunks' headers, in order.
+    let hunkHeaders: [Int]
 
     init(text: NSAttributedString, lines: [FilePatch.Line], lineStarts: [Int], columns: Int, changedWords: [NSRange]) {
         storage = NSTextStorage(attributedString: text)
@@ -91,7 +93,20 @@ nonisolated public final class DiffDocument: @unchecked Sendable {
         self.lineStarts = lineStarts
         self.columns = columns
         self.changedWords = changedWords
+        hunkHeaders = lines.indices.filter { lines[$0].kind == .hunkHeader }
         layoutManager.document = self
+    }
+
+    /// The header of the hunk that a row belongs to, or nil for a row past the end.
+    func hunkHeader(atRow row: Int) -> Int? {
+        guard lines.indices.contains(row) else { return nil }
+        var low = 0
+        var high = hunkHeaders.count
+        while low < high {
+            let middle = (low + high) / 2
+            if hunkHeaders[middle] <= row { low = middle + 1 } else { high = middle }
+        }
+        return low > 0 ? hunkHeaders[low - 1] : nil
     }
 
     /// The index of the line that a position in the text belongs to.

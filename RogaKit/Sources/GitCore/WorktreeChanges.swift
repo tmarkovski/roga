@@ -49,3 +49,55 @@ public struct WorktreeChanges: Sendable, Hashable {
         }
     }
 }
+
+/// How discarding a file takes back its changes (decision 39).
+public enum FileDiscard: Sendable, Hashable {
+    /// git has a version to go back to, so `git restore` puts that on disk.
+    case restore
+    /// Its contents are only on disk, so it goes to the Trash, where they stay.
+    case trash
+}
+
+extension WorktreeChanges.Group {
+    /// How discarding a file of this group would go, or nil when it can't be offered.
+    ///
+    /// - A staged file has no discard, because it would also take any unstaged changes
+    ///   to the file, and staging is how someone keeps a version.
+    /// - git has nothing to go back to in a conflict, and refuses.
+    /// - `git restore` empties a file added with `git add -N` while saying it worked,
+    ///   because the index has it with no contents, so that goes to the Trash.
+    /// - `git restore` does nothing to a submodule.
+    /// - git lists a repository inside the worktree as one untracked folder, ending
+    ///   with a slash. It could well be someone's worktree, with its whole history.
+    public func discarding(_ file: DiffFile) -> FileDiscard? {
+        switch self {
+        case .conflicted, .staged:
+            return nil
+        case .unstaged:
+            guard file.oldMode != DiffFile.submoduleMode, file.newMode != DiffFile.submoduleMode else { return nil }
+            switch file.status {
+            case .modified, .deleted, .typeChanged: return .restore
+            case .added: return .trash
+            default: return nil
+            }
+        case .untracked:
+            return file.path.hasSuffix("/") ? nil : .trash
+        }
+    }
+}
+
+extension WorktreeChanges {
+    /// What stays when everything uncommitted goes, because Roga leaves it alone:
+    /// repositories inside the worktree, and submodules.
+    public var stayingWhenDiscardingEverything: [DiffFile] {
+        (unstaged.filter { Group.unstaged.discarding($0) == nil } + untracked.filter { Group.untracked.discarding($0) == nil })
+            .sorted { $0.path < $1.path }
+    }
+
+    /// What has to go to the Trash when everything uncommitted goes, because git has
+    /// no copy of it to keep.
+    public var trashedWhenDiscardingEverything: [DiffFile] {
+        (unstaged.filter { Group.unstaged.discarding($0) == .trash } + untracked.filter { Group.untracked.discarding($0) == .trash })
+            .sorted { $0.path < $1.path }
+    }
+}

@@ -65,6 +65,7 @@ extension RepositoryModel {
     var dialog: RepositoryDialog? {
         if let checkoutFailure { return .message(dialog(for: checkoutFailure)) }
         if let pendingCommitSwitch { return .message(dialog(for: pendingCommitSwitch)) }
+        if let pendingDiscard = selectedChanges.pendingDiscard { return .message(selectedChanges.dialog(for: pendingDiscard)) }
         return branch.dialog
     }
 

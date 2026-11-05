@@ -46,3 +46,4 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [36](0036-a-solid-ink-tile-for-whats-selected-on-the-rail.md) | A solid ink tile for what's selected on the rail | Accepted |
 | [37](0037-double-click-a-commit-to-go-to-it.md) | Double-click a commit to go to it | Accepted |
 | [38](0038-one-delete-on-a-commit-with-its-branches-in-the-dialog.md) | One Delete… on a commit, with its branches in the dialog | Accepted |
+| [39](0039-discard-with-undo-and-ask-only-for-many.md) | Discard changes, with Undo, and ask only for more than one file | Accepted |

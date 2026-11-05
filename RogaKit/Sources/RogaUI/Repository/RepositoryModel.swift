@@ -171,6 +171,17 @@ final class RepositoryModel {
         composer = CommitComposer(session: session, worktree: worktree, branch: branch, changes: selectedChanges, drafts: drafts)
         selectedChanges.onLoad = { [weak self] changes in self?.show(uncommittedFiles: changes.fileCount, staged: changes.staged.count) }
         selectedChanges.onFailure = { [weak branch] title, error in branch?.failure = BranchModel.Failure(title: title, error: error, changedNothing: true) }
+        selectedChanges.onDiscard = { [weak self] words, canUndo in
+            guard let self else { return }
+            let undo = BranchModel.FinishedUndo(help: "Undo the Discard") { [weak self] in self?.selectedChanges.undoDiscard() }
+            branch.announce(words, undo: canUndo ? undo : nil)
+        }
+        selectedChanges.canDiscardEverything = { [weak branch] in
+            guard let branch else { return false }
+            return !branch.isBusy && branch.unfinished == nil
+        }
+        selectedChanges.lookAgain = { [weak self] in self?.lookAgain() }
+        selectedChanges.showChanges = { [weak self] in self?.selectChangesOnceTheyShow() }
         composer.currentBranch = { [weak self] in self?.history?.refs.currentBranch }
         composer.select = { [weak self] commit in self?.selectNewCommit(commit) }
         composer.showChanges = { [weak self] in self?.selectChangesOnceTheyShow() }

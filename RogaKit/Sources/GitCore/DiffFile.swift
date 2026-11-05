@@ -36,6 +36,9 @@ public struct DiffFile: Sendable, Hashable {
         }
     }
 
+    /// The mode git gives a submodule.
+    public static let submoduleMode: UInt32 = 0o160000
+
     /// How many lines a diff adds to a file and removes from it.
     public struct LineCounts: Sendable, Hashable {
         public var added: Int

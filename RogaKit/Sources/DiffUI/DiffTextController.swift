@@ -9,7 +9,15 @@ public final class DiffTextController: NSObject {
     public let scrollView: NSScrollView
     private let textView: DiffTextView
     private let gutter: LineNumberGutter
+    private let sides: SideBySideView
+    let hunkButton = HunkButton()
     public private(set) var document: DiffDocument?
+
+    /// Takes a hunk out of the file, by the index of its header among the patch's
+    /// lines, or nil when the hunks showing can't be taken out (decision 39).
+    public var discardHunk: ((Int) -> Void)? {
+        didSet { updateHunkButton() }
+    }
 
     /// The space above and below the text.
     private static let inset: CGFloat = 4
@@ -34,9 +42,15 @@ public final class DiffTextController: NSObject {
         scrollView.horizontalLineScroll = DiffStyle.columnWidth * 4
 
         gutter = LineNumberGutter(textView: textView)
-        view = SideBySideView(gutter: gutter, scrollView: scrollView)
+        sides = SideBySideView(gutter: gutter, scrollView: scrollView, hunkButton: hunkButton)
+        view = sides
 
         super.init()
+
+        hunkButton.target = self
+        hunkButton.action = #selector(hunkButtonPressed)
+        sides.pointerChanged = { [weak self] in self?.updateHunkButton() }
+        textView.menuItem = { [weak self] point in self?.hunkMenuItem(atTextY: point.y) }
 
         configureTextView()
         let clipView = scrollView.contentView
@@ -49,11 +63,13 @@ public final class DiffTextController: NSObject {
 
     @objc private func clipViewChangedSize() {
         updateTextSize()
+        updateHunkButton()
     }
 
     /// The gutter doesn't move with the text, so it draws again.
     @objc private func clipViewScrolled() {
         gutter.needsDisplay = true
+        updateHunkButton()
     }
 
     isolated deinit {
@@ -82,6 +98,7 @@ public final class DiffTextController: NSObject {
         updateTextSize()
         textView.needsDisplay = true
         textView.scroll(keepingPosition ? position : NSPoint(x: 0, y: 0))
+        updateHunkButton()
     }
 
     /// A text view that's going away takes its text container with it, so it
@@ -91,6 +108,67 @@ public final class DiffTextController: NSObject {
         guard let container = document?.container, container.textView === textView else { return }
         textView.textContainer = nil
         container.textView = nil
+    }
+
+    // MARK: Hunks
+
+    /// The header of the hunk at a height in the text view. Every line is one row of
+    /// the same height, so this takes no layout, however long the patch is.
+    func hunkHeader(atTextY y: CGFloat) -> Int? {
+        let row = ((y - textView.textContainerOrigin.y) / DiffStyle.lineHeight).rounded(.down)
+        return document?.hunkHeader(atRow: Int(row))
+    }
+
+    /// Shows the button for the hunk under the pointer, on its band, and at the edge
+    /// of the view, so that it stays put as the text scrolls sideways.
+    private func updateHunkButton() {
+        guard sides.isPointerInside, let window = view.window else {
+            hunkButton.isHidden = true
+            return
+        }
+        showHunkButton(atTextY: textView.convert(window.mouseLocationOutsideOfEventStream, from: nil).y)
+    }
+
+    /// Shows the button for the hunk at a height in the text view, if it can be
+    /// discarded and its band is in view.
+    func showHunkButton(atTextY y: CGFloat) {
+        guard discardHunk != nil, let header = hunkHeader(atTextY: y) else {
+            hunkButton.isHidden = true
+            return
+        }
+        let top = textView.textContainerOrigin.y + CGFloat(header) * DiffStyle.lineHeight
+        let band = view.convert(NSRect(x: 0, y: top, width: 1, height: DiffStyle.lineHeight), from: textView)
+        let clip = scrollView.contentView
+        let visible = view.convert(clip.bounds, from: clip)
+        guard visible.minY...visible.maxY ~= band.midY else {
+            hunkButton.isHidden = true
+            return
+        }
+        let size = hunkButton.size
+        hunkButton.frame = NSRect(x: visible.maxX - size.width - 6, y: (band.midY - size.height / 2).rounded(), width: size.width, height: size.height)
+        hunkButton.header = header
+        hunkButton.isHidden = false
+    }
+
+    @objc private func hunkButtonPressed() {
+        // The next hunk moves up under the pointer, and that's not what a double-click
+        // meant to take.
+        guard NSApp?.currentEvent?.isRepeatedClick != true, let header = hunkButton.header else { return }
+        discardHunk?(header)
+    }
+
+    /// What right-clicking a hunk offers, if it can be discarded.
+    func hunkMenuItem(atTextY y: CGFloat) -> NSMenuItem? {
+        guard discardHunk != nil, let header = hunkHeader(atTextY: y) else { return nil }
+        let item = NSMenuItem(title: "Discard Hunk", action: #selector(hunkMenuItemChosen), keyEquivalent: "")
+        item.target = self
+        item.representedObject = header
+        return item
+    }
+
+    @objc private func hunkMenuItemChosen(_ item: NSMenuItem) {
+        guard let header = item.representedObject as? Int else { return }
+        discardHunk?(header)
     }
 
     /// TextKit keeps most of a text view's settings with its layout manager, so
@@ -148,17 +226,46 @@ public final class DiffTextController: NSObject {
     }
 }
 
-/// Puts the gutter on the left and the text in the rest.
+/// Puts the gutter on the left and the text in the rest, and the button for a hunk
+/// over those, where it doesn't scroll. It says when the pointer moves over any of it.
 private final class SideBySideView: NSView {
     private let gutter: LineNumberGutter
     private let scrollView: NSScrollView
+    private let hunkButton: HunkButton
+    /// Says that the pointer moved, or came or went.
+    var pointerChanged: () -> Void = {}
+    private(set) var isPointerInside = false
 
-    init(gutter: LineNumberGutter, scrollView: NSScrollView) {
+    init(gutter: LineNumberGutter, scrollView: NSScrollView, hunkButton: HunkButton) {
         self.gutter = gutter
         self.scrollView = scrollView
+        self.hunkButton = hunkButton
         super.init(frame: .zero)
+        // A band cut off at the top would otherwise put its button over the header.
+        clipsToBounds = true
         addSubview(gutter)
         addSubview(scrollView)
+        addSubview(hunkButton)
+        addTrackingArea(NSTrackingArea(
+            rect: .zero,
+            options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+            owner: self
+        ))
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        isPointerInside = true
+        pointerChanged()
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        isPointerInside = true
+        pointerChanged()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        isPointerInside = false
+        pointerChanged()
     }
 
     @available(*, unavailable)

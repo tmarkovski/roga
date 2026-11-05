@@ -14,6 +14,8 @@ import GitRunner
 public actor RepositorySession {
     public nonisolated let location: RepositoryLocation
     public nonisolated let git: Git
+    /// Where discarded files go that git has no copy of.
+    public nonisolated let trash: FileTrash
     private nonisolated let catFile: CatFileSession
     private var commitGraphUpdate: Task<CommitGraphUpdate, any Error>?
     /// The running fetch. There's only ever one, because every worktree shares
@@ -26,9 +28,10 @@ public actor RepositorySession {
     /// What became of the last fetch.
     private var fetchRecord: FetchRecord?
 
-    public init(location: RepositoryLocation, git: Git) throws {
+    public init(location: RepositoryLocation, git: Git, trash: FileTrash = .system) throws {
         self.location = location
         self.git = git
+        self.trash = trash
         // The session belongs to the repository rather than to the worktree
         // it was found from, so it runs git in the git directory that every
         // worktree shares.
@@ -36,14 +39,14 @@ public actor RepositorySession {
     }
 
     /// Finds the repository that `path` is in and starts a session for it.
-    public static func open(containing path: String, git: Git) async throws -> RepositorySession {
-        try await start(location: try await RepositoryLocation.find(containing: path, git: git), git: git)
+    public static func open(containing path: String, git: Git, trash: FileTrash = .system) async throws -> RepositorySession {
+        try await start(location: try await RepositoryLocation.find(containing: path, git: git), git: git, trash: trash)
     }
 
     /// Starts a session away from the caller's actor, because that starts git.
     @concurrent
-    public static func start(location: RepositoryLocation, git: Git) async throws -> RepositorySession {
-        try RepositorySession(location: location, git: git)
+    public static func start(location: RepositoryLocation, git: Git, trash: FileTrash = .system) async throws -> RepositorySession {
+        try RepositorySession(location: location, git: git, trash: trash)
     }
 
     /// Loads history in `sort` order. The stream yields the history once its
@@ -466,6 +469,42 @@ public actor RepositorySession {
     @concurrent
     public nonisolated func unstage(_ files: [DiffFile], in worktree: String) async throws {
         try await IndexCommands.unstage(files.flatMap { [$0.path, $0.oldPath].compactMap(\.self) }, in: worktree, git: git)
+    }
+
+    /// Takes one hunk out of a file in a worktree, and says how to bring it back.
+    ///
+    /// - Throws: `GitError` when the hunk's lines have changed since, which changes
+    ///   nothing.
+    @concurrent
+    public nonisolated func discard(_ hunk: HunkPatch, in worktree: String) async throws -> DiscardedChanges {
+        try await DiscardCommands.discard(hunk, in: worktree, git: git)
+    }
+
+    /// Takes files of a group back to what git has for them, or moves them to the
+    /// Trash when it has nothing, and says how to bring them back.
+    ///
+    /// - Throws: `GitError` when git refuses, or a file error from the Trash.
+    @concurrent
+    public nonisolated func discard(_ files: [DiffFile], from group: WorktreeChanges.Group, in worktree: String) async throws -> DiscardedChanges {
+        try await DiscardCommands.discard(files, from: group, in: worktree, git: git, trash: trash)
+    }
+
+    /// Takes a worktree back to `HEAD`, moves these files to the Trash, and says how
+    /// to bring it all back.
+    ///
+    /// - Throws: `GitError` when git refuses, or a file error from the Trash.
+    @concurrent
+    public nonisolated func discardEverything(trashing files: [DiffFile], in worktree: String) async throws -> DiscardedChanges {
+        try await DiscardCommands.discardEverything(trashing: files, in: worktree, git: git, trash: trash)
+    }
+
+    /// Brings back what a discard took.
+    ///
+    /// - Throws: `GitError` when the file has changed where the lines would go, or a
+    ///   file error when a trashed file can't go back.
+    @concurrent
+    public nonisolated func bringBack(_ discarded: DiscardedChanges, in worktree: String) async throws {
+        try await DiscardCommands.bringBack(discarded, in: worktree, git: git)
     }
 
     /// Makes a commit from a worktree's index, with the user's hooks and signing.
