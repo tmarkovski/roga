@@ -61,6 +61,9 @@ public struct WorkspaceView: View {
     /// The width of the middle of the window, once it's been laid out.
     @State private var middleWidth: Double?
     @State private var sidebarLine = SidebarLineHover()
+    @State private var showsSettings = false
+    /// Settings asked for with no Roga window in front, which a new window shows.
+    @Environment(SettingsRequest.self) private var settingsRequest: SettingsRequest?
 
     public init(window: Binding<WorkspaceWindow?>) {
         _window = window
@@ -190,6 +193,13 @@ public struct WorkspaceView: View {
             // A new window, or one macOS didn't restore, shows the worktree
             // selected last.
             if window?.selection == nil { selection.wrappedValue = list.lastSelection }
+            if settingsRequest?.isPending == true {
+                settingsRequest?.isPending = false
+                showsSettings = true
+            }
+        }
+        .sheet(isPresented: $showsSettings) {
+            SettingsSheet()
         }
         .onChange(of: window?.selection) { previous, selected in
             if let selected { list.lastSelection = selected }
@@ -206,6 +216,7 @@ public struct WorkspaceView: View {
         .focusedSceneValue(\.showsOrganizationRail, $showsRail)
         .focusedSceneValue(\.sidebarVisibility, $columns)
         .focusedSceneValue(\.refsPanelVisibility, refsPanelVisibility)
+        .focusedSceneValue(\.showsSettings, $showsSettings)
     }
 
     private var refsPanelVisibility: RefsPanelVisibility {

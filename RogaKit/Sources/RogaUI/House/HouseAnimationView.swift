@@ -151,39 +151,3 @@ struct HouseFigure: View {
         context.stroke(toes, with: shading, style: StrokeStyle(lineWidth: HouseRig.toeWidth * thickness, lineCap: .round, lineJoin: .round))
     }
 }
-
-/// The setting for how fast the house moves, with every animation running above
-/// it, so that the change shows while the slider moves.
-struct HouseAnimationSettings: View {
-    @AppStorage(UserDefaults.houseAnimationSpeedKey) private var speed = 1.0
-
-    var body: some View {
-        Section("Motion") {
-            HStack(spacing: 0) {
-                ForEach(HouseAnimation.allCases) { animation in
-                    VStack(spacing: 4) {
-                        HouseAnimationView(animation: animation, height: 44)
-                        Text(animation.title)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-            }
-            .padding(.vertical, 2)
-            LabeledContent {
-                HStack(spacing: 8) {
-                    Slider(value: $speed, in: HouseAnimationView.speeds, step: 0.25)
-                        .labelsHidden()
-                    Text("\(speed.formatted())×")
-                        .monospacedDigit()
-                        .foregroundStyle(.secondary)
-                        .frame(width: 40, alignment: .trailing)
-                }
-            } label: {
-                Text("Animation speed")
-                Text("How fast the house moves while git runs.")
-            }
-        }
-    }
-}

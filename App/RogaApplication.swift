@@ -17,6 +17,8 @@ struct RogaApplication: App {
     @State private var gitProvider = GitProvider()
     /// The repositories in the sidebar, which every window lists.
     @State private var repositories = RepositoryList()
+    /// Settings asked for with no window open, which the next window shows.
+    @State private var settingsRequest = SettingsRequest()
 
     init() {
         // Repositories are switched in the sidebar (decision 13).
@@ -30,6 +32,7 @@ struct RogaApplication: App {
             WorkspaceView(window: $window)
                 .environment(gitProvider)
                 .environment(repositories)
+                .environment(settingsRequest)
         }
         // Wide enough for the sidebar, the refs panel and the panels between
         // them.
@@ -40,9 +43,7 @@ struct RogaApplication: App {
                 CheckForUpdatesButton(updater: updaterController.updater)
             }
             RepositoryCommands(list: repositories)
-        }
-        Settings {
-            SettingsView()
+            SettingsCommands(request: settingsRequest)
         }
         // For looking at the house's animations up close. It's listed in the
         // Window menu.

@@ -2,7 +2,7 @@
 
 Wireframes for a Settings window with a sidebar of pages, laid out like the Claude app's own settings and styled like Roga's dialogs ([decision 29](../../decisions/0029-dialogs-that-say-what-happens-and-show-the-command.md)). They're on the Settings page of the design canvas [yaga layout options](https://claude.ai/artifact/4WQVua6gwKqSBoiRdf2FhX), and [`boards.py`](boards.py) draws every board.
 
-The window and its sidebar are built, in [`SettingsView.swift`](../../../RogaKit/Sources/RogaUI/Settings/SettingsView.swift), with only the options Roga already had: Appearance, Git and Advanced. The other pages and every proposal on the boards wait until they're decided.
+Settings is built as a sheet, in [`SettingsSheet.swift`](../../../RogaKit/Sources/RogaUI/Settings/SettingsSheet.swift) and [`SettingsControls.swift`](../../../RogaKit/Sources/RogaUI/Settings/SettingsControls.swift), drawn to the boards' measurements and colors rather than with the system's lists and forms. It has only the options Roga already had, on Appearance, Git and Advanced. The other pages and every proposal on the boards wait until they're decided.
 
 ## Regenerating the boards
 
@@ -53,9 +53,9 @@ Each hook runs `roga hook --host <agent>`, a small helper that tells Roga the ev
 
 ## Decided
 
-- **A window of its own, opened with ⌘,.** Settings apply to the whole app and Roga can have several windows, so a sheet attached to one of them would be arbitrary. The window has the traffic lights over the sidebar and the page's name in the content's title bar, and Install… and Add a Command… open as sheets on it. Chosen on November 5, 2026.
+- **A sheet, drawn like Roga's dialogs, opened with ⌘,.** A window of its own was chosen first and built with the system's sidebar and grouped form, which looked like any Mac app's settings: blue selection, gray cards around the rows, and the system's title bar. So Settings is a sheet on the focused window, with "Settings" and × across the top, as the boards drew it before the window was chosen, and with no card around the rows. With no Roga window open, ⌘, opens one and shows Settings on it. The boards still draw the window's traffic lights and title bar. Decided on November 5, 2026.
 
-- **Built first with only what Roga had.** Appearance has the house's speed, how files are laid out, how refs are sorted and whether commit descriptions are folded. Git has fetching, and Advanced has commit-graph files. The rail of organizations stayed in the View menu, because each window keeps its own. Built on November 5, 2026.
+- **Built first with only what Roga had.** Appearance has the house's animations and speed, how files are laid out, how branches are sorted and whether commit descriptions are folded. Git has fetching, and Advanced has commit-graph files. The rail of organizations stayed in the View menu, because each window keeps its own. The search field finds settings by their words across the pages. The sidebar's footer has Roga's version but no Release Notes link, because there are no release notes yet. Built on November 5, 2026.
 
 ## Still to decide
 

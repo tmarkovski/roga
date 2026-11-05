@@ -88,6 +88,7 @@ public enum Icon: String, CaseIterable, Sendable {
     case lock = "lock"
     case lockOpen = "lock-open"
     case minus = "minus"
+    case palette = "palette"
     case panelLeft = "panel-left"
     case panelRight = "panel-right"
     case pause = "pause"
@@ -118,5 +119,6 @@ public enum Icon: String, CaseIterable, Sendable {
     case undo2 = "undo-2"
     case user = "user"
     case users = "users"
+    case wrench = "wrench"
     case x = "x"
 }
