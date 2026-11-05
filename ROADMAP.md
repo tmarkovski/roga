@@ -26,7 +26,7 @@ Some of the setup comes later, when there's something for it to work on:
 
 Release 1 is for someone who works in the terminal and keeps Roga open next to it. They use it to read history and to review what they and their agents have changed.
 
-Roga doesn't change the repository in release 1, with a few exceptions. It keeps the commit-graph file up to date (decision 6), double-clicking a branch's badge in history checks that branch out with `git switch`, double-clicking a commit goes to it with `git reset --keep` or `git switch --detach` (decision 37), the branch in the title row fetches, pulls, pushes and starts new branches (decisions 19 and 20), right-clicking a branch or its commit deletes the branch, and a linked worktree's menu in the sidebar deletes the worktree, and the row for uncommitted changes stages files and commits them (decision 30). The last four came forward from release 2. Switching worktrees only changes what Roga shows.
+Roga doesn't change the repository in release 1, with a few exceptions. It keeps the commit-graph file up to date (decision 6), double-clicking a branch's badge in history checks that branch out with `git switch`, double-clicking a commit goes to it with `git reset --keep`, `git reset --soft` if the dialog was asked to keep the changes, or `git switch --detach` (decision 37), the branch in the title row fetches, pulls, pushes and starts new branches (decisions 19 and 20), right-clicking a branch or its commit deletes the branch, and a linked worktree's menu in the sidebar deletes the worktree, and the row for uncommitted changes stages files and commits them (decision 30). The last four came forward from release 2. Switching worktrees only changes what Roga shows.
 
 The work happens in this order:
 

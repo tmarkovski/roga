@@ -32,13 +32,19 @@ public struct CommitSwitch: Sendable, Hashable {
     public var lostCount: Int
     /// The newest of those commits.
     public var lost: [ObjectID]
+    /// Whether the branch itself leads to the commit, which makes everything since
+    /// then the branch's own. An upstream can lead there without the branch doing so.
+    public var goesBack: Bool
+    /// Whether this leaves the files and the index as they are.
+    public private(set) var keepsChanges = false
 
-    public init(commit: ObjectID, way: Way, head: ObjectID? = nil, lostCount: Int = 0, lost: [ObjectID] = []) {
+    public init(commit: ObjectID, way: Way, head: ObjectID? = nil, lostCount: Int = 0, lost: [ObjectID] = [], goesBack: Bool = false) {
         self.commit = commit
         self.way = way
         self.head = head
         self.lostCount = lostCount
         self.lost = lost
+        self.goesBack = goesBack
     }
 
     /// Whether someone should agree to this first, which is only when it loses
@@ -49,9 +55,19 @@ public struct CommitSwitch: Sendable, Hashable {
     /// carries uncommitted changes along, and refuses when they're in the way.
     public var arguments: [String] {
         switch way {
-        case .movingBranch: ["reset", "--keep", commit.hex]
+        case .movingBranch: ["reset", keepsChanges ? "--soft" : "--keep", commit.hex]
         case .detaching: ["switch", "--detach", commit.hex]
         }
+    }
+
+    /// The same move with `--soft`, so that everything since the commit comes back
+    /// as staged changes. It's only for going back: across a branch that has diverged,
+    /// those changes would also undo whatever is on the other side.
+    public var keepingChanges: CommitSwitch? {
+        guard goesBack else { return nil }
+        var keeping = self
+        keeping.keepsChanges = true
+        return keeping
     }
 
     /// Finds out what going to a commit would come to.
@@ -60,11 +76,14 @@ public struct CommitSwitch: Sendable, Hashable {
     static func prepare(to commit: ObjectID, limit: Int, in worktree: String, worktrees: [Worktree], git: Git) async throws -> CommitSwitch {
         let refs = try await RefsLoader.load(git: git, in: worktree)
         var way = Way.detaching
+        var goesBack = false
         var leaving: [String] = []
         if let branch = refs.currentBranch {
             let upstream = refs.refs.first { $0.name == branch }?.upstream
-            if try await any(of: [branch, upstream].compactMap(\.self), contains: commit, in: worktree, git: git) {
+            let holders = try await holders(of: commit, among: [branch, upstream].compactMap(\.self), in: worktree, git: git)
+            if !holders.isEmpty {
                 way = .movingBranch(branch)
+                goesBack = holders.contains(branch)
                 leaving = LostCommits.leaving([branch], among: refs.refs)
             }
         }
@@ -80,13 +99,13 @@ public struct CommitSwitch: Sendable, Hashable {
             in: worktree,
             git: git
         )
-        return CommitSwitch(commit: commit, way: way, head: refs.head, lostCount: lost.count, lost: lost.newest)
+        return CommitSwitch(commit: commit, way: way, head: refs.head, lostCount: lost.count, lost: lost.newest, goesBack: goesBack)
     }
 
-    /// Whether any of these refs leads to a commit.
-    private static func any(of refs: [String], contains commit: ObjectID, in worktree: String, git: Git) async throws -> Bool {
+    /// Which of these refs lead to a commit.
+    private static func holders(of commit: ObjectID, among refs: [String], in worktree: String, git: Git) async throws -> [String] {
         let holders = try await git.text(GitCommand(["for-each-ref", "--contains=" + commit.hex, "--format=%(refname)"] + refs, in: worktree))
-        return !holders.isEmpty
+        return holders.split(separator: "\n").map(String.init)
     }
 
     /// Goes to the commit, unless `HEAD` has moved since this was worked out, which

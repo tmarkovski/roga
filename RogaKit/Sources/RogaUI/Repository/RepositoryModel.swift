@@ -435,6 +435,17 @@ final class RepositoryModel {
         branch.push(thenGoingTo: pending.commitSwitch)
     }
 
+    /// Moves the branch back to the commit that was asked about, and leaves everything
+    /// since then staged.
+    func keepChangesAndConfirmCommitSwitch() {
+        guard let pending = pendingCommitSwitch, !branch.isBusy, let keeping = pending.commitSwitch.keepingChanges else { return }
+        pendingCommitSwitch = nil
+        checkout = Task {
+            await run(keeping)
+            checkout = nil
+        }
+    }
+
     private func run(_ commitSwitch: CommitSwitch) async {
         await sayingIfSlow(commitSwitch.shortCommit) {
             do {

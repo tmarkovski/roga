@@ -40,9 +40,11 @@ enum DialogColors {
 struct DialogSheet<Extra: View>: View {
     let content: DialogContent
     @ViewBuilder var extra: Extra
+    /// The button the pointer is on, by its place along the row.
+    @State private var pointedAt: Int?
 
     /// As wide as the longest commands Roga runs usually are, on one line.
-    static var width: CGFloat { 480 }
+    static var width: CGFloat { 520 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -69,14 +71,19 @@ struct DialogSheet<Extra: View>: View {
             }
             .padding(EdgeInsets(top: 16, leading: 18, bottom: 14, trailing: 18))
             HStack(spacing: 8) {
-                Spacer(minLength: 0)
-                ForEach(Array(content.buttons.enumerated()), id: \.offset) { _, button in
+                ForEach(Array(content.buttons.enumerated()), id: \.offset) { index, button in
                     DialogActionButton(button: button)
+                        .onHover { if $0 { pointedAt = index } }
                 }
             }
+            // Only leaving the row ends this, so that crossing the gap between two
+            // buttons doesn't flash what the block usually shows.
+            .contentShape(Rectangle())
+            .onHover { if !$0 { pointedAt = nil } }
+            .frame(maxWidth: .infinity, alignment: .trailing)
             .padding(EdgeInsets(top: 0, leading: 18, bottom: content.terminal.isEmpty ? 16 : 14, trailing: 18))
             if !content.terminal.isEmpty {
-                CommandBlock(lines: content.terminal)
+                CommandBlock(lines: content.terminal(pointingAt: pointedAt))
             }
         }
         .frame(width: Self.width)
@@ -223,7 +230,7 @@ private struct DialogActionButton: View {
 
     var body: some View {
         switch button.kind {
-        case .secondary:
+        case .secondary, .partlyDestructive:
             base
         case .primary:
             base.keyboardShortcut(.defaultAction)
@@ -252,6 +259,12 @@ private struct DialogButtonStyle: ButtonStyle {
             .frame(height: 28)
             .foregroundStyle(foreground)
             .background(background, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .overlay {
+                if kind == .partlyDestructive {
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .strokeBorder(DialogColors.danger, lineWidth: 1)
+                }
+            }
             .opacity(!isEnabled ? 0.45 : configuration.isPressed ? 0.75 : 1)
             .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
     }
@@ -261,6 +274,7 @@ private struct DialogButtonStyle: ButtonStyle {
         case .secondary: .primary
         case .primary: DialogColors.onInk
         case .destructive: DialogColors.onDanger
+        case .partlyDestructive: DialogColors.danger
         }
     }
 
@@ -269,6 +283,7 @@ private struct DialogButtonStyle: ButtonStyle {
         case .secondary: DialogColors.secondaryButton
         case .primary: DialogColors.ink
         case .destructive: DialogColors.danger
+        case .partlyDestructive: .clear
         }
     }
 }

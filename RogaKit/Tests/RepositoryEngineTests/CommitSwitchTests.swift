@@ -124,6 +124,8 @@ struct CommitSwitchTests {
         let commitSwitch = try await prepare(session, to: upstream, in: repository)
         #expect(commitSwitch.way == .movingBranch("refs/heads/main"))
         #expect(commitSwitch.lost == [mine])
+        // What's staged would also undo the upstream's commit.
+        #expect(commitSwitch.keepingChanges == nil)
     }
 
     // MARK: Another line
@@ -187,6 +189,56 @@ struct CommitSwitchTests {
         await #expect(throws: GitError.self) { try await session.run(commitSwitch, in: repository) }
         #expect(try await id("HEAD", in: repository) == head)
         #expect(try String(contentsOfFile: repository + "/" + file, encoding: .utf8) == "Mine\n")
+    }
+
+    // MARK: Keeping the changes
+
+    @Test func keepingChangesLeavesWhatTheCommitsChangedStaged() async throws {
+        let (session, repository) = try await clone()
+        let target = try await id("HEAD", in: repository)
+        try Data("Mine\n".utf8).write(to: URL(filePath: repository + "/mine.txt"))
+        try await runGit("add", "mine.txt", in: repository)
+        try await commit("Mine", in: repository)
+
+        let commitSwitch = try await prepare(session, to: target, in: repository)
+        #expect(commitSwitch.asksFirst)
+        let keeping = try #require(commitSwitch.keepingChanges)
+        #expect(keeping.arguments == ["reset", "--soft", target.hex])
+
+        try await session.run(keeping, in: repository)
+        #expect(try await id("HEAD", in: repository) == target)
+        #expect(try await runGit("diff", "--cached", "--name-only", in: repository) == "mine.txt")
+        #expect(try String(contentsOfFile: repository + "/mine.txt", encoding: .utf8) == "Mine\n")
+    }
+
+    @Test func keepingChangesLeavesUncommittedChangesAsTheyWere() async throws {
+        let (session, repository) = try await clone()
+        let target = try await id("HEAD", in: repository)
+        try Data("One\n".utf8).write(to: URL(filePath: repository + "/mine.txt"))
+        try await runGit("add", "mine.txt", in: repository)
+        try await commit("Mine", in: repository)
+        // A change that `--keep` would refuse to carry past the commit that made the file.
+        try Data("Two\n".utf8).write(to: URL(filePath: repository + "/mine.txt"))
+        try Data("Staged\n".utf8).write(to: URL(filePath: repository + "/staged.txt"))
+        try await runGit("add", "staged.txt", in: repository)
+
+        let commitSwitch = try await prepare(session, to: target, in: repository)
+        await #expect(throws: GitError.self) { try await session.run(commitSwitch, in: repository) }
+
+        try await session.run(try #require(commitSwitch.keepingChanges), in: repository)
+        #expect(try await id("HEAD", in: repository) == target)
+        #expect(try String(contentsOfFile: repository + "/mine.txt", encoding: .utf8) == "Two\n")
+        #expect(try await runGit("diff", "--cached", "--name-only", in: repository) == "mine.txt\nstaged.txt")
+        #expect(try await runGit("show", ":mine.txt", in: repository) == "One")
+    }
+
+    @Test func keepingChangesRefusesWhenHeadHasMovedSinceItCounted() async throws {
+        let (session, repository) = try await clone()
+        let target = try await id("HEAD~1", in: repository)
+        let keeping = try #require(try await prepare(session, to: target, in: repository).keepingChanges)
+        let new = try await commit("Made meanwhile", in: repository)
+        await #expect(throws: CommitSwitch.Outdated.self) { try await session.run(keeping, in: repository) }
+        #expect(try await id("HEAD", in: repository) == new)
     }
 
     @Test func refusesWhenHeadHasMovedSinceItCounted() async throws {

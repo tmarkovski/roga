@@ -69,8 +69,8 @@ extension RepositoryModel {
     }
 
     /// What going to a commit loses, as the vision asks of destructive operations,
-    /// and a way to keep those commits by pushing them first, when git would take
-    /// the push.
+    /// and the ways to save something: pushing the commits first, when git would take
+    /// the push, and keeping what they changed, when the branch is going back.
     func dialog(for pending: PendingCommitSwitch) -> DialogContent {
         let commitSwitch = pending.commitSwitch
         let short = commitSwitch.shortCommit
@@ -102,12 +102,23 @@ extension RepositoryModel {
             )
         case .movingBranch(let name):
             let name = Ref.shortName(name)
-            buttons.append(DialogButton(title: "Reset anyway", kind: .destructive) { [weak self] in self?.confirmCommitSwitch() })
-            if let push = branch.status?.push {
-                terminal = [.comment("Reset anyway skips the push"), .command(push.arguments)] + terminal
+            let push = branch.status?.push
+            // These two skip the push, so they need a line less than the block has room for.
+            let room: [TerminalLine] = push == nil ? [] : [.blank]
+            buttons.append(DialogButton(title: "Reset anyway", kind: .destructive, terminal: [.command(commitSwitch.arguments)] + room) { [weak self] in
+                self?.confirmCommitSwitch()
+            })
+            if let keeping = commitSwitch.keepingChanges {
+                notes.append("Keep changes leaves everything since \(code: short) staged.")
+                buttons.append(DialogButton(title: "Keep changes", kind: .partlyDestructive, terminal: [.command(keeping.arguments)] + room) { [weak self] in
+                    self?.keepChangesAndConfirmCommitSwitch()
+                })
+            }
+            if let push {
+                terminal.insert(.command(push.arguments), at: 0)
                 buttons.append(DialogButton(title: "Push, then reset", kind: .primary) { [weak self] in self?.pushThenConfirmCommitSwitch() })
             } else if let upstream = branch.status?.upstream.map(Ref.shortName) {
-                notes.append("Pushing them first isn't offered, because git would reject it: \(code: upstream) has commits that \(code: name) doesn't.")
+                notes.append("Pushing first isn't offered, because git would reject it: \(code: upstream) has commits that \(code: name) doesn't.")
             }
             return DialogContent(
                 id: "commitSwitch",

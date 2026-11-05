@@ -136,11 +136,18 @@ struct DialogButton {
         /// What can't be brought back. It's red, and Return doesn't press it,
         /// so it takes a click or Command-Return.
         case destructive
+        /// Gives up what can't be brought back, but saves part of it. It's outlined
+        /// in red rather than filled, and takes a click.
+        case partlyDestructive
     }
 
     var title: String
     var kind: Kind
     var isEnabled = true
+    /// What the terminal block shows while the pointer is on this button, when that
+    /// isn't what it usually shows. It needs as many lines, because a sheet can't
+    /// change size.
+    var terminal: [TerminalLine]? = nil
     var action: () -> Void
 
     /// What every question offers beside what it's asking about.
@@ -173,6 +180,12 @@ struct DialogContent: Identifiable {
 }
 
 extension DialogContent {
+    /// What the terminal block shows while the pointer is on a button, if it's on one.
+    func terminal(pointingAt button: Int?) -> [TerminalLine] {
+        guard let button, buttons.indices.contains(button) else { return terminal }
+        return buttons[button].terminal ?? terminal
+    }
+
     /// Says that git refused, or that something else went wrong, with an OK button.
     /// With a command to show, what git said goes under it in the terminal block.
     /// Otherwise it's only words, and they go with the message.

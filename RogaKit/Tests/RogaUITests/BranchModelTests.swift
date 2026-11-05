@@ -499,10 +499,17 @@ struct BranchModelTests {
         #expect(dialog.title == "Reset main to \(short)?")
         #expect(dialog.message?.plain == "main moves to \(short). 2 commits aren't on a remote, another branch or a tag, so they would be lost.")
         #expect(dialog.cards.first?.count == 2)
-        #expect(dialog.buttons.map(\.title) == ["Cancel", "Reset anyway", "Push, then reset"])
+        #expect(dialog.buttons.map(\.title) == ["Cancel", "Reset anyway", "Keep changes", "Push, then reset"])
         #expect(dialog.buttons[1].kind == .destructive)
-        #expect(dialog.buttons[2].kind == .primary)
-        #expect(dialog.terminal == [.comment("Reset anyway skips the push"), .command(["push"]), .command(["reset", "--keep", target])])
+        #expect(dialog.buttons[2].kind == .partlyDestructive)
+        #expect(dialog.buttons[3].kind == .primary)
+        #expect(dialog.terminal == [.command(["push"]), .command(["reset", "--keep", target])])
+        // Each button's own command shows while the pointer is on it, in the same room.
+        #expect(dialog.terminal(pointingAt: nil) == dialog.terminal)
+        #expect(dialog.terminal(pointingAt: 0) == dialog.terminal)
+        #expect(dialog.terminal(pointingAt: 1) == [.command(["reset", "--keep", target]), .blank])
+        #expect(dialog.terminal(pointingAt: 2) == [.command(["reset", "--soft", target]), .blank])
+        #expect(dialog.terminal(pointingAt: 3) == dialog.terminal)
         #expect(try await git("rev-parse", "HEAD", in: clones.work) == tip)
         #expect(CommandBlock.copied(dialog.terminal) == "git push\ngit reset --keep \(target)")
 
@@ -518,7 +525,43 @@ struct BranchModelTests {
         await model.checkout?.value
         let dialog = try dialogContent(model)
         #expect(dialog.message?.plain.hasSuffix("1 commit isn't on a remote, another branch or a tag, so it would be lost.") == true)
-        #expect(dialog.note?.plain == "git reflog can still find it for a while.")
+        let short = try await git("rev-parse", "origin/main", in: clones.work).prefix(8)
+        #expect(dialog.note?.plain == "git reflog can still find it for a while. Keep changes leaves everything since \(short) staged.")
+    }
+
+    @Test func resetsAndKeepsTheChangesWhenAsked() async throws {
+        let clones = try await clones()
+        let target = try await git("rev-parse", "HEAD", in: clones.work)
+        try await commit("Mine", in: clones.work, file: "mine.txt", text: "One\n")
+        let model = try await modelToGoBack(clones)
+        model.goToRow(try await row("origin/main", in: clones, of: model), showWorktree: notInAnotherWorktree)
+        await model.checkout?.value
+
+        try dialogContent(model).buttons[2].action()
+        #expect(model.dialog == nil)
+        await finishGoing(model)
+
+        #expect(model.dialog == nil)
+        #expect(try await git("rev-parse", "HEAD", in: clones.work) == target)
+        #expect(try await git("diff", "--cached", "--name-only", in: clones.work) == "mine.txt")
+        #expect(try String(contentsOfFile: clones.work + "/mine.txt", encoding: .utf8) == "One\n")
+        #expect(model.branch.status?.ahead == 0)
+        #expect(model.selectedCommit.id?.hex == target)
+        // What the commit changed is back in the row for uncommitted changes.
+        #expect(model.hasWorkingTreeRow)
+    }
+
+    @Test func showsWhatKeepingTheChangesRunsWithoutARemote() async throws {
+        let clones = try await clones()
+        try await git("remote", "remove", "origin", in: clones.work)
+        let model = try await modelToGoBack(clones, unpushed: 1)
+        let target = try await git("rev-parse", "HEAD~1", in: clones.work)
+        model.goToRow(try await row("HEAD~1", in: clones, of: model), showWorktree: notInAnotherWorktree)
+        await model.checkout?.value
+
+        let dialog = try dialogContent(model)
+        #expect(dialog.terminal == [.command(["reset", "--keep", target])])
+        #expect(dialog.terminal(pointingAt: 2) == [.command(["reset", "--soft", target])])
     }
 
     @Test func resetsAnywayWhenAsked() async throws {
@@ -546,7 +589,7 @@ struct BranchModelTests {
         model.goToRow(try await row("origin/main", in: clones, of: model), showWorktree: notInAnotherWorktree)
         await model.checkout?.value
 
-        try dialogContent(model).buttons[2].action()
+        try dialogContent(model).buttons[3].action()
         #expect(model.branch.action == .pushing)
         await finishGoing(model)
 
@@ -566,7 +609,7 @@ struct BranchModelTests {
         // Someone pushes after the counts were read, so the remote rejects this.
         try await pushFromOther(clones)
 
-        try dialogContent(model).buttons[2].action()
+        try dialogContent(model).buttons[3].action()
         await finishGoing(model)
 
         let dialog = try dialogContent(model)
@@ -582,7 +625,7 @@ struct BranchModelTests {
         // A commit made while the dialog waits.
         let new = try await commit("Made meanwhile", in: clones.work)
 
-        try dialogContent(model).buttons[2].action()
+        try dialogContent(model).buttons[3].action()
         await finishGoing(model)
 
         let dialog = try dialogContent(model)
@@ -602,7 +645,7 @@ struct BranchModelTests {
         // A change that the reset would have to overwrite.
         try "Two\n".write(toFile: clones.work + "/mine.txt", atomically: true, encoding: .utf8)
 
-        try dialogContent(model).buttons[2].action()
+        try dialogContent(model).buttons[3].action()
         await finishGoing(model)
 
         let dialog = try dialogContent(model)
@@ -635,7 +678,7 @@ struct BranchModelTests {
         let model = try await modelToGoBack(clones, unpushed: 1)
         model.goToRow(try await row("HEAD~1", in: clones, of: model), showWorktree: notInAnotherWorktree)
         await model.checkout?.value
-        #expect(try dialogContent(model).buttons.map(\.title) == ["Cancel", "Reset anyway"])
+        #expect(try dialogContent(model).buttons.map(\.title) == ["Cancel", "Reset anyway", "Keep changes"])
     }
 
     @Test func aRowWithAnotherBranchGoesToThatBranch() async throws {
