@@ -80,20 +80,27 @@ CSS = r"""
 body{margin:0}
 *{box-sizing:border-box}
 .board{position:relative;display:flex;align-items:flex-start;justify-content:center;padding:40px;font:13px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;border-radius:12px;overflow:hidden}
-.th-l{--sheet:#fff;--tx:#1c1c1a;--tx2:#696964;--card:#f2f2f0;--line:#d6d6d3;--hair:#eaeae7;--sec:#efefed;--nav:#ececea;--ink:#1a1a18;--onink:#fff;--dng:#cd1755;--org:#c94402;--onorg:#fff;--act:#b83e02;--term:#272822;--warn:#9a5200;--ok:#3f7d00;--red:#c4123f;--add:#e6f4e1;--addh:#c9e8bd;--del:#fde8ec;--delh:#f7c4cf;--surface:#fafaf9;--scrim:rgba(20,20,18,.36);--hover:rgba(0,0,0,.05);--sh:0 18px 50px rgba(0,0,0,.22),0 0 0 .5px rgba(0,0,0,.14);--bg:#deded9;--tip:#1c1c1a;--ontip:#fff}
-.th-d{--sheet:#2a2a29;--tx:#ececea;--tx2:#a9a9a3;--card:#353534;--line:#4a4a47;--hair:#393938;--sec:#3b3b3a;--nav:#3a3a39;--ink:#ececea;--onink:#16150e;--dng:#fc5884;--org:#f0813f;--onorg:#272822;--act:#f0813f;--term:#1a1b17;--warn:#f0a54a;--ok:#a6e22e;--red:#ff6b8f;--add:#26331c;--addh:#3b5226;--del:#3d2028;--delh:#5c2a37;--surface:#252524;--scrim:rgba(0,0,0,.5);--hover:rgba(255,255,255,.07);--sh:0 18px 50px rgba(0,0,0,.55),0 0 0 .5px rgba(255,255,255,.12);--bg:#141413;--tip:#ececea;--ontip:#1c1c1a}
+.th-l{--sheet:#fff;--side:#f6f6f4;--tx:#1c1c1a;--tx2:#696964;--card:#f2f2f0;--line:#d6d6d3;--hair:#eaeae7;--sec:#efefed;--nav:#e5e5e2;--ink:#1a1a18;--onink:#fff;--dng:#cd1755;--org:#c94402;--onorg:#fff;--act:#b83e02;--term:#272822;--warn:#9a5200;--ok:#3f7d00;--red:#c4123f;--add:#e6f4e1;--addh:#c9e8bd;--del:#fde8ec;--delh:#f7c4cf;--surface:#fafaf9;--scrim:rgba(20,20,18,.36);--hover:rgba(0,0,0,.05);--sh:0 18px 50px rgba(0,0,0,.22),0 0 0 .5px rgba(0,0,0,.14);--bg:#deded9;--tip:#1c1c1a;--ontip:#fff}
+.th-d{--sheet:#2a2a29;--side:#242423;--tx:#ececea;--tx2:#a9a9a3;--card:#353534;--line:#4a4a47;--hair:#393938;--sec:#3b3b3a;--nav:#3a3a39;--ink:#ececea;--onink:#16150e;--dng:#fc5884;--org:#f0813f;--onorg:#272822;--act:#f0813f;--term:#1a1b17;--warn:#f0a54a;--ok:#a6e22e;--red:#ff6b8f;--add:#26331c;--addh:#3b5226;--del:#3d2028;--delh:#5c2a37;--surface:#252524;--scrim:rgba(0,0,0,.5);--hover:rgba(255,255,255,.07);--sh:0 18px 50px rgba(0,0,0,.55),0 0 0 .5px rgba(255,255,255,.12);--bg:#141413;--tip:#ececea;--ontip:#1c1c1a}
 .board{background:var(--bg);color:var(--tx)}
 .ic{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;display:block;flex:none}
 .ic.s{width:13px;height:13px}
 .ic.xs{width:11px;height:11px;stroke-width:2}
 .mono{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-variant-ligatures:none}
 
-.sw{position:relative;width:880px;background:var(--sheet);color:var(--tx);border-radius:20px;box-shadow:var(--sh);display:flex;flex-direction:column;overflow:hidden;flex:none}
-.swh{height:52px;flex:none;display:flex;align-items:center;gap:12px;padding:0 14px 0 20px;border-bottom:1px solid var(--hair)}
-.swh h2{margin:0;flex:1 1 0;font-size:15px;font-weight:600}
+.sw{position:relative;width:880px;background:var(--sheet);color:var(--tx);border-radius:16px;box-shadow:var(--sh);display:flex;flex-direction:column;overflow:hidden;flex:none}
+.tl{height:52px;flex:none;display:flex;align-items:center;gap:8px;padding-left:8px}
+.tl i{width:12px;height:12px;border-radius:50%;box-shadow:inset 0 0 0 .5px rgba(0,0,0,.18)}
+.tl i:nth-child(1){background:#ff5f57}
+.tl i:nth-child(2){background:#febc2e}
+.tl i:nth-child(3){background:#28c840}
+.main{flex:1 1 0;min-width:0;display:flex;flex-direction:column}
+.tb{height:52px;flex:none;display:flex;align-items:center;gap:4px;padding:0 20px 0 28px;border-bottom:1px solid var(--hair)}
+.tb h2{margin:0;font-size:15px;font-weight:600}
+.bk{width:26px;height:26px;margin-left:-10px;border:0;background:none;color:var(--tx2);display:grid;place-items:center;padding:0;border-radius:7px;cursor:default}
 .x{width:26px;height:26px;border:0;background:none;color:var(--tx2);display:grid;place-items:center;padding:0;border-radius:7px;flex:none;cursor:default}
 .swb{display:flex;flex:1 1 auto;min-height:0}
-.nav{width:216px;flex:none;border-right:1px solid var(--hair);padding:14px 12px 12px;display:flex;flex-direction:column;gap:2px}
+.nav{width:216px;flex:none;background:var(--side);border-right:1px solid var(--hair);padding:0 12px 12px;display:flex;flex-direction:column;gap:2px}
 .srch{display:flex;align-items:center;gap:8px;height:30px;padding:0 10px;border:1px solid var(--line);border-radius:9px;color:var(--tx2);margin-bottom:12px;flex:none}
 .srch input{border:0;background:none;font:inherit;color:var(--tx);outline:none;min-width:0;flex:1 1 0;padding:0}
 .ni{display:flex;align-items:center;gap:10px;height:30px;padding:0 10px;border-radius:8px;border:0;background:none;color:var(--tx);font:inherit;text-align:left;width:100%;flex:none;cursor:default}
@@ -104,7 +111,6 @@ body{margin:0}
 .nft{margin-top:auto;padding:12px 10px 2px;display:flex;align-items:center;justify-content:space-between;color:var(--tx2);font-size:12px;flex:none}
 .lnk{border:0;background:none;padding:0;font:inherit;color:var(--tx2);display:inline-flex;align-items:center;gap:3px;cursor:default}
 .ct{position:relative;flex:1 1 0;min-width:0;padding:22px 28px 28px;display:flex;flex-direction:column;gap:30px;overflow:hidden}
-.back{align-self:flex-start;margin:-8px 0 -22px -6px;height:24px;padding:0 6px 0 2px;border:0;background:none;color:var(--tx2);font:inherit;display:inline-flex;align-items:center;gap:2px;border-radius:6px;cursor:default}
 .sec{display:flex;flex-direction:column}
 .sh{display:flex;align-items:center;gap:10px;min-height:26px;margin-bottom:4px}
 .sh h3{margin:0;flex:1 1 0;font-size:15px;font-weight:600}
@@ -493,7 +499,7 @@ def page_general(ctx: Ctx) -> tuple[str, int]:
 
 def page_appearance(ctx: Ctx) -> tuple[str, int]:
     theme = seg(ctx, "theme", ["System", "Light", "Dark"], "System", "Theme", {"System": "monitor", "Light": "sun", "Dark": "moon"})
-    s1 = section("Appearance", [
+    s1 = section("Interface", [
         row("Theme", theme, cw=110),
         row("Text size", popup("Medium"), "For the sidebar, history and file lists. Diffs have their own size below.", cw=110),
     ])
@@ -541,11 +547,13 @@ def page_git(ctx: Ctx) -> tuple[str, int]:
         '<span class="mono" style="color:var(--tx)">/usr/bin/git</span> · git 2.54.0 (Apple Git-157)<br>'
         'Roga passed over <span class="mono">/usr/local/bin/git</span>, which is git 2.33.0, older than 2.44.'
     )
-    s1 = section("Git", [
+    s0 = section("Installation", [
         row("Git", '<button class="b sec">Choose…</button>', help_html=git_help, help="x" * 60, cw=90, extra=1, today=True),
+    ], desc='Roga uses the first git 2.44 or newer in your login shell\'s <span class="mono">PATH</span>, unless you choose one.')
+    s1 = section("Identity", [
         row("Name", field_("Sam Rivera", "Name"), key="user.name", cw=240),
         row("Email", field_("sam@acme.dev", "Email"), key="user.email", cw=240),
-    ], desc='Roga uses the first git 2.44 or newer in your login shell\'s <span class="mono">PATH</span>. A row with a key like <span class="key">user.name</span> reads and writes your global git config, so git does the same on the command line.')
+    ], desc='A row with a key like <span class="key">user.name</span> reads and writes your global git config, so git does the same on the command line.')
     s2 = section("Fetching and pulling", [
         row("Fetch when Roga becomes active", toggle(ctx, "fetch", True, "Fetch when Roga becomes active"),
             "Roga runs git fetch for the repository on screen, at most once a minute, so that it can say how far your branch is from its upstream. It only moves remote branches, and it never asks for credentials.", today=True),
@@ -556,7 +564,7 @@ def page_git(ctx: Ctx) -> tuple[str, int]:
         row("Set the upstream on a branch's first push", toggle(ctx, "autoremote", True, "Set the upstream on a branch's first push"),
             "A new branch pushes to a branch of the same name.", key="push.autoSetupRemote"),
     ])
-    return join_sections([s1, s2, s3])
+    return join_sections([s0, s1, s2, s3])
 
 
 def page_commit(ctx: Ctx) -> tuple[str, int]:
@@ -728,15 +736,14 @@ def page_agent_detail(ctx: Ctx, which: str) -> tuple[str, int]:
         cmd = codex_cmd("Default")
         result = "Replied in 6.1 s"
         extra_ph = "-c model_verbosity=low"
-    back_click = ' onClick="{{go.agents}}"' if ctx.live else ""
-    back = f'<button class="back"{back_click}>{ic("left", "ic s")}Agents</button>'
-    s1 = section(name, [
-        row("Command", '<button class="b sec">Choose…</button>', help_html=f'<span class="mono" style="color:var(--tx)">{esc(path)}</span> · {esc(version)}<br>Found in your login shell\'s PATH.', help="x" * 40, extra=1, cw=90),
+    s1 = section("Command", [
+        row(f"Use {name}", toggle(ctx, "ag_" + which, True, f"Use {name}"), "Off takes it out of the Generate button's picker. Its hooks stay as they are."),
+        row("Program", '<button class="b sec">Choose…</button>', help_html=f'<span class="mono" style="color:var(--tx)">{esc(path)}</span> · {esc(version)}<br>Found in your login shell\'s PATH.', help="x" * 40, extra=1, cw=90),
         row("Model", model, model_help, cw=170),
         row("Effort", eff, effort_help, cw=170),
         row("Extra arguments", field_("", "Extra arguments", mono=True, width=220, placeholder=extra_ph), "Added after Roga's own.", cw=220),
         row("Time limit", popup("60 seconds"), "Roga stops the agent after this long.", cw=130),
-    ], aside=toggle(ctx, "ag_" + which, True, f"Use {name}"))
+    ])
     card = '<div class="card">' + "".join(f'<div class="cr"><span class="h">{esc(f)}</span><span class="v">{esc(v)}</span></div>' for f, v in flags) + "</div>"
     test = (
         '<div style="display:flex;align-items:center;gap:12px"><button class="b sec">Run a Test</button>'
@@ -774,8 +781,7 @@ def page_agent_detail(ctx: Ctx, which: str) -> tuple[str, int]:
         block(ev, 4 * 18 + 3 * 7 + 20),
     ], desc=f'Each hook runs <span class="key">roga hook --host {which}</span>, which tells Roga the event and the folder. It returns at once, and does nothing while Roga is closed.')
     sections = [s1, s2, s3]
-    joined = join_sections(sections)
-    return back + joined[0], joined[1] + 2
+    return join_sections(sections)
 
 
 def join_sections(sections: list[tuple[str, int]]) -> tuple[str, int]:
@@ -805,23 +811,37 @@ def nav(ctx: Ctx, selected: str) -> str:
                 items.append(f'<button class="{cls}"{current}>{ic(key)}{esc(title)}</button>')
         groups.append("".join(items))
     seps = '<div class="nsep"></div>'.join(groups)
+    lights = '<div class="tl" aria-hidden="true"><i></i><i></i><i></i></div>'
     search = f'<label class="srch">{ic("search")}<input type="text" placeholder="Search" aria-label="Search settings"></label>'
     foot = f'<div class="nft"><span>Roga 0.2</span><button class="lnk">Release Notes {ic("ext", "ic xs")}</button></div>'
-    return f'<nav class="nav" aria-label="Settings pages">{search}{seps}{foot}</nav>'
+    return f'<nav class="nav" aria-label="Settings pages">{lights}{search}{seps}{foot}</nav>'
 
 
-NAV_HEIGHT = 14 + 42 + 6 * 32 + 3 * 17 + 40 + 12
+NAV_HEIGHT = 52 + 42 + 6 * 32 + 3 * 17 + 40 + 12
 
 
-def window(ctx: Ctx, selected: str, content: str, content_height: int, overlay: str = "", theme_hole: str = "") -> tuple[str, int]:
+TITLES_BY_PAGE = {key: title for group in NAV for key, title in group} | {"claude": "Claude Code", "codex": "Codex"}
+
+
+def window(ctx: Ctx, selected: str, content: str, content_height: int, overlay: str = "", theme_hole: str = "", page: str = "") -> tuple[str, int]:
+    """Settings in a window of its own, opened with ⌘, rather than as a sheet,
+    because settings belong to the whole app and Roga can have several windows."""
     height = max(content_height + 40, NAV_HEIGHT, 560)
     cls = f"sw {theme_hole}" if theme_hole else "sw"
+    page = page or selected
+    back = f'<button class="bk" aria-label="Back to Agents">{ic("left")}</button>'
+    if ctx.live:
+        back = '<sc-if value="{{isDetail}}" hint-placeholder-val="{{false}}"><button class="bk" aria-label="Back to Agents" onClick="{{go.agents}}">' + ic("left") + "</button></sc-if>"
+        title = "{{pageTitle}}"
+    else:
+        back = back if page in ("claude", "codex") else ""
+        title = esc(TITLES_BY_PAGE[page])
     markup = (
-        f'<div class="{cls}" role="dialog" aria-label="Settings" style="height:{height + 53}px">'
-        f'<header class="swh"><h2>Settings</h2><button class="x" aria-label="Close">{ic("x")}</button></header>'
-        f'<div class="swb">{nav(ctx, selected)}<div class="ct">{content}</div></div>{overlay}</div>'
+        f'<div class="{cls}" role="region" aria-label="Settings window" style="height:{height + 52}px"><div class="swb">'
+        f'{nav(ctx, selected)}<div class="main"><header class="tb">{back}<h2>{title}</h2></header>'
+        f'<div class="ct">{content}</div></div></div>{overlay}</div>'
     )
-    return markup, height + 53
+    return markup, height + 52
 
 
 # ---------------------------------------------------------------------------
@@ -1020,7 +1040,7 @@ def settings_board(file: str, title: str, page: str, theme: str = "light", overl
         content, ch = page_agent_detail(ctx, page)
     else:
         content, ch = PAGES[page](ctx)
-    win, wh = window(ctx, selected or page, content, ch, overlay)
+    win, wh = window(ctx, selected or page, content, ch, overlay, page=page)
     w, h = 960, wh + 80
     body = f'<div class="board {{{{th}}}}" style="width:{w}px;height:{h}px">{win}</div>'
     return Board(file, title, w, h, dc(title, w, h, body, {**STATIC_PROPS, "theme": {**STATIC_PROPS["theme"], "default": theme}}, STATIC_SCRIPT % theme))
@@ -1155,6 +1175,8 @@ def live_settings_script(ctx: Ctx) -> str:
       pg, nv, go, tg, tp, flip, sg, pick, cmdA,
       th: s.picked.theme === "Dark" ? "th-d" : "th-l",
       today: this.props.today ?? true,
+      pageTitle: %s[s.page],
+      isDetail: s.page === "claude" || s.page === "codex",
       addOpen: s.addOpen,
       openAdd: () => this.setState({ addOpen: true }),
       closeAdd: () => this.setState({ addOpen: false }),
@@ -1163,7 +1185,7 @@ def live_settings_script(ctx: Ctx) -> str:
       closeHooks: () => this.setState({ hooksOpen: false }),
     };
   }
-}""" % (segs, toggles)
+}""" % (segs, toggles, json.dumps(TITLES_BY_PAGE))
 
 
 def try_generate_board() -> Board:
@@ -1309,7 +1331,7 @@ def all_boards() -> list[list[Board]]:
 # Notes that sit under the boards, in the canvas's voice.
 
 TITLES = [
-    "Settings, as a larger dialog with pages",
+    "Settings, in a window of its own",
     "Agents: finding them, running them, and hearing from them",
     "Generate, in the commit box",
 ]
@@ -1317,13 +1339,13 @@ TITLES = [
 NOTES = {
     "St-General.dc.html": "Ordinary Mac app settings that Roga doesn't have yet. Editor and Terminal are for Open in Editor and Open in Terminal, which most Git clients have and Roga would need first. The rail switch is the View menu's ⌃⌘O, kept here too so it's findable.",
     "St-Appearance.dc.html": "The house's speed slider moves here from today's window, with the four animations above it. Diffs follow the Claude app's Code section, with a sample drawn in the code font. Lists gathers what's only in menus today, the file layout, the branch sort and folded descriptions, so every remembered choice has one home.",
-    "St-Git.dc.html": "Which git Roga runs, and why it passed one over, which GitInstallation already records for Settings to show. Rows with a key like fetch.prune write your global git config, the same way Remember writes pull.rebase in the rebase or merge dialog (decision 29), so nothing Roga does is hidden from the command line.",
+    "St-Git.dc.html": "Which git Roga runs, and why it passed one over, which GitInstallation already records for Settings to show. Name and email are their own section now that the title bar names the page. Rows with a key like fetch.prune write your global git config, the same way Remember writes pull.rebase in the rebase or merge dialog (decision 29), so nothing Roga does is hidden from the command line.",
     "St-Commit.dc.html": "Generating messages lives here rather than on the Agents page, because this is where you'd look for it: one agent, model and effort, the repository's recent subjects for style, editable instructions, and the exact command at the bottom. Today the count turns red past 72 and discarding asks for more than one file (decision 39). Both become choices, with today's behavior as the default.",
     "St-Advanced.dc.html": "Keep commit-graph files up to date moves here from today's window, word for word. The command log is GitRunner's CommandLog, which has no window yet. Reset asks first, since it can't be undone.",
     "St-Agents.dc.html": "What's installed, and how agents tell Roga what they're doing. Roga finds agents the way it finds git, and says why one can't be used, the way Settings does for an old git. Gemini is a real case from this Mac: installed, but it crashes before saying its version. Working status is the hooks the Work view has been waiting for, installed the way GitKraken installs its own, which this Mac already has.",
     "St-Agent-Claude.dc.html": "Each agent has its own page, from the arrow on its row. Default leaves the model and effort to the agent's own settings. How Roga runs it lists the flags Roga always adds and why, so a commit message can't touch files. Working status lists which of the agent's hook events mean working, waiting for you, finished and gone.",
     "St-Agent-Codex-Dark.dc.html": "The same page for Codex, in dark. Its defaults come from ~/.codex/config.toml, so the popups say what Default means. Codex is sandboxed read-only rather than having its tools turned off, and its hooks aren't installed yet, so Install… is the main button.",
-    "St-Agent-Hooks.dc.html": "Installing hooks is a dialog with the commands at the bottom, as every dialog is (decision 29). Roga ships a plugin and installs it with each agent's own plugin commands, which is how GitKraken does it, so it shows up in /plugin and comes out cleanly. Each hook is roga hook --host claude, a small helper that returns at once and does nothing while Roga is closed.",
+    "St-Agent-Hooks.dc.html": "Installing hooks is a sheet on the Settings window, with the commands along the bottom as every dialog has them (decision 29). Roga ships a plugin and installs it with each agent's own plugin commands, which is how GitKraken does it, so it shows up in /plugin and comes out cleanly. Each hook is roga hook --host claude, a small helper that returns at once and does nothing while Roga is closed.",
     "St-Agent-Add.dc.html": "Add a Command takes anything that reads stdin and prints a message, like Ollama or llm, for people who'd rather keep diffs on their Mac. The placeholders fill in what's picked, and Test runs it on a sample diff before it's saved.",
     "St-Try.dc.html": "Press Play. Click through the pages, flip switches, pick Dark under Appearance, and open Claude Code or Codex from the Agents page. Install… and Add a Command open their dialogs. Rows tagged In the app are what's in today's settings window or menus.",
     "St-Generate.dc.html": "Generate sits inside the message box, at the bottom right, where VS Code and GitHub Desktop put theirs. With text in the box it shrinks to the sparkle and rewrites from your words. The arrow opens a popover for agent, model and effort, laid out as the dialogs are, with the command along the bottom edge. ⌥⌘L pairs with Write Message's ⌘L.",
@@ -1331,8 +1353,8 @@ NOTES = {
 }
 
 INTRO = (
-    "Settings drawn the way the Claude app lays out its own, as you asked: a larger dialog with a sidebar of pages, rows with gray help, and switches on the right. "
-    "The look is the Dialogs page's, so a settings window and a dialog read as one family. Every setting in today's window and every remembered menu choice has a home, "
+    "Settings in a window of its own, opened with ⌘,, laid out the way the Claude app lays out its settings: a sidebar of pages, rows with gray help, and switches on the right. "
+    "You chose a window over a sheet on 5 November, because settings belong to the whole app and Roga can have several windows. The look is the Dialogs page's, so the two read as one family. Every setting in today's window and every remembered menu choice has a home, "
     "and each is tagged In the app (turn the tag off under Tweaks). Everything else is a proposal from what Git clients commonly offer, for you to strike out."
 )
 AGENT_INTRO = (

@@ -1,6 +1,6 @@
 # Settings
 
-Wireframes for a larger Settings window with a sidebar of pages, laid out like the Claude app's own settings and styled like Roga's dialogs ([decision 29](../../decisions/0029-dialogs-that-say-what-happens-and-show-the-command.md)). They're on the Settings page of the design canvas [yaga layout options](https://claude.ai/artifact/4WQVua6gwKqSBoiRdf2FhX), and [`boards.py`](boards.py) draws every board. Nothing here is built yet.
+Wireframes for a Settings window with a sidebar of pages, laid out like the Claude app's own settings and styled like Roga's dialogs ([decision 29](../../decisions/0029-dialogs-that-say-what-happens-and-show-the-command.md)). They're on the Settings page of the design canvas [yaga layout options](https://claude.ai/artifact/4WQVua6gwKqSBoiRdf2FhX), and [`boards.py`](boards.py) draws every board. Nothing here is built yet.
 
 ## Regenerating the boards
 
@@ -49,9 +49,12 @@ codex plugin add roga-hooks@roga
 
 Each hook runs `roga hook --host <agent>`, a small helper that tells Roga the event and the folder, returns at once, and does nothing while Roga is closed. Roga ignores folders that aren't in its sidebar.
 
+## Decided
+
+- **A window of its own, opened with ⌘,.** Settings apply to the whole app and Roga can have several windows, so a sheet attached to one of them would be arbitrary. The window has the traffic lights over the sidebar and the page's name in the content's title bar, and Install… and Add a Command… open as sheets on it. Chosen on November 5, 2026.
+
 ## Still to decide
 
-- **A window or a sheet.** The boards draw a window shaped like a dialog. Settings apply to the whole app and Roga can have several windows, so its own window, opened with ⌘,, fits better than a sheet attached to one of them.
 - **Which proposals to keep.** Open in Editor and Open in Terminal, text size and date formats would each need work outside Settings first.
 - **Answering permission requests in Roga.** GitKraken offers it. It makes a hook wait for Roga, so the boards draw it off.
 - **Where the agent marks go.** The legend uses the sidebar marks drawn earlier for the Work view, which is on hold until these hooks exist.
