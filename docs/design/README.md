@@ -62,3 +62,7 @@ The app's icon is the house from [`branding/roga-mark.svg`](branding/roga-mark.s
 The icon is in [`App/AppIcon.icon`](../../App/AppIcon.icon), in the format that Icon Composer saves, rather than as a set of PNGs in an asset catalog. Roga requires macOS 26 ([decision 2](../decisions/0002-minimum-macos-26.md)), and with this format the system draws the glass and the dark, clear and tinted versions from one SVG. Xcode also writes an `.icns` file into the app for anything that still reads one.
 
 The SVG in that folder is a copy of the mark, so a change to the mark has to be copied there too. To adjust the icon itself, such as the size of the house or its colors, open `App/AppIcon.icon` in Icon Composer, which comes with Xcode.
+
+## Settings — November 5, 2026
+
+Wireframes for a larger Settings window with pages, including the agents Roga can call to write commit messages and the hooks that tell it when an agent is working. [`settings/README.md`](settings/README.md) describes them, and [`settings/boards.py`](settings/boards.py) draws the boards on the design canvas.
