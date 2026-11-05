@@ -328,6 +328,59 @@ struct RemoteCommandsTests {
         #expect(try await clones.session.stoppedWork(in: clones.work) == .rebase(branch: nil))
         FileManager.default.createFile(atPath: folder + "/applying", contents: nil)
         #expect(try await clones.session.stoppedWork(in: clones.work) == nil)
+        #expect(await clones.session.stoppedWorkFromFiles(in: clones.work) == nil)
+    }
+
+    /// The sidebar reads it for every worktree without git, from the folder a
+    /// linked worktree's `.git` file points to.
+    @Test func readsWhatStoppedFromItsFilesAsGitDoes() async throws {
+        for (pull, stopped) in [(Pull.merge, StoppedWork.merge), (.rebase, .rebase(branch: "refs/heads/agent"))] {
+            let clones = try await clones()
+            let linked = clones.folder + "/linked"
+            try await runGit("worktree", "add", "--quiet", "-b", "agent", "--track", linked, "origin/main", in: clones.work)
+            try await runGit("config", "user.name", "T", in: clones.work)
+            try await runGit("config", "user.email", "t@example.com", in: clones.work)
+            #expect(await clones.session.stoppedWorkFromFiles(in: linked) == nil)
+
+            try await pushFromOther(clones, file: "conflict.txt", text: "theirs\n")
+            try await commit("Mine", in: linked, file: "conflict.txt", text: "mine\n")
+            await #expect(throws: GitError.self) {
+                try await clones.session.pull(pull, in: linked)
+            }
+            #expect(try await clones.session.stoppedWork(in: linked) == stopped)
+            #expect(await clones.session.stoppedWorkFromFiles(in: linked) == stopped)
+            #expect(await clones.session.stoppedWorkFromFiles(in: clones.work) == nil)
+        }
+    }
+
+    @Test func aFolderThatIsntAWorktreeHasNothingStopped() async throws {
+        let folder = try makeTemporaryFolder()
+        #expect(RemoteCommands.gitDirectory(ofWorktree: folder) == nil)
+        try "not a pointer\n".write(toFile: folder + "/.git", atomically: true, encoding: .utf8)
+        #expect(RemoteCommands.gitDirectory(ofWorktree: folder) == nil)
+        try "gitdir: ../elsewhere/.git/worktrees/x\n".write(toFile: folder + "/.git", atomically: true, encoding: .utf8)
+        #expect(RemoteCommands.gitDirectory(ofWorktree: folder) == folder + "/../elsewhere/.git/worktrees/x")
+    }
+
+    @Test func saysHowFarSeveralBranchesAreFromTheirUpstreams() async throws {
+        let clones = try await clones()
+        try await runGit("branch", "--no-track", "loose", in: clones.work)
+        try await runGit("branch", "--track", "agent", "origin/main", in: clones.work)
+        try await runGit("push", "--quiet", "origin", "main:short-lived", in: clones.work)
+        try await runGit("branch", "--track", "orphaned", "origin/short-lived", in: clones.work)
+        try await runGit("push", "--quiet", "origin", "--delete", "short-lived", in: clones.work)
+        try await pushFromOther(clones)
+        try await commit("Mine", in: clones.work)
+        try await runGit("fetch", "--quiet", in: clones.work)
+
+        let branches = ["refs/heads/main", "refs/heads/agent", "refs/heads/loose", "refs/heads/orphaned", "refs/heads/missing"]
+        let upstreams = try await clones.session.upstreams(of: branches, in: clones.work)
+        #expect(upstreams == [
+            "refs/heads/main": UpstreamCounts(ahead: 1, behind: 1),
+            "refs/heads/agent": UpstreamCounts(ahead: 0, behind: 1),
+            "refs/heads/orphaned": UpstreamCounts(isGone: true),
+        ])
+        #expect(try await clones.session.upstreams(of: [], in: clones.work).isEmpty)
     }
 
     // MARK: Pushing

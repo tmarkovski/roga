@@ -213,6 +213,18 @@ public actor RepositorySession {
         try await BranchStatusLoader.load(git: git, in: worktree)
     }
 
+    /// Says how far each of several branches is from its upstream, with one git
+    /// at utility priority, for when nobody waits for the answer.
+    ///
+    /// - Parameters:
+    ///   - branches: Their full names.
+    ///   - worktree: Any of the repository's worktrees.
+    /// - Returns: The counts by branch, for the branches that have an upstream
+    ///   or had one that's gone.
+    public nonisolated func upstreams(of branches: [String], in worktree: String) async throws -> [String: UpstreamCounts] {
+        try await BranchStatusLoader.upstreams(of: branches, git: git, in: worktree)
+    }
+
     /// Lists the commits that `tip` has and `base` doesn't, newest first.
     ///
     /// - Parameters:
@@ -427,6 +439,14 @@ public actor RepositorySession {
     @concurrent
     public nonisolated func stoppedWork(in worktree: String) async throws -> StoppedWork? {
         try await RemoteCommands.stoppedWork(in: worktree, git: git)
+    }
+
+    /// Says the same from the files git keeps for it, without running git, for
+    /// a quick look at every worktree. It's nil when it can't find the
+    /// worktree's git directory.
+    @concurrent
+    public nonisolated func stoppedWorkFromFiles(in worktree: String) async -> StoppedWork? {
+        RemoteCommands.stoppedWorkFromFiles(in: worktree)
     }
 
     /// Goes back to before a merge or a rebase that stopped partway.

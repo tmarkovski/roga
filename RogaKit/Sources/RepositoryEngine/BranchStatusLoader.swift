@@ -46,6 +46,32 @@ enum BranchStatusLoader {
         )
     }
 
+    /// Reads how far each of `branches` is from its upstream, with one git for
+    /// all of them, at utility priority because nobody waits for it.
+    ///
+    /// - Returns: The counts by each branch's full name, for the branches that
+    ///   have an upstream or had one that's gone.
+    @concurrent
+    static func upstreams(of branches: [String], git: Git, in directory: String) async throws -> [String: UpstreamCounts] {
+        guard !branches.isEmpty else { return [:] }
+        var command = GitCommand(["for-each-ref", "--format=" + BranchStatusParser.format] + branches, in: directory)
+        command.priority = .utility
+        command.environment["GIT_NO_LAZY_FETCH"] = "1"
+        let output = try await git.run(command).output
+        var upstreams: [String: UpstreamCounts] = [:]
+        for branch in branches {
+            let entry: BranchStatusParser.Entry?
+            do {
+                entry = try BranchStatusParser.parse(output, branch: branch)
+            } catch {
+                throw RepositoryError.unexpectedOutput(command, error.description)
+            }
+            guard let entry, entry.upstream != nil || entry.upstreamIsGone else { continue }
+            upstreams[branch] = UpstreamCounts(ahead: entry.counts.ahead, behind: entry.counts.behind, isGone: entry.upstreamIsGone)
+        }
+        return upstreams
+    }
+
     private static func setting(_ name: String, git: Git, in directory: String) async throws -> String? {
         var command = GitCommand("config", "--get", name, in: directory)
         command.successStatuses = [0, 1]

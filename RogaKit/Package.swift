@@ -52,6 +52,7 @@ let package = Package(
         ),
         .target(
             name: "MenuUI",
+            dependencies: ["IconUI"],
             swiftSettings: viewSettings
         ),
         .target(

@@ -140,7 +140,7 @@ roga/
 | `CommitGraph` | Reading commit-graph files and split chains through memory mapping, ordering history, and laying out graph lanes | `GitCore` | Foundation |
 | `RepositoryEngine` | One session per repository: loading and caching history, refs, worktrees, status and diffs, watching the file system, keeping the commit-graph file current, and publishing snapshots | `GitCore`, `GitRunner`, `CommitGraph` | Foundation, CoreServices |
 | `IconUI` | The app's icons, as custom symbols, and which icon stands for what | nothing | AppKit, SwiftUI |
-| `MenuUI` | The menu for right-clicking a ref or a sidebar row, which the commit list, the refs panel and the sidebar share | nothing | AppKit |
+| `MenuUI` | The menu for right-clicking a ref or a sidebar row, which the commit list, the refs panel and the sidebar share, and the title row's menu of worktrees | `IconUI` | AppKit |
 | `HistoryUI` | The commit list: the table, drawing rows and graph lanes, keyboard handling and accessibility | `GitCore`, `CommitGraph`, `IconUI`, `MenuUI` | AppKit |
 | `DiffUI` | The diff view: the TextKit 1 text view, line numbers, line backgrounds, and building attributed text | `GitCore` | AppKit |
 | `RogaUI` | Windows, the sidebar, the refs panel, details, settings, menus and onboarding, and the main-actor models that connect sessions to views | all of the above | SwiftUI, AppKit |

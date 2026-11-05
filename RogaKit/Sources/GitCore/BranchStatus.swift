@@ -63,6 +63,22 @@ public struct BranchStatus: Sendable, Hashable {
     }
 }
 
+/// How far a branch is from its upstream, without what pulling and pushing
+/// need, for saying it about many branches at once.
+public struct UpstreamCounts: Sendable, Hashable {
+    public var ahead: Int
+    public var behind: Int
+    /// Whether its upstream has been deleted from the remote, which leaves
+    /// nothing to count against.
+    public var isGone: Bool
+
+    public init(ahead: Int = 0, behind: Int = 0, isGone: Bool = false) {
+        self.ahead = ahead
+        self.behind = behind
+        self.isGone = isGone
+    }
+}
+
 /// A way of pulling a worktree's branch.
 public enum Pull: Sendable, Hashable {
     /// For a branch that's only behind.

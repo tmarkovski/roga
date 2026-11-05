@@ -190,6 +190,16 @@ final class BranchModel {
     var branchChoice: BranchChoice?
     /// Whether the popover for a new branch shows.
     var isCreatingBranch = false
+    /// Whether that popover starts with In a new worktree checked, as it does
+    /// from the menu of the repository's worktrees.
+    var startsInNewWorktree = false
+
+    /// Shows the popover for a new branch, ready to make it in a new worktree.
+    func startNewWorktree() {
+        guard !isBusy else { return }
+        startsInNewWorktree = true
+        isCreatingBranch = true
+    }
 
     /// Whether the user wants Roga to fetch by itself.
     @ObservationIgnored private let fetchesByItself: () -> Bool

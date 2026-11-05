@@ -439,7 +439,7 @@ private struct RepositoryRow: View {
         SidebarRow(isSelected: isSelected, action: select) {
             HStack(spacing: 3) {
                 Text(title)
-                    .font(.system(size: 14, weight: totalUncommittedFiles > 0 ? .semibold : .regular))
+                    .font(.system(size: 14))
                     .lineLimit(1)
                     .layoutPriority(1)
                 if linkedWorktrees > 0 {
@@ -493,11 +493,6 @@ private struct RepositoryRow: View {
     /// How many worktrees the repository has besides the main one.
     private var linkedWorktrees: Int {
         repository.worktrees.count { !$0.isMain }
-    }
-
-    /// How many files have uncommitted changes in all of its worktrees.
-    private var totalUncommittedFiles: Int {
-        repository.uncommittedFiles.values.reduce(0, +)
     }
 
     /// The row counts its own files, and the rows under it count theirs.
@@ -741,11 +736,11 @@ private func uncommittedFilesDescription(_ count: Int, hasConflicts: Bool = fals
     }
 }
 
-private func reveal(_ path: String) {
+func reveal(_ path: String) {
     NSWorkspace.shared.activateFileViewerSelecting([URL(filePath: path)])
 }
 
-private func openInTerminal(_ path: String) {
+func openInTerminal(_ path: String) {
     guard let terminal = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Terminal") else { return }
     NSWorkspace.shared.open([URL(filePath: path)], withApplicationAt: terminal, configuration: NSWorkspace.OpenConfiguration())
 }

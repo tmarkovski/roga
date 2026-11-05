@@ -9,6 +9,8 @@ struct RefMenuArea: NSViewRepresentable {
     let entries: [RefMenu.Entry]
     /// Whether a plain click opens the menu too, under the view, as a button does.
     var opensOnClick = false
+    /// What opens the menu without a click, as VoiceOver's press does.
+    var opener: RefMenuOpener?
 
     func makeNSView(context: Context) -> RefMenuAreaView {
         RefMenuAreaView()
@@ -17,6 +19,17 @@ struct RefMenuArea: NSViewRepresentable {
     func updateNSView(_ view: RefMenuAreaView, context: Context) {
         view.entries = entries
         view.opensOnClick = opensOnClick
+        opener?.view = view
+    }
+}
+
+/// Opens a `RefMenuArea`'s menu under it, for a view that's pressed some other
+/// way than with a click.
+final class RefMenuOpener {
+    fileprivate weak var view: RefMenuAreaView?
+
+    func open() {
+        view?.openUnder()
     }
 }
 
@@ -40,6 +53,10 @@ final class RefMenuAreaView: NSView {
             super.mouseDown(with: event)
             return
         }
+        openUnder()
+    }
+
+    fileprivate func openUnder() {
         RefMenu.make(entries).popUp(positioning: nil, at: NSPoint(x: 0, y: -Self.gapUnderButton), in: self)
     }
 
@@ -49,9 +66,15 @@ final class RefMenuAreaView: NSView {
 /// A menu's commands as actions for assistive apps.
 @ViewBuilder func refMenuActions(_ entries: [RefMenu.Entry]) -> some View {
     ForEach(entries.indices, id: \.self) { index in
-        if case let .command(title, _, isEnabled, action) = entries[index] {
+        switch entries[index] {
+        case let .command(title, _, isEnabled, action):
             Button(title, action: action)
                 .disabled(!isEnabled)
+        case let .choice(choice):
+            Button(choice.title, action: choice.action)
+                .disabled(!choice.isEnabled || choice.isCurrent)
+        case .header, .divider:
+            EmptyView()
         }
     }
 }

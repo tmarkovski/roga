@@ -339,6 +339,7 @@ public final class RepositoryList {
                 repository.needsAnotherLook = false
                 await updateOwners(of: repository, session: session)
                 await countUncommittedFiles(in: repository, session: session)
+                await readUpstreams(of: repository, session: session)
                 finishTurnToLook()
             } while repository.needsAnotherLook
             repository.look = nil
@@ -369,17 +370,32 @@ public final class RepositoryList {
     /// Counts the uncommitted files of each of a repository's worktrees, one
     /// worktree at a time and at utility priority, because each one looks at every
     /// file in the worktree. One that git can't look at has no count. The same
-    /// listing says which of them have conflicts.
+    /// listing says which of them have conflicts, and the files git keeps for a
+    /// merge or a rebase say whether one stopped partway.
     private func countUncommittedFiles(in repository: ListedRepository, session: RepositorySession) async {
         var counts: [String: Int] = [:]
         var conflicted: Set<String> = []
+        var unfinished: [String: UnfinishedWork] = [:]
         for worktree in repository.worktrees where !worktree.isBare && !worktree.isPrunable {
             guard let status = try? await session.status(in: worktree.path, isUpkeep: true) else { continue }
             counts[worktree.path] = status.fileCount
             if !status.conflicted.isEmpty { conflicted.insert(worktree.path) }
+            let stopped = await session.stoppedWorkFromFiles(in: worktree.path)
+            unfinished[worktree.path] = UnfinishedWork(work: stopped, conflicts: status.conflicted.count)
         }
         if counts != repository.uncommittedFiles { repository.uncommittedFiles = counts }
         if conflicted != repository.conflictedWorktrees { repository.conflictedWorktrees = conflicted }
+        if unfinished != repository.unfinishedWork { repository.unfinishedWork = unfinished }
+    }
+
+    /// Reads how far each worktree's branch is from its upstream, with one git
+    /// for all of them.
+    private func readUpstreams(of repository: ListedRepository, session: RepositorySession) async {
+        let branches = repository.worktrees.compactMap { $0.isPrunable ? nil : $0.branch }
+        guard let worktree = repository.worktrees.first(where: { !$0.isPrunable }),
+              let upstreams = try? await session.upstreams(of: branches, in: worktree.path)
+        else { return }
+        if upstreams != repository.upstreams { repository.upstreams = upstreams }
     }
 
     /// Opens a session for the repository at its path, or where its bookmark
@@ -485,6 +501,12 @@ public final class ListedRepository: Identifiable {
     fileprivate(set) var uncommittedFiles: [String: Int] = [:]
     /// The folders of the worktrees that have conflicts.
     fileprivate(set) var conflictedWorktrees: Set<String> = []
+    /// What each worktree is stuck partway through, by its folder, for the
+    /// worktrees that are.
+    fileprivate(set) var unfinishedWork: [String: UnfinishedWork] = [:]
+    /// How far each worktree's branch is from its upstream, by the branch's full
+    /// name, for the branches that have one.
+    fileprivate(set) var upstreams: [String: UpstreamCounts] = [:]
     /// The linked worktrees being deleted, by their folders.
     fileprivate(set) var deletingWorktrees: Set<String> = []
     /// How many deletions have finished, for windows to look at the repository's
@@ -504,7 +526,7 @@ public final class ListedRepository: Identifiable {
     }
 
     /// A repository that isn't in a list, for checking how a sidebar lays out.
-    init(path: String, owners: [String] = [], isExpanded: Bool = false, keptWorktrees: Set<String> = [], state: State = .opening, worktrees: [Worktree] = [], uncommittedFiles: [String: Int] = [:], conflictedWorktrees: Set<String> = []) {
+    init(path: String, owners: [String] = [], isExpanded: Bool = false, keptWorktrees: Set<String> = [], state: State = .opening, worktrees: [Worktree] = [], uncommittedFiles: [String: Int] = [:], conflictedWorktrees: Set<String> = [], unfinishedWork: [String: UnfinishedWork] = [:], upstreams: [String: UpstreamCounts] = [:], deletingWorktrees: Set<String> = []) {
         self.path = path
         self.owners = owners
         self.isExpanded = isExpanded
@@ -513,6 +535,9 @@ public final class ListedRepository: Identifiable {
         self.worktrees = worktrees
         self.uncommittedFiles = uncommittedFiles
         self.conflictedWorktrees = conflictedWorktrees
+        self.unfinishedWork = unfinishedWork
+        self.upstreams = upstreams
+        self.deletingWorktrees = deletingWorktrees
     }
 
     var name: String { RepositoryLocation.name(gitDirectory: path) }

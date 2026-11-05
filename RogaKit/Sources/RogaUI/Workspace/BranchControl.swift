@@ -530,7 +530,13 @@ private struct NewBranchPopover: View {
         }
         .padding(12)
         .frame(width: 320)
-        .onAppear { isNameFocused = true }
+        .onAppear {
+            isNameFocused = true
+            if branch.startsInNewWorktree {
+                inNewWorktree = true
+                branch.startsInNewWorktree = false
+            }
+        }
     }
 
     private func create() {

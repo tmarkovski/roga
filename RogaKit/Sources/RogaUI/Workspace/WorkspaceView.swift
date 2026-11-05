@@ -2,6 +2,7 @@ import Foundation
 import GitCore
 import GitRunner
 import IconUI
+import MenuUI
 import RepositoryEngine
 import SwiftUI
 
@@ -333,10 +334,21 @@ public struct WorkspaceView: View {
     /// commits goes first, then the branch's name truncates, and the counts stay.
     private var titleRow: some View {
         HStack(spacing: 6) {
-            Text(title)
-                .font(.system(size: 13, weight: .medium))
+            if let (repository, worktree) = shown, let worktree, let selected = window?.selection {
+                RepositoryChip(
+                    name: repository.name,
+                    isMain: worktree.isMain,
+                    entries: worktreeMenu(of: repository, shown: worktree, selected: selected)
+                )
                 .fixedSize()
-                .help(title)
+            } else {
+                Text(title)
+                    .font(.system(size: 13, weight: .medium))
+                    .fixedSize()
+                    .help(title)
+                    // In line with the chip's icon, when there is one.
+                    .padding(.leading, 5)
+            }
             if let (_, worktree) = shown, let worktree {
                 if let selected = window?.selection, let model = shownModel, !worktree.isBare {
                     BranchControl(
@@ -370,9 +382,30 @@ public struct WorkspaceView: View {
             }
         }
         .lineLimit(1)
-        // In line with the titles of the panels below it.
-        .padding(.leading, 6)
+        // The chip's icon is in line with the titles of the panels below it,
+        // and its hover fill reaches out past that.
+        .padding(.leading, 1)
         .frame(maxWidth: titleRowWidth, alignment: .leading)
+    }
+
+    /// The menu of the shown repository's worktrees, which the chip with its name
+    /// opens.
+    private func worktreeMenu(of repository: ListedRepository, shown worktree: Worktree, selected: WorktreeSelection) -> [RefMenu.Entry] {
+        let model = shownModel
+        return WorktreeMenu.entries(
+            for: WorktreeMenu.facts(of: repository, shown: worktree.path, model: model),
+            shown: worktree.path,
+            actions: WorktreeMenu.Actions(
+                show: { folder in
+                    selection.wrappedValue = WorktreeSelection(repository: selected.repository, worktree: folder)
+                },
+                newWorktree: model.flatMap { model in
+                    model.branch.isBusy || worktree.isBare ? nil : { model.branch.startNewWorktree() }
+                },
+                reveal: reveal,
+                openInTerminal: openInTerminal
+            )
+        )
     }
 
     /// How wide the title can get, because the toolbar moves what doesn't fit
