@@ -95,39 +95,51 @@ final class BranchModel {
         var deletion: BranchDeletion
         /// The newest commits it loses.
         var commits: [ListedCommit]
+        /// The short names of the branches beside it that are staying because they're
+        /// checked out, which the dialog mentions.
+        var checkedOut: [String] = []
     }
 
-    /// Deleting a branch, the remote branch it tracks or both, while someone chooses.
+    /// Deleting some of the branches on a commit, while someone chooses which.
     struct BranchChoice: Equatable {
-        var deletion: BranchAndUpstreamDeletion
-        /// What's picked so far, which starts by staying off the remote. This lives
-        /// with the question rather than in the view, so that a button reads it when
-        /// it's pressed.
-        var deletesBranch = true
-        var deletesUpstream = false
-        /// The newest commits that deleting both loses.
+        var deletion: CommitBranchesDeletion
+        /// The full names of what's picked so far. This lives with the question rather
+        /// than in the view, so that a button reads it when it's pressed.
+        var picked: Set<String>
+        /// The newest commits that deleting all of them loses.
         var commits: [ListedCommit]
 
-        /// What's picked, with the remote last, because it's shared.
-        var deletions: [BranchDeletion] {
-            (deletesBranch ? [deletion.branch] : []) + (deletesUpstream ? [deletion.upstream] : [])
+        /// Starts with every local branch going and every remote branch staying, unless
+        /// those local branches are all there is and would take commits with them. There's
+        /// no telling then which name to keep, so nothing starts on.
+        init(deletion: CommitBranchesDeletion, commits: [ListedCommit]) {
+            self.deletion = deletion
+            self.commits = commits
+            let local = deletion.branches.filter { $0.place == .local }
+            let losesCommits = deletion.lostCount > 0 && local.count == deletion.branches.count
+            picked = losesCommits ? [] : Set(local.map(\.ref))
         }
 
-        /// How many commits go with what's picked.
+        /// What's picked, with remotes last, because they're shared.
+        var deletions: [BranchDeletion] {
+            let picked = deletion.branches.filter { self.picked.contains($0.ref) }
+            return picked.filter { !$0.reachesRemote } + picked.filter(\.reachesRemote)
+        }
+
+        /// How many commits go with what's picked. Any branch that stays keeps them all,
+        /// because they're all on one commit.
         var lostCount: Int {
-            switch (deletesBranch, deletesUpstream) {
-            case (true, true): deletion.lostCount
-            case (true, false): deletion.branch.lostCount
-            case (false, true): deletion.upstream.lostCount
-            case (false, false): 0
-            }
+            picked.count == deletion.branches.count ? deletion.lostCount : 0
         }
 
         /// Whether what's picked can't be brought back, or reaches a remote.
         var isDestructive: Bool {
-            if lostCount > 0 { return true }
-            if deletesUpstream, case .remote = deletion.upstream.place { return true }
-            return false
+            lostCount > 0 || deletions.contains(where: \.reachesRemote)
+        }
+
+        /// Picks a branch that isn't picked, and the other way around.
+        mutating func flip(_ ref: String) {
+            if picked.remove(ref) == nil { picked.insert(ref) }
         }
     }
 
@@ -417,51 +429,70 @@ final class BranchModel {
         }
     }
 
-    /// Asks whether to delete a branch, the remote branch it tracks or both. git
-    /// refuses a branch that a worktree has checked out, so only the remote branch
-    /// is left to ask about then.
+    /// Asks which of the branches on a commit should go, which is the one way history's
+    /// menu deletes anything, so this always opens a dialog. With only one branch that
+    /// can go there's nothing to choose, so it only asks about that one. With none, git
+    /// says who has it checked out, which says more than anything here could.
     ///
     /// - Parameters:
-    ///   - branch: The branch's full name.
-    ///   - upstream: The full name of the remote branch it tracks.
-    func askToDelete(branch: String, upstream: String) {
+    ///   - names: The full names of all the branches on the commit.
+    ///   - commit: The commit they're on.
+    func askToDelete(branches names: [String], on commit: ObjectID) {
         guard !isBusy else { return }
         preparingDeletion = Task {
             do {
-                let deletion = try await session.prepareToDelete(branch: branch, upstream: upstream, limit: Self.overwrittenLimit, in: worktree)
-                if deletion.branch.isCheckedOut {
-                    pendingDeletion = PendingDeletion(deletion: deletion.upstream, commits: await listed(deletion.upstream.lost))
-                } else {
+                let deletion = try await session.prepareToDelete(branches: names, on: commit, limit: Self.overwrittenLimit, in: worktree)
+                if deletion.branches.count > 1 {
                     branchChoice = BranchChoice(deletion: deletion, commits: await listed(deletion.lost))
+                } else if let only = deletion.branches.first {
+                    pendingDeletion = PendingDeletion(deletion: only, commits: await listed(only.lost), checkedOut: deletion.checkedOut.map(\.shortName))
+                } else if let checkedOut = deletion.checkedOut.first {
+                    delete(checkedOut)
+                } else {
+                    failure = Failure(
+                        title: "Nothing to delete",
+                        message: "The branches on this commit have moved or gone since history last looked.",
+                        changedNothing: true
+                    )
+                    lookAgain()
                 }
             } catch {
-                failure = Failure(title: "Can't delete \(Ref.shortName(branch))", error: error, changedNothing: true)
+                failure = Failure(title: "Can't delete branches", error: error, changedNothing: true)
             }
             preparingDeletion = nil
         }
     }
 
-    /// Deletes what was picked. The remote goes last, so that git refusing the branch
-    /// stops everything before anyone else sees a change.
+    /// Deletes what was picked, stopping at anything git refuses. Remotes go last, so
+    /// that git refusing a branch stops everything before anyone else sees a change.
     func confirmBranchChoice() {
-        guard let choice = branchChoice, let first = choice.deletions.first else { return }
+        guard let choice = branchChoice else { return }
+        let deletions = choice.deletions
+        guard let first = deletions.first else { return }
         branchChoice = nil
-        let second = choice.deletions.dropFirst().first
-        var action: Action?
-        if choice.deletesUpstream, case .remote = choice.deletion.upstream.place { action = .deletingFromRemote }
+        let action: Action? = deletions.contains(where: \.reachesRemote) ? .deletingFromRemote : nil
         run(action, failure: "Can't delete \(first.shortName)", changesNothing: true) { [session, worktree, weak self] in
             try await session.delete(first, in: worktree)
-            guard let second else { return "Deleted \(Self.shortened(first.shortName))" }
-            do {
-                try await session.delete(second, in: worktree)
-            } catch {
-                var failure = Failure(title: "Can't delete \(second.shortName)", error: error)
-                failure.summary = "\(first.shortName) is gone, but \(second.shortName) isn't. What git said is below."
-                self?.failure = failure
-                return nil
+            for (index, deletion) in deletions.enumerated().dropFirst() {
+                do {
+                    try await session.delete(deletion, in: worktree)
+                } catch {
+                    let gone = deletions[..<index].map(\.shortName)
+                    let left = deletions[index...].map(\.shortName)
+                    var failure = Failure(title: "Can't delete \(deletion.shortName)", error: error)
+                    failure.summary = "\(Self.list(gone)) \(gone.count == 1 ? "is" : "are") gone, but \(Self.list(left)) \(left.count == 1 ? "isn't" : "aren't"). What git said is below."
+                    self?.failure = failure
+                    return nil
+                }
             }
-            return "Deleted \(Self.shortened(first.shortName)) and its remote branch"
+            return deletions.count == 1 ? "Deleted \(Self.shortened(first.shortName))" : "Deleted \(deletions.count.formatted()) branches"
         }
+    }
+
+    /// Names in a sentence, as in `a, b and c`.
+    private static func list(_ names: [String]) -> String {
+        guard names.count > 1, let last = names.last else { return names.first ?? "" }
+        return names.dropLast().joined(separator: ", ") + " and " + last
     }
 
     /// Runs the deletion that was asked about.

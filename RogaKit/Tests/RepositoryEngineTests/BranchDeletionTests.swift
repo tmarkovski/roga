@@ -221,6 +221,93 @@ struct BranchDeletionTests {
         #expect(try await prepare("refs/remotes/origin/main", in: clone).lostCount == 1)
     }
 
+    // MARK: The branches on a commit
+
+    func prepare(branches names: [String], on commit: String, in clone: Clone, limit: Int = 5) async throws -> CommitBranchesDeletion {
+        try await clone.session.prepareToDelete(branches: names, on: try #require(ObjectID(hex: commit)), limit: limit, in: clone.work)
+    }
+
+    @Test func countsWhatGoesWhenEveryBranchOnACommitDoes() async throws {
+        let clone = try await clone()
+        let made = try await makeBranch("topic", commits: 2, in: clone.work)
+        try await runGit("push", "--quiet", "origin", "topic", in: clone.work)
+        let deletion = try await prepare(branches: ["refs/heads/topic", "refs/remotes/origin/topic"], on: made[0], in: clone)
+        #expect(deletion.branches.map(\.ref) == ["refs/heads/topic", "refs/remotes/origin/topic"])
+        #expect(deletion.branches.map(\.place) == [.local, .remote("origin", branch: "topic")])
+        #expect(deletion.lostCount == 2)
+        #expect(deletion.lost.map(\.hex) == made)
+        // Either one staying keeps them.
+        #expect(deletion.branches.map(\.lostCount) == [0, 0])
+        #expect(deletion.checkedOut.isEmpty)
+    }
+
+    @Test func givesALoneBranchTheCountOfTheCommit() async throws {
+        let clone = try await clone()
+        let made = try await makeBranch("topic", commits: 2, in: clone.work)
+        let deletion = try await prepare(branches: ["refs/heads/topic"], on: made[0], in: clone, limit: 1)
+        let only = try #require(deletion.branches.first)
+        #expect(only.lostCount == 2)
+        #expect(only.lost.map(\.hex) == [made[0]])
+        #expect(only.asksFirst)
+    }
+
+    @Test func aTagKeepsTheCommitsOfEveryBranchOnACommit() async throws {
+        let clone = try await clone()
+        let made = try await makeBranch("topic", commits: 1, in: clone.work)
+        try await runGit("tag", "kept", "topic", in: clone.work)
+        let deletion = try await prepare(branches: ["refs/heads/topic"], on: made[0], in: clone)
+        #expect(deletion.lostCount == 0)
+        #expect(deletion.lost.isEmpty)
+    }
+
+    @Test func aCheckedOutBranchStaysAndKeepsTheCommits() async throws {
+        let clone = try await clone()
+        let folder = clone.folder + "/notes"
+        try await runGit("worktree", "add", "--quiet", folder, "-b", "notes", in: clone.work)
+        let tip = try await commit("Only here", in: folder)
+        try await runGit("branch", "copy", "notes", in: clone.work)
+        let deletion = try await prepare(branches: ["refs/heads/notes", "refs/heads/copy"], on: tip, in: clone)
+        #expect(deletion.branches.map(\.ref) == ["refs/heads/copy"])
+        #expect(deletion.checkedOut.map(\.ref) == ["refs/heads/notes"])
+        #expect(deletion.checkedOut.map(\.isCheckedOut) == [true])
+        #expect(deletion.lostCount == 0)
+    }
+
+    /// The commits a moved branch reached aren't in what's counted, so it can't stay
+    /// in the list as though it lost nothing.
+    @Test func leavesOutABranchThatsNoLongerOnTheCommit() async throws {
+        let clone = try await clone()
+        let made = try await makeBranch("topic", commits: 1, in: clone.work)
+        try await runGit("branch", "copy", "topic", in: clone.work)
+        try await runGit("switch", "--quiet", "topic", in: clone.work)
+        try await commit("Moved on", in: clone.work)
+        try await runGit("switch", "--quiet", "main", in: clone.work)
+        let deletion = try await prepare(branches: ["refs/heads/topic", "refs/heads/copy", "refs/heads/gone"], on: made[0], in: clone)
+        #expect(deletion.branches.map(\.ref) == ["refs/heads/copy"])
+        #expect(deletion.checkedOut.isEmpty)
+        // `topic` has moved on from there and still holds the commit.
+        #expect(deletion.lostCount == 0)
+    }
+
+    @Test func aSymbolicRefDoesntKeepTheCommitsOfTheBranchesOnACommit() async throws {
+        let clone = try await clone()
+        try await runGit("clone", "--quiet", clone.remote, clone.folder + "/other", in: clone.folder)
+        let tip = try await commit("From someone else", in: clone.folder + "/other")
+        try await runGit("push", "--quiet", in: clone.folder + "/other")
+        try await runGit("fetch", "--quiet", in: clone.work)
+        let deletion = try await prepare(branches: ["refs/remotes/origin/main"], on: tip, in: clone)
+        #expect(deletion.lostCount == 1)
+    }
+
+    @Test func aRemoteThatsNotConfiguredIsLeftBehindOnACommit() async throws {
+        let clone = try await clone()
+        let tip = try await runGit("rev-parse", "origin/feature", in: clone.work)
+        try await runGit("update-ref", "refs/remotes/old/feature", tip, in: clone.work)
+        let deletion = try await prepare(branches: ["refs/remotes/old/feature", "refs/remotes/origin/feature"], on: tip, in: clone)
+        #expect(deletion.branches.map(\.place) == [.leftBehind, .remote("origin", branch: "feature")])
+        #expect(deletion.branches.map(\.reachesRemote) == [false, true])
+    }
+
     /// This is a branch that someone merged and deleted on the host, which stays
     /// here because Roga's fetches don't prune.
     @Test func deletesTheCopyOfABranchTheRemoteNoLongerHas() async throws {

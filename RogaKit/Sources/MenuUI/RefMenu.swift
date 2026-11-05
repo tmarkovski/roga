@@ -122,7 +122,7 @@ private final class Command: NSObject {
 private final class RowView: NSView {
     /// How long after the menu opens a release still belongs to the click that
     /// opened it. Near the bottom of the screen the menu opens with its last row
-    /// under the pointer, and that row can be Delete Branch.
+    /// under the pointer, and that row can be the one that deletes.
     private static let openingClickDuration = 0.25
 
     private let title: String

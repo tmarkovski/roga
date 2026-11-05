@@ -1,6 +1,6 @@
 # 33. One row in a menu, and the choice in the dialog
 
-Accepted on 2026-11-04.
+Accepted on 2026-11-04. What this says about a branch and its upstream in a commit's menu is replaced by [decision 38](0038-one-delete-on-a-commit-with-its-branches-in-the-dialog.md), which has one **Delete…** for everything on the commit. The rest of this decision still holds.
 
 ## Context
 

@@ -361,17 +361,17 @@ public actor RepositorySession {
         try await BranchDeletion.prepare(ref: name, limit: limit, in: worktree, worktrees: try await worktrees(), git: git)
     }
 
-    /// Finds out what deleting a branch, the remote branch it tracks or both would
-    /// come to, without changing anything.
+    /// Finds out what deleting some of the branches on a commit would come to,
+    /// without changing anything.
     ///
     /// - Parameters:
-    ///   - branch: The branch's full name.
-    ///   - upstream: The full name of the remote branch it tracks.
-    ///   - limit: The most commits to list of those deleting both would lose.
+    ///   - names: The full names of the branches and remote branches on the commit.
+    ///   - commit: The commit they were on when someone asked.
+    ///   - limit: The most commits to list of those deleting all of them would lose.
     ///   - worktree: The worktree's folder.
     @concurrent
-    public nonisolated func prepareToDelete(branch: String, upstream: String, limit: Int, in worktree: String) async throws -> BranchAndUpstreamDeletion {
-        try await BranchAndUpstreamDeletion.prepare(branch: branch, upstream: upstream, limit: limit, in: worktree, worktrees: try await worktrees(), git: git)
+    public nonisolated func prepareToDelete(branches names: [String], on commit: ObjectID, limit: Int, in worktree: String) async throws -> CommitBranchesDeletion {
+        try await CommitBranchesDeletion.prepare(branches: names, on: commit, limit: limit, in: worktree, worktrees: try await worktrees(), git: git)
     }
 
     /// Deletes a branch. Deleting one from a remote first stops any fetch that's

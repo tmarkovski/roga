@@ -48,8 +48,8 @@ struct RepositoryDialogs: ViewModifier {
     }
 }
 
-/// Asks whether to delete a branch, the remote branch it tracks or both. It reads the
-/// choice in its own body, so that the switches show what's picked.
+/// Asks which of the branches on a commit should go. It reads the choice in its own
+/// body, so that the switches show what's picked.
 private struct BranchChoiceSheet: View {
     /// The question as it was asked, for while the sheet closes and it's gone.
     let asked: BranchModel.BranchChoice
@@ -305,17 +305,20 @@ extension BranchModel {
             title: title,
             message: .sentences(sentences),
             cards: rows.isEmpty ? [] : [rows],
+            note: .stayingCheckedOut(pending.checkedOut),
             terminal: [.command(deletion.arguments)],
             buttons: [
                 .cancel(cancel),
-                .init(title: "Delete", kind: .destructive) { [weak self] in self?.confirmDeletion() },
+                // Only history's menu gets here with something that loses nothing, where
+                // the same Delete… asks about everything.
+                .init(title: "Delete", kind: deletion.asksFirst ? .destructive : .primary) { [weak self] in self?.confirmDeletion() },
             ],
             dismiss: cancel
         )
     }
 
-    /// Asks which of a branch and the remote branch it tracks should go. Everything
-    /// stays where it is while the switches flip, because a sheet can't change size.
+    /// Asks which of the branches on a commit should go. Everything stays where it is
+    /// while the switches flip, because a sheet can't change size.
     func dialog(for choice: BranchChoice) -> DialogContent {
         let cancel = { [weak self] in self?.branchChoice = nil; return () }
         let deletion = choice.deletion
@@ -323,35 +326,31 @@ extension BranchModel {
             choice.commits,
             total: deletion.lostCount,
             losing: choice.lostCount,
-            stayingOn: choice.deletesBranch ? deletion.upstream.shortName : deletion.branch.shortName
+            stayingOn: deletion.branches.first { !choice.picked.contains($0.ref) }?.shortName
         )
-        // Each switch that's off leaves a line for its command.
-        var terminal = choice.deletions.map { TerminalLine.command($0.arguments) }
-        terminal += Array(repeating: .blank, count: 2 - terminal.count)
+        // Each switch that's off leaves room for its command.
+        let terminal = choice.deletions.map { TerminalLine.command($0.arguments) }
+            + deletion.branches.filter { !choice.picked.contains($0.ref) }.map { TerminalLine.room($0.arguments) }
         return DialogContent(
             id: "branchChoice",
-            title: "Delete \(deletion.branch.shortName)?",
-            switches: [
-                DialogSwitch(
-                    title: "\(code: deletion.branch.shortName)",
-                    detail: .ofDeletingBranch(losing: deletion.branch.lostCount, losingWithItsRemoteBranch: deletion.lostCount, remoteBranch: deletion.upstream),
-                    isOn: choice.deletesBranch,
-                    key: "b",
-                    help: "Delete \(deletion.branch.shortName)"
+            title: "Delete which branches?",
+            switches: deletion.branches.enumerated().map { index, branch in
+                let others = deletion.branches.filter { $0.ref != branch.ref }
+                return DialogSwitch(
+                    title: "\(code: branch.shortName)",
+                    detail: branch.place == .local
+                        ? .ofDeletingBranch(losing: 0, losingWithItsRemoteBranch: deletion.lostCount, remoteBranch: others.count == 1 ? others[0] : nil)
+                        : .ofDeletingRemoteBranch(branch),
+                    isOn: choice.picked.contains(branch.ref),
+                    // There's any number of these, so they go by their place in the list.
+                    key: index < 9 ? Character(String(index + 1)) : nil,
+                    help: "Delete \(branch.shortName)"
                 ) { [weak self] in
-                    self?.branchChoice?.deletesBranch.toggle()
-                },
-                DialogSwitch(
-                    title: "\(code: deletion.upstream.shortName)",
-                    detail: .ofDeletingRemoteBranch(deletion.upstream),
-                    isOn: choice.deletesUpstream,
-                    key: "r",
-                    help: "Delete \(deletion.upstream.shortName)"
-                ) { [weak self] in
-                    self?.branchChoice?.deletesUpstream.toggle()
-                },
-            ],
+                    self?.branchChoice?.flip(branch.ref)
+                }
+            },
             cardsAfterSwitches: commits.isEmpty ? [] : [commits],
+            note: .stayingCheckedOut(deletion.checkedOut.map(\.shortName)),
             terminal: terminal,
             buttons: [
                 .cancel(cancel),

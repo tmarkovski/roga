@@ -688,6 +688,15 @@ final class RepositoryModel {
         )
     }
 
+    /// Asks which of the branches on a commit should go. The commit is the one history
+    /// shows them on, which is what someone was looking at when they asked.
+    ///
+    /// - Parameter names: The full names of all the branches on the commit.
+    func askToDeleteBranches(_ names: [String]) {
+        guard let commit = history?.refs.refs.first(where: { names.contains($0.name) })?.peeled else { return }
+        branch.askToDelete(branches: names, on: commit)
+    }
+
     /// Reads the text of the rows that don't have it yet, and returns the
     /// rows that got it.
     func loadText(for rows: Range<Int>) async -> IndexSet {

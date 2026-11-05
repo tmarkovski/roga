@@ -131,7 +131,7 @@ struct CommitTableBadgeTests {
     final class List {
         var checkedOut: [Badge] = []
         var wentTo: [Int] = []
-        var deleted: [Badge] = []
+        var deleted: [[String]] = []
         var isBusy = false
         private(set) lazy var controller = CommitTableController(source: CommitTableController.Source(
             count: { 3 },
@@ -140,7 +140,7 @@ struct CommitTableBadgeTests {
             selectRow: { _ in },
             checkOut: { [unowned self] in checkedOut.append($0) },
             goToRow: { [unowned self] in wentTo.append($0) },
-            deleteBranch: { [unowned self] in deleted.append($0) },
+            deleteBranches: { [unowned self] in deleted.append($0) },
             isBusy: { [unowned self] in isBusy }
         ))
 
@@ -169,46 +169,48 @@ struct CommitTableBadgeTests {
         return CommitRowContent(shortID: "abcd1234", badges: badges, subject: "A subject")
     }
 
-    @Test func aRowsMenuNamesEachBranchAboveItsItem() throws {
+    @Test func aRowsMenuHasOneItemForDeleting() throws {
         let list = List()
         let menu = try #require(list.controller.menu(forRow: 1))
-        let items = menu.items.filter { !$0.isSeparatorItem }
-        #expect(items.map(\.title) == ["main", "Delete Branch", "feature", "Delete Branch", "origin/feature", "Delete from Remote…"])
-        #expect(items.map(\.isSectionHeader) == [true, false, true, false, true, false])
+        #expect(menu.items.map(\.title) == ["Delete…"])
+        #expect(!menu.items[0].isSectionHeader)
     }
 
-    @Test func aBranchAndItsUpstreamShareARowUnlessTheBranchIsTheCurrentOne() {
+    @Test func listsEveryBranchWithLocalOnesFirstAndRemoteOnesFromAToZ() {
         let content = CommitRowContent(shortID: "abcd1234", badges: [
             Badge(title: "main", kind: .currentBranch, refName: "refs/heads/main", upstream: "refs/remotes/origin/main"),
             Badge(title: "feature", kind: .branch, refName: "refs/heads/feature", upstream: "refs/remotes/origin/feature"),
             Badge(title: "upstream/main", kind: .remoteBranch, refName: "refs/remotes/upstream/main"),
+            Badge(title: "v1.0", kind: .tag, refName: "refs/tags/v1.0"),
+            Badge(title: "HEAD", kind: .detachedHead),
         ])
-        #expect(content.branches.map(\.title) == ["main", "feature", "origin/main", "upstream/main"])
-        #expect(content.branches.map(\.kind) == [.currentBranch, .branch, .remoteBranch, .remoteBranch])
-        #expect(content.branches.map(\.deleteTitle) == ["Delete Branch", "Delete…", "Delete from Remote…", "Delete from Remote…"])
-        // The row for both still knows which remote branch it stands for.
-        #expect(content.branches[1].upstream == "refs/remotes/origin/feature")
-        // Deleting from the remote acts on the upstream, not on the local branch.
-        #expect(content.branches[2].refName == "refs/remotes/origin/main")
-        #expect(content.branches[2].upstream == nil)
+        #expect(content.branches == [
+            "refs/heads/main", "refs/heads/feature",
+            "refs/remotes/origin/feature", "refs/remotes/origin/main", "refs/remotes/upstream/main",
+        ])
     }
 
-    @Test func otherRemotesBranchesOnABadgeKeepTheirOwnRows() {
+    @Test func listsOtherRemotesBranchesThatShareABadge() {
         let content = CommitRowContent(shortID: "abcd1234", badges: [
             Badge(title: "main", kind: .currentBranch, refName: "refs/heads/main", upstream: "refs/remotes/origin/main", otherRemoteBranches: ["refs/remotes/upstream/main"]),
             Badge(title: "feature", kind: .branch, refName: "refs/heads/feature", upstream: "refs/remotes/origin/feature", otherRemoteBranches: ["refs/remotes/fork/feature"]),
         ])
-        #expect(content.branches.map(\.title) == ["main", "feature", "fork/feature", "origin/main", "upstream/main"])
-        #expect(content.branches.map(\.deleteTitle) == ["Delete Branch", "Delete…", "Delete from Remote…", "Delete from Remote…", "Delete from Remote…"])
-        #expect(content.branches.map(\.refName) == [
-            "refs/heads/main", "refs/heads/feature", "refs/remotes/fork/feature", "refs/remotes/origin/main", "refs/remotes/upstream/main",
+        #expect(content.branches == [
+            "refs/heads/main", "refs/heads/feature",
+            "refs/remotes/fork/feature", "refs/remotes/origin/feature", "refs/remotes/origin/main", "refs/remotes/upstream/main",
         ])
-        // The dialog for a branch and its upstream only asks about those two.
-        #expect(content.branches[1].upstream == "refs/remotes/origin/feature")
     }
 
-    @Test func aBranchWithoutAnUpstreamOnTheCommitKeepsItsOwnRow() {
-        #expect(Badge(title: "feature", kind: .branch, refName: "refs/heads/feature").deleteTitle == "Delete Branch")
+    @Test func aRowHasABranchThatCanGoUnlessItsOnlyTheCurrentOne() {
+        func canGo(_ badge: Badge) -> Bool {
+            CommitRowContent(shortID: "abcd1234", badges: [badge]).hasBranchThatCanGo
+        }
+        #expect(!canGo(Badge(title: "main", kind: .currentBranch, refName: "refs/heads/main")))
+        #expect(!canGo(Badge(title: "v1.0", kind: .tag, refName: "refs/tags/v1.0")))
+        #expect(!canGo(Badge(title: "HEAD", kind: .detachedHead)))
+        #expect(canGo(Badge(title: "main", kind: .currentBranch, refName: "refs/heads/main", upstream: "refs/remotes/origin/main")))
+        #expect(canGo(Badge(title: "feature", kind: .branch, refName: "refs/heads/feature")))
+        #expect(canGo(Badge(title: "origin/feature", kind: .remoteBranch, refName: "refs/remotes/origin/feature")))
     }
 
     @Test func saysWhatABadgeStandsFor() {
@@ -280,29 +282,21 @@ struct CommitTableBadgeTests {
         #expect(cell.view(cell, stringForToolTip: 0, point: NSPoint(x: layout.badges[0].midX, y: 14), userData: nil) == "main, current branch")
     }
 
-    @Test func aRowsMenuActsOnTheBranchOfTheChosenItem() throws {
+    @Test func aRowsMenuAsksAboutEveryBranchOnTheCommit() throws {
         let list = List()
         let menu = try #require(list.controller.menu(forRow: 1))
-        let items = menu.items.filter { !$0.isSeparatorItem }
-        for index in [3, 5] {
-            let item = items[index]
-            _ = (item.target as? NSObject)?.perform(item.action, with: item)
-        }
-        #expect(list.deleted.map(\.refName) == ["refs/heads/feature", "refs/remotes/origin/feature"])
+        let item = menu.items[0]
+        _ = (item.target as? NSObject)?.perform(item.action, with: item)
+        #expect(list.deleted == [["refs/heads/main", "refs/heads/feature", "refs/remotes/origin/feature"]])
     }
 
-    @Test func aRowsMenuDisablesTheCurrentBranch() throws {
+    @Test func aRowsMenuIsDisabledWhileSomethingRuns() throws {
         let list = List()
-        let menu = try #require(list.controller.menu(forRow: 1))
-        #expect(!menu.autoenablesItems)
-        #expect(menu.items.filter { !$0.isSectionHeader && !$0.isSeparatorItem }.map(\.isEnabled) == [false, true, true])
-    }
-
-    @Test func aRowsMenuDisablesEverythingWhileSomethingRuns() throws {
-        let list = List()
+        #expect(try #require(list.controller.menu(forRow: 1)).items[0].isEnabled)
         list.isBusy = true
         let menu = try #require(list.controller.menu(forRow: 1))
-        #expect(menu.items.filter { !$0.isSectionHeader && !$0.isSeparatorItem }.allSatisfy { !$0.isEnabled })
+        #expect(!menu.autoenablesItems)
+        #expect(!menu.items[0].isEnabled)
     }
 
     @Test func aRowWithoutBranchesHasNoMenu() {

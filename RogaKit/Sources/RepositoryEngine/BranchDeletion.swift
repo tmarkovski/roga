@@ -36,6 +36,12 @@ public struct BranchDeletion: Sendable, Hashable {
         return lostCount > 0
     }
 
+    /// Whether deleting it changes a remote, which everyone who uses that remote sees.
+    public var reachesRemote: Bool {
+        if case .remote = place { return true }
+        return false
+    }
+
     /// What deleting it runs, which the dialog shows. `-D` is there because the
     /// commits have been counted: `-d` only looks at `HEAD` and the upstream, so it
     /// refuses a branch whose commits are safe on another branch.
@@ -73,10 +79,15 @@ public struct BranchDeletion: Sendable, Hashable {
     /// Says where a branch or remote branch is, which says how it's deleted.
     static func place(of name: String, in directory: String, git: Git) async throws -> Place {
         guard name.hasPrefix(Ref.remoteBranchPrefix) else { return .local }
-        let remotes = try await RefDetailsLoader.remoteAddresses(git: git, in: directory)
+        return place(of: name, amongRemotes: Set(try await RefDetailsLoader.remoteAddresses(git: git, in: directory).keys))
+    }
+
+    /// The same, for someone who has already listed the remotes.
+    static func place(of name: String, amongRemotes remotes: Set<String>) -> Place {
+        guard name.hasPrefix(Ref.remoteBranchPrefix) else { return .local }
         let short = Ref.shortName(name)
-        let remote = RemoteDetails.remoteName(of: short, amongLongestFirst: remotes.keys.sorted { $0.count > $1.count })
-        return remotes[remote] == nil ? .leftBehind : .remote(remote, branch: String(short.dropFirst(remote.count + 1)))
+        let remote = RemoteDetails.remoteName(of: short, amongLongestFirst: remotes.sorted { $0.count > $1.count })
+        return remotes.contains(remote) ? .remote(remote, branch: String(short.dropFirst(remote.count + 1))) : .leftBehind
     }
 
     /// Deletes the branch. When a remote no longer has it, because someone else
@@ -113,34 +124,69 @@ public struct BranchDeletion: Sendable, Hashable {
     }
 }
 
-/// What deleting a branch, the remote branch it tracks or both would come to, when
-/// someone can choose.
-public struct BranchAndUpstreamDeletion: Sendable, Hashable {
-    /// Deleting only the branch.
-    public var branch: BranchDeletion
-    /// Deleting only the remote branch.
-    public var upstream: BranchDeletion
-    /// How many commits go when both do, which either alone usually keeps.
+/// What deleting some of the branches on one commit would come to, when someone can
+/// choose which.
+///
+/// Those branches all lead to the same commits, so any one that stays keeps all of
+/// them. That leaves only one count to work out, however many branches there are:
+/// what goes when every one of them does.
+public struct CommitBranchesDeletion: Sendable, Hashable {
+    /// The branches that git can delete, in the order they were asked about. With
+    /// others to choose from, each one alone loses nothing. Alone on the commit, it
+    /// has the same count and commits as this does.
+    public var branches: [BranchDeletion]
+    /// The branches that stay because a worktree has them checked out, which git
+    /// refuses to delete.
+    public var checkedOut: [BranchDeletion]
+    /// How many commits go when every one of `branches` does.
     public var lostCount: Int
     /// The newest of those commits.
     public var lost: [ObjectID]
 
     /// - Parameters:
-    ///   - branch: The branch's full name.
-    ///   - upstream: The full name of the remote branch it tracks.
+    ///   - names: The full names of the branches and remote branches on the commit.
+    ///   - commit: The commit they were on when someone asked. Any that have moved
+    ///     since, as an agent's branch may have, are left out: they're no longer what
+    ///     was asked about, and counting them as if they were here would hide
+    ///     whatever they moved to.
     ///   - limit: The most commits to list.
-    static func prepare(branch: String, upstream: String, limit: Int, in worktree: String, worktrees: [Worktree], git: Git) async throws -> BranchAndUpstreamDeletion {
-        async let branchAlone = BranchDeletion.prepare(ref: branch, limit: limit, in: worktree, worktrees: worktrees, git: git)
-        async let upstreamAlone = BranchDeletion.prepare(ref: upstream, limit: limit, in: worktree, worktrees: worktrees, git: git)
+    static func prepare(
+        branches names: [String],
+        on commit: ObjectID,
+        limit: Int,
+        in worktree: String,
+        worktrees: [Worktree],
+        git: Git
+    ) async throws -> CommitBranchesDeletion {
+        async let refList = RefsLoader.load(git: git, in: worktree)
+        async let remoteAddresses = RefDetailsLoader.remoteAddresses(git: git, in: worktree)
+        let refs = try await refList.refs
+        let remotes = Set(try await remoteAddresses.keys)
+        let here = Set(refs.filter { $0.peeled == commit }.map(\.name))
+
+        let all = names.filter(here.contains).map { name in
+            BranchDeletion(
+                ref: name,
+                place: BranchDeletion.place(of: name, amongRemotes: remotes),
+                isCheckedOut: worktrees.contains { $0.branch == name },
+                lostCount: 0,
+                lost: []
+            )
+        }
+        var branches = all.filter { !$0.isCheckedOut }
         let lost = try await LostCommits.find(
-            from: [branch, upstream],
-            leaving: try await LostCommits.leaving([branch, upstream], in: worktree, git: git),
+            from: branches.map(\.ref),
+            leaving: LostCommits.leaving(branches.map(\.ref), among: refs),
             keeping: ["--all"],
             limit: limit,
             in: worktree,
             git: git
         )
-        return BranchAndUpstreamDeletion(branch: try await branchAlone, upstream: try await upstreamAlone, lostCount: lost.count, lost: lost.newest)
+        if branches.count == 1 {
+            branches[0].lostCount = lost.count
+            branches[0].lost = lost.newest
+        }
+        return CommitBranchesDeletion(branches: branches, checkedOut: all.filter(\.isCheckedOut), lostCount: lost.count, lost: lost.newest)
     }
 }
 

@@ -1,9 +1,11 @@
+import AppKit
 import CommitGraph
 import Foundation
 import GitCore
 import GitRunner
 import HistoryUI
 import RepositoryEngine
+import SwiftUI
 import TestSupport
 import Testing
 @testable import RogaUI
@@ -1107,11 +1109,23 @@ struct BranchModelTests {
         #expect(try await !exists("refs/heads/other", in: clones.work))
     }
 
-    // MARK: A branch and its upstream
+    // MARK: The branches on a commit
 
-    func askToDelete(branch: String, upstream: String, _ model: RepositoryModel) async {
-        model.branch.askToDelete(branch: "refs/heads/" + branch, upstream: "refs/remotes/" + upstream)
+    /// Asks about the branches on a commit, as history's menu does, and waits for that
+    /// to ask or to run.
+    func askToDelete(branches names: String..., model: RepositoryModel) async {
+        model.askToDeleteBranches(names.map { $0.hasPrefix("origin/") || $0.hasPrefix("fork/") ? "refs/remotes/" + $0 : "refs/heads/" + $0 })
         await model.branch.preparingDeletion?.value
+        await model.branch.running?.value
+    }
+
+    /// Flips a switch the way the dialog does, by its place in the list.
+    func flip(_ index: Int, _ model: RepositoryModel) throws {
+        model.branch.dialog(for: try #require(model.branch.branchChoice)).switches[index].flip()
+    }
+
+    func choiceDialog(_ model: RepositoryModel) throws -> DialogContent {
+        model.branch.dialog(for: try #require(model.branch.branchChoice))
     }
 
     @Test func startsWithTheBranchAndNotItsUpstream() async throws {
@@ -1120,14 +1134,13 @@ struct BranchModelTests {
         let model = model(clones, fetches: false)
         await model.appear()
 
-        await askToDelete(branch: "feature", upstream: "origin/feature", model)
-        let choice = try #require(model.branch.branchChoice)
-        let dialog = model.branch.dialog(for: choice)
-        #expect(dialog.title == "Delete feature?")
+        await askToDelete(branches: "feature", "origin/feature", model: model)
+        let dialog = try choiceDialog(model)
+        #expect(dialog.title == "Delete which branches?")
         #expect(dialog.switches.map(\.isOn) == [true, false])
         #expect(dialog.switches.map(\.title.plain) == ["feature", "origin/feature"])
         #expect(dialog.switches.last?.detail.plain == "This deletes the branch on origin, for everyone who uses it.")
-        #expect(dialog.terminal == [.command(["branch", "-D", "feature"]), .blank])
+        #expect(dialog.terminal == [.command(["branch", "-D", "feature"]), .room(["push", "--delete", "origin", "refs/heads/feature"])])
         #expect(dialog.buttons.map(\.kind) == [.secondary, .primary])
         #expect(try await exists("refs/heads/feature", in: clones.work))
 
@@ -1144,9 +1157,9 @@ struct BranchModelTests {
         let model = model(clones, fetches: false)
         await model.appear()
 
-        await askToDelete(branch: "feature", upstream: "origin/feature", model)
-        model.branch.dialog(for: try #require(model.branch.branchChoice)).switches[1].flip()
-        let dialog = model.branch.dialog(for: try #require(model.branch.branchChoice))
+        await askToDelete(branches: "feature", "origin/feature", model: model)
+        try flip(1, model)
+        let dialog = try choiceDialog(model)
         #expect(dialog.switches.map(\.isOn) == [true, true])
         #expect(dialog.terminal == [
             .command(["branch", "-D", "feature"]),
@@ -1157,7 +1170,7 @@ struct BranchModelTests {
         model.branch.confirmBranchChoice()
         #expect(model.branch.action == .deletingFromRemote)
         await model.branch.running?.value
-        #expect(model.branch.finished == "Deleted feature and its remote branch")
+        #expect(model.branch.finished == "Deleted 2 branches")
         #expect(try await !exists("refs/heads/feature", in: clones.work))
         #expect(try await !exists("refs/heads/feature", in: clones.remote))
     }
@@ -1168,9 +1181,9 @@ struct BranchModelTests {
         let model = model(clones, fetches: false)
         await model.appear()
 
-        await askToDelete(branch: "feature", upstream: "origin/feature", model)
-        model.branch.branchChoice?.deletesBranch = false
-        model.branch.branchChoice?.deletesUpstream = true
+        await askToDelete(branches: "feature", "origin/feature", model: model)
+        try flip(0, model)
+        try flip(1, model)
         model.branch.confirmBranchChoice()
         await model.branch.running?.value
         #expect(model.branch.finished == "Deleted origin/feature")
@@ -1178,20 +1191,143 @@ struct BranchModelTests {
         #expect(try await !exists("refs/heads/feature", in: clones.remote))
     }
 
-    @Test func hasNothingToDeleteWithBothSwitchesOff() async throws {
+    @Test func hasNothingToDeleteWithEverySwitchOff() async throws {
         let clones = try await clones()
         try await git("branch", "--track", "feature", "origin/feature", in: clones.work)
         let model = model(clones, fetches: false)
         await model.appear()
 
-        await askToDelete(branch: "feature", upstream: "origin/feature", model)
-        model.branch.branchChoice?.deletesBranch = false
-        let dialog = model.branch.dialog(for: try #require(model.branch.branchChoice))
+        await askToDelete(branches: "feature", "origin/feature", model: model)
+        try flip(0, model)
+        let dialog = try choiceDialog(model)
         #expect(dialog.buttons.map(\.isEnabled) == [true, false])
-        #expect(dialog.terminal == [.blank, .blank])
+        #expect(dialog.terminal == [.room(["branch", "-D", "feature"]), .room(["push", "--delete", "origin", "refs/heads/feature"])])
+        #expect(CommandBlock.copied(dialog.terminal).trimmingCharacters(in: .newlines).isEmpty)
+        model.branch.confirmBranchChoice()
+        #expect(model.branch.branchChoice != nil)
+        #expect(model.branch.running == nil)
     }
 
-    @Test func saysWhatDeletingBothLosesWithoutMovingAnything() async throws {
+    @Test func listsAnyMixOfLocalAndRemoteBranchesAndKeepsItsSize() async throws {
+        let clones = try await clones()
+        try await git("branch", "--track", "feature", "origin/feature", in: clones.work)
+        try await git("branch", "--no-track", "copy", "origin/feature", in: clones.work)
+        try await git("remote", "add", "fork", clones.remote, in: clones.work)
+        try await git("update-ref", "refs/remotes/fork/feature", "origin/feature", in: clones.work)
+        let model = model(clones, fetches: false)
+        await model.appear()
+
+        await askToDelete(branches: "feature", "copy", "fork/feature", "origin/feature", model: model)
+        var dialog = try choiceDialog(model)
+        #expect(dialog.switches.map(\.title.plain) == ["feature", "copy", "fork/feature", "origin/feature"])
+        #expect(dialog.switches.map(\.isOn) == [true, true, false, false])
+        #expect(dialog.switches.map(\.key) == ["1", "2", "3", "4"])
+        #expect(dialog.switches[2].detail.plain == "This deletes the branch on fork, for everyone who uses it.")
+        // The block always has room for each switch's command, because a sheet can't grow.
+        #expect(dialog.terminal == [
+            .command(["branch", "-D", "feature"]),
+            .command(["branch", "-D", "copy"]),
+            .room(["push", "--delete", "fork", "refs/heads/feature"]),
+            .room(["push", "--delete", "origin", "refs/heads/feature"]),
+        ])
+        #expect(dialog.buttons.last?.kind == .primary)
+
+        try flip(3, model)
+        dialog = try choiceDialog(model)
+        #expect(dialog.terminal == [
+            .command(["branch", "-D", "feature"]),
+            .command(["branch", "-D", "copy"]),
+            .command(["push", "--delete", "origin", "refs/heads/feature"]),
+            .room(["push", "--delete", "fork", "refs/heads/feature"]),
+        ])
+        #expect(dialog.buttons.last?.kind == .destructive)
+
+        try flip(0, model)
+        dialog = try choiceDialog(model)
+        #expect(dialog.terminal == [
+            .command(["branch", "-D", "copy"]),
+            .command(["push", "--delete", "origin", "refs/heads/feature"]),
+            .room(["branch", "-D", "feature"]),
+            .room(["push", "--delete", "fork", "refs/heads/feature"]),
+        ])
+        #expect(CommandBlock.copied(dialog.terminal) == "git branch -D copy\ngit push --delete origin refs/heads/feature")
+        #expect(dialog.switches.map(\.title.plain) == ["feature", "copy", "fork/feature", "origin/feature"])
+    }
+
+    /// A sheet can't change size once it has opened. This has a name long enough to
+    /// take two lines in the block, which an empty line wouldn't leave room for.
+    @MainActor
+    @Test func keepsItsHeightWhileTheSwitchesFlip() async throws {
+        let clones = try await clones()
+        let long = "tm/a-branch-with-a-name-long-enough-to-wrap-in-the-block"
+        try await git("branch", "--no-track", long, "origin/feature", in: clones.work)
+        try await git("update-ref", "refs/remotes/origin/" + long, "origin/feature", in: clones.work)
+        let model = model(clones, fetches: false)
+        await model.appear()
+
+        model.askToDeleteBranches(["refs/heads/" + long, "refs/remotes/origin/feature", "refs/remotes/origin/" + long])
+        await model.branch.preparingDeletion?.value
+        func height() throws -> CGFloat {
+            NSHostingView(rootView: DialogSheet(content: try choiceDialog(model))).fittingSize.height
+        }
+        let opening = try height()
+        #expect(opening > 0)
+        for index in [2, 1, 0, 2, 1] {
+            try flip(index, model)
+            #expect(try height() == opening)
+        }
+    }
+
+    @MainActor
+    @Test func scrollsThroughManyBranchesRatherThanGrowing() async throws {
+        let clones = try await clones()
+        func names(_ count: Int) -> [String] { (1...count).map { "refs/heads/copy\($0)" } }
+        for name in names(30) { try await git("branch", "--no-track", String(name.dropFirst("refs/heads/".count)), "origin/feature", in: clones.work) }
+        let model = model(clones, fetches: false)
+        await model.appear()
+
+        func height(_ count: Int) async throws -> CGFloat {
+            model.askToDeleteBranches(names(count))
+            await model.branch.preparingDeletion?.value
+            defer { model.branch.branchChoice = nil }
+            return NSHostingView(rootView: DialogSheet(content: try choiceDialog(model))).fittingSize.height
+        }
+        let many = try await height(30)
+        #expect(try await height(20) == many)
+        #expect(try await height(4) < many)
+    }
+
+    @Test func aFlipIsSeenByTheButtonThatAlreadyExists() async throws {
+        let clones = try await clones()
+        try await git("branch", "--track", "feature", "origin/feature", in: clones.work)
+        let model = model(clones, fetches: false)
+        await model.appear()
+
+        await askToDelete(branches: "feature", "origin/feature", model: model)
+        let stale = try #require(try choiceDialog(model).buttons.last)
+        try flip(0, model)
+        try flip(1, model)
+        stale.action()
+        await model.branch.running?.value
+        #expect(try await exists("refs/heads/feature", in: clones.work))
+        #expect(try await !exists("refs/heads/feature", in: clones.remote))
+    }
+
+    @Test func givesOnlyTheFirstNineSwitchesAKey() async throws {
+        let clones = try await clones()
+        let names = (1...10).map { "copy\($0)" }
+        for name in names { try await git("branch", "--no-track", name, "origin/feature", in: clones.work) }
+        let model = model(clones, fetches: false)
+        await model.appear()
+
+        model.askToDeleteBranches(names.map { "refs/heads/" + $0 })
+        await model.branch.preparingDeletion?.value
+        let dialog = try choiceDialog(model)
+        #expect(dialog.switches.map(\.key) == ["1", "2", "3", "4", "5", "6", "7", "8", "9", nil])
+        #expect(dialog.terminal.count == 10)
+    }
+
+    @Test func saysWhatDeletingEveryBranchLosesWithoutMovingAnything() async throws {
         let clones = try await clones()
         try await git("switch", "--quiet", "--create", "pushed", in: clones.work)
         try await commit("Only on pushed", in: clones.work)
@@ -1200,33 +1336,95 @@ struct BranchModelTests {
         let model = model(clones, fetches: false)
         await model.appear()
 
-        await askToDelete(branch: "pushed", upstream: "origin/pushed", model)
-        var dialog = model.branch.dialog(for: try #require(model.branch.branchChoice))
+        await askToDelete(branches: "pushed", "origin/pushed", model: model)
+        var dialog = try choiceDialog(model)
         #expect(dialog.switches.first?.detail.plain == "Its commits are also on origin/pushed.")
         #expect(dialog.cardsAfterSwitches.first?.first == .heading("1 commit stays on origin/pushed", isLost: false))
         #expect(dialog.cardsAfterSwitches.first?.count == 2)
 
-        dialog.switches[1].flip()
-        dialog = model.branch.dialog(for: try #require(model.branch.branchChoice))
+        try flip(1, model)
+        dialog = try choiceDialog(model)
         #expect(dialog.cardsAfterSwitches.first?.first == .heading("This commit can't be brought back", isLost: true))
+        #expect(dialog.cardsAfterSwitches.first?.count == 2)
+        #expect(dialog.buttons.last?.kind == .destructive)
+
+        // Either one staying keeps the commit, whichever it is.
+        try flip(0, model)
+        dialog = try choiceDialog(model)
+        #expect(dialog.cardsAfterSwitches.first?.first == .heading("1 commit stays on pushed", isLost: false))
         #expect(dialog.cardsAfterSwitches.first?.count == 2)
     }
 
-    @Test func saysWhatsLeftWhenTheUpstreamCantBeDeleted() async throws {
+    /// Nothing says which of two names for the same commits to keep, and going ahead
+    /// with both would lose them.
+    @Test func startsWithNothingOnWhenLocalBranchesAloneWouldLoseCommits() async throws {
         let clones = try await clones()
-        try await git("branch", "--track", "feature", "origin/feature", in: clones.work)
+        try await makeBranchWithACommit("one", clones)
+        try await git("branch", "two", "one", in: clones.work)
         let model = model(clones, fetches: false)
         await model.appear()
 
-        await askToDelete(branch: "feature", upstream: "origin/feature", model)
-        model.branch.branchChoice?.deletesUpstream = true
-        try FileManager.default.moveItem(atPath: clones.remote, toPath: clones.remote + ".moved")
-        model.branch.confirmBranchChoice()
-        await model.branch.running?.value
-        let failure = try #require(model.branch.failure)
-        #expect(failure.title == "Can't delete origin/feature")
-        #expect(failure.summary?.plain == "feature is gone, but origin/feature isn't. What git said is below.")
-        #expect(model.branch.finished == nil)
+        await askToDelete(branches: "one", "two", model: model)
+        var dialog = try choiceDialog(model)
+        #expect(dialog.switches.map(\.isOn) == [false, false])
+        #expect(dialog.buttons.last?.isEnabled == false)
+        #expect(dialog.cardsAfterSwitches.first?.first == .heading("1 commit stays on one", isLost: false))
+
+        try flip(0, model)
+        dialog = try choiceDialog(model)
+        #expect(dialog.buttons.last?.kind == .primary)
+        #expect(dialog.cardsAfterSwitches.first?.first == .heading("1 commit stays on two", isLost: false))
+
+        try flip(1, model)
+        dialog = try choiceDialog(model)
+        #expect(dialog.buttons.last?.kind == .destructive)
+        #expect(dialog.cardsAfterSwitches.first?.first == .heading("This commit can't be brought back", isLost: true))
+    }
+
+    @Test func startsWithLocalBranchesOnWhenAnotherRefKeepsTheirCommits() async throws {
+        let clones = try await clones()
+        try await makeBranchWithACommit("one", clones)
+        try await git("branch", "two", "one", in: clones.work)
+        try await git("tag", "kept", "one", in: clones.work)
+        let model = model(clones, fetches: false)
+        await model.appear()
+
+        await askToDelete(branches: "one", "two", model: model)
+        let dialog = try choiceDialog(model)
+        #expect(dialog.switches.map(\.isOn) == [true, true])
+        #expect(dialog.cardsAfterSwitches.isEmpty)
+        #expect(dialog.buttons.last?.kind == .primary)
+        #expect(dialog.switches.first?.detail.plain == "Its commits are all on other branches or tags.")
+    }
+
+    @Test func leavesTheCurrentBranchOutAndSaysWhy() async throws {
+        let clones = try await clones()
+        try await git("branch", "copy", in: clones.work)
+        let model = model(clones, fetches: false)
+        await model.appear()
+
+        await askToDelete(branches: "main", "copy", "origin/main", model: model)
+        let dialog = try choiceDialog(model)
+        #expect(dialog.switches.map(\.title.plain) == ["copy", "origin/main"])
+        #expect(dialog.switches.map(\.isOn) == [true, false])
+        #expect(dialog.note?.plain == "main stays, because git won't delete a branch that's checked out.")
+        #expect(dialog.terminal == [.command(["branch", "-D", "copy"]), .room(["push", "--delete", "origin", "refs/heads/main"])])
+        // The current branch keeps the commits, whatever the switches say.
+        #expect(dialog.cardsAfterSwitches.isEmpty)
+    }
+
+    @Test func namesEveryBranchThatsStayingBecauseItsCheckedOut() async throws {
+        let clones = try await clones()
+        try await git("worktree", "add", "--quiet", "-b", "linked", clones.folder + "/linked", in: clones.work)
+        try await git("worktree", "add", "--quiet", "-b", "another", clones.folder + "/another", in: clones.work)
+        try await git("branch", "copy", in: clones.work)
+        let model = model(clones, fetches: false)
+        await model.appear()
+
+        await askToDelete(branches: "main", "linked", "another", "copy", "origin/main", model: model)
+        let dialog = try choiceDialog(model)
+        #expect(dialog.switches.map(\.title.plain) == ["copy", "origin/main"])
+        #expect(dialog.note?.plain == "main, linked and another stay, because git won't delete a branch that's checked out.")
     }
 
     @Test func asksOnlyAboutTheUpstreamWhenAWorktreeHasTheBranchCheckedOut() async throws {
@@ -1235,9 +1433,153 @@ struct BranchModelTests {
         let model = model(clones, fetches: false)
         await model.appear()
 
-        await askToDelete(branch: "feature", upstream: "origin/feature", model)
+        await askToDelete(branches: "feature", "origin/feature", model: model)
         #expect(model.branch.branchChoice == nil)
-        #expect(model.branch.pendingDeletion?.deletion.ref == "refs/remotes/origin/feature")
+        let pending = try #require(model.branch.pendingDeletion)
+        #expect(pending.deletion.ref == "refs/remotes/origin/feature")
+        #expect(pending.checkedOut == ["feature"])
+    }
+
+    @Test func aLoneBranchThatLosesNothingHasNoSwitchAndAnInkButton() async throws {
+        let clones = try await clones()
+        try await git("tag", "kept", "origin/feature", in: clones.work)
+        try await git("branch", "--no-track", "alone", "origin/feature", in: clones.work)
+        try await git("update-ref", "-d", "refs/remotes/origin/feature", in: clones.work)
+        let model = model(clones, fetches: false)
+        await model.appear()
+
+        await askToDelete(branches: "alone", model: model)
+        #expect(model.branch.branchChoice == nil)
+        // Even though it would lose nothing, because Delete… promises a dialog.
+        #expect(try await exists("refs/heads/alone", in: clones.work))
+        guard case .message(let dialog)? = model.branch.dialog else {
+            Issue.record("It should ask.")
+            return
+        }
+        #expect(dialog.title == "Delete alone?")
+        #expect(dialog.switches.isEmpty)
+        #expect(dialog.note == nil)
+        #expect(dialog.terminal == [.command(["branch", "-D", "alone"])])
+        #expect(dialog.buttons.map(\.kind) == [.secondary, .primary])
+
+        model.branch.confirmDeletion()
+        await model.branch.running?.value
+        #expect(model.branch.finished == "Deleted alone")
+        #expect(try await !exists("refs/heads/alone", in: clones.work))
+    }
+
+    @Test func aLoneBranchThatLosesCommitsListsThemAndHasARedButton() async throws {
+        let clones = try await clones()
+        try await makeBranchWithACommit("alone", clones)
+        let model = model(clones, fetches: false)
+        await model.appear()
+
+        await askToDelete(branches: "alone", model: model)
+        guard case .message(let dialog)? = model.branch.dialog else {
+            Issue.record("It should ask.")
+            return
+        }
+        #expect(model.branch.pendingDeletion?.commits.map(\.subject) == ["Only on alone"])
+        #expect(dialog.switches.isEmpty)
+        #expect(dialog.buttons.map(\.kind) == [.secondary, .destructive])
+    }
+
+    @Test func aLoneRemoteBranchAsksAboutTheRemote() async throws {
+        let clones = try await clones()
+        let model = model(clones, fetches: false)
+        await model.appear()
+
+        await askToDelete(branches: "origin/feature", model: model)
+        guard case .message(let dialog)? = model.branch.dialog else {
+            Issue.record("It should ask.")
+            return
+        }
+        #expect(dialog.title == "Delete feature from origin?")
+        #expect(dialog.switches.isEmpty)
+        #expect(dialog.buttons.map(\.kind) == [.secondary, .destructive])
+        #expect(dialog.terminal == [.command(["push", "--delete", "origin", "refs/heads/feature"])])
+    }
+
+    @Test func letsGitSayWhoHasTheOnlyBranchCheckedOut() async throws {
+        let clones = try await clones()
+        let folder = clones.folder + "/linked"
+        try await git("worktree", "add", "--quiet", "-b", "linked", folder, in: clones.work)
+        try await commit("Only on linked", in: folder)
+        let model = model(clones, fetches: false)
+        await model.appear()
+
+        await askToDelete(branches: "linked", model: model)
+        #expect(model.branch.pendingDeletion == nil)
+        let failure = try #require(model.branch.failure)
+        #expect(failure.title == "Can't delete linked")
+        #expect(failure.message.contains(folder))
+    }
+
+    @Test func leavesOutABranchThatMovedSinceHistoryLooked() async throws {
+        let clones = try await clones()
+        try await git("branch", "--track", "feature", "origin/feature", in: clones.work)
+        try await git("branch", "--no-track", "copy", "origin/feature", in: clones.work)
+        let model = model(clones, fetches: false)
+        await model.appear()
+
+        // An agent commits to one of them while history still shows it here.
+        try await git("switch", "--quiet", "feature", in: clones.work)
+        try await commit("Only on feature", in: clones.work)
+        try await git("switch", "--quiet", "main", in: clones.work)
+
+        await askToDelete(branches: "feature", "copy", "origin/feature", model: model)
+        let dialog = try choiceDialog(model)
+        #expect(dialog.switches.map(\.title.plain) == ["copy", "origin/feature"])
+        #expect(dialog.terminal == [.command(["branch", "-D", "copy"]), .room(["push", "--delete", "origin", "refs/heads/feature"])])
+    }
+
+    @Test func saysSoWhenEveryBranchHasGone() async throws {
+        let clones = try await clones()
+        try await git("branch", "--no-track", "copy", "origin/feature", in: clones.work)
+        let model = model(clones, fetches: false)
+        await model.appear()
+
+        try await git("branch", "-D", "copy", in: clones.work)
+        await askToDelete(branches: "copy", model: model)
+        #expect(model.branch.pendingDeletion == nil)
+        #expect(model.branch.failure?.title == "Nothing to delete")
+    }
+
+    @Test func runsWhatStaysLocalFirstAndStopsAtWhatARemoteRefuses() async throws {
+        let clones = try await clones()
+        try await git("branch", "--track", "feature", "origin/feature", in: clones.work)
+        try await git("branch", "--no-track", "copy", "origin/feature", in: clones.work)
+        let model = model(clones, fetches: false)
+        await model.appear()
+
+        await askToDelete(branches: "feature", "copy", "origin/feature", model: model)
+        try flip(2, model)
+        try FileManager.default.moveItem(atPath: clones.remote, toPath: clones.remote + ".moved")
+        model.branch.confirmBranchChoice()
+        await model.branch.running?.value
+        let failure = try #require(model.branch.failure)
+        #expect(failure.title == "Can't delete origin/feature")
+        #expect(failure.summary?.plain == "feature and copy are gone, but origin/feature isn't. What git said is below.")
+        #expect(model.branch.finished == nil)
+        #expect(try await !exists("refs/heads/feature", in: clones.work))
+        #expect(try await !exists("refs/heads/copy", in: clones.work))
+    }
+
+    @Test func saysWhatsLeftWhenTheUpstreamCantBeDeleted() async throws {
+        let clones = try await clones()
+        try await git("branch", "--track", "feature", "origin/feature", in: clones.work)
+        let model = model(clones, fetches: false)
+        await model.appear()
+
+        await askToDelete(branches: "feature", "origin/feature", model: model)
+        try flip(1, model)
+        try FileManager.default.moveItem(atPath: clones.remote, toPath: clones.remote + ".moved")
+        model.branch.confirmBranchChoice()
+        await model.branch.running?.value
+        let failure = try #require(model.branch.failure)
+        #expect(failure.title == "Can't delete origin/feature")
+        #expect(failure.summary?.plain == "feature is gone, but origin/feature isn't. What git said is below.")
+        #expect(model.branch.finished == nil)
     }
 
     @Test func goesBackToNoSelectionWhenDeletingLosesTheSelectedCommit() async throws {

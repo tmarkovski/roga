@@ -70,6 +70,21 @@ struct DialogText: Equatable, ExpressibleByStringInterpolation {
         }.joined()
     }
 
+    /// Says which branches beside the ones a dialog offers are staying, or nil when
+    /// there are none. git won't delete them, so they have nothing to choose.
+    static func stayingCheckedOut(_ names: [String]) -> DialogText? {
+        guard let last = names.last else { return nil }
+        var parts: [Part] = []
+        for (index, name) in names.dropLast().enumerated() {
+            if index > 0 { parts.append(.words(", ")) }
+            parts.append(.code(name))
+        }
+        if names.count > 1 { parts.append(.words(" and ")) }
+        parts.append(.code(last))
+        parts.append(.words((names.count == 1 ? " stays" : " stay") + ", because git won't delete a branch that's checked out."))
+        return DialogText(parts: parts)
+    }
+
     /// Sentences one after the other, or nil when there are none.
     static func sentences(_ sentences: [DialogText]) -> DialogText? {
         guard var parts = sentences.first?.parts else { return nil }
@@ -125,6 +140,9 @@ enum TerminalLine: Equatable {
     /// An empty line, for a line that may come. A sheet doesn't change size once it
     /// has opened, so it needs the room from the start.
     case blank
+    /// Nothing, as tall as this command would be, for a command that may come. A long
+    /// one takes two lines, which a blank line wouldn't leave room for.
+    case room([String])
 }
 
 /// A button along the bottom of a dialog.

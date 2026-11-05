@@ -166,25 +166,39 @@ struct DialogCard: View {
             Text(text)
                 .foregroundStyle(DialogColors.note)
         case .heading(let text, let isLost):
+            // One line whatever it names, because these words change while a sheet can't
+            // change size. The name is in full on its switch.
             Text(text)
                 .font(.system(size: 12.5, weight: isLost ? .medium : .regular))
                 .foregroundStyle(isLost ? DialogColors.danger : DialogColors.note)
+                .lineLimit(1)
+                .truncationMode(.middle)
         }
     }
 }
 
-/// A gray card of what's up to the user, with a line between each switch.
+/// A gray card of what's up to the user, with a line between each switch. It scrolls
+/// rather than growing past a limit, because a commit can have any number of branches.
 struct DialogSwitchCard: View {
     let switches: [DialogSwitch]
 
+    /// Five and a half rows of the usual height, so that the cut says there's more.
+    private static let maximumHeight: CGFloat = 280
+
     var body: some View {
-        VStack(spacing: 0) {
-            ForEach(Array(switches.enumerated()), id: \.offset) { index, item in
-                if index > 0 { Divider() }
-                DialogSwitchRow(item: item)
+        ClampedHeight(maximum: Self.maximumHeight) {
+            ScrollView(.vertical) {
+                VStack(spacing: 0) {
+                    ForEach(Array(switches.enumerated()), id: \.offset) { index, item in
+                        if index > 0 { Divider() }
+                        DialogSwitchRow(item: item)
+                    }
+                }
             }
+            .scrollBounceBehavior(.basedOnSize)
         }
-        .background(DialogColors.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(DialogColors.card)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 

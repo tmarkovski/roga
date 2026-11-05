@@ -45,14 +45,10 @@ struct CommandBlock: View {
     @ViewBuilder private func row(_ line: TerminalLine) -> some View {
         switch line {
         case .command(let arguments), .ran(let arguments):
-            HStack(alignment: .firstTextBaseline, spacing: 7) {
-                Text(verbatim: "$")
-                    .foregroundStyle(Self.promptColor)
-                    .accessibilityHidden(true)
-                Text(Self.attributed(arguments))
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            command(arguments)
+        case .room(let arguments):
+            command(arguments)
+                .hidden()
         case .output(let text):
             Text(verbatim: text)
                 .foregroundStyle(Self.outputColor)
@@ -67,6 +63,17 @@ struct CommandBlock: View {
         case .blank:
             Text(verbatim: " ")
                 .accessibilityHidden(true)
+        }
+    }
+
+    private func command(_ arguments: [String]) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 7) {
+            Text(verbatim: "$")
+                .foregroundStyle(Self.promptColor)
+                .accessibilityHidden(true)
+            Text(Self.attributed(arguments))
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -96,7 +103,7 @@ struct CommandBlock: View {
             case .command(let arguments), .ran(let arguments): "$ " + ShellCommand.text(arguments)
             case .output(let text): text
             case .comment(let text): "# " + text
-            case .gap, .blank: ""
+            case .gap, .blank, .room: ""
             }
         }.joined(separator: "\n")
     }
@@ -181,7 +188,7 @@ enum ShellCommand {
 
 /// Takes up the height of what's in it, up to a limit. A `ScrollView` says how tall
 /// its content is when it's asked with no height in mind.
-private struct ClampedHeight: Layout {
+struct ClampedHeight: Layout {
     var maximum: CGFloat
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {

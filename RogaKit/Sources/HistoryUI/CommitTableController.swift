@@ -30,8 +30,9 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
         public var checkOut: (CommitRowContent.Badge) -> Void
         /// Says that the user double-clicked a row anywhere else.
         public var goToRow: (Int) -> Void
-        /// Says that the user chose to delete the branch of a badge.
-        public var deleteBranch: (CommitRowContent.Badge) -> Void
+        /// Says that the user chose to delete some of the branches on a commit, by
+        /// the full names of all of them.
+        public var deleteBranches: ([String]) -> Void
         /// Whether something's running that deleting a branch has to wait for.
         public var isBusy: () -> Bool
 
@@ -42,7 +43,7 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
             selectRow: @escaping (Int?) -> Void,
             checkOut: @escaping (CommitRowContent.Badge) -> Void = { _ in },
             goToRow: @escaping (Int) -> Void = { _ in },
-            deleteBranch: @escaping (CommitRowContent.Badge) -> Void = { _ in },
+            deleteBranches: @escaping ([String]) -> Void = { _ in },
             isBusy: @escaping () -> Bool = { false }
         ) {
             self.count = count
@@ -51,7 +52,7 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
             self.selectRow = selectRow
             self.checkOut = checkOut
             self.goToRow = goToRow
-            self.deleteBranch = deleteBranch
+            self.deleteBranches = deleteBranches
             self.isBusy = isBusy
         }
     }
@@ -223,27 +224,19 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
         }
     }
 
-    /// What right-clicking a row offers, under the name of each branch that points
-    /// to its commit, so that it's clear which one an item acts on. That includes
-    /// branches whose badges don't fit in the row. A row without branches has no
-    /// menu. The current branch's item is there but disabled, because git won't
-    /// delete a branch that's checked out.
+    /// What right-clicking a row offers, which is one item for deleting, whatever
+    /// points to its commit (decision 38). Its dialog lists the branches and holds the
+    /// choice, including those whose badges don't fit in the row. A row with no branch
+    /// that could go has no menu.
     func menu(forRow row: Int) -> NSMenu? {
-        let branches = source.content(row).branches
-        guard !branches.isEmpty else { return nil }
-        var entries: [RefMenu.Entry] = []
-        for badge in branches {
-            if !entries.isEmpty { entries.append(.divider) }
-            entries.append(.header(badge.title))
-            entries.append(.command(
-                badge.deleteTitle,
-                isDestructive: true,
-                isEnabled: badge.kind != .currentBranch && !source.isBusy()
-            ) { [weak self] in
-                self?.source.deleteBranch(badge)
-            })
-        }
-        return RefMenu.make(entries)
+        let content = source.content(row)
+        guard content.hasBranchThatCanGo else { return nil }
+        let branches = content.branches
+        return RefMenu.make([
+            .command("Delete…", isDestructive: true, isEnabled: !source.isBusy()) { [weak self] in
+                self?.source.deleteBranches(branches)
+            },
+        ])
     }
 
     @objc private func visibleRowsMayHaveChanged(_ notification: Notification) {

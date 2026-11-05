@@ -56,17 +56,7 @@ public struct CommitRowContent: Hashable {
             }
         }
 
-        /// What the row's menu calls deleting this branch. One that stands for its
-        /// upstream too leaves the choice to a dialog.
-        var deleteTitle: String {
-            switch kind {
-            case .remoteBranch: "Delete from Remote…"
-            case .branch where upstream != nil: "Delete…"
-            default: "Delete Branch"
-            }
-        }
-
-        /// Whether the row's menu lists the badge, which is every branch.
+        /// Whether the row's menu can act on the badge, which is every branch.
         var isBranch: Bool {
             switch kind {
             case .currentBranch, .branch, .remoteBranch: true
@@ -149,20 +139,23 @@ public struct CommitRowContent: Hashable {
         badges.contains { $0.kind.isCurrent }
     }
 
-    /// Every branch that points to the commit, for the row's menu: local ones
-    /// first, then remote ones from A to Z. A branch and its upstream share a row,
-    /// whose dialog asks which go, except that the current branch can't go, so its
-    /// upstream gets a row of its own. Other remotes' branches on a badge always
-    /// have their own rows, because that dialog only asks about the upstream.
-    var branches: [Badge] {
+    /// The full name of every branch that points to the commit, for the dialog that
+    /// the row's menu opens: local ones first, then remote ones from A to Z. That
+    /// includes those that share a badge, which stand for a branch each here.
+    var branches: [String] {
         let branches = badges.filter(\.isBranch)
         let local = branches.filter { $0.kind != .remoteBranch }
-        let onBadges = local.flatMap { badge in
-            badge.otherRemoteBranches + (badge.kind == .currentBranch ? badge.upstream.map { [$0] } ?? [] : [])
-        }
-        let remote = branches.filter { $0.kind == .remoteBranch }
-            + onBadges.map { Badge(title: Ref.shortName($0), kind: .remoteBranch, refName: $0) }
-        return local + remote.sorted { $0.title < $1.title }
+        let remote = branches.filter { $0.kind == .remoteBranch }.compactMap(\.refName)
+            + local.flatMap { [$0.upstream].compactMap(\.self) + $0.otherRemoteBranches }
+        return local.compactMap(\.refName) + remote.sorted()
+    }
+
+    /// Whether the row's menu has anything to offer. git won't delete the current
+    /// branch, so a commit with nothing else has nothing to choose from. Only the
+    /// dialog can tell about a branch that another worktree has checked out.
+    var hasBranchThatCanGo: Bool {
+        let current = badges.first { $0.kind == .currentBranch }?.refName
+        return branches.contains { $0 != current }
     }
 
     /// What VoiceOver reads for the row. The body comes last, so that it's easy

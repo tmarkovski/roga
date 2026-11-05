@@ -50,14 +50,7 @@ struct CommitList: NSViewRepresentable {
             controller.source.goToRow = { [unowned self] row in
                 model.goToRow(row) { [unowned self] in showWorktree($0, $1) }
             }
-            controller.source.deleteBranch = { badge in
-                guard let name = badge.refName else { return }
-                if badge.kind == .branch, let upstream = badge.upstream {
-                    model.branch.askToDelete(branch: name, upstream: upstream)
-                } else {
-                    model.branch.askToDelete(ref: name)
-                }
-            }
+            controller.source.deleteBranches = { model.askToDeleteBranches($0) }
             controller.source.isBusy = { model.branch.isBusy }
         }
 
