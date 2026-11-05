@@ -205,10 +205,11 @@ struct ChangesPanel: View {
 }
 
 /// One group's title, how many files it has and how many lines they change,
-/// or as many as a filter left, and its files. While the pointer is over the title,
-/// it offers to stage them all or take them all back out, and to discard them.
-/// VoiceOver gets the same as actions on the heading, because the buttons are only
-/// there while the pointer is.
+/// or as many as a filter left, and its files. Its buttons stage them all or take
+/// them all back out, and discard them, and they show all the time, unlike a row's,
+/// so that what the panel can do isn't all hidden until the pointer finds it
+/// (decision 39). VoiceOver gets the same as actions on the heading, so that it
+/// stays one element.
 private struct GroupOfFiles: View {
     let group: WorktreeChanges.Group
     let files: [DiffFile]
@@ -221,7 +222,6 @@ private struct GroupOfFiles: View {
     let folderDiscard: ((String) -> RowDiscard)?
     let select: (DiffFile) -> Void
     let toggleFolder: (String) -> Void
-    @State private var isHovering = false
 
     var body: some View {
         let matching = list.matching(files, in: group)
@@ -250,7 +250,7 @@ private struct GroupOfFiles: View {
                 }
             }
             Spacer(minLength: 0)
-            if isHovering, group != .conflicted {
+            if group != .conflicted {
                 buttons(stageTitle: stageTitle, discardTitle: discardTitle)
                     .layoutPriority(1)
             }
@@ -260,8 +260,6 @@ private struct GroupOfFiles: View {
         .padding(.horizontal, 14)
         .padding(.top, 10)
         .padding(.bottom, 6)
-        .contentShape(Rectangle())
-        .onHover { isHovering = $0 }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(group.title)
         .accessibilityValue(spokenValue(count: matching.count, added: added, removed: removed))
@@ -279,7 +277,7 @@ private struct GroupOfFiles: View {
 
     /// The buttons, in words while there's room for them. A narrower panel gets
     /// discarding as an icon, and then staging too, because a button cut short says
-    /// nothing. Discarding comes first, so that staging doesn't move.
+    /// nothing. Discarding comes first, as it does on a row.
     private func buttons(stageTitle: String, discardTitle: String?) -> some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 4) {

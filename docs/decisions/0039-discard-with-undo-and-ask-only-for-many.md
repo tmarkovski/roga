@@ -36,7 +36,11 @@ git has no undo for this. `git restore`, `git apply --reverse` and `git reset --
 | A heading | `Discard All…` beside `Stage All`, or `Discard 3 Matching…` with a filter | The above, for its files |
 | Everything | The panel's header, Changes > Discard All Changes…, and right-clicking history's row | `git stash create`, then `git reset --hard`, and untracked files go to the Trash |
 
-The button comes before the one for staging so that staging doesn't move. As the panel narrows, a heading's line counts go first, then `Discard All…` becomes just its icon, and then `Stage All` does too, because a button cut short says nothing. The heading's title and count never give way, since they say which files the buttons act on. A minimum width for the panel wouldn't do instead: with a filter, `Discard 12 Matching…` and `Stage 12 Matching` need about 380 points, more than the panel's default of 320. The buttons are only there while the pointer is, so VoiceOver gets them as actions on the heading. A hunk's button shows only while the pointer is in that hunk rather than on every band as the canvas drew it, so that nothing red sits beside every hunk while someone is only reading, and it's the same rule as a row's. It stays at the edge of the view as the text scrolls sideways.
+The button comes before the one for staging so that staging doesn't move. A hunk's button shows only while the pointer is in that hunk rather than on every band as the canvas drew it, so that nothing red sits beside every hunk while someone is only reading, and it's the same rule as a row's. It stays at the edge of the view as the text scrolls sideways.
+
+**A heading's buttons show all the time,** which changes decision 30's rule that they wait for the pointer. A row's buttons, a folder's, a hunk's and the sidebar's all wait for it, and so do double-clicks on badges, refs and commits, so together too much of what Roga can do is only found by trying. Headings are the place to show some of it: there are four at most, and their buttons say what each row offers once the pointer is on it. `Discard All…` shows too, in red, even though it sits below the red button in the panel's header, because discarding one heading has no menu item or shortcut to find it by.
+
+As the panel narrows, a heading's line counts go first, then `Discard All…` becomes just its icon, and then `Stage All` does too, because a button cut short says nothing. The heading's title and count never give way, since they say which files the buttons act on. A minimum width for the panel wouldn't do instead: with a filter, `Discard 12 Matching…` and `Stage 12 Matching` need about 380 points, more than the panel's default of 320. VoiceOver gets the buttons as actions on the heading, so that it stays one element.
 
 | Command | Shortcut |
 | --- | --- |
@@ -71,4 +75,5 @@ The button comes before the one for staging so that staging doesn't move. As the
 - A hunk has no keyboard command yet, because the diff has no idea of a current hunk. Moving between hunks would bring both, and Stage Hunk can use the same band.
 - Before the first commit there's nothing for `git stash create` to compare with, so staged files can't come back from Discard All Changes. Untracked ones still can.
 - A row's accessibility label names its discard, but a hunk's button only exists under the pointer, so VoiceOver can't reach it.
+- At the panel's default width of 320 points, Unstaged has no room for its line counts beside both buttons in words. Each row still has its own, and at 360 the heading's come back.
 - A file whose button moved it to the Trash can't come back if something has been written in its place, or if the Trash has been emptied. Undo says so.
