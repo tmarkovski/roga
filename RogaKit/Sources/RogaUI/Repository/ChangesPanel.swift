@@ -148,7 +148,12 @@ struct ChangesPanel: View {
             list: fileList,
             selectedFile: selection.selectedFile,
             toggleAll: { selection.toggleAll(in: group) },
-            discardAll: { selection.askToDiscardAll(in: group) },
+            discardAll: {
+                // A heading with one file discards it without asking, and the next
+                // heading moves up under the pointer.
+                guard NSApp.currentEvent?.isRepeatedClick != true else { return }
+                selection.askToDiscardAll(in: group)
+            },
             rowAction: FileRowAction(icon: group.stageIcon, title: group.stageTitle, perform: { file in
                 selection.toggle(file, in: group)
             }, discard: { file in
@@ -201,7 +206,9 @@ struct ChangesPanel: View {
 
 /// One group's title, how many files it has and how many lines they change,
 /// or as many as a filter left, and its files. While the pointer is over the title,
-/// it offers to stage them all or take them all back out.
+/// it offers to stage them all or take them all back out, and to discard them.
+/// VoiceOver gets the same as actions on the heading, because the buttons are only
+/// there while the pointer is.
 private struct GroupOfFiles: View {
     let group: WorktreeChanges.Group
     let files: [DiffFile]
@@ -217,60 +224,35 @@ private struct GroupOfFiles: View {
     @State private var isHovering = false
 
     var body: some View {
+        let matching = list.matching(files, in: group)
+        let lines = matching.compactMap(\.lines)
+        let added = lines.reduce(0) { $0 + $1.added }
+        let removed = lines.reduce(0) { $0 + $1.removed }
+        let discardable = matching.count { group.discarding($0) != nil }
+        let stageTitle = group.stageAllTitle(matching: matching.count, filter: list.filter)
+        let discardTitle = discardable > 0 ? group.discardAllTitle(matching: discardable, filter: list.filter) : nil
         HStack(spacing: 8) {
-            let matching = list.matching(files, in: group)
+            // The title and count never give way, because they say which files the
+            // buttons act on, and the buttons have shorter forms.
             Text(group.title)
                 .fontWeight(.medium)
-                .lineLimit(1)
+                .fixedSize()
             Text(matching.count, format: .number)
                 .foregroundStyle(.secondary)
-            let lines = matching.compactMap(\.lines)
-            if lines.contains(where: { $0.added + $0.removed > 0 }) {
+                .fixedSize()
+            if added + removed > 0 {
                 // Numbers cut short would say the wrong thing, so in a narrow panel they
                 // go away while the buttons need the room.
                 ViewThatFits(in: .horizontal) {
-                    LineCounts(added: lines.reduce(0) { $0 + $1.added }, removed: lines.reduce(0) { $0 + $1.removed })
+                    LineCounts(added: added, removed: removed)
                         .fixedSize()
                     Color.clear.frame(width: 0, height: 0)
                 }
             }
             Spacer(minLength: 0)
             if isHovering, group != .conflicted {
-                let discardable = matching.filter { group.discarding($0) != nil }.count
-                let discardTitle = group.discardAllTitle(matching: discardable, filter: list.filter)
-                let stageButton = headingButton(group.stageAllTitle(matching: matching.count, filter: list.filter), help: group.stageAllHelp, action: toggleAll)
-                    .fixedSize()
-                // It says less in a narrow panel, because two buttons cut short say nothing.
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 4) {
-                        if discardable > 0 {
-                            headingButton(discardTitle, help: group.discardAllHelp, action: discardAll)
-                                .foregroundStyle(Palette.red)
-                                .fixedSize()
-                        }
-                        stageButton
-                    }
-                    HStack(spacing: 4) {
-                        if discardable > 0, let way = group.folderDiscard {
-                            Button(action: discardAll) {
-                                way.icon.image
-                                    .font(.system(size: 13))
-                                    .foregroundStyle(Palette.red)
-                                    .frame(width: 20, height: 20)
-                                    .background {
-                                        RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                            .fill(Palette.hover)
-                                    }
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .help(discardTitle)
-                            .accessibilityLabel(discardTitle)
-                        }
-                        stageButton
-                    }
-                }
-                .layoutPriority(1)
+                buttons(stageTitle: stageTitle, discardTitle: discardTitle)
+                    .layoutPriority(1)
             }
         }
         .font(.system(size: 12))
@@ -280,8 +262,52 @@ private struct GroupOfFiles: View {
         .padding(.bottom, 6)
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(group.title)
+        .accessibilityValue(spokenValue(count: matching.count, added: added, removed: removed))
         .accessibilityAddTraits(.isHeader)
+        .accessibilityActions {
+            if group != .conflicted {
+                if let discardTitle {
+                    Button(discardTitle, action: discardAll)
+                }
+                Button(stageTitle, action: toggleAll)
+            }
+        }
         FileRows(list: list, rows: list.rows(of: files, in: group), selectedFile: selectedFile, select: select, toggleFolder: toggleFolder, rowAction: rowAction, folderAction: folderAction, folderDiscard: folderDiscard)
+    }
+
+    /// The buttons, in words while there's room for them. A narrower panel gets
+    /// discarding as an icon, and then staging too, because a button cut short says
+    /// nothing. Discarding comes first, so that staging doesn't move.
+    private func buttons(stageTitle: String, discardTitle: String?) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 4) {
+                if let discardTitle {
+                    headingButton(discardTitle, help: group.discardAllHelp, action: discardAll)
+                        .foregroundStyle(Palette.red)
+                }
+                headingButton(stageTitle, help: group.stageAllHelp, action: toggleAll)
+            }
+            HStack(spacing: 4) {
+                discardIcon(discardTitle)
+                headingButton(stageTitle, help: group.stageAllHelp, action: toggleAll)
+            }
+            HStack(spacing: 4) {
+                discardIcon(discardTitle)
+                if let icon = group.stageIcon {
+                    headingIconButton(icon, title: stageTitle, action: toggleAll)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func discardIcon(_ title: String?) -> some View {
+        if let title, let way = group.folderDiscard {
+            headingIconButton(way.icon, title: title, action: discardAll)
+                .foregroundStyle(Palette.red)
+        }
     }
 
     private func headingButton(_ title: String, help: String, action: @escaping () -> Void) -> some View {
@@ -296,7 +322,30 @@ private struct GroupOfFiles: View {
                     .fill(Palette.hover)
             }
             .contentShape(Rectangle())
+            .fixedSize()
             .help(help)
+    }
+
+    private func headingIconButton(_ icon: Icon, title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            icon.image
+                .font(.system(size: 13))
+                .frame(width: 20, height: 20)
+                .background {
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .fill(Palette.hover)
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(title)
+    }
+
+    /// What VoiceOver says after the heading's title.
+    private func spokenValue(count: Int, added: Int, removed: Int) -> String {
+        let matching = list.filter.isEmpty ? "" : "matching "
+        let files = count == 1 ? "1 \(matching)file" : "\(count.formatted()) \(matching)files"
+        return added + removed > 0 ? "\(files), \(added.formatted()) lines added and \(removed.formatted()) removed" : files
     }
 }
 
