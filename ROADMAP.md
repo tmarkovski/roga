@@ -26,7 +26,7 @@ Some of the setup comes later, when there's something for it to work on:
 
 Release 1 is for someone who works in the terminal and keeps Roga open next to it. They use it to read history and to review what they and their agents have changed.
 
-Roga doesn't change the repository in release 1, with a few exceptions. It keeps the commit-graph file up to date (decision 6), double-clicking a branch's badge in history checks that branch out with `git switch`, double-clicking a commit goes to it with `git reset --keep`, `git reset --soft` if the dialog was asked to keep the changes, or `git switch --detach` (decision 37), the branch in the title row fetches, pulls, pushes and starts new branches (decisions 19 and 20), right-clicking a branch or its commit deletes the branch, and a linked worktree's menu in the sidebar deletes the worktree, and the row for uncommitted changes stages files and commits them (decision 30). The last four came forward from release 2. Switching worktrees only changes what Roga shows.
+Roga doesn't change the repository in release 1, with a few exceptions. It keeps the commit-graph file up to date (decision 6), double-clicking a branch's badge in history or its row in the refs panel checks that branch out with `git switch`, double-clicking a commit goes to it with `git reset --keep`, `git reset --soft` if the dialog was asked to keep the changes, or `git switch --detach` (decision 37), the branch in the title row fetches, pulls, pushes and starts new branches (decisions 19 and 20), right-clicking a branch or its commit deletes the branch, and a linked worktree's menu in the sidebar deletes the worktree, and the row for uncommitted changes stages files and commits them (decision 30). The last four came forward from release 2. Switching worktrees only changes what Roga shows.
 
 The work happens in this order:
 
@@ -66,7 +66,7 @@ Release 1 can ship without the next two items. They're built last, and if they a
 ## Release 2: working with changes
 
 - Stage and unstage by hunk or line, and discard changes. Staging by file, committing and amending came first (decision 30).
-- Rename branches, start a branch from any commit, and switch branches from the keyboard and the refs panel.
+- Rename branches, start a branch from any commit, and switch branches from the keyboard.
 - Ask for a passphrase when git needs one to fetch, pull or push (decision 20).
 - Clone a repository into a folder the user chooses, using the user's own credential helpers and SSH setup, and add it to the sidebar. Its action goes under opening a repository at the top of the sidebar.
 - Create, apply and drop stashes.

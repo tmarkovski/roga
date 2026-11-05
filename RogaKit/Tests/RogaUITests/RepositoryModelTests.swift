@@ -188,6 +188,66 @@ struct RepositoryModelTests {
         #expect(model.selectedRow == (try row(of: local, in: model)))
     }
 
+    @Test func checksOutARefsPanelRowByItsName() async throws {
+        let (model, repository) = try await modelOfACopy()
+        try await runGit("branch", "--no-track", "local", "main~1", in: repository)
+        await model.load()
+        let local = try await runGit("rev-parse", "local", in: repository)
+
+        model.checkOut(ref: "refs/heads/local") { _, _ in Issue.record("It's not in another worktree.") }
+        await finishCheckout(model)
+        #expect(model.headDescription == "local")
+        #expect(model.selectedCommit.id == ObjectID(hex: local))
+
+        model.checkOut(ref: "refs/remotes/origin/feature") { _, _ in Issue.record("It's not in another worktree.") }
+        await finishCheckout(model)
+        #expect(model.headDescription == "feature")
+        #expect(model.checkoutFailure == nil)
+    }
+
+    @Test func namesTheBranchOfARefsPanelRowWhenItsCheckoutFails() async throws {
+        let (model, repository) = try await modelOfACopy()
+        try await runGit("switch", "--quiet", "--create", "changed", in: repository)
+        try write("Changed\n", to: "README.md", in: repository)
+        try await runGit("commit", "--quiet", "--all", "--message=Change", in: repository)
+        try await runGit("switch", "--quiet", "main", in: repository)
+        try write("Mine\n", to: "README.md", in: repository)
+        await model.load()
+
+        model.checkOut(ref: "refs/heads/changed") { _, _ in }
+        await finishCheckout(model)
+
+        #expect(model.checkoutFailure?.branch == "changed")
+        #expect(model.headDescription == "main")
+    }
+
+    @Test func goesToTheCommitOfARefsPanelRowForARemotesCopyOfTheCurrentBranch() async throws {
+        let (model, repository) = try await modelOfACopy()
+        try await runGit("reset", "--quiet", "--hard", "main~1", in: repository)
+        await model.load()
+        let upstream = try await runGit("rev-parse", "origin/main", in: repository)
+
+        model.checkOut(ref: "refs/remotes/origin/main") { _, _ in Issue.record("It's not in another worktree.") }
+        await finishCheckout(model)
+
+        #expect(model.headDescription == "main")
+        #expect(try await runGit("rev-parse", "main", in: repository) == upstream)
+    }
+
+    @Test func showsTheWorktreeThatHasARefsPanelRowsBranch() async throws {
+        let (model, repository) = try await modelOfACopy()
+        let other = try makeTemporaryFolder() + "/other"
+        try await runGit("worktree", "add", "--quiet", "-b", "elsewhere", other, in: repository)
+        await model.load()
+        var shown: String?
+
+        model.checkOut(ref: "refs/heads/elsewhere") { folder, _ in shown = folder }
+        await finishCheckout(model)
+
+        #expect(shown?.hasSuffix("/other") == true)
+        #expect(model.headDescription == "main")
+    }
+
     @Test func replacesWhatWasSelectedWithTheCommitItsToldToSelect() async throws {
         let (model, _) = try await modelOfACopy()
         await model.load()

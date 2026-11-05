@@ -6,7 +6,8 @@ import SwiftUI
 
 /// The panel on the right of the window, which lists the repository's branches,
 /// remotes, tags and stashes (docs/main-window.md). Clicking a ref selects its
-/// commit in history.
+/// commit in history, and double-clicking a branch checks it out, as double-clicking
+/// its badge there does.
 ///
 /// It draws its own rows rather than using a `List`, for the same reason as the
 /// sidebar: its rows swap their label for commands on hover. So it handles the
@@ -201,7 +202,9 @@ struct RefsPanel: View {
             menu: branchMenu(branch, isCurrent: isCurrent, otherWorktree: otherWorktree),
             isSelected: isSelected(branch.name, branch.tip),
             hasCommands: otherWorktree != nil,
-            action: { select(branch.name, branch.tip) }
+            action: { select(branch.name, branch.tip) },
+            // There's nothing to do for the current branch, as for its badge.
+            doubleAction: isCurrent ? nil : { checkOut(branch.name) }
         ) {
             if isCurrent {
                 Icon.check.image
@@ -260,7 +263,8 @@ struct RefsPanel: View {
             ],
             isSelected: isSelected(branch.name, branch.tip),
             isIndented: true,
-            action: { select(branch.name, branch.tip) }
+            action: { select(branch.name, branch.tip) },
+            doubleAction: { checkOut(branch.name) }
         ) {
             if let date = branch.date {
                 Text(RefDates.short(date))
@@ -296,6 +300,10 @@ struct RefsPanel: View {
     private func select(_ name: String, _ commit: ObjectID) {
         isListFocused = true
         model.select(ref: name, commit: commit)
+    }
+
+    private func checkOut(_ name: String) {
+        model.checkOut(ref: name, showWorktree: showWorktree)
     }
 
     /// Moves the selection through the rows that show, skipping stashes, which
@@ -492,6 +500,8 @@ private struct RefRow<Trailing: View, Commands: View>: View {
     var isIndented = false
     var hasCommands = false
     var action: (() -> Void)?
+    /// What double-clicking the row does, after its first click has done `action`.
+    var doubleAction: (() -> Void)?
     @ViewBuilder var trailing: Trailing
     @ViewBuilder var commands: Commands
     @State private var isHovering = false
@@ -543,6 +553,9 @@ private struct RefRow<Trailing: View, Commands: View>: View {
             if !menu.isEmpty { RefMenuArea(entries: menu) }
         }
         .onTapGesture { action?() }
+        // Alongside the single click rather than ahead of it, so that a click
+        // doesn't wait to see whether a second one is coming.
+        .simultaneousGesture(TapGesture(count: 2).onEnded { doubleAction?() })
         .onHover { isHovering = $0 }
         .help(title)
         .accessibilityElement(children: .ignore)
@@ -551,6 +564,9 @@ private struct RefRow<Trailing: View, Commands: View>: View {
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : action == nil ? [] : .isButton)
         .accessibilityAction(.default) { action?() }
         .accessibilityActions {
+            if let doubleAction {
+                Button("Check Out", action: doubleAction)
+            }
             refMenuActions(menu)
         }
     }

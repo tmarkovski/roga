@@ -322,7 +322,14 @@ final class RepositoryModel {
     /// to show it instead, with the commit to select there. A remote's copy of the
     /// current branch has nothing to check out, so that goes to its commit instead.
     func checkOut(_ badge: CommitRowContent.Badge, showWorktree: @escaping (String, ObjectID?) -> Void) {
-        guard checkout == nil, branch.action == nil, let name = badge.refName else { return }
+        guard let name = badge.refName else { return }
+        checkOut(ref: name, showWorktree: showWorktree)
+    }
+
+    /// Checks out a branch by its full name, as its badge does. The refs panel's
+    /// rows come here, since they have no badge.
+    func checkOut(ref name: String, showWorktree: @escaping (String, ObjectID?) -> Void) {
+        guard checkout == nil, branch.action == nil else { return }
         let commit = history?.refs.refs.first { $0.name == name }?.peeled
         if isRemoteCopyOfCurrentBranch(name) {
             if let commit { goTo(commit: commit) }
@@ -339,20 +346,20 @@ final class RepositoryModel {
                     commitSwitch: commitSwitch,
                     commits: await branch.listed(commitSwitch.lost),
                     checkout: .init(branch: Ref.nameOnItsRemote(name) ?? Ref.shortName(name)) { [weak self] in
-                        await self?.run(badge, showWorktree: showWorktree)
+                        await self?.run(ref: name, showWorktree: showWorktree)
                     }
                 )
             } else {
-                await run(badge, showWorktree: showWorktree)
+                await run(ref: name, showWorktree: showWorktree)
             }
             checkout = nil
         }
     }
 
-    /// Runs the checkout of a badge's branch and shows what that changed.
-    private func run(_ badge: CommitRowContent.Badge, showWorktree: @escaping (String, ObjectID?) -> Void) async {
-        guard let name = badge.refName else { return }
-        await sayingIfSlow(badge.title) {
+    /// Runs the checkout of a branch and shows what that changed.
+    private func run(ref name: String, showWorktree: @escaping (String, ObjectID?) -> Void) async {
+        let title = Ref.shortName(name)
+        await sayingIfSlow(title) {
             do {
                 switch try await session.checkOut(ref: name, in: worktree) {
                 case .checkedOut(_, let commit):
@@ -363,7 +370,7 @@ final class RepositoryModel {
                     showWorktree(folder, commit)
                 }
             } catch {
-                checkoutFailure = CheckoutFailure(branch: badge.title, message: error.dialogMessage, command: error.gitArguments)
+                checkoutFailure = CheckoutFailure(branch: title, message: error.dialogMessage, command: error.gitArguments)
             }
         }
     }
