@@ -131,7 +131,7 @@ private struct CommitDetails: View {
     let toggleFolder: (String) -> Void
     /// It's one setting for every commit, so that moving through history with a
     /// long message out of the way keeps it out of the way.
-    @AppStorage("collapsesCommitBody") private var collapsesBody = false
+    @AppStorage(CommitPanelSettings.collapsesBody) private var collapsesBody = false
 
     private var fileList: FileListModel { model.selectedCommit.fileList }
 
@@ -321,4 +321,9 @@ private struct FilesSummary: View {
         }
         return isMerge ? count + " compared with the first parent" : count
     }
+}
+
+/// The names of the settings that the panel and the Settings window share.
+enum CommitPanelSettings {
+    static let collapsesBody = "collapsesCommitBody"
 }

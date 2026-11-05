@@ -158,7 +158,7 @@ struct HouseAnimationSettings: View {
     @AppStorage(UserDefaults.houseAnimationSpeedKey) private var speed = 1.0
 
     var body: some View {
-        Section {
+        Section("Motion") {
             HStack(spacing: 0) {
                 ForEach(HouseAnimation.allCases) { animation in
                     VStack(spacing: 4) {
