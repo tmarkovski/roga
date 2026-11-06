@@ -22,6 +22,8 @@ Branch names often start with a prefix and a slash: someone's initials, as in `t
 - How many branches are under a folder is in its tooltip, after its whole path, as in `origin/tm/ · 9 branches`, and VoiceOver reads it. The row doesn't show it. At the right it lined up with the remote branches' dates and the local branches' counts, and right after the chevron, `dependabot › 2` read like a path. An open folder shows its branches anyway.
 - The name stays gray, so that a folder doesn't weigh as much as the branches in it.
 
+**A remote's row goes to one line,** as tall as its folders and branches: the cloud, the remote's name, and its address in gray right after the name rather than on a second line. It isn't at the right, where the branches have their dates. An address that doesn't fit is cut short in the middle, which keeps the host and the repository's name, and the tooltip has all of it. The remote's name stays black, and it has no chevron, so it doesn't read as a folder.
+
 **Folders start open, and the panel remembers which ones are closed.** That's one setting for every repository, like the sections. A folder goes by what the full names of its branches start with, as in `refs/heads/tm/` or `refs/remotes/origin/tm/`, so closing origin's `tm` leaves the local `tm` open, and a prefix someone uses in every repository stays closed in all of them. Folders that start closed would tidy a remote with many bots' branches straight away, but would hide someone's own work until they first opened its folder.
 
 **The current branch goes in its folder,** with its checkmark, and comes first among the rows beside it there. A current branch without a prefix still comes first in the list. Keeping it first in the whole list, under its full name, would always have kept it in sight, but it would have been the one branch that isn't where its name says.
@@ -38,7 +40,7 @@ Branch names often start with a prefix and a slash: someone's initials, as in `t
 - A branch's title is now only the end of its name, so its tooltip and VoiceOver say `sidebar-second-line`, and the folder above it says the rest. Its menu's heading still has the full name.
 - The folder looks like the icon of the Show Worktree button that a branch row shows on hover, which has git's mark inside it.
 - Each folder costs 22 points of width. At the panel's default 288 points, a branch in three folders under a remote has about 190 points left for its name and date.
-- The section of local branches has rows of two heights, 28 for a folder and 40 for a branch, which the lazy stack can't add up without laying them out. A repository has few local branches, and tags, the section with thousands, have rows of one height still.
+- The section of local branches has rows of two heights, 28 for a folder and 40 for a branch, which the lazy stack can't add up without laying them out. A repository has few local branches. Remotes and tags, the sections that can have thousands, have rows of one height, and remotes only since their rows went to one line.
 - The rows are worked out again only when the refs, the order, the filter or the closed folders change, because a remote can have thousands of branches and the arrow keys ask for them on every step.
 - **Collapse All Sections** and **Expand All Sections** leave the folders as they are.
 - The setting keeps closed folders whose branches are gone, so a folder that comes back is closed again.

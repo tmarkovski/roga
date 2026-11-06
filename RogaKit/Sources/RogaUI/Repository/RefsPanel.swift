@@ -145,11 +145,7 @@ struct RefsPanel: View {
                     }
                     section(.remotes, count: details.remotes.count) {
                         ForEach(details.remotes, id: \.name) { remote in
-                            RefRow(
-                                icon: .remote,
-                                title: remote.name,
-                                subtitle: remote.address ?? "Not configured any more"
-                            )
+                            RefRemoteRow(name: remote.name, detail: remote.address ?? "Not configured any more")
                             ForEach(rows.remotes[remote.name] ?? []) { row in
                                 switch row.content {
                                 case .folder(let ref, let name, let count, let isCollapsed):
@@ -190,11 +186,11 @@ struct RefsPanel: View {
     @ViewBuilder private func section<Rows: View>(_ section: RefsModel.Section, count: Int, @ViewBuilder rows: () -> Rows) -> some View {
         if refs.filter.isEmpty || count > 0 {
             let isCollapsed = isCollapsed(section)
-            // Each section is a stack of its own, so that tags, the section
-            // that can have thousands of rows, have rows of one height, and the
-            // stack can tell how tall it is without having laid them all out.
-            // A folder's row is shorter than a local branch's, but there are
-            // seldom many of either.
+            // Each section is a stack of its own, so that remotes and tags,
+            // the sections that can have thousands of rows, have rows of one
+            // height, and the stack can tell how tall it is without having laid
+            // them all out. A folder's row is shorter than a local branch's,
+            // but there are seldom many of either.
             LazyVStack(alignment: .leading, spacing: 0, pinnedViews: .sectionHeaders) {
                 Section {
                     if !isCollapsed {
@@ -636,6 +632,47 @@ private enum RefIndent {
 
     static func of(_ depth: Int, isOnRemote: Bool = false) -> Double {
         Double(depth + (isOnRemote ? 1 : 0)) * step
+    }
+}
+
+/// A remote, on one line: the cloud where a branch has its icon, the remote's
+/// name, and its address in gray right after it, rather than at the right,
+/// where its branches have their dates. On one line it's as tall as its
+/// branches, so the section's rows are all one height. An address that doesn't
+/// fit is cut short in the middle, which keeps its host and the repository's
+/// name, and the tooltip has all of it.
+private struct RefRemoteRow: View {
+    let name: String
+    /// Its address, or what to say when it has none.
+    let detail: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Icon.remote.image
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+                .frame(width: 16)
+                .accessibilityHidden(true)
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(name)
+                    .font(.system(size: 13))
+                    .lineLimit(1)
+                    .layoutPriority(1)
+                Text(detail)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8)
+        .frame(height: 28)
+        .padding(.horizontal, 6)
+        .help(detail)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(name)
+        .accessibilityValue(detail)
     }
 }
 
