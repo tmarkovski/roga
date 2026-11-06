@@ -339,6 +339,51 @@ struct HookHelperTests {
         #expect(HookHelper.bundleIdentifier(executable: nil, environment: ["ROGA_BUNDLE_ID": ""]) == "sh.roga.app")
     }
 
+    // MARK: - roga --version
+
+    @Test func onlyALoneVersionOptionAsksForTheVersion() {
+        #expect(HookHelper.asksForVersion(["--version"]))
+        #expect(!HookHelper.asksForVersion([]))
+        #expect(!HookHelper.asksForVersion(["--help"]))
+        #expect(!HookHelper.asksForVersion(["--version", "extra"]))
+        #expect(!HookHelper.asksForVersion(["hook", "--host", "claude", "--version"]))
+    }
+
+    @Test func saysWhichCopyOfRogaItCameWith() throws {
+        let folder = try makeTemporaryFolder()
+        let app = folder.appending(path: "Roga Copy.app", directoryHint: .isDirectory)
+        let contents = app.appending(path: "Contents", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: contents.appending(path: "Helpers"), withIntermediateDirectories: true)
+        let appFolder = (folder.path(percentEncoded: false) as NSString).appendingPathComponent("Roga Copy.app")
+        let helper = contents.appending(path: "Helpers/roga").path(percentEncoded: false)
+
+        func writeInfo(_ info: [String: String]) throws {
+            let data = try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
+            try data.write(to: contents.appending(path: "Info.plist"))
+        }
+
+        try writeInfo(["CFBundleIdentifier": "sh.roga.copy", "CFBundleShortVersionString": "0.1.0", "CFBundleVersion": "7"])
+        #expect(HookHelper.versionLine(executable: helper) == "roga 0.1.0 (7), in \(appFolder)")
+        // The app's own executable finds the same app, as it does its socket.
+        #expect(HookHelper.versionLine(executable: contents.appending(path: "MacOS/Roga").path(percentEncoded: false)) == "roga 0.1.0 (7), in \(appFolder)")
+
+        try writeInfo(["CFBundleIdentifier": "sh.roga.copy", "CFBundleShortVersionString": "0.2.0"])
+        #expect(HookHelper.versionLine(executable: helper) == "roga 0.2.0, in \(appFolder)")
+        try writeInfo(["CFBundleIdentifier": "sh.roga.copy"])
+        #expect(HookHelper.versionLine(executable: helper) == "roga, in \(appFolder)")
+    }
+
+    @Test func saysWhenItIsntInsideAnApp() throws {
+        #expect(HookHelper.versionLine(executable: nil) == "roga, not inside an app")
+        #expect(HookHelper.versionLine(executable: "/usr/local/bin/roga") == "roga, not inside an app")
+        #expect(HookHelper.versionLine(executable: "/Applications/Xcode.app/Contents/Developer/usr/bin/xctest") == "roga, not inside an app")
+        // A folder named like an app, with no Info.plist, isn't one.
+        let folder = try makeTemporaryFolder()
+        let helpers = folder.appending(path: "Empty.app/Contents/Helpers", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: helpers, withIntermediateDirectories: true)
+        #expect(HookHelper.versionLine(executable: helpers.appending(path: "roga").path(percentEncoded: false)) == "roga, not inside an app")
+    }
+
     @Test func theSocketIsInRogasFolderInApplicationSupport() {
         let path = HookHelper.defaultSocketPath(environment: ["ROGA_BUNDLE_ID": "sh.roga.test"])
         #expect(path == HookSocket.path(supportFolder: HookSocket.supportFolder(bundleIdentifier: "sh.roga.test")))

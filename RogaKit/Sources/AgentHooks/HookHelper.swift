@@ -14,17 +14,20 @@ import Foundation
 ///
 /// Whatever happens it prints nothing and exits with status 0. Claude Code
 /// adds a hook's standard output to what the model reads, and both agents
-/// show an error for any other status.
+/// show an error for any other status. The one exception is
+/// `roga --version`, which no hook runs: it prints which copy of Roga the
+/// helper came with.
 public enum HookHelper {
     /// Runs the helper with this process's arguments, environment and
     /// standard input, then exits with status 0. It never returns.
     public static func main() -> Never {
+        let arguments = Array(CommandLine.arguments.dropFirst())
+        if asksForVersion(arguments) {
+            print(versionLine(executable: executablePath()))
+            exit(0)
+        }
         silenceStandardOutput()
-        _ = run(
-            arguments: Array(CommandLine.arguments.dropFirst()),
-            environment: ProcessInfo.processInfo.environment,
-            input: STDIN_FILENO
-        )
+        _ = run(arguments: arguments, environment: ProcessInfo.processInfo.environment, input: STDIN_FILENO)
         exit(0)
     }
 
@@ -420,6 +423,37 @@ public enum HookHelper {
         return true
     }
 
+    // MARK: - roga --version
+
+    /// Whether the command line is `roga --version`, with nothing else. No
+    /// hook runs that, so it's the one time the helper prints something.
+    static func asksForVersion(_ arguments: [String]) -> Bool {
+        arguments == ["--version"]
+    }
+
+    /// What `roga --version` prints: which copy of Roga the helper at
+    /// `executable` came with, as in `roga 0.1.0 (1), in /Applications/Roga.app`.
+    ///
+    /// A development build and a copy for trying things each carry their own
+    /// helper, and the launcher in Application Support runs the one inside
+    /// whichever copy started last, so this is how to tell which one a hook
+    /// reaches. It finds the app the same way the helper finds its socket.
+    /// The version is the app's, from its Info.plist, because the helper is
+    /// built and shipped with the app and has no version of its own.
+    static func versionLine(executable: String?) -> String {
+        guard let executable, let app = app(containing: executable) else {
+            return "roga, not inside an app"
+        }
+        var line = "roga"
+        if let version = app.info["CFBundleShortVersionString"] as? String, !version.isEmpty {
+            line += " \(version)"
+        }
+        if let build = app.info["CFBundleVersion"] as? String, !build.isEmpty {
+            line += " (\(build))"
+        }
+        return line + ", in \(app.folder)"
+    }
+
     // MARK: - Finding Roga
 
     /// The socket of the copy of Roga that the helper belongs to.
@@ -443,9 +477,19 @@ public enum HookHelper {
     }
 
     /// Reads the bundle ID of the app that `path` is a helper or the main
-    /// executable of, as in `Roga.app/Contents/Helpers/roga`. Anything deeper
-    /// in an app, such as a tool inside Xcode.app, isn't that app's helper.
+    /// executable of, as in `Roga.app/Contents/Helpers/roga`.
     static func bundleIdentifier(ofAppContaining path: String) -> String? {
+        guard let identifier = app(containing: path)?.info["CFBundleIdentifier"] as? String, isUsable(identifier) else {
+            return nil
+        }
+        return identifier
+    }
+
+    /// The folder of the app that `path` is a helper or the main executable
+    /// of, as in `Roga.app/Contents/Helpers/roga`, and what its Info.plist
+    /// says. Anything deeper in an app, such as a tool inside Xcode.app,
+    /// isn't that app's helper.
+    static func app(containing path: String) -> (folder: String, info: [String: Any])? {
         let components = path.split(separator: "/").map(String.init)
         guard components.count >= 4 else { return nil }
         let contents = components.count - 3
@@ -453,13 +497,11 @@ public enum HookHelper {
         let infoPath = "/" + (components[...contents] + ["Info.plist"]).joined(separator: "/")
         guard
             let data = FileManager.default.contents(atPath: infoPath),
-            let info = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
-            let identifier = info["CFBundleIdentifier"] as? String,
-            isUsable(identifier)
+            let info = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
         else {
             return nil
         }
-        return identifier
+        return ("/" + components[..<contents].joined(separator: "/"), info)
     }
 
     /// Whether a bundle ID can name a folder in Application Support.
