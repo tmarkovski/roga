@@ -720,6 +720,14 @@ struct AgentSummary: Equatable {
     /// (decision 43). A finished session's reply stays in the tooltip, since
     /// the menu's line is short and its folder comes after.
     func menuDetail(now: Date) -> String {
+        let parts = menuParts(now: now)
+        return [parts.words, parts.time].compactMap(\.self).joined(separator: " · ")
+    }
+
+    /// `menuDetail(now:)` in its two parts, the words and how long, as in
+    /// "Claude Code: Run the test suite" and "6 min", so that the menu can cut
+    /// the words short and keep the time whole.
+    func menuParts(now: Date) -> (words: String, time: String?) {
         let agent = sessions == 1 ? hosts.first?.name ?? "Agent" : "\(sessions) agents"
         let words: String
         switch (state, activity) {
@@ -728,10 +736,10 @@ struct AgentSummary: Equatable {
         case (.waiting(.question), let activity?): words = "\(agent): \(activity)"
         case (.working, nil): words = "\(agent) working"
         case (.waiting, nil): words = "\(agent) waiting for you"
-        case (.finished, _): return "\(agent) finished"
+        case (.finished, _): return ("\(agent) finished", nil)
         }
         let minutes = Self.minutes(from: since, to: now)
-        return minutes > 0 ? "\(words) · \(Self.shortDuration(minutes: minutes))" : words
+        return (words, minutes > 0 ? Self.shortDuration(minutes: minutes) : nil)
     }
 
     private static func minutes(from start: Date, to end: Date) -> Int {

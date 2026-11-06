@@ -148,12 +148,20 @@ enum WorktreeMenu {
     /// away or its folder is missing, what it's stuck partway through, how far
     /// its branch is from its upstream, whether it's locked, and last, its
     /// folder, which is the part to cut short.
+    ///
+    /// The agent's words and how long are two parts, and only the words may
+    /// be cut short, at their end, when an agent's long line leaves the folder
+    /// too little room. Everything else stays whole, so a long line can't hide
+    /// how long or a worktree's conflicts.
     static func details(for facts: WorktreeFacts, now: Date = .now) -> [RefMenu.Detail] {
         let worktree = facts.worktree
         var details: [RefMenu.Detail] = []
         if let agent = facts.agent {
             let isWaiting = if case .waiting = agent.state { true } else { false }
-            details.append(RefMenu.Detail(agent.menuDetail(now: now), color: isWaiting ? agentWaitingColor : nil))
+            let color = isWaiting ? agentWaitingColor : nil
+            let parts = agent.menuParts(now: now)
+            details.append(RefMenu.Detail(parts.words, color: color, canBeCutShort: true))
+            if let time = parts.time { details.append(RefMenu.Detail(time, color: color)) }
         }
         if facts.isDeleting {
             details.append(RefMenu.Detail("Deleting…"))

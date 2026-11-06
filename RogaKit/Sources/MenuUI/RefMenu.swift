@@ -65,10 +65,15 @@ public enum RefMenu {
     public struct Detail: Equatable {
         public var text: String
         public var color: NSColor?
+        /// Whether it may get shorter, at its end, when the line is too long,
+        /// so that the parts that can't, such as a worktree's conflicts, stay
+        /// whole.
+        public var canBeCutShort: Bool
 
-        public init(_ text: String, color: NSColor? = nil) {
+        public init(_ text: String, color: NSColor? = nil, canBeCutShort: Bool = false) {
             self.text = text
             self.color = color
+            self.canBeCutShort = canBeCutShort
         }
     }
 
@@ -168,6 +173,13 @@ private enum Metrics {
     static let minimumWidth = 264.0
     /// A longer name gets cut short in its middle, where branch names differ least.
     static let maximumWidth = 480.0
+    /// What a choice's last part, such as a folder, keeps when the parts
+    /// before it are cut short: about 14 characters, cut in their middle, so
+    /// that a folder still shows the start of its path and the end of its name.
+    static let foldersRoom = 80.0
+    /// The least a part that's cut short keeps, which is a few characters and
+    /// the ellipsis.
+    static let leastOfACutPart = 24.0
 
     /// All the rows are one width, because a menu is as wide as its widest view.
     static func width(fitting entries: [RefMenu.Entry], inset: Double) -> Double {
@@ -232,6 +244,58 @@ extension RefMenu {
               let item, item.isEnabled, item.representedObject is Command
         else { return nil }
         return item
+    }
+
+    /// How wide a choice's two lines can be, in a row `width` wide: past its
+    /// checkmark and icon, and before its count.
+    static func textRoom(inRow width: Double, count: Count?) -> Double {
+        let count = count.map { Metrics.countWidth($0) + Metrics.countGap } ?? 0
+        return max(0, width - Metrics.textInset - count - Metrics.choiceTextInset)
+    }
+
+    /// How wide a part of a choice's second line is, whole.
+    static func detailWidth(_ text: String) -> Double {
+        ceil(Metrics.textWidth(text, font: Metrics.detailFont))
+    }
+
+    /// How wide each part of a choice's second line is drawn in `room`, when
+    /// some of them have to be cut short, or nil when the line is drawn as it
+    /// always has been.
+    static func detailWidths(of details: [Detail], in room: Double) -> [Double]? {
+        detailWidths(
+            of: details.map { (width: detailWidth($0.text), canBeCutShort: $0.canBeCutShort) },
+            separator: detailWidth(Metrics.separator),
+            in: room
+        )
+    }
+
+    /// The parts before the last are whole, and the last, such as a folder,
+    /// gets what's left, as long as they leave it room to show its name. When
+    /// they don't, every part that can't be cut short stays whole, the last
+    /// keeps that room, and the parts that can be cut share what's left by
+    /// their widths, each cut at its end. They keep a few characters even when
+    /// that takes some of the last part's room. A line with no part that can
+    /// be cut, or one where the parts that can't leave no room even for that,
+    /// is nil, and drawn as it always has been.
+    static func detailWidths(of parts: [(width: Double, canBeCutShort: Bool)], separator: Double, in room: Double) -> [Double]? {
+        guard let last = parts.last else { return nil }
+        let lead = parts.dropLast()
+        guard lead.contains(where: \.canBeCutShort) else { return nil }
+        let separators = separator * Double(lead.count)
+        let folder = min(last.width, Metrics.foldersRoom)
+        guard lead.map(\.width).reduce(0, +) + separators + folder > room else { return nil }
+        let whole = lead.filter { !$0.canBeCutShort }.map(\.width).reduce(0, +) + separators
+        let cut = lead.filter(\.canBeCutShort)
+        let least = Double(cut.count) * Metrics.leastOfACutPart
+        guard whole + least <= room else { return nil }
+        let left = max(room - whole - folder, least)
+        let wanted = cut.map(\.width).reduce(0, +)
+        var widths = lead.map { part in
+            guard part.canBeCutShort, left < wanted else { return part.width }
+            return floor(part.width * left / wanted)
+        }
+        widths.append(max(0, room - widths.reduce(0, +) - separators))
+        return widths
     }
 }
 
@@ -389,17 +453,15 @@ private final class ChoiceView: MenuRowView {
             drawSymbol(icon, size: 14, weight: .regular, color: color, centeredAt: NSPoint(x: Metrics.iconCenter, y: middle))
         }
 
-        var right = bounds.width - Metrics.textInset
         if let count = choice.count {
             let width = Metrics.countWidth(count)
-            drawCount(count, in: NSRect(x: right - width, y: 0, width: width, height: bounds.height))
-            right -= width + Metrics.countGap
+            drawCount(count, in: NSRect(x: bounds.width - Metrics.textInset - width, y: 0, width: width, height: bounds.height))
         }
 
         let titleHeight = Metrics.lineHeight(Metrics.titleFont)
         let detailHeight = Metrics.lineHeight(Metrics.detailFont)
         let top = ((bounds.height - titleHeight - Metrics.lineGap - detailHeight) / 2).rounded()
-        let width = max(0, right - Metrics.choiceTextInset)
+        let width = RefMenu.textRoom(inRow: bounds.width, count: choice.count)
         (choice.title as NSString).draw(
             in: NSRect(x: Metrics.choiceTextInset, y: top, width: width, height: titleHeight),
             withAttributes: Self.attributes(font: Metrics.titleFont, color: choice.isEnabled ? Colors.command : Colors.disabled)
@@ -407,11 +469,19 @@ private final class ChoiceView: MenuRowView {
         drawDetails(in: NSRect(x: Metrics.choiceTextInset, y: top + titleHeight + Metrics.lineGap, width: width, height: detailHeight))
     }
 
-    /// The second line, with each part in its own color. Only its last part, such
-    /// as a folder, is cut short, in its middle, so that what's going on stays
-    /// whole and the folder keeps its name.
+    /// The second line, with each part in its own color. Its last part, such as
+    /// a folder, is cut short, in its middle, so that what's going on stays whole
+    /// and the folder keeps its name. When what's going on is too long to leave
+    /// the folder that, only the parts that can be cut short, such as what an
+    /// agent says it's doing, get shorter, at their end, and the rest, such as
+    /// a worktree's conflicts and how long the agent has been at it, stay whole
+    /// (`RefMenu.detailWidths(of:in:)`).
     private func drawDetails(in rect: NSRect) {
         guard let last = choice.details.last else { return }
+        if let widths = RefMenu.detailWidths(of: choice.details, in: rect.width) {
+            drawDetails(in: rect, widths: widths)
+            return
+        }
         let lead = details(choice.details.dropLast(), separatorAfter: true, lineBreak: .byTruncatingTail)
         let leadWidth = ceil(lead.size().width)
         guard leadWidth < rect.width else {
@@ -421,6 +491,24 @@ private final class ChoiceView: MenuRowView {
         lead.draw(in: NSRect(x: rect.minX, y: rect.minY, width: leadWidth, height: rect.height))
         details([last], separatorAfter: false, lineBreak: .byTruncatingMiddle)
             .draw(in: NSRect(x: rect.minX + leadWidth, y: rect.minY, width: rect.width - leadWidth, height: rect.height))
+    }
+
+    /// Each part in its own width, the last cut in its middle and the others
+    /// that can be cut short, at their end.
+    private func drawDetails(in rect: NSRect, widths: [Double]) {
+        let dim = choice.isEnabled ? Colors.header : Colors.disabled
+        let separator = NSAttributedString(string: Metrics.separator, attributes: Self.attributes(font: Metrics.detailFont, color: dim, lineBreak: .byClipping))
+        let separatorWidth = RefMenu.detailWidth(Metrics.separator)
+        var x = rect.minX
+        for (index, (detail, width)) in zip(choice.details, widths).enumerated() {
+            let isLast = index == choice.details.count - 1
+            details([detail], separatorAfter: false, lineBreak: isLast ? .byTruncatingMiddle : .byTruncatingTail)
+                .draw(in: NSRect(x: x, y: rect.minY, width: width, height: rect.height))
+            x += width
+            guard !isLast else { break }
+            separator.draw(in: NSRect(x: x, y: rect.minY, width: separatorWidth, height: rect.height))
+            x += separatorWidth
+        }
     }
 
     private func details(_ parts: some Collection<RefMenu.Detail>, separatorAfter: Bool, lineBreak: NSLineBreakMode) -> NSAttributedString {

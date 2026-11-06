@@ -1,6 +1,6 @@
 import AppKit
 import GitCore
-import MenuUI
+@testable import MenuUI
 import SwiftUI
 import Testing
 @testable import AgentHooks
@@ -170,17 +170,17 @@ struct WorktreeMenuTests {
         // Under a minute, it leaves the time out.
         #expect(WorktreeMenu.details(for: working, now: start.addingTimeInterval(59)).map(\.text) == ["Claude Code working", "↑2", "~/agents/fix-login"])
         let details = WorktreeMenu.details(for: working, now: start.addingTimeInterval(6 * 60 + 59))
-        #expect(details.map(\.text) == ["Claude Code working · 6 min", "↑2", "~/agents/fix-login"])
+        #expect(details.map(\.text) == ["Claude Code working", "6 min", "↑2", "~/agents/fix-login"])
         #expect(details.allSatisfy { $0.color == nil })
 
         let both = WorktreeFacts(worktree: fixLogin, isDeleting: true, agent: agent(.working, sessions: 2))
-        #expect(WorktreeMenu.details(for: both, now: start.addingTimeInterval(90)).map(\.text) == ["2 agents working · 1 min", "Deleting…", "~/agents/fix-login"])
+        #expect(WorktreeMenu.details(for: both, now: start.addingTimeInterval(90)).map(\.text) == ["2 agents working", "1 min", "Deleting…", "~/agents/fix-login"])
     }
 
     @Test func anAgentWaitingForYouIsAmberAndOneThatFinishedSaysNoTime() throws {
         let waiting = WorktreeMenu.details(for: WorktreeFacts(worktree: fixLogin, agent: agent(.waiting(.permission))), now: start.addingTimeInterval(120))
-        #expect(waiting.map(\.text) == ["Claude Code waiting for you · 2 min", "~/agents/fix-login"])
-        #expect(waiting.first?.color == WorktreeMenu.agentWaitingColor)
+        #expect(waiting.map(\.text) == ["Claude Code waiting for you", "2 min", "~/agents/fix-login"])
+        #expect(waiting.prefix(2).allSatisfy { $0.color == WorktreeMenu.agentWaitingColor })
         #expect(waiting.last?.color == nil)
 
         let finished = WorktreeMenu.details(for: WorktreeFacts(worktree: fixLogin, agent: agent(.finished)), now: start.addingTimeInterval(3600))
@@ -197,16 +197,87 @@ struct WorktreeMenuTests {
             )
         }
         let working = details(.working, .claude, "Run the test suite")
-        #expect(working.map(\.text) == ["Claude Code: Run the test suite · 6 min", "Rebasing main · 2 conflicts", "~/agents/fix-login"])
+        #expect(working.map(\.text) == ["Claude Code: Run the test suite", "6 min", "Rebasing main · 2 conflicts", "~/agents/fix-login"])
         #expect(working.first?.color == nil)
         let waiting = details(.waiting(.permission), .codex, "git push")
-        #expect(waiting.map(\.text) == ["Codex needs your OK: git push · 6 min", "Rebasing main · 2 conflicts", "~/agents/fix-login"])
-        #expect(waiting.first?.color == WorktreeMenu.agentWaitingColor)
+        #expect(waiting.map(\.text) == ["Codex needs your OK: git push", "6 min", "Rebasing main · 2 conflicts", "~/agents/fix-login"])
+        #expect(waiting.prefix(2).allSatisfy { $0.color == WorktreeMenu.agentWaitingColor })
         let question = details(.waiting(.question), .claude, "Wants a plan approved")
-        #expect(question.first?.text == "Claude Code: Wants a plan approved · 6 min")
-        #expect(question.first?.color == WorktreeMenu.agentWaitingColor)
+        #expect(question.prefix(2).map(\.text) == ["Claude Code: Wants a plan approved", "6 min"])
+        #expect(question.prefix(2).allSatisfy { $0.color == WorktreeMenu.agentWaitingColor })
         // The reply stays in the mark's tooltip.
         #expect(details(.finished, .claude, "Added the line to the menu").first?.text == "Claude Code finished")
+    }
+
+    @Test func onlyTheAgentsWordsMayBeCutShortAndTheyReadAsOneLineWithTheTime() {
+        let now = start.addingTimeInterval(6 * 60 + 5)
+        let agents = [
+            AgentSummary(state: .working, since: start, hosts: [.claude], sessions: 1, activity: "Run the test suite"),
+            AgentSummary(state: .waiting(.permission), since: start, hosts: [.codex], sessions: 1, activity: "git push"),
+            AgentSummary(state: .working, since: start, hosts: [.claude, .codex], sessions: 2),
+            AgentSummary(state: .working, since: now, hosts: [.claude], sessions: 1),
+            AgentSummary(state: .finished, since: start, hosts: [.claude], sessions: 1, activity: "Done"),
+        ]
+        for agent in agents {
+            let facts = WorktreeFacts(worktree: fixLogin, upstream: UpstreamCounts(ahead: 2), agent: agent)
+            let choice = WorktreeMenu.choice(for: facts, isCurrent: false, now: now) {}
+            // The menu's width and VoiceOver read the parts joined, as one line.
+            #expect(choice.detailText == agent.menuDetail(now: now) + " · ↑2 · ~/agents/fix-login")
+            #expect(choice.details.map(\.canBeCutShort) == [true] + Array(repeating: false, count: choice.details.count - 1))
+        }
+    }
+
+    @Test func aLongLineIsCutShortSoItCantHideAConflict() throws {
+        let line = String(String(repeating: "Run the test suite ", count: 7).prefix(120))
+        #expect(line.count == 120)
+        let agent = AgentSummary(state: .working, since: start, hosts: [.claude], sessions: 1, activity: line)
+        let facts = WorktreeFacts(
+            worktree: fixLogin,
+            uncommittedFiles: 3,
+            unfinished: UnfinishedWork(work: .rebase(branch: "refs/heads/main"), conflicts: 2),
+            upstream: UpstreamCounts(ahead: 2),
+            agent: agent
+        )
+        let choice = WorktreeMenu.choice(for: facts, isCurrent: false, now: start.addingTimeInterval(65 * 60)) {}
+        #expect(choice.details.map(\.text) == ["Claude Code: " + line, "1 hr 5 min", "Rebasing main · 2 conflicts", "↑2", "~/agents/fix-login"])
+        // The line widens the menu to its limit.
+        #expect(RefMenu.make([.choice(choice)]).items.compactMap { $0.view?.frame.width } == [480])
+
+        let room = RefMenu.textRoom(inRow: 480, count: choice.count)
+        let widths = try #require(RefMenu.detailWidths(of: choice.details, in: room))
+        let whole = choice.details.map { RefMenu.detailWidth($0.text) }
+        // How long, the conflicts and how far ahead stay whole.
+        #expect(widths[1...3] == whole[1...3])
+        // The agent's words are cut at their end, and the folder keeps room
+        // for its name.
+        #expect(widths[0] < whole[0] && widths[0] >= 24)
+        #expect(widths[4] >= 80)
+        let separators = 4 * RefMenu.detailWidth(" · ")
+        #expect(abs(widths.reduce(0, +) + separators - room) < 0.001)
+
+        // A short line is too long too, with conflicts and an hour beside it,
+        // and only its words are cut.
+        let short = AgentSummary(state: .working, since: start, hosts: [.claude], sessions: 1, activity: "Run the test suite")
+        var conflicts = facts
+        conflicts.agent = short
+        let details = WorktreeMenu.details(for: conflicts, now: start.addingTimeInterval(65 * 60))
+        let shortWhole = details.map { RefMenu.detailWidth($0.text) }
+        let cut = try #require(RefMenu.detailWidths(of: details, in: room))
+        #expect(cut[0] < shortWhole[0])
+        #expect(cut[1...3] == shortWhole[1...3])
+    }
+
+    @Test func aShortLineOrOneWithNothingToCutIsDrawnAsBefore() {
+        let room = RefMenu.textRoom(inRow: 480, count: nil)
+        let rebase = UnfinishedWork(work: .rebase(branch: "refs/heads/main"), conflicts: 2)
+        let agent = AgentSummary(state: .working, since: start, hosts: [.claude], sessions: 1, activity: "Run the test suite")
+        let short = WorktreeMenu.details(for: WorktreeFacts(worktree: fixLogin, upstream: UpstreamCounts(ahead: 2), agent: agent), now: start.addingTimeInterval(6 * 60))
+        #expect(RefMenu.detailWidths(of: short, in: room) == nil)
+        // Without an agent, nothing can be cut, so even a row too long is drawn
+        // as it always has been.
+        let deep = Worktree(path: home + "/" + String(repeating: "nested/", count: 40) + "fix-login", branch: "refs/heads/agent/fix-login", isLocked: true)
+        let noAgent = WorktreeMenu.details(for: WorktreeFacts(worktree: deep, unfinished: rebase, upstream: UpstreamCounts(ahead: 2)))
+        #expect(RefMenu.detailWidths(of: noAgent, in: 120) == nil)
     }
 
     @Test func theAmberHasALightAndADarkVersion() throws {
