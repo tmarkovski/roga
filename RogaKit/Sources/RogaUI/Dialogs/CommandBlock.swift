@@ -9,6 +9,10 @@ import SwiftUI
 /// Monokai's colors, and scrolls rather than growing past a limit.
 struct CommandBlock: View {
     let lines: [TerminalLine]
+    /// Whether it's the smaller block along the bottom of a popover, such as
+    /// Generate's, which the Settings boards draw in a smaller font with less
+    /// room around it. Dialogs and Settings use the full size.
+    var isCompact = false
     @State private var isCopied = false
     @State private var clearing: Task<Void, Never>?
 
@@ -20,13 +24,30 @@ struct CommandBlock: View {
     /// one, with lines 1.6 times the font's size apart, since its long arguments
     /// wrap it onto several lines. Git's blocks keep the tighter lines they had.
     private var lineGap: (between: CGFloat, wrapped: CGFloat) {
-        lines.contains(where: \.isProgram) ? (Self.boardLineGap, Self.boardLineGap) : (2, 0)
+        guard lines.contains(where: \.isProgram) else { return (2, 0) }
+        let gap = isCompact ? Self.compactLineGap : Self.boardLineGap
+        return (gap, gap)
     }
 
     private static let boardLineGap: CGFloat = {
         let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
         return max(0, 12 * 1.6 - NSLayoutManager().defaultLineHeight(for: font))
     }()
+
+    /// The same for the compact block's smaller font.
+    private static let compactLineGap: CGFloat = {
+        let font = NSFont.monospacedSystemFont(ofSize: compactFontSize, weight: .regular)
+        return max(0, compactFontSize * 1.6 - NSLayoutManager().defaultLineHeight(for: font))
+    }()
+
+    private static let compactFontSize: CGFloat = 11.5
+
+    /// The room around the lines, with more on the right for Copy.
+    private var padding: EdgeInsets {
+        isCompact
+            ? EdgeInsets(top: 9, leading: 14, bottom: 10, trailing: 38)
+            : EdgeInsets(top: 11, leading: 18, bottom: 13, trailing: 44)
+    }
 
     var body: some View {
         ClampedHeight(maximum: Self.maximumHeight) {
@@ -37,12 +58,12 @@ struct CommandBlock: View {
                     }
                 }
                 .lineSpacing(lineGap.wrapped)
-                .padding(EdgeInsets(top: 11, leading: 18, bottom: 13, trailing: 44))
+                .padding(padding)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .scrollBounceBehavior(.basedOnSize)
         }
-        .font(.system(size: 12, design: .monospaced))
+        .font(.system(size: isCompact ? Self.compactFontSize : 12, design: .monospaced))
         .overlay(alignment: .topTrailing) {
             Button(action: copy) {
                 (isCopied ? Icon.check : Icon.copy).image
@@ -52,7 +73,7 @@ struct CommandBlock: View {
             .foregroundStyle(Self.promptColor)
             .help("Copy")
             .accessibilityLabel(isCopied ? "Copied" : "Copy the Command")
-            .padding(EdgeInsets(top: 7, leading: 0, bottom: 0, trailing: 10))
+            .padding(isCompact ? EdgeInsets(top: 6, leading: 0, bottom: 0, trailing: 6) : EdgeInsets(top: 7, leading: 0, bottom: 0, trailing: 10))
         }
         .background(DialogColors.terminal)
         .environment(\.colorScheme, .dark)

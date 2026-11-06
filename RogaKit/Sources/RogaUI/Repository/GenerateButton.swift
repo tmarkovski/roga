@@ -1,0 +1,150 @@
+import AgentEngine
+import IconUI
+import SwiftUI
+
+/// The Generate button at the bottom right of the message box (decision 41).
+/// It's sparkles and Generate while the box is empty, and the sparkles alone
+/// once the box has words for the agent to start from, with a chevron beside
+/// it that opens the popover for choosing the agent, its model and its effort.
+///
+/// It's drawn as the design canvas's Settings boards draw it: a gray tile cut
+/// in two by a thin line, the sparkles in the brand's orange, and a ring
+/// around it while the pointer is over it or its popover is open.
+struct GenerateButton<Choices: View>: View {
+    /// The agent a click runs.
+    let agent: AgentKind
+    /// Whether the box has text, which the agent then rewrites rather than
+    /// starting afresh.
+    let rewrites: Bool
+    let readiness: MessageGenerator.Readiness
+    @Binding var isChoosing: Bool
+    let generate: () -> Void
+    @ViewBuilder let choices: () -> Choices
+    @State private var isHovering: Bool
+
+    /// - Parameter isHovering: Whether it starts out with the pointer over it,
+    ///   for pictures of it.
+    init(
+        agent: AgentKind,
+        rewrites: Bool,
+        readiness: MessageGenerator.Readiness,
+        isChoosing: Binding<Bool>,
+        isHovering: Bool = false,
+        generate: @escaping () -> Void,
+        @ViewBuilder choices: @escaping () -> Choices
+    ) {
+        self.agent = agent
+        self.rewrites = rewrites
+        self.readiness = readiness
+        _isChoosing = isChoosing
+        _isHovering = State(initialValue: isHovering)
+        self.generate = generate
+        self.choices = choices
+    }
+
+    /// How tall it is, which the box leaves room for under its text.
+    static var height: CGFloat { 24 }
+
+    private var isEnabled: Bool { readiness == .ready }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Button(action: generate) {
+                HStack(spacing: 5) {
+                    Icon.sparkles.image
+                        .font(.system(size: Self.iconFontSize(13)))
+                        .foregroundStyle(isEnabled ? Palette.action : DialogColors.note)
+                    if !rewrites {
+                        Text("Generate")
+                    }
+                }
+                .padding(.horizontal, 8)
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+            }
+            // The tooltip goes outside what's disabled, since it's what says
+            // why the button can't be pressed.
+            .disabled(!isEnabled)
+            .help(Self.help(agent: agent, rewrites: rewrites, readiness: readiness))
+            .accessibilityLabel(rewrites ? "Rewrite with \(agent.name)" : "Generate")
+            Rectangle()
+                .fill(SettingsColors.line)
+                .frame(width: 1)
+            Button {
+                isChoosing.toggle()
+            } label: {
+                Icon.dropdown.image
+                    .font(.system(size: Self.iconFontSize(11), weight: .medium))
+                    .foregroundStyle(DialogColors.note)
+                    .padding(.horizontal, 5)
+                    .frame(maxHeight: .infinity)
+                    .contentShape(Rectangle())
+            }
+            .disabled(!isEnabled)
+            .help("Choose an Agent")
+            .accessibilityLabel("Choose an Agent")
+            .popover(isPresented: $isChoosing, arrowEdge: .top) {
+                choices()
+            }
+        }
+        .buttonStyle(GenerateButtonPartStyle())
+        .font(.system(size: 12, weight: .medium))
+        .foregroundStyle(isEnabled ? Color.primary : DialogColors.note)
+        .frame(height: Self.height)
+        .background(DialogColors.card)
+        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .background {
+            if isHovering || isChoosing {
+                RoundedRectangle(cornerRadius: 8.5, style: .continuous)
+                    .fill(SettingsColors.line)
+                    .padding(-1.5)
+            }
+        }
+        .onHover { isHovering = $0 }
+        .fixedSize()
+    }
+
+    /// The font size that draws one of Roga's icons `width` points wide, since
+    /// its 24-point grid comes to 1.128 times the font's size.
+    private static func iconFontSize(_ width: CGFloat) -> CGFloat {
+        width / 1.128
+    }
+}
+
+extension GenerateButton {
+    /// What the main button's tooltip says: why it can't run when nothing's
+    /// staged, and otherwise what a click does and its shortcut.
+    static func help(agent: AgentKind, rewrites: Bool, readiness: MessageGenerator.Readiness) -> String {
+        if readiness == .nothingStaged { return "Stage files to write a message for them" }
+        let shortcut = RepositoryCommands.generateMessageShortcut.symbols
+        return rewrites
+            ? "Rewrite with \(agent.name), starting from your words (\(shortcut))"
+            : "Write the message with \(agent.name) (\(shortcut))"
+    }
+}
+
+/// Either half of the Generate button. Its colors already say when it can't be
+/// pressed, gray as the canvas draws it, so unlike the plain style it doesn't
+/// dim it again.
+private struct GenerateButtonPartStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.7 : 1)
+    }
+}
+
+/// Whether the message box shows the Generate button, and how (decision 41).
+enum GenerateButtonState: Equatable {
+    /// It's turned off in Settings, no agent can be used, or an agent is
+    /// writing already, which the line under the box says instead.
+    case hidden
+    case shown(agent: AgentKind, rewrites: Bool, readiness: MessageGenerator.Readiness)
+
+    init(showsButton: Bool, agent: AgentKind?, hasText: Bool, isWriting: Bool, readiness: MessageGenerator.Readiness) {
+        guard showsButton, let agent, !isWriting else {
+            self = .hidden
+            return
+        }
+        self = .shown(agent: agent, rewrites: hasText, readiness: readiness)
+    }
+}

@@ -50,7 +50,9 @@ final class CommitComposer {
     /// The message, which is what the box edits.
     var message = "" {
         didSet {
-            if message != oldValue { saveDraft() }
+            guard message != oldValue else { return }
+            saveDraft()
+            generator.messageChanged(to: message)
         }
     }
     /// Whether the next commit replaces the one `HEAD` is on.
@@ -67,6 +69,9 @@ final class CommitComposer {
     /// The message of the commit a rebase stopped on, which the box shows as it is
     /// and can't change yet.
     private(set) var rebaseMessage = ""
+    /// Has an agent write the message, for the box's Generate button and the
+    /// Changes menu (decision 41).
+    let generator: MessageGenerator
 
     /// The current branch's full name, or nil for a detached `HEAD`.
     @ObservationIgnored var currentBranch: () -> String? = { nil }
@@ -78,7 +83,8 @@ final class CommitComposer {
     @ObservationIgnored var slowDelay = Duration.milliseconds(600)
 
     @ObservationIgnored private let session: RepositorySession
-    @ObservationIgnored private let worktree: String
+    /// The worktree's folder, which the command that writes its message runs in.
+    @ObservationIgnored let worktree: String
     @ObservationIgnored private let branch: BranchModel
     @ObservationIgnored private let changes: SelectedChanges
     @ObservationIgnored private let drafts: CommitDrafts
@@ -97,7 +103,9 @@ final class CommitComposer {
         self.branch = branch
         self.changes = changes
         self.drafts = drafts
+        generator = MessageGenerator(session: session, worktree: worktree, changes: changes)
         message = drafts.read(worktree)
+        generator.composer = self
     }
 
     private var isMerging: Bool { stoppedWork == .merge }
@@ -105,7 +113,8 @@ final class CommitComposer {
         if case .rebase = stoppedWork { true } else { false }
     }
 
-    private var hasMessage: Bool {
+    /// Whether the box has more than blank lines and spaces in it.
+    var hasMessage: Bool {
         !message.allSatisfy(\.isWhitespace)
     }
 
@@ -117,7 +126,7 @@ final class CommitComposer {
     /// Whether the box shows text that can't be changed, because it isn't the
     /// message of a commit that's being made.
     var isMessageReadOnly: Bool {
-        isRebasing || phase == .committing
+        isRebasing || phase == .committing || generator.isWriting
     }
 
     /// The text the box shows.
@@ -162,7 +171,9 @@ final class CommitComposer {
     /// What the button says and whether it can be pressed.
     var action: Action {
         if phase == .committing { return Action(title: "Committing…", isEnabled: false) }
-        guard !branch.isBusy else { return Action(title: buttonTitle, isEnabled: false) }
+        // Nothing commits while git is busy, or while an agent is still writing
+        // the message.
+        guard !branch.isBusy, !generator.isWriting else { return Action(title: buttonTitle, isEnabled: false) }
         let conflicts = changes.loaded?.conflicted.count ?? 0
         if conflicts > 0 {
             return Action(title: conflicts == 1 ? "1 Conflict Left" : "\(conflicts.formatted()) Conflicts Left", isEnabled: false)
@@ -196,7 +207,7 @@ final class CommitComposer {
     /// Fills the box with the message of the commit `HEAD` is on, or puts back what
     /// was there before.
     func setAmending(_ isOn: Bool) {
-        guard isOn != isAmending, phase != .committing else { return }
+        guard isOn != isAmending, phase != .committing, !generator.isWriting else { return }
         if case .failed = phase { phase = .idle }
         guard isOn else {
             isAmending = false
@@ -218,7 +229,13 @@ final class CommitComposer {
     func worktreeIsPartway(through work: StoppedWork?) {
         guard work != stoppedWork else { return }
         stoppedWork = work
-        if work != nil { setAmending(false) }
+        if work != nil {
+            // An agent was writing for a commit that isn't the one being made
+            // now, so it stops before Amend goes off, which it would otherwise
+            // refuse while the agent writes.
+            generator.stop()
+            setAmending(false)
+        }
         // A merge that was aborted takes its message along, unless someone changed it.
         if work == nil, let mergeMessage, message == mergeMessage { message = "" }
         mergeMessage = nil
@@ -252,6 +269,8 @@ final class CommitComposer {
             return
         }
         let request = CommitRequest(message: message, amends: isAmending, skipsHooks: skippingHooks)
+        // An agent's note is about the message, which is now on its way into a commit.
+        generator.forget()
         let stagesFirst = !isAmending && !isMerging && changes.loaded?.staged.isEmpty == true
         let wasAmending = isAmending
         phase = .committing
@@ -311,12 +330,20 @@ final class CommitComposer {
 
     /// Takes back the latest commit made here, leaving its files staged, and puts
     /// its message back in the box. It won't if anything has moved `HEAD` since.
+    ///
+    /// An agent that's writing stops, since it's describing what was staged
+    /// before the commit's files came back, and its message would take the
+    /// place of the one this puts back.
     func undoLastCommit() {
         guard let commit = lastCommit, !branch.isBusy else { return }
         let restored = lastMessage
         branch.run(nil, failure: "Can't undo the commit", changesNothing: true) { [self, session, worktree] in
             try await session.undo(commit, in: worktree)
             lastCommit = nil
+            generator.stop()
+            // A note's Undo would put back what was there before the agent
+            // wrote, rather than the message this brings back.
+            generator.forget()
             message = restored
             showChanges()
             return "Undid the commit"
