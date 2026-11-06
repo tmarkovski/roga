@@ -243,6 +243,7 @@ struct SidebarLayoutTests {
             scope: .constant(.all),
             place: .constant(SidebarPlace()),
             showsRail: false,
+            showsSettings: .constant(false),
             locate: { _ in },
             marks: AgentMarksSetting(store: defaults)
         )

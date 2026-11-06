@@ -24,6 +24,9 @@ struct Sidebar: View {
     @Binding var scope: SidebarScope
     @Binding var place: SidebarPlace
     let showsRail: Bool
+    /// Whether the window shows Settings, which the gear at the bottom of the
+    /// rail opens.
+    @Binding var showsSettings: Bool
     let locate: (ListedRepository) -> Void
     /// Whether the rows show agents' marks, as the person chose in Settings.
     var marks = AgentMarksSetting()
@@ -43,6 +46,13 @@ struct Sidebar: View {
                             Icon.plus.image
                                 .font(.system(size: 15, weight: .light))
                         }
+                    }
+                    // Settings isn't something the list can show, so it keeps
+                    // the gray of an open popover while the sheet is up rather
+                    // than the ink of what's selected.
+                    RailButton(title: "Settings", isOpen: showsSettings, action: { showsSettings = true }) {
+                        Icon.settings.image
+                            .font(.system(size: 15, weight: .light))
                     }
                 }
                 Rectangle()
@@ -216,11 +226,12 @@ struct Sidebar: View {
 }
 
 /// The column that picks which repositories the list shows: All, each
-/// organization, Other, and a button for adding repositories at the bottom.
-private struct OrganizationRail<Add: View>: View {
+/// organization and Other, with buttons for adding repositories and for
+/// Settings at the bottom.
+private struct OrganizationRail<Bottom: View>: View {
     let groups: RepositoryGroups
     @Binding var scope: SidebarScope
-    @ViewBuilder var add: Add
+    @ViewBuilder var bottom: Bottom
 
     var body: some View {
         VStack(spacing: 0) {
@@ -246,8 +257,10 @@ private struct OrganizationRail<Add: View>: View {
                 .frame(maxWidth: .infinity)
             }
             .scrollIndicators(.never)
-            add
-                .padding(.vertical, 10)
+            VStack(spacing: 8) {
+                bottom
+            }
+            .padding(.vertical, 10)
         }
         .frame(width: 55)
     }
