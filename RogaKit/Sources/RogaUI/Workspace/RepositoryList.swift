@@ -70,10 +70,11 @@ public final class RepositoryList {
     /// The repositories grouped the way the rail picks them.
     var groups: RepositoryGroups { RepositoryGroups(repositories) }
 
-    /// Opens every repository with `git`, the first time it's called. After
-    /// that, whenever Roga becomes the active app, the list looks for
-    /// worktrees that were added or removed, and for repositories it
-    /// couldn't open before, such as one on a disk that wasn't mounted.
+    /// Opens every repository with `git`, the first time it's called, and
+    /// watches each one for changes on disk. After that, whenever Roga becomes
+    /// the active app, the list looks again at what it can't watch: repositories
+    /// it couldn't open before, such as one on a disk that wasn't mounted, and
+    /// any on a volume that doesn't record changes.
     func connect(git: Git) async {
         guard self.git == nil else { return }
         self.git = git
@@ -84,7 +85,7 @@ public final class RepositoryList {
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                Task { await self.refresh() }
+                Task { await self.refreshUnwatched() }
             }
         }
         await withTaskGroup { group in
@@ -202,6 +203,7 @@ public final class RepositoryList {
         repository.worktrees = worktrees
         repositories.append(repository)
         save()
+        listen(to: session, for: repository)
         look(at: repository, session: session)
         return selection
     }
@@ -376,6 +378,17 @@ public final class RepositoryList {
     /// the repositories that couldn't be opened. It returns once it has looked
     /// at all of them.
     func refresh() async {
+        await refresh(repositories)
+    }
+
+    /// Does what `refresh()` does for the repositories whose sessions aren't
+    /// watching them, which is all that Roga becoming active needs, because
+    /// the others say what changed as it happens.
+    func refreshUnwatched() async {
+        await refresh(repositories.filter { !($0.session?.isWatching ?? false) })
+    }
+
+    private func refresh(_ repositories: [ListedRepository]) async {
         guard let git else { return }
         await withTaskGroup { group in
             for repository in repositories {
@@ -395,15 +408,31 @@ public final class RepositoryList {
         await refresh(repository, git: git)
     }
 
-    private func refresh(_ repository: ListedRepository, git: Git) async {
+    /// Lists a repository's worktrees again, then looks at them for `request`,
+    /// and counts the files of any worktree that's new or whose branch or commit
+    /// moved, since what's staged compares with that commit, and a commit
+    /// doesn't always write the index.
+    private func refresh(_ repository: ListedRepository, git: Git, for request: LookRequest = .everything) async {
         switch repository.state {
         case .opening:
             break
         case .open(let session):
             do {
                 let worktrees = try await session.worktrees()
-                if worktrees != repository.worktrees { repository.worktrees = worktrees }
-                look(at: repository, session: session)
+                var request = request
+                if worktrees != repository.worktrees {
+                    let before = Dictionary(repository.worktrees.map { ($0.path, $0) }, uniquingKeysWith: { first, _ in first })
+                    let moved = worktrees.filter { worktree in
+                        guard let old = before[worktree.path] else { return true }
+                        return old.head != worktree.head || old.branch != worktree.branch
+                    }
+                    request.counts?.formUnion(moved.map(\.path))
+                    repository.worktrees = worktrees
+                    await session.watch(worktrees)
+                } else if !session.isWatching {
+                    await session.watch(worktrees)
+                }
+                look(at: repository, session: session, for: request)
             } catch {
                 guard !FileManager.default.fileExists(atPath: repository.path) else { return }
                 await session.close()
@@ -430,25 +459,98 @@ public final class RepositoryList {
         }
     }
 
+    // MARK: Changes on disk
+
+    /// Hears what changes on disk in a repository from its session, which
+    /// starts watching it here. The list is the session's one listener, and
+    /// it hands on to windows what concerns them, through `refsChange` and
+    /// `fileChanges`. Listening ends when the session closes.
+    private func listen(to session: RepositorySession, for repository: ListedRepository) {
+        repository.listening?.cancel()
+        repository.listening = Task { [weak self] in
+            await session.watch(repository.worktrees)
+            for await changes in session.changes {
+                guard let self, let git else { return }
+                await hear(changes, in: repository, session: session, git: git)
+            }
+        }
+    }
+
+    /// Updates what a repository's rows show after a change on disk, reading
+    /// only what it affects: the counts of the worktrees whose files changed,
+    /// and when refs moved, how far each branch is from its upstream. Each row
+    /// also has its worktree's branch and commit, which `git worktree list`
+    /// reads, so refs moving lists the worktrees again too.
+    private func hear(_ changes: RepositoryChanges, in repository: ListedRepository, session: RepositorySession, git: Git) async {
+        let refsMoved = changes.refs || !changes.heads.isEmpty
+        if refsMoved { repository.refsChange = changes.number }
+        for worktree in changes.files { repository.fileChanges[worktree] = changes.number }
+        let request = LookRequest(owners: changes.config, counts: changes.files, upstreams: refsMoved || changes.worktreeList, asNewAs: changes.number)
+        if refsMoved || changes.worktreeList {
+            await refresh(repository, git: git, for: request)
+        } else {
+            look(at: repository, session: session, for: request)
+        }
+    }
+
+    /// What a look at a repository reads. Asking for a look while one runs adds
+    /// to what the next one reads.
+    struct LookRequest: Equatable {
+        /// Whether to read who owns the repository, from its remotes.
+        var owners = false
+        /// The worktrees whose uncommitted files to count, by their folders, or
+        /// nil for every worktree.
+        var counts: Set<String>? = []
+        /// Whether to read how far each branch is from its upstream.
+        var upstreams = false
+        /// For a look because of a change on disk, the change's number, which
+        /// lets it share a `git status` with a window that looks at the same
+        /// worktree. Nil when it has to run git afresh.
+        var asNewAs: Int?
+
+        /// A look at everything, afresh, as when the repository opens.
+        static let everything = LookRequest(owners: true, counts: nil, upstreams: true)
+
+        /// Whether it's only because of changes on disk. Those wait a moment after
+        /// the look before them, so that a build or a long rebase can't keep git
+        /// running.
+        var isPaced: Bool { asNewAs != nil }
+
+        func adding(_ other: LookRequest) -> LookRequest {
+            var counts: Set<String>?
+            if let mine = self.counts, let theirs = other.counts { counts = mine.union(theirs) }
+            var asNewAs: Int?
+            if let mine = self.asNewAs, let theirs = other.asNewAs { asNewAs = max(mine, theirs) }
+            return LookRequest(owners: owners || other.owners, counts: counts, upstreams: upstreams || other.upstreams, asNewAs: asNewAs)
+        }
+    }
+
     /// Reads what the rows of a repository's worktrees need beyond the list of
     /// them, without anyone waiting, because that takes a while in a large
     /// worktree. Only one look runs in a repository. Asking during one looks once
     /// more when it's done, however many times it's asked, because something may
     /// have changed since it started.
-    private func look(at repository: ListedRepository, session: RepositorySession) {
-        guard repository.look == nil else {
-            repository.needsAnotherLook = true
-            return
-        }
+    private func look(at repository: ListedRepository, session: RepositorySession, for request: LookRequest = .everything) {
+        repository.pendingLook = repository.pendingLook?.adding(request) ?? request
+        guard repository.look == nil else { return }
         repository.look = Task {
-            repeat {
+            while let pending = repository.pendingLook {
+                // The look before may have been in another task, since each
+                // ends when nothing more was asked for while it ran.
+                if pending.isPaced, let last = repository.lastLook {
+                    await ChangePacing.wait(afterLookFrom: last.started, to: last.finished)
+                }
+                // More may have been asked for while it waited.
+                guard let request = repository.pendingLook else { break }
+                repository.pendingLook = nil
                 await takeTurnToLook()
-                repository.needsAnotherLook = false
-                await updateOwners(of: repository, session: session)
-                await countUncommittedFiles(in: repository, session: session)
-                await readUpstreams(of: repository, session: session)
+                let started = ContinuousClock.now
+                if request.owners { await updateOwners(of: repository, session: session) }
+                await countUncommittedFiles(in: repository, session: session, only: request.counts, asNewAs: request.asNewAs)
+                if request.upstreams { await readUpstreams(of: repository, session: session) }
                 finishTurnToLook()
-            } while repository.needsAnotherLook
+                repository.lastLook = (started, .now)
+            }
             repository.look = nil
         }
     }
@@ -474,17 +576,30 @@ public final class RepositoryList {
         }
     }
 
-    /// Counts the uncommitted files of each of a repository's worktrees, one
-    /// worktree at a time and at utility priority, because each one looks at every
-    /// file in the worktree. One that git can't look at has no count. The same
-    /// listing says which of them have conflicts, and the files git keeps for a
-    /// merge or a rebase say whether one stopped partway.
-    private func countUncommittedFiles(in repository: ListedRepository, session: RepositorySession) async {
-        var counts: [String: Int] = [:]
-        var conflicted: Set<String> = []
-        var unfinished: [String: UnfinishedWork] = [:]
-        for worktree in repository.worktrees where !worktree.isBare && !worktree.isPrunable {
-            guard let status = try? await session.status(in: worktree.path, isUpkeep: true) else { continue }
+    /// Counts the uncommitted files of each of a repository's worktrees, or of
+    /// `only` these, one worktree at a time and at utility priority, because
+    /// each one looks at every file in the worktree. One that git can't look at
+    /// has no count. The same listing says which of them have conflicts, and the
+    /// files git keeps for a merge or a rebase say whether one stopped partway.
+    ///
+    /// - Parameter change: The change on disk that the counts have to be as new
+    ///   as, which lets a window looking at the same worktree share git's work,
+    ///   or nil to run git afresh.
+    private func countUncommittedFiles(in repository: ListedRepository, session: RepositorySession, only: Set<String>? = nil, asNewAs change: Int? = nil) async {
+        // Counting only some of them keeps what it knew about the others.
+        var counts = only == nil ? [:] : repository.uncommittedFiles
+        var conflicted = only == nil ? [] : repository.conflictedWorktrees
+        var unfinished = only == nil ? [:] : repository.unfinishedWork
+        for worktree in repository.worktrees where !worktree.isBare && !worktree.isPrunable && only?.contains(worktree.path) != false {
+            counts[worktree.path] = nil
+            conflicted.remove(worktree.path)
+            unfinished[worktree.path] = nil
+            let status = if let change {
+                try? await session.status(in: worktree.path, isUpkeep: true, asNewAs: change)
+            } else {
+                try? await session.status(in: worktree.path, isUpkeep: true)
+            }
+            guard let status else { continue }
             counts[worktree.path] = status.fileCount
             if !status.conflicted.isEmpty { conflicted.insert(worktree.path) }
             let stopped = await session.stoppedWorkFromFiles(in: worktree.path)
@@ -536,6 +651,7 @@ public final class RepositoryList {
             }
             repository.worktrees = worktrees
             repository.state = .open(session)
+            listen(to: session, for: repository)
             if location.commonDirectory != repository.path || repository.bookmark == nil {
                 let old = repository.path
                 repository.path = location.commonDirectory
@@ -625,10 +741,21 @@ public final class ListedRepository: Identifiable {
     /// How many deletions have finished, for windows to look at the repository's
     /// refs again.
     fileprivate(set) var deletionCount = 0
+    /// The number of the latest change on disk that moved a ref or a worktree's
+    /// `HEAD`, for windows to look at the repository's refs and history again.
+    fileprivate(set) var refsChange = 0
+    /// The number of the latest change on disk to each worktree's uncommitted
+    /// files, by its folder, for a window that shows it to look again.
+    fileprivate(set) var fileChanges: [String: Int] = [:]
     /// The look at its worktrees that's running.
     @ObservationIgnored fileprivate var look: Task<Void, Never>?
-    /// Whether someone asked to look while one was running.
-    @ObservationIgnored fileprivate var needsAnotherLook = false
+    /// What the next look reads, once the running one is done.
+    @ObservationIgnored fileprivate var pendingLook: RepositoryList.LookRequest?
+    /// When the last look started and finished, which a look because of changes
+    /// on disk waits for, as `ChangePacing` says.
+    @ObservationIgnored fileprivate var lastLook: (started: ContinuousClock.Instant, finished: ContinuousClock.Instant)?
+    /// Hearing what changes on disk from the repository's session.
+    @ObservationIgnored fileprivate var listening: Task<Void, Never>?
 
     fileprivate init(saved: RepositoryStore.SavedRepository) {
         path = saved.path

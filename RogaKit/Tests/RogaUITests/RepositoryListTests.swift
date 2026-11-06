@@ -296,6 +296,71 @@ struct RepositoryListTests {
         #expect(list.repositories.allSatisfy { $0.uncommittedFiles.count == 1 })
     }
 
+    // MARK: Changes on disk
+
+    @Test func seesChangesOnDiskWithoutBeingAsked() async throws {
+        let repository = try await copyRepository(try await Fixture.repository("basic"), into: folder)
+        try await runGit("config", "user.name", "T", in: repository)
+        try await runGit("config", "user.email", "t@example.com", in: repository)
+        let list = try await makeList()
+        _ = try await list.add(folder: repository)
+        let listed = try #require(list.repositories.first)
+        #expect(await AgentTestSupport.eventually(within: .seconds(20)) { listed.session?.isWatching == true })
+        #expect(await AgentTestSupport.eventually(within: .seconds(20)) { listed.uncommittedFiles[repository] == 0 })
+
+        try Data("new\n".utf8).write(to: URL(filePath: repository + "/new.txt"))
+        #expect(await AgentTestSupport.eventually(within: .seconds(20)) { listed.uncommittedFiles[repository] == 1 })
+        #expect(listed.fileChanges[repository] != nil)
+
+        // A commit moves the branch, which the row's commit and its count follow.
+        let refsChange = listed.refsChange
+        try await runGit("add", "new.txt", in: repository)
+        try await runGit("commit", "--quiet", "-m", "New", in: repository)
+        let head = try await runGit("rev-parse", "HEAD", in: repository).trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(await AgentTestSupport.eventually(within: .seconds(20)) { listed.worktrees.first?.head?.hex == head && listed.uncommittedFiles[repository] == 0 })
+        #expect(listed.refsChange > refsChange)
+
+        // A new worktree is listed, counted and watched.
+        let notes = folder + "/notes"
+        try await runGit("worktree", "add", "--quiet", notes, "feature", in: repository)
+        #expect(await AgentTestSupport.eventually(within: .seconds(20)) { listed.uncommittedFiles[notes] == 0 })
+        try Data("a\n".utf8).write(to: URL(filePath: notes + "/a.txt"))
+        #expect(await AgentTestSupport.eventually(within: .seconds(20)) { listed.uncommittedFiles[notes] == 1 })
+        #expect(listed.uncommittedFiles[repository] == 0)
+    }
+
+    @Test func becomingActiveLooksOnlyAtWhatItCantWatch() async throws {
+        let repository = try await copyRepository(try await Fixture.repository("basic"), into: folder)
+        let log = CommandLog()
+        let list = RepositoryList(store: store)
+        await list.connect(git: try await TestGit.make(log: log))
+        _ = try await list.add(folder: repository)
+        let listed = try #require(list.repositories.first)
+        #expect(await AgentTestSupport.eventually { listed.session?.isWatching == true })
+        await list.refresh()
+        let before = statusCommands(in: log).count
+
+        await list.refreshUnwatched()
+        #expect(statusCommands(in: log).count == before)
+    }
+
+    @Test func looksAddUp() {
+        typealias Request = RepositoryList.LookRequest
+        let files = Request(counts: ["/a"], asNewAs: 3)
+        let refs = Request(counts: ["/b"], upstreams: true, asNewAs: 5)
+        #expect(files.adding(refs) == Request(counts: ["/a", "/b"], upstreams: true, asNewAs: 5))
+        #expect(files.isPaced)
+        // Anything that has to look afresh makes the look afresh.
+        #expect(files.adding(.everything) == .everything)
+        #expect(!Request.everything.isPaced)
+    }
+
+    @Test func pacesLooksThatKeepComing() {
+        let start = ContinuousClock.now
+        #expect(ChangePacing.gap(afterLookFrom: start, to: start + .milliseconds(10)) == .milliseconds(500))
+        #expect(ChangePacing.gap(afterLookFrom: start, to: start + .milliseconds(400)) == .milliseconds(800))
+    }
+
     @Test func remembersWhichRepositoriesAreExpanded() async throws {
         let list = try await makeList()
         _ = try await list.add(folder: try await Fixture.repository("basic"))

@@ -9,15 +9,18 @@ import GitRunner
 /// For now a session lists worktrees and refs, reads history, the text of
 /// commits, the files they changed and their patches, reads what's uncommitted
 /// in a worktree, checks out and deletes branches, goes to commits, deletes linked worktrees
-/// and mends them when their folders move, fetches, pulls and pushes, and keeps the
-/// commit-graph files up to date. Watching for changes comes later, as
-/// ARCHITECTURE.md describes.
+/// and mends them when their folders move, fetches, pulls and pushes, keeps the
+/// commit-graph files up to date, and watches the repository for changes on disk.
 public actor RepositorySession {
     public nonisolated let location: RepositoryLocation
     public nonisolated let git: Git
     /// Where discarded files go that git has no copy of.
     public nonisolated let trash: FileTrash
     private nonisolated let catFile: CatFileSession
+    private nonisolated let watcher: RepositoryWatcher
+    /// The latest `git status` in each worktree that more than one look can
+    /// share, by the worktree's folder.
+    private var statusRuns: [String: StatusRun] = [:]
     private var commitGraphUpdate: Task<CommitGraphUpdate, any Error>?
     /// The running fetch. There's only ever one, because every worktree shares
     /// the repository's remote branches.
@@ -37,6 +40,7 @@ public actor RepositorySession {
         // it was found from, so it runs git in the git directory that every
         // worktree shares.
         catFile = try CatFileSession(git: git, directory: location.commonDirectory)
+        watcher = RepositoryWatcher(git: git)
     }
 
     /// Finds the repository that `path` is in and starts a session for it.
@@ -160,6 +164,43 @@ public actor RepositorySession {
     /// - Throws: `RepositoryError.tooManyChanges` for a list too long to read.
     public nonisolated func status(in worktree: String, isUpkeep: Bool = false) async throws -> WorktreeChanges {
         try await ChangesLoader.status(in: worktree, git: git, isUpkeep: isUpkeep)
+    }
+
+    /// A `git status` that more than one look can share.
+    private struct StatusRun {
+        /// The number of the latest change the watcher had seen when it started.
+        var asNewAs: Int
+        var task: Task<WorktreeChanges, any Error>
+    }
+
+    /// Lists a worktree's uncommitted files as they were after a change on disk,
+    /// sharing a `git status` that started after the watcher saw that change.
+    /// When the sidebar and a window both look at a worktree because of the
+    /// same change, git runs once.
+    ///
+    /// Cancelling the caller doesn't stop git, because someone else may be
+    /// waiting for it.
+    ///
+    /// - Parameters:
+    ///   - worktree: The worktree's folder.
+    ///   - isUpkeep: Whether nobody is waiting for the answer, which runs git
+    ///     at low priority if it has to run.
+    ///   - change: The `RepositoryChanges.number` of the change.
+    /// - Throws: `RepositoryError.tooManyChanges` for a list too long to read.
+    public func status(in worktree: String, isUpkeep: Bool = false, asNewAs change: Int) async throws -> WorktreeChanges {
+        if let run = statusRuns[worktree], run.asNewAs >= change {
+            return try await run.task.value
+        }
+        let task = Task.detached { [git] in
+            try await ChangesLoader.status(in: worktree, git: git, isUpkeep: isUpkeep)
+        }
+        statusRuns[worktree] = StatusRun(asNewAs: watcher.latestChange, task: task)
+        do {
+            return try await task.value
+        } catch {
+            if statusRuns[worktree]?.task == task { statusRuns[worktree] = nil }
+            throw error
+        }
     }
 
     /// Lists a worktree's uncommitted files, with the lines added and removed
@@ -619,12 +660,36 @@ public actor RepositorySession {
         return try await update.value
     }
 
-    /// Ends the session's git processes. Dropping the session does the same,
-    /// except that an update of the commit-graph files runs to its end.
+    /// Ends the session's git processes, and stops watching the repository.
+    /// Dropping the session does the same, except that an update of the
+    /// commit-graph files runs to its end.
     public func close() {
         commitGraphUpdate?.cancel()
         runningFetch?.cancel()
         catFile.close()
+        watcher.stop()
+    }
+
+    // MARK: Watching for changes
+
+    /// What changed on disk, a batch at a time, once `watch(_:)` has started
+    /// watching. It's for one listener, the list of repositories, and it ends
+    /// when the session closes.
+    public nonisolated var changes: AsyncStream<RepositoryChanges> { watcher.changes }
+
+    /// Whether the session is watching the repository. When it isn't, as on a
+    /// volume that doesn't record changes, Roga looks again when it becomes
+    /// the active app instead.
+    public nonisolated var isWatching: Bool { watcher.isWatching }
+
+    /// The number of the latest batch of changes the session has seen.
+    public nonisolated var latestChange: Int { watcher.latestChange }
+
+    /// Watches the git directory and the folders of these worktrees, or goes
+    /// on watching with these as the worktrees, when they've changed.
+    @concurrent
+    public nonisolated func watch(_ worktrees: [Worktree]) async {
+        watcher.watch(WatchedLayout(commonDirectory: location.commonDirectory, worktrees: worktrees))
     }
 }
 

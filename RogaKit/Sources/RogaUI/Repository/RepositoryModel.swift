@@ -131,6 +131,25 @@ final class RepositoryModel {
     @ObservationIgnored private var selectsChangesWhenTheyShow = false
     /// The check that Roga becoming active started, which a newer one replaces.
     @ObservationIgnored private(set) var check: Task<Void, Never>?
+    /// What changed on disk that the next look reads.
+    @ObservationIgnored private var diskChanges = DiskChanges()
+    /// The look at what changed on disk that's running. Unlike `check`, a newer
+    /// one never replaces it, because changes that keep coming would then stop
+    /// every `git status` before it finished.
+    @ObservationIgnored private(set) var diskLook: Task<Void, Never>?
+    /// When the last look at changes on disk started and finished, which the
+    /// next one waits for, as `ChangePacing` says.
+    @ObservationIgnored private var lastDiskLook: (started: ContinuousClock.Instant, finished: ContinuousClock.Instant)?
+
+    /// What changed on disk since the model last looked.
+    private struct DiskChanges {
+        /// The latest change to the worktree's uncommitted files, by its number.
+        var files: Int?
+        /// The latest change that moved a ref or `HEAD`, by its number.
+        var refs: Int?
+
+        var isEmpty: Bool { files == nil && refs == nil }
+    }
     /// The running update of the commit-graph files, which isn't tied to any
     /// view, so that it carries on when the window shows another worktree.
     @ObservationIgnored private(set) var commitGraphUpdate: Task<Void, Never>?
@@ -313,10 +332,12 @@ final class RepositoryModel {
         if !Task.isCancelled { branch.fetchByItself() }
     }
 
-    /// Looks at the worktree again, because Roga became active and whatever
-    /// the user was doing elsewhere may have changed it.
+    /// Fetches, if it's been long enough, because Roga became active (decision
+    /// 20). When the session isn't watching the repository, as on a volume that
+    /// doesn't record changes, it also looks at the worktree again, because
+    /// whatever the user was doing elsewhere may have changed it.
     func becameActive() {
-        lookAgain()
+        if !session.isWatching { lookAgain() }
         branch.fetchByItself()
     }
 
@@ -324,6 +345,55 @@ final class RepositoryModel {
     /// deleting another worktree and its branch from the sidebar, moved its refs.
     func refsChanged() {
         lookAgain()
+    }
+
+    /// Looks at the worktree's uncommitted files again, because they changed on
+    /// disk. The list of repositories hears that from the session and passes it on.
+    ///
+    /// - Parameter change: The change's number, which lets the window share a
+    ///   `git status` with the sidebar.
+    func filesChangedOnDisk(asNewAs change: Int) {
+        diskChanges.files = max(diskChanges.files ?? change, change)
+        lookAtDiskChanges()
+    }
+
+    /// Looks at the refs and history again, because a ref or a worktree's `HEAD`
+    /// moved on disk.
+    ///
+    /// - Parameter change: The change's number.
+    func refsChangedOnDisk(asNewAs change: Int) {
+        diskChanges.refs = max(diskChanges.refs ?? change, change)
+        lookAtDiskChanges()
+    }
+
+    /// Reads what changed on disk, unless a look is running, which then looks
+    /// once more when it's done. Changes that keep coming are paced, as
+    /// `ChangePacing` says.
+    private func lookAtDiskChanges() {
+        guard diskLook == nil else { return }
+        diskLook = Task {
+            while !diskChanges.isEmpty {
+                // The look before may have been in another task, since each ends
+                // when nothing more changed while it ran.
+                if let last = lastDiskLook { await ChangePacing.wait(afterLookFrom: last.started, to: last.finished) }
+                let changes = diskChanges
+                diskChanges = DiskChanges()
+                let started = ContinuousClock.now
+                if let refs = changes.refs {
+                    refsChecks += 1
+                    async let branchStatus: Void = branch.refresh()
+                    // A commit moves the branch without always writing the
+                    // index, and what's staged compares with the branch's commit.
+                    await updateUncommittedFiles(asNewAs: max(refs, changes.files ?? refs))
+                    await branchStatus
+                    await reloadIfRefsMoved()
+                } else if let files = changes.files {
+                    await updateUncommittedFiles(asNewAs: files)
+                }
+                lastDiskLook = (started, .now)
+            }
+            diskLook = nil
+        }
     }
 
     private func lookAgain() {
@@ -563,13 +633,27 @@ final class RepositoryModel {
         async let branchStatus: Void = branch.refresh()
         await updateUncommittedFiles()
         await branchStatus
+        await reloadIfRefsMoved()
+    }
+
+    /// Loads history again if any ref moved, or `HEAD` did.
+    private func reloadIfRefsMoved() async {
         guard let history, let refs = try? await session.refs(in: worktree), !Task.isCancelled, refs != history.refs else { return }
         reload()
     }
 
-    private func updateUncommittedFiles() async {
+    /// Reads the worktree's uncommitted files and what it's stuck partway through.
+    ///
+    /// - Parameter change: For a look because of a change on disk, the change's
+    ///   number, which lets it share a `git status` with the sidebar. Nil runs
+    ///   git afresh.
+    private func updateUncommittedFiles(asNewAs change: Int? = nil) async {
         // A failure is usually a bare repository, which has no files to list.
-        let status = try? await session.status(in: worktree)
+        let status = if let change {
+            try? await session.status(in: worktree, asNewAs: change)
+        } else {
+            try? await session.status(in: worktree)
+        }
         let stopped = try? await session.stoppedWork(in: worktree)
         // The tooltip names the commit being reverted.
         var subject: String?
