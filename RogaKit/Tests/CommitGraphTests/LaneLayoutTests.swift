@@ -87,60 +87,83 @@ struct LaneLayoutTests {
         #expect(try layout.append(positions[150...], isComplete: true) == 50..<300)
     }
 
-    /// A branch that leaves the main line and merges back draws in the second
-    /// column, and moves left into the first when the main line reaches the
-    /// commit they share.
-    @Test func movesALaneLeftWhereItMeetsTheMainLine() throws {
+    /// A branch that leaves the main line and merges back keeps its own
+    /// column, in its own color, down to the commit they share, and comes into
+    /// that commit's dot from the right, whichever of them is drawn first.
+    @Test(arguments: [true, false])
+    func runsABranchDownToTheCommitItLeftFrom(branchFirst: Bool) throws {
         // merge has parents a and b, which both have the parent base.
         let (graph, merge, a, b, base) = try branchAndMerge()
         var layout = LaneLayout(graph: graph)
-        try layout.append([merge, b, a, base], isComplete: true)
+        try layout.append(branchFirst ? [merge, b, a, base] : [merge, a, b, base], isComplete: true)
+        try checkLines(layout, names: ["branch and merge"])
 
         #expect(layout.width == 2)
-        #expect(layout.row(0) == LaneLayout.Row(column: 0, lines: [
-            Line(top: .commit, bottom: .column(0)),
-            Line(top: .commit, bottom: .column(1)),
+        #expect(layout.row(0) == LaneLayout.Row(column: 0, color: 0, lines: [
+            Line(top: .commit, bottom: .column(0), color: 0),
+            Line(top: .commit, bottom: .column(1), color: 1),
         ]))
-        #expect(layout.row(1) == LaneLayout.Row(column: 1, lines: [
-            Line(top: .column(0), bottom: .column(0)),
-            Line(top: .column(1), bottom: .commit),
-            Line(top: .commit, bottom: .column(1)),
+        let (mainRow, branchRow) = branchFirst ? (2, 1) : (1, 2)
+        #expect(layout.row(mainRow) == LaneLayout.Row(column: 0, color: 0, lines: [
+            Line(top: .column(1), bottom: .column(1), color: 1),
+            Line(top: .column(0), bottom: .commit, color: 0),
+            Line(top: .commit, bottom: .column(0), color: 0),
         ]))
-        #expect(layout.row(2) == LaneLayout.Row(column: 0, lines: [
-            Line(top: .column(0), bottom: .commit),
-            Line(top: .commit, bottom: .column(0)),
-            Line(top: .column(1), bottom: .column(0)),
+        #expect(layout.row(branchRow) == LaneLayout.Row(column: 1, color: 1, lines: [
+            Line(top: .column(0), bottom: .column(0), color: 0),
+            Line(top: .column(1), bottom: .commit, color: 1),
+            Line(top: .commit, bottom: .column(1), color: 1),
         ]))
-        #expect(layout.row(3) == LaneLayout.Row(column: 0, lines: [
-            Line(top: .column(0), bottom: .commit),
+        #expect(layout.row(3) == LaneLayout.Row(column: 0, color: 0, lines: [
+            Line(top: .column(0), bottom: .commit, color: 0),
+            Line(top: .column(1), bottom: .commit, color: 1),
         ]))
     }
 
-    /// When the branch comes after the main line, its last commit joins the
-    /// main line's lane.
-    @Test func joinsTheLaneOnTheLeft() throws {
-        let (graph, merge, a, b, base) = try branchAndMerge()
-        var layout = LaneLayout(graph: graph)
-        try layout.append([merge, a, b, base], isComplete: true)
+    /// Two merges of one commit, with a branch between them that leaves from
+    /// it: each line runs down its own column to that commit, in its own
+    /// color, rather than one joining another's column above it.
+    @Test func runsEveryLineDownToItsParent() throws {
+        // 8 merges 4 and 7. 7 merges 6 and 2, the way a branch brings in the
+        // main line. 4 merges 2 and 3, whose branch left from 2. 5 and 6 are
+        // the first branch, which left from 1.
+        let graph = try CommitGraph(format: .sha1).adding([
+            commit(1), commit(2, parents: [1]), commit(3, parents: [2]), commit(4, parents: [2, 3]),
+            commit(5, parents: [1]), commit(6, parents: [5]), commit(7, parents: [6, 2]), commit(8, parents: [4, 7]),
+        ])
+        let layout = try laidOut([8, 7, 6, 5, 4, 3, 2, 1], in: graph)
+        try checkLines(layout, names: ["two merges of one commit"])
 
-        #expect(layout.row(1) == LaneLayout.Row(column: 0, lines: [
-            Line(top: .column(1), bottom: .column(1)),
-            Line(top: .column(0), bottom: .commit),
-            Line(top: .commit, bottom: .column(0)),
+        #expect(layout.width == 4)
+        #expect((0..<8).map { layout.row($0).column } == [0, 1, 1, 1, 0, 3, 0, 0])
+        #expect((0..<8).map { layout.row($0).color } == [0, 1, 1, 1, 0, 3, 0, 0])
+        // The line that brings in 2 stays in the third column past 4, and
+        // 3's branch takes the fourth.
+        #expect(layout.row(4) == LaneLayout.Row(column: 0, color: 0, lines: [
+            Line(top: .column(1), bottom: .column(1), color: 1),
+            Line(top: .column(2), bottom: .column(2), color: 2),
+            Line(top: .column(0), bottom: .commit, color: 0),
+            Line(top: .commit, bottom: .column(0), color: 0),
+            Line(top: .commit, bottom: .column(3), color: 3),
         ]))
-        #expect(layout.row(2) == LaneLayout.Row(column: 1, lines: [
-            Line(top: .column(0), bottom: .column(0)),
-            Line(top: .column(1), bottom: .commit),
-            Line(top: .commit, bottom: .column(0)),
+        // Both come into 2's dot from the right.
+        #expect(layout.row(6) == LaneLayout.Row(column: 0, color: 0, lines: [
+            Line(top: .column(1), bottom: .column(1), color: 1),
+            Line(top: .column(0), bottom: .commit, color: 0),
+            Line(top: .commit, bottom: .column(0), color: 0),
+            Line(top: .column(2), bottom: .commit, color: 2),
+            Line(top: .column(3), bottom: .commit, color: 3),
         ]))
-        #expect(layout.row(3) == LaneLayout.Row(column: 0, lines: [
-            Line(top: .column(0), bottom: .commit),
+        #expect(layout.row(7) == LaneLayout.Row(column: 0, color: 0, lines: [
+            Line(top: .column(0), bottom: .commit, color: 0),
+            Line(top: .column(1), bottom: .commit, color: 1),
         ]))
     }
 
     /// A line longer than the longest one drawn ends in an arrow two rows
-    /// below the child, and starts again two rows above the parent. The main
-    /// line steps left once the arrow's column is free.
+    /// below the child, and starts again two rows above the parent, in the
+    /// same color. The main line steps left once the arrow's column is free,
+    /// and keeps its color.
     @Test func cutsLongLines() throws {
         // A main line of 150 commits, and a branch from its first commit.
         let graph = try CommitGraph(format: .sha1).adding(chain(1...150) + [commit(1000, parents: [1])])
@@ -148,43 +171,45 @@ struct LaneLayoutTests {
         var layout = LaneLayout(graph: graph)
         try layout.append(positions, isComplete: true)
 
-        #expect(layout.row(0) == LaneLayout.Row(column: 0, lines: [
-            Line(top: .commit, bottom: .column(0)),
+        #expect(layout.row(0) == LaneLayout.Row(column: 0, color: 0, lines: [
+            Line(top: .commit, bottom: .column(0), color: 0),
         ]))
-        #expect(layout.row(1) == LaneLayout.Row(column: 1, lines: [
-            Line(top: .column(0), bottom: .column(0)),
-            Line(top: .commit, bottom: .column(1)),
+        #expect(layout.row(1) == LaneLayout.Row(column: 1, color: 1, lines: [
+            Line(top: .column(0), bottom: .column(0), color: 0),
+            Line(top: .commit, bottom: .column(1), color: 1),
         ]))
-        #expect(layout.row(2) == LaneLayout.Row(column: 1, lines: [
-            Line(top: .column(1), bottom: .commit),
-            Line(top: .commit, bottom: .column(1)),
-            Line(top: .column(0), bottom: .cut(0)),
+        #expect(layout.row(2) == LaneLayout.Row(column: 1, color: 1, lines: [
+            Line(top: .column(1), bottom: .commit, color: 1),
+            Line(top: .commit, bottom: .column(1), color: 1),
+            Line(top: .column(0), bottom: .cut(0), color: 0),
         ]))
-        #expect(layout.row(3) == LaneLayout.Row(column: 1, lines: [
-            Line(top: .column(1), bottom: .commit),
-            Line(top: .commit, bottom: .column(0)),
+        #expect(layout.row(3) == LaneLayout.Row(column: 1, color: 1, lines: [
+            Line(top: .column(1), bottom: .commit, color: 1),
+            Line(top: .commit, bottom: .column(0), color: 1),
         ]))
-        #expect(layout.row(4) == LaneLayout.Row(column: 0, lines: [
-            Line(top: .column(0), bottom: .commit),
-            Line(top: .commit, bottom: .column(0)),
+        #expect(layout.row(4) == LaneLayout.Row(column: 0, color: 1, lines: [
+            Line(top: .column(0), bottom: .commit, color: 1),
+            Line(top: .commit, bottom: .column(0), color: 1),
         ]))
-        #expect(layout.row(148) == LaneLayout.Row(column: 0, lines: [
-            Line(top: .column(0), bottom: .commit),
-            Line(top: .commit, bottom: .column(0)),
-            Line(top: .cut(1), bottom: .column(1)),
+        #expect(layout.row(148) == LaneLayout.Row(column: 0, color: 1, lines: [
+            Line(top: .column(0), bottom: .commit, color: 1),
+            Line(top: .commit, bottom: .column(0), color: 1),
+            Line(top: .cut(1), bottom: .column(1), color: 0),
         ]))
-        #expect(layout.row(149) == LaneLayout.Row(column: 0, lines: [
-            Line(top: .column(0), bottom: .commit),
-            Line(top: .commit, bottom: .column(0)),
-            Line(top: .column(1), bottom: .column(0)),
+        #expect(layout.row(149) == LaneLayout.Row(column: 0, color: 1, lines: [
+            Line(top: .column(1), bottom: .column(1), color: 0),
+            Line(top: .column(0), bottom: .commit, color: 1),
+            Line(top: .commit, bottom: .column(0), color: 1),
         ]))
-        #expect(layout.row(150) == LaneLayout.Row(column: 0, lines: [
-            Line(top: .column(0), bottom: .commit),
+        #expect(layout.row(150) == LaneLayout.Row(column: 0, color: 1, lines: [
+            Line(top: .column(0), bottom: .commit, color: 1),
+            Line(top: .column(1), bottom: .commit, color: 0),
         ]))
         #expect(layout.width == 2)
     }
 
-    /// A lane steps left, one column a row, into a column that frees up.
+    /// A lane steps left, one column a row, into a column that frees up, and
+    /// keeps its color.
     @Test func closesGapsLeftByLinesThatEnd() throws {
         // Three lines side by side. The left one ends first, and the other
         // two step left in turn.
@@ -195,48 +220,69 @@ struct LaneLayoutTests {
         try layout.append(positions, isComplete: true)
         try checkLines(layout, names: ["gaps"])
         #expect(positions.indices.map { layout.row($0).column } == [0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 0, 1])
-        #expect(layout.row(7) == LaneLayout.Row(column: 1, lines: [
-            Line(top: .column(2), bottom: .column(2)),
-            Line(top: .column(1), bottom: .commit),
-            Line(top: .commit, bottom: .column(0)),
+        #expect(positions.indices.map { layout.row($0).color } == [0, 1, 2, 0, 1, 2, 0, 1, 2, 1, 2, 1, 2])
+        #expect(layout.row(7) == LaneLayout.Row(column: 1, color: 1, lines: [
+            Line(top: .column(2), bottom: .column(2), color: 2),
+            Line(top: .column(1), bottom: .commit, color: 1),
+            Line(top: .commit, bottom: .column(0), color: 1),
         ]))
-        #expect(layout.row(8) == LaneLayout.Row(column: 2, lines: [
-            Line(top: .column(0), bottom: .column(0)),
-            Line(top: .column(2), bottom: .commit),
-            Line(top: .commit, bottom: .column(1)),
+        #expect(layout.row(8) == LaneLayout.Row(column: 2, color: 2, lines: [
+            Line(top: .column(0), bottom: .column(0), color: 1),
+            Line(top: .column(2), bottom: .commit, color: 2),
+            Line(top: .commit, bottom: .column(1), color: 2),
         ]))
         #expect(layout.width == 3)
     }
 
-    /// A lane doesn't step left in a row where another line reaches the
-    /// bottom edge in its column, and the end of a cut line never steps.
+    /// A new lane takes its column's color unless a lane beside it already
+    /// has that color, which happens once lanes have stepped left.
+    @Test func givesANewLaneAColorItsNeighborsDontHave() throws {
+        // Three lines side by side. The left one ends, the other two step
+        // left, and an unrelated commit takes the third column.
+        let graph = try CommitGraph(format: .sha1).adding(
+            chain(1...2) + chain(11...13) + chain(21...23) + [commit(31)]
+        )
+        let layout = try laidOut([2, 13, 23, 1, 12, 22, 31, 11, 21], in: graph)
+        try checkLines(layout, names: ["a new lane beside one that stepped left"])
+        #expect((0..<9).map { layout.row($0).column } == [0, 1, 2, 0, 1, 2, 2, 0, 1])
+        #expect(layout.row(6).color == 3)
+        #expect((0..<9).map { layout.row($0).color } == [0, 1, 2, 0, 1, 2, 3, 1, 2])
+    }
+
+    /// A lane doesn't step left into a column that something else in the row
+    /// touches, and the end of a cut line never steps.
     @Test func stepsLeftOnlyWhereNothingElseEnds() throws {
-        // The main line ends, leaving the first column free. Then a commit
-        // takes over the lane of a line further right that waits for its
-        // parent.
+        // The main line ends, leaving the first column free. Then the line
+        // from a dot steps left into it, past another line that waits for
+        // the same parent.
         var graph = try CommitGraph(format: .sha1).adding([
             commit(1), commit(2, parents: [1]), commit(3), commit(4, parents: [3]),
             commit(5, parents: [3]), commit(6, parents: [5]),
         ])
         var layout = try laidOut([2, 6, 4, 1, 5, 3], in: graph)
-        try checkLines(layout, names: ["a line moves into the dot's column"])
-        #expect(layout.row(4) == LaneLayout.Row(column: 1, lines: [
-            Line(top: .column(1), bottom: .commit),
-            Line(top: .commit, bottom: .column(1)),
-            Line(top: .column(2), bottom: .column(1)),
+        try checkLines(layout, names: ["the line from a dot steps left"])
+        #expect(layout.row(4) == LaneLayout.Row(column: 1, color: 1, lines: [
+            Line(top: .column(2), bottom: .column(2), color: 2),
+            Line(top: .column(1), bottom: .commit, color: 1),
+            Line(top: .commit, bottom: .column(0), color: 1),
+        ]))
+        #expect(layout.row(5) == LaneLayout.Row(column: 0, color: 1, lines: [
+            Line(top: .column(0), bottom: .commit, color: 1),
+            Line(top: .column(2), bottom: .commit, color: 2),
         ]))
 
-        // The same, but the commit joins the line on its left.
+        // The same, but the lane on the left steps first, and the line from
+        // the dot can't follow it into the column it leaves in the same row.
         graph = try CommitGraph(format: .sha1).adding([
             commit(1), commit(2, parents: [1]), commit(3), commit(4, parents: [3]),
             commit(5, parents: [3]), commit(6, parents: [5]),
         ])
         layout = try laidOut([2, 4, 6, 1, 5, 3], in: graph)
-        try checkLines(layout, names: ["a line joins on the left"])
-        #expect(layout.row(4) == LaneLayout.Row(column: 2, lines: [
-            Line(top: .column(1), bottom: .column(1)),
-            Line(top: .column(2), bottom: .commit),
-            Line(top: .commit, bottom: .column(1)),
+        try checkLines(layout, names: ["a lane steps left beside a dot"])
+        #expect(layout.row(4) == LaneLayout.Row(column: 2, color: 2, lines: [
+            Line(top: .column(2), bottom: .commit, color: 2),
+            Line(top: .commit, bottom: .column(2), color: 2),
+            Line(top: .column(1), bottom: .column(0), color: 1),
         ]))
 
         // A line is cut where the column on its left is free.
@@ -246,9 +292,9 @@ struct LaneLayoutTests {
         )
         layout = try laidOut([2, 5, 1, 4] + Array((101...210).reversed()) + [3], in: graph)
         try checkLines(layout, names: ["a cut line next to a free column"])
-        #expect(layout.row(3) == LaneLayout.Row(column: 1, lines: [
-            Line(top: .column(1), bottom: .commit),
-            Line(top: .commit, bottom: .column(1)),
+        #expect(layout.row(3) == LaneLayout.Row(column: 1, color: 1, lines: [
+            Line(top: .column(1), bottom: .commit, color: 1),
+            Line(top: .commit, bottom: .column(1), color: 1),
         ]))
     }
 
@@ -265,7 +311,7 @@ struct LaneLayoutTests {
         try layout.append(try numbers.map { try #require(graph.position(of: id($0))) }, isComplete: true)
         #expect(try checkLines(layout, names: ["arrows and dots"]) == 1)
         #expect(layout.row(150).column == 0)
-        #expect(layout.row(150).lines.contains(Line(top: .cut(1), bottom: .column(1))))
+        #expect(layout.row(150).lines.contains { $0.top == .cut(1) && $0.bottom == .column(1) })
     }
 
     /// An arrow that starts a cut line never meets one that ends another.
@@ -281,8 +327,8 @@ struct LaneLayoutTests {
         var layout = LaneLayout(graph: graph)
         try layout.append(try numbers.map { try #require(graph.position(of: id($0))) }, isComplete: true)
         #expect(try checkLines(layout, names: ["two arrows"]) == 2)
-        #expect(layout.row(103).lines.contains(Line(top: .column(1), bottom: .cut(1))))
-        #expect(layout.row(103).lines.contains(Line(top: .cut(2), bottom: .column(2))))
+        #expect(layout.row(103).lines.contains { $0.top == .column(1) && $0.bottom == .cut(1) })
+        #expect(layout.row(103).lines.contains { $0.top == .cut(2) && $0.bottom == .column(2) })
     }
 
     /// Columns that free up are used again, from the left.
@@ -306,19 +352,20 @@ struct LaneLayoutTests {
         var layout = LaneLayout(graph: graph)
         try layout.append(positions, isComplete: true)
         #expect(layout.row(0).lines == [
-            Line(top: .commit, bottom: .column(0)),
-            Line(top: .commit, bottom: .column(1)),
+            Line(top: .commit, bottom: .column(0), color: 0),
+            Line(top: .commit, bottom: .column(1), color: 1),
         ])
     }
 
     // MARK: - Helpers
 
-    /// Checks that the lines of every row continue in the next one, and that
-    /// following the lines down from each commit's dot reaches its parents:
-    /// directly when they're close, and through an arrow when they're far
-    /// enough below for the line to be cut. A commit with a child that far
-    /// above gets a line that starts at an arrow. Returns how many lines were
-    /// cut.
+    /// Checks that the lines of every row continue in the next one, in the
+    /// same color, and that following the lines down from each commit's dot
+    /// reaches its parents: directly when they're close, and through an arrow
+    /// when they're far enough below for the line to be cut. A line that ends
+    /// at a dot comes from above it or from the right. A commit with a child
+    /// that far above gets a line that starts at an arrow. Returns how many
+    /// lines were cut.
     @discardableResult
     private func checkLines(_ layout: LaneLayout, names: [String]) throws -> Int {
         let graph = layout.graph
@@ -334,8 +381,23 @@ struct LaneLayoutTests {
             let tops = row.lines.compactMap(\.top.column)
             let bottomsAbove = index == 0 ? [] : drawn[index - 1].lines.compactMap(\.bottom.column)
             #expect(tops.sorted() == Set(bottomsAbove).sorted(), "row \(index) from \(names)")
-            #expect(!row.lines.contains(Line(top: .column(row.column), bottom: .column(row.column))))
-            #expect(!row.lines.contains { $0.bottom == .commit && $0.top != .column(row.column) })
+            if index > 0 {
+                var colorAbove: [Int: Int] = [:]
+                for line in drawn[index - 1].lines {
+                    if let column = line.bottom.column { colorAbove[column] = line.color }
+                }
+                for line in row.lines {
+                    if let column = line.top.column {
+                        #expect(line.color == colorAbove[column], "row \(index) from \(names)")
+                    }
+                }
+            }
+            for line in row.lines where line.top == .column(row.column) && line.bottom == .commit
+                || line.top == .commit && line.bottom == .column(row.column) {
+                #expect(line.color == row.color, "row \(index) from \(names)")
+            }
+            #expect(!row.lines.contains { $0.top == .column(row.column) && $0.bottom == .column(row.column) })
+            #expect(row.lines.allSatisfy { $0.bottom != .commit || ($0.top.column ?? -1) >= row.column }, "row \(index) from \(names)")
             #expect(!row.lines.contains { $0.top == .cut(row.column) || $0.bottom == .cut(row.column) })
             let cutColumns = row.lines.flatMap { line in
                 [line.top, line.bottom].compactMap { end in

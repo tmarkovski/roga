@@ -104,16 +104,16 @@ enum LaneRenderer {
                 path.line(to: start)
                 path.line(to: NSPoint(x: start.x + arrowSize, y: start.y + arrowSize))
             }
-            color(line.lane(commitColumn: row.column)).setStroke()
+            color(line.color).setStroke()
             path.stroke()
         }
         context.restoreGraphicsState()
 
         let circle = NSRect(x: dot.x - dotRadius, y: dot.y - dotRadius, width: dotRadius * 2, height: dotRadius * 2)
         if isHollow {
-            stroke(circle.insetBy(dx: lineWidth / 2, dy: lineWidth / 2), color: color(row.column))
+            stroke(circle.insetBy(dx: lineWidth / 2, dy: lineWidth / 2), color: color(row.color))
         } else {
-            color(row.column).setFill()
+            color(row.color).setFill()
             NSBezierPath(ovalIn: circle).fill()
         }
         if isCurrent {
@@ -128,7 +128,7 @@ enum LaneRenderer {
         path.stroke()
     }
 
-    private static func color(_ column: Int) -> NSColor {
-        GitColors.lanes[column % GitColors.lanes.count]
+    private static func color(_ lane: Int) -> NSColor {
+        GitColors.lanes[lane % GitColors.lanes.count]
     }
 }

@@ -47,8 +47,9 @@ struct WorkingTreeLineTests {
         let (layout, graph) = try layout(chain(3), tips: [2])
         let line = WorkingTreeLine(layout: layout, head: graph.position(of: id(2)))
         let column = layout.row(0).column
-        #expect(line.row == LaneLayout.Row(column: column, lines: [Line(top: .commit, bottom: .column(column))]))
-        #expect(line.adding(to: layout.row(0), at: 0).lines.last == Line(top: .column(column), bottom: .commit))
+        let color = column % LaneLayout.colors
+        #expect(line.row == LaneLayout.Row(column: column, color: color, lines: [Line(top: .commit, bottom: .column(column), color: color)]))
+        #expect(line.adding(to: layout.row(0), at: 0).lines.last == Line(top: .column(column), bottom: .commit, color: color))
         #expect(line.adding(to: layout.row(1), at: 1) == layout.row(1))
     }
 
@@ -62,15 +63,17 @@ struct WorkingTreeLineTests {
         let line = WorkingTreeLine(layout: layout, head: head)
 
         let column = (0..<headRow).map { layout.row($0).width }.max()!
+        let color = column % LaneLayout.colors
         #expect(line.row.column == column)
-        #expect(line.row.lines == [Line(top: .commit, bottom: .column(column))])
+        #expect(line.row.color == color)
+        #expect(line.row.lines == [Line(top: .commit, bottom: .column(column), color: color)])
         for row in 0..<headRow {
             #expect(!columnsAtTop(layout.row(row)).contains(column))
-            #expect(line.adding(to: layout.row(row), at: row).lines.last == Line(top: .column(column), bottom: .column(column)))
+            #expect(line.adding(to: layout.row(row), at: row).lines.last == Line(top: .column(column), bottom: .column(column), color: color))
         }
         let drawn = line.adding(to: layout.row(headRow), at: headRow)
         #expect(!columnsAtTop(layout.row(headRow)).contains(column))
-        #expect(drawn.lines.last == Line(top: .column(column), bottom: .commit))
+        #expect(drawn.lines.last == Line(top: .column(column), bottom: .commit, color: color))
         #expect(line.adding(to: layout.row(headRow + 1), at: headRow + 1) == layout.row(headRow + 1))
     }
 
@@ -90,15 +93,17 @@ struct WorkingTreeLineTests {
         let line = WorkingTreeLine(layout: layout, head: head)
 
         let column = line.row.column
-        #expect(line.row.lines == [Line(top: .commit, bottom: .column(column))])
-        #expect(line.adding(to: layout.row(0), at: 0).lines.last == Line(top: .column(column), bottom: .column(column)))
-        #expect(line.adding(to: layout.row(1), at: 1).lines.last == Line(top: .column(column), bottom: .cut(column)))
+        let color = column % LaneLayout.colors
+        #expect(line.row.lines == [Line(top: .commit, bottom: .column(column), color: color)])
+        #expect(line.adding(to: layout.row(0), at: 0).lines.last == Line(top: .column(column), bottom: .column(column), color: color))
+        #expect(line.adding(to: layout.row(1), at: 1).lines.last == Line(top: .column(column), bottom: .cut(column), color: color))
         #expect(line.adding(to: layout.row(2), at: 2) == layout.row(2))
         #expect(line.adding(to: layout.row(headRow - 3), at: headRow - 3) == layout.row(headRow - 3))
+        // The end of the line keeps the color it started with.
         let end = layout.row(headRow - 1).width
-        #expect(line.adding(to: layout.row(headRow - 2), at: headRow - 2).lines.last == Line(top: .cut(end), bottom: .column(end)))
-        #expect(line.adding(to: layout.row(headRow - 1), at: headRow - 1).lines.last == Line(top: .column(end), bottom: .column(end)))
-        #expect(line.adding(to: layout.row(headRow), at: headRow).lines.last == Line(top: .column(end), bottom: .commit))
+        #expect(line.adding(to: layout.row(headRow - 2), at: headRow - 2).lines.last == Line(top: .cut(end), bottom: .column(end), color: color))
+        #expect(line.adding(to: layout.row(headRow - 1), at: headRow - 1).lines.last == Line(top: .column(end), bottom: .column(end), color: color))
+        #expect(line.adding(to: layout.row(headRow), at: headRow).lines.last == Line(top: .column(end), bottom: .commit, color: color))
     }
 
     @Test func pointsDownWhenHeadIsntLaidOutYet() throws {
@@ -107,6 +112,6 @@ struct WorkingTreeLineTests {
         #expect(!layout.rows.contains(head))
         let line = WorkingTreeLine(layout: layout, head: head)
         let column = line.row.column
-        #expect(line.adding(to: layout.row(1), at: 1).lines.last == Line(top: .column(column), bottom: .cut(column)))
+        #expect(line.adding(to: layout.row(1), at: 1).lines.last == Line(top: .column(column), bottom: .cut(column), color: column % LaneLayout.colors))
     }
 }

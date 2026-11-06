@@ -2,13 +2,14 @@
 /// and the lines that join each commit to its parents.
 ///
 /// Each column holds a lane, which waits for one commit: the next one down
-/// the line it draws. A commit takes the lane that waits for it, or the
-/// leftmost free column when none does. Its lane then waits for its first
-/// parent, and each other parent gets the lane that already waits for it or
-/// a new one. When two lanes would wait for the same commit, they join as
-/// soon as they meet, into the one on the left, and a lane steps left when
-/// the column next to it frees up. So lanes only move left, a column at a
-/// time, and the graph stays narrow.
+/// the line it draws. A commit takes the leftmost lane that waits for it, or
+/// the leftmost free column when none does. Any other lanes that wait for it
+/// end at its dot, coming in from the right, the way Fork draws them. Its
+/// lane then waits for its first parent, and each other parent gets a new
+/// lane. So a line runs down to its parent's own row before it meets another,
+/// rather than joining one above it, and ends at the parent's dot. A lane
+/// steps left when the column next to it frees up, so lanes only move left,
+/// a column at a time.
 ///
 /// Lines longer than `longestLine` rows are cut, the way gitk cuts them.
 /// Most of the width of a large history comes from them: Linux has about a
@@ -45,24 +46,15 @@ public struct LaneLayout: Sendable {
 
         public var top: End
         public var bottom: End
+        /// The color of the lane the line belongs to, one of `colors`. A lane
+        /// keeps its color when it moves over, and a lane that ends at a dot
+        /// keeps it right up to the dot.
+        public var color: Int
 
-        public init(top: End, bottom: End) {
+        public init(top: End, bottom: End, color: Int = 0) {
             self.top = top
             self.bottom = bottom
-        }
-
-        /// The column of the lane the line belongs to, which decides its
-        /// color: where it leaves the row, or where it enters for a line that
-        /// ends at the dot.
-        public func lane(commitColumn: Int) -> Int {
-            switch bottom {
-            case .column(let column), .cut(let column): return column
-            case .commit: break
-            }
-            switch top {
-            case .column(let column), .cut(let column): return column
-            case .commit: return commitColumn
-            }
+            self.color = color
         }
     }
 
@@ -70,6 +62,8 @@ public struct LaneLayout: Sendable {
     public struct Row: Hashable, Sendable {
         /// The column of the commit's dot.
         public var column: Int
+        /// The color of the dot, which is its lane's.
+        public var color: Int = 0
         /// The lines that pass through the row or touch the dot, with the
         /// straight ones first, from left to right.
         public var lines: [Line]
@@ -87,6 +81,9 @@ public struct LaneLayout: Sendable {
         }
     }
 
+    /// How many colors the lanes take turns with. `GitColors.lanes` in
+    /// HistoryUI has one for each.
+    public static let colors = 8
     /// The most rows a line runs before it's cut.
     public static let longestLine = 100
     /// How many rows the ends of a cut line run: down from the child to the
@@ -102,14 +99,22 @@ public struct LaneLayout: Sendable {
     public var count: Int { rows.count }
 
     private var stored: [StoredRow] = []
+    /// The color of each row's dot, which its lines above and below it share.
+    private var rowColors: [UInt8] = []
     /// The lines that change column or end at a cut, row after row. Each
     /// row's lines end at its `bendEnd`.
     private var bends: [StoredBend] = []
+    /// The color of each of `bends`.
+    private var bendColors: [UInt8] = []
     /// Every `checkpointInterval` rows, the columns that have a line crossing
     /// the row's top edge, as bits. Each of those rows' words end at its
     /// entry in `checkpointEnds`.
     private var checkpointWords: [UInt64] = []
     private var checkpointEnds: [UInt32] = []
+    /// The colors of the lines in those columns, from left to right, ending at
+    /// each row's entry in `checkpointColorEnds`.
+    private var checkpointColors: [UInt8] = []
+    private var checkpointColorEnds: [UInt32] = []
     static let checkpointInterval = 64
 
     /// The rows that are known but not laid out yet, from `firstPending` on.
@@ -122,12 +127,21 @@ public struct LaneLayout: Sendable {
     /// in use without waiting, while a cut line runs down to its arrow.
     private var waiting: [Position] = []
     private static let free = Position.max
-    /// For each commit, the column whose lane waits for it. At most one lane
-    /// waits for a commit. Without one, it's `none`, or `farChild` when a
-    /// child far above has a line to it that was cut.
+    /// The color of the line in each column that's in use.
+    private var laneColor: [UInt8] = []
+    /// For each commit, the column of a lane that waits for it, or `none`.
+    /// When more than one does, `shared` is among its `marks`, and the others
+    /// are found by looking through `waiting`.
     private var waitingColumn: [Int32]
     private static let none: Int32 = -1
-    private static let farChild: Int32 = -2
+    /// For each commit, `farChild` when a child far above has a line to it
+    /// that was cut, and `shared` when more than one lane waits for it. The
+    /// bits from `farColorShift` up hold the color of the first such line, so
+    /// that it starts again above the commit in the color it was cut in.
+    private var marks: [UInt8]
+    private static let farChild: UInt8 = 1
+    private static let shared: UInt8 = 2
+    private static let farColorShift: UInt8 = 2
     /// The columns no lane uses.
     private var freeColumns = ColumnSet()
     /// The columns with a line crossing the bottom edge of the last row.
@@ -142,6 +156,7 @@ public struct LaneLayout: Sendable {
         self.graph = graph
         rowOf = Array(repeating: -1, count: graph.count)
         waitingColumn = Array(repeating: Self.none, count: graph.count)
+        marks = Array(repeating: 0, count: graph.count)
     }
 
     /// Adds commits below the ones added so far, each after all of its
@@ -176,19 +191,29 @@ public struct LaneLayout: Sendable {
         if row % Self.checkpointInterval == 0 {
             checkpointWords += crossing.words
             checkpointEnds.append(UInt32(checkpointWords.count))
+            for column in crossing.columns {
+                checkpointColors.append(laneColor[column])
+            }
+            checkpointColorEnds.append(UInt32(checkpointColors.count))
         }
         let firstBend = bends.count
 
-        let column: Int
-        let lineAbove: Bool
-        let lane = waitingColumn[Int(commit)]
-        if lane >= 0 {
-            column = Int(lane)
-            lineAbove = true
-        } else {
-            column = takeFreeColumn()
-            lineAbove = false
+        // The commit takes the leftmost lane that waits for it, and the
+        // others end at its dot, coming in from the right.
+        var column = Int(waitingColumn[Int(commit)])
+        let lineAbove = column >= 0
+        if marks[Int(commit)] & Self.shared != 0 {
+            column = waiting.firstIndex(of: commit)!
+            for other in column + 1..<waiting.count where waiting[other] == commit {
+                addBend(top: Int32(other), bottom: StoredBend.commit, color: laneColor[other])
+                release(other)
+            }
+            marks[Int(commit)] &= ~Self.shared
         }
+        if !lineAbove {
+            column = takeFreeColumn()
+        }
+        let color = laneColor[column]
         waitingColumn[Int(commit)] = Self.none
         waiting[column] = Self.free
         crossing.remove(column)
@@ -201,42 +226,29 @@ public struct LaneLayout: Sendable {
             let parentRow = rowOf[Int(parent)]
             if parentRow < 0 || Int(parentRow) > row + Self.longestLine {
                 // The line is too long to draw, so it ends in an arrow below.
-                if waitingColumn[Int(parent)] == Self.none {
-                    waitingColumn[Int(parent)] = Self.farChild
-                }
                 var cutColumn = column
                 if index == 1 {
                     lineBelow = true
                 } else {
                     cutColumn = takeFreeColumn()
-                    bends.append(StoredBend(top: StoredBend.commit, bottom: Int32(cutColumn)))
+                    addBend(top: StoredBend.commit, bottom: Int32(cutColumn), color: laneColor[cutColumn])
+                }
+                if marks[Int(parent)] & Self.farChild == 0 {
+                    marks[Int(parent)] |= Self.farChild | laneColor[cutColumn] << Self.farColorShift
                 }
                 crossing.insert(cutColumn)
                 cutEnds.append((row: row + Self.cutLength, column: cutColumn))
                 continue
             }
-            let other = waitingColumn[Int(parent)]
+            // The line runs down to the parent's row, even when another lane
+            // already waits for it.
             if index == 1 {
-                if other < 0 {
-                    wait(in: column, for: parent)
-                    lineBelow = true
-                } else if Int(other) < column {
-                    // Join the lane on the left, which waits for the parent.
-                    bends.append(StoredBend(top: StoredBend.commit, bottom: other))
-                    release(column)
-                } else {
-                    // Move the lane that waits for the parent into this column.
-                    bends.append(StoredBend(top: other, bottom: Int32(column)))
-                    release(Int(other))
-                    wait(in: column, for: parent)
-                    lineBelow = true
-                }
-            } else if other < 0 {
+                wait(in: column, for: parent)
+                lineBelow = true
+            } else {
                 let new = takeFreeColumn()
                 wait(in: new, for: parent)
-                bends.append(StoredBend(top: StoredBend.commit, bottom: Int32(new)))
-            } else {
-                bends.append(StoredBend(top: StoredBend.commit, bottom: other))
+                addBend(top: StoredBend.commit, bottom: Int32(new), color: laneColor[new])
             }
         }
         if index == 0 {
@@ -246,7 +258,7 @@ public struct LaneLayout: Sendable {
         // Cut lines that reach their arrows in this row end here.
         while firstCutEnd < cutEnds.count && cutEnds[firstCutEnd].row == row {
             let ended = cutEnds[firstCutEnd].column
-            bends.append(StoredBend(top: Int32(ended), bottom: StoredBend.cut(ended)))
+            addBend(top: Int32(ended), bottom: StoredBend.cut(ended), color: laneColor[ended])
             release(ended)
             firstCutEnd += 1
         }
@@ -255,12 +267,15 @@ public struct LaneLayout: Sendable {
         // else in this row: not the dot's, and not one that a line ends in or
         // leaves.
         let below = firstPending + Self.cutLength
-        if below < pending.count, waitingColumn[Int(pending[below])] == Self.farChild {
+        if below < pending.count, marks[Int(pending[below])] & Self.farChild != 0 {
+            let mark = marks[Int(pending[below])]
+            marks[Int(pending[below])] = mark & Self.shared
             var avoided = bends[firstBend...].compactMap { $0.top >= 0 ? Int($0.top) : nil }
             avoided.append(column)
             let new = takeFreeColumn(avoiding: avoided)
+            laneColor[new] = mark >> Self.farColorShift
             wait(in: new, for: pending[below])
-            bends.append(StoredBend(top: StoredBend.cut(new), bottom: Int32(new)))
+            addBend(top: StoredBend.cut(new), bottom: Int32(new), color: laneColor[new])
         }
         if firstCutEnd > 4096 {
             cutEnds.removeFirst(firstCutEnd)
@@ -285,10 +300,10 @@ public struct LaneLayout: Sendable {
                     // reaches the bottom edge where it does.
                     guard lineBelow, !touched.dropFirst().contains(lane) else { continue }
                     lineBelow = false
-                    bends.append(StoredBend(top: StoredBend.commit, bottom: Int32(left)))
+                    addBend(top: StoredBend.commit, bottom: Int32(left), color: laneColor[lane])
                 } else {
                     guard !touched.contains(lane) else { continue }
-                    bends.append(StoredBend(top: Int32(lane), bottom: Int32(left)))
+                    addBend(top: Int32(lane), bottom: Int32(left), color: laneColor[lane])
                 }
                 move(lane, to: left)
                 touched += [lane, left]
@@ -297,6 +312,12 @@ public struct LaneLayout: Sendable {
 
         rows.append(commit)
         stored.append(StoredRow(column: column, lineAbove: lineAbove, lineBelow: lineBelow, bendEnd: bends.count))
+        rowColors.append(color)
+    }
+
+    private mutating func addBend(top: Int32, bottom: Int32, color: UInt8) {
+        bends.append(StoredBend(top: top, bottom: bottom))
+        bendColors.append(color)
     }
 
     /// Whether a parent is also listed before `index`, so it already has its
@@ -312,28 +333,52 @@ public struct LaneLayout: Sendable {
         takeFreeColumn(avoiding: [])
     }
 
-    /// Takes the leftmost free column that isn't one of `avoided`.
+    /// Takes the leftmost free column that isn't one of `avoided`, for a new
+    /// lane, and gives the lane its color.
     private mutating func takeFreeColumn(avoiding avoided: [Int]) -> Int {
-        let free = avoided.isEmpty ? freeColumns.first : freeColumns.columns.first { !avoided.contains($0) }
-        if let free {
+        let column: Int
+        if let free = avoided.isEmpty ? freeColumns.first : freeColumns.columns.first(where: { !avoided.contains($0) }) {
             freeColumns.remove(free)
-            return free
+            column = free
+        } else {
+            waiting.append(Self.free)
+            laneColor.append(0)
+            column = waiting.count - 1
         }
-        waiting.append(Self.free)
-        return waiting.count - 1
+        laneColor[column] = newColor(in: column)
+        return column
+    }
+
+    /// The color for a new lane in `column`: the column's own, in turn,
+    /// unless a lane beside it already has that color, and then the next one
+    /// that neither lane beside it has.
+    private func newColor(in column: Int) -> UInt8 {
+        func color(beside other: Int) -> UInt8? {
+            other >= 0 && other < waiting.count && !freeColumns.contains(other) ? laneColor[other] : nil
+        }
+        let left = color(beside: column - 1)
+        let right = color(beside: column + 1)
+        var color = UInt8(column % Self.colors)
+        while color == left || color == right {
+            color = (color + 1) % UInt8(Self.colors)
+        }
+        return color
     }
 
     private mutating func wait(in column: Int, for commit: Position) {
         waiting[column] = commit
-        waitingColumn[Int(commit)] = Int32(column)
+        if waitingColumn[Int(commit)] == Self.none {
+            waitingColumn[Int(commit)] = Int32(column)
+        } else {
+            marks[Int(commit)] |= Self.shared
+        }
         crossing.insert(column)
     }
 
+    /// Frees a column: one whose cut line reached its arrow, or whose lane
+    /// ends at the dot in this row.
     private mutating func release(_ column: Int) {
-        if waiting[column] != Self.free {
-            waitingColumn[Int(waiting[column])] = Self.none
-            waiting[column] = Self.free
-        }
+        waiting[column] = Self.free
         crossing.remove(column)
         freeColumns.insert(column)
     }
@@ -345,7 +390,12 @@ public struct LaneLayout: Sendable {
         crossing.remove(lane)
         freeColumns.insert(lane)
         freeColumns.remove(column)
-        wait(in: column, for: commit)
+        waiting[column] = commit
+        laneColor[column] = laneColor[lane]
+        crossing.insert(column)
+        if waitingColumn[Int(commit)] == Int32(lane) {
+            waitingColumn[Int(commit)] = Int32(column)
+        }
     }
 
     /// The lines of a row that has been laid out.
@@ -354,47 +404,59 @@ public struct LaneLayout: Sendable {
         let checkpoint = index / Self.checkpointInterval
         let start = checkpoint == 0 ? 0 : Int(checkpointEnds[checkpoint - 1])
         var crossing = ColumnSet(words: Array(checkpointWords[start..<Int(checkpointEnds[checkpoint])]))
+        var colors = [UInt8](repeating: 0, count: waiting.count)
+        let firstColor = checkpoint == 0 ? 0 : Int(checkpointColorEnds[checkpoint - 1])
+        for (offset, column) in crossing.columns.enumerated() {
+            colors[column] = checkpointColors[firstColor + offset]
+        }
         for earlier in checkpoint * Self.checkpointInterval..<index {
-            apply(earlier, to: &crossing)
+            apply(earlier, to: &crossing, colors: &colors)
         }
 
         let row = stored[index]
         let column = row.column
+        let color = Int(rowColors[index])
         let bends = bends(in: index)
         crossing.remove(column)
-        for bend in bends where bend.top >= 0 {
-            crossing.remove(Int(bend.top))
+        for bend in bends where self.bends[bend].top >= 0 {
+            crossing.remove(Int(self.bends[bend].top))
         }
         var lines: [Line] = []
         for straight in crossing.columns {
-            lines.append(Line(top: .column(straight), bottom: .column(straight)))
+            lines.append(Line(top: .column(straight), bottom: .column(straight), color: Int(colors[straight])))
         }
-        if row.lineAbove { lines.append(Line(top: .column(column), bottom: .commit)) }
-        if row.lineBelow { lines.append(Line(top: .commit, bottom: .column(column))) }
+        if row.lineAbove { lines.append(Line(top: .column(column), bottom: .commit, color: color)) }
+        if row.lineBelow { lines.append(Line(top: .commit, bottom: .column(column), color: color)) }
         for bend in bends {
-            lines.append(Line(top: bend.topEnd, bottom: bend.bottomEnd))
+            lines.append(Line(top: self.bends[bend].topEnd, bottom: self.bends[bend].bottomEnd, color: Int(bendColors[bend])))
         }
-        return Row(column: column, lines: lines)
+        return Row(column: column, color: color, lines: lines)
     }
 
-    /// Changes the columns crossing a row's top edge into the ones crossing
-    /// its bottom edge.
-    private func apply(_ index: Int, to crossing: inout ColumnSet) {
+    /// Changes the columns crossing a row's top edge, and their colors, into
+    /// the ones crossing its bottom edge.
+    private func apply(_ index: Int, to crossing: inout ColumnSet, colors: inout [UInt8]) {
         let row = stored[index]
         let bends = bends(in: index)
         crossing.remove(row.column)
-        for bend in bends where bend.top >= 0 {
-            crossing.remove(Int(bend.top))
+        for bend in bends where self.bends[bend].top >= 0 {
+            crossing.remove(Int(self.bends[bend].top))
         }
-        for bend in bends where bend.bottom >= 0 {
-            crossing.insert(Int(bend.bottom))
+        for bend in bends where self.bends[bend].bottom >= 0 {
+            let column = Int(self.bends[bend].bottom)
+            crossing.insert(column)
+            colors[column] = bendColors[bend]
         }
-        if row.lineBelow { crossing.insert(row.column) }
+        if row.lineBelow {
+            crossing.insert(row.column)
+            colors[row.column] = rowColors[index]
+        }
     }
 
-    private func bends(in index: Int) -> ArraySlice<StoredBend> {
+    /// Where a row's bends are in `bends` and `bendColors`.
+    private func bends(in index: Int) -> Range<Int> {
         let start = index == 0 ? 0 : stored[index - 1].bendEnd
-        return bends[start..<stored[index].bendEnd]
+        return start..<stored[index].bendEnd
     }
 }
 
