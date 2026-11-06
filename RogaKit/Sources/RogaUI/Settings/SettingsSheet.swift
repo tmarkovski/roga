@@ -60,6 +60,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
 enum SettingsGroup: CaseIterable {
     case openIn
     case updates
+    case interface
     case motion
     case lists
     case fetching
@@ -72,6 +73,7 @@ enum SettingsGroup: CaseIterable {
         switch self {
         case .openIn: "Open in"
         case .updates: "Updates"
+        case .interface: "Interface"
         case .motion: "Motion"
         case .lists: "Lists"
         case .fetching: "Fetching"
@@ -85,7 +87,7 @@ enum SettingsGroup: CaseIterable {
     var page: SettingsPage {
         switch self {
         case .openIn, .updates: .general
-        case .motion, .lists: .appearance
+        case .interface, .motion, .lists: .appearance
         case .fetching: .git
         case .generate: .commit
         case .commandLineAgents, .workingStatus: .agents
@@ -125,6 +127,7 @@ enum SettingsItem: CaseIterable {
     case terminal
     case checksForUpdates
     case downloadsUpdates
+    case theme
     case animationSpeed
     case fileLayout
     case refsSort
@@ -147,6 +150,7 @@ enum SettingsItem: CaseIterable {
         switch self {
         case .terminal: .openIn
         case .checksForUpdates, .downloadsUpdates: .updates
+        case .theme: .interface
         case .animationSpeed: .motion
         case .fileLayout, .refsSort, .foldsDescriptions: .lists
         case .fetchesByItself: .fetching
@@ -162,6 +166,7 @@ enum SettingsItem: CaseIterable {
         case .terminal: "Terminal"
         case .checksForUpdates: "Check for updates automatically"
         case .downloadsUpdates: "Download updates automatically"
+        case .theme: "Theme"
         case .animationSpeed: "Animation speed"
         case .fileLayout: "Show files as"
         case .refsSort: "Sort branches by"
@@ -212,7 +217,7 @@ enum SettingsItem: CaseIterable {
             "It runs in the worktree's folder with its tools, hooks, plugins and MCP servers off, and without the repository's own agent settings, so it can't change anything. Agents are set up on the Agents page."
         case .showsMarks:
             "Marks each worktree an agent is working in, waiting in, or has finished in."
-        case .generateEffort, .instructions, .agentList, .hooks, .marksLegend:
+        case .theme, .generateEffort, .instructions, .agentList, .hooks, .marksLegend:
             ""
         case .keepsCommitGraphCurrent:
             "Roga runs git commit-graph write in the background, so that large repositories open quickly. It writes to each repository's objects folder and never changes your git configuration."
@@ -225,6 +230,7 @@ enum SettingsItem: CaseIterable {
         case .terminal: ["Open in Terminal", "iTerm", "Ghostty", "Warp"]
         case .checksForUpdates: ["Sparkle", "version"]
         case .downloadsUpdates: ["install", "Restart to Update", "version"]
+        case .theme: AppTheme.allCases.map(\.title) + ["Dark mode", "Light mode"]
         case .instructions: ["Reset to Roga's", "prompt"]
         case .agentList: ["Look Again", "Use", "program", "PATH"]
         case .hooks: ["Install", "Remove", "roga-hooks", "plugin", "Claude Code", "Codex"]
@@ -255,6 +261,7 @@ struct SettingsSheet: View {
     /// after it, so it happens once a sheet rather than each time Agents shows.
     @State private var hasCheckedHooks = false
 
+    @AppStorage(AppTheme.key) private var theme = AppTheme.system
     @AppStorage(UserDefaults.houseAnimationSpeedKey) private var speed = 1.0
     @AppStorage(FileListSettings.layout) private var fileLayout = FileLayout.list
     @AppStorage(RefsPanelSettings.sort) private var refsSort = RefsModel.Sort.name
@@ -293,6 +300,9 @@ struct SettingsSheet: View {
         .background(SettingsColors.surface)
         .font(.system(size: 13))
         .presentationSizing(.fitted)
+        .onChange(of: theme) { _, theme in
+            theme.apply()
+        }
         .onChange(of: destination.page == .agents, initial: true) { _, showsAgents in
             guard showsAgents, !hasCheckedHooks else { return }
             hasCheckedHooks = true
@@ -415,7 +425,7 @@ struct SettingsSheet: View {
             AgentListSection(items: items, namesPage: namesPage, show: show)
         case .workingStatus:
             WorkingStatusSection(items: items, namesPage: namesPage)
-        case .motion, .lists, .fetching, .largeRepositories:
+        case .interface, .motion, .lists, .fetching, .largeRepositories:
             SettingsSection(title: group.title) {
                 if namesPage {
                     Text(group.page.title)
@@ -437,6 +447,8 @@ struct SettingsSheet: View {
     @ViewBuilder private func row(_ item: SettingsItem) -> some View {
         SettingsRow(title: item.title, help: item.help) {
             switch item {
+            case .theme:
+                SettingsSegments(selection: $theme, options: AppTheme.allCases.map { ($0, $0.title) }, icon: \.icon)
             case .animationSpeed:
                 SettingsSlider(value: $speed, range: HouseAnimationView.speeds, step: 0.25) { "\($0.formatted())×" }
             case .fileLayout:

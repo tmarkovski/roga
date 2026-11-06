@@ -1,0 +1,50 @@
+import AppKit
+import Foundation
+import Testing
+@testable import RogaUI
+
+/// The theme chosen in Settings › Appearance: how it's stored, what it sets
+/// on the application, and where Settings shows it.
+@MainActor
+struct AppThemeTests {
+    @Test func itFollowsTheSystemUntilSomeoneChooses() throws {
+        let (defaults, name) = AgentTestSupport.defaults()
+        defer { AgentTestSupport.remove(defaults, named: name) }
+        #expect(AppTheme.stored(in: defaults) == .system)
+        defaults.set("dark", forKey: AppTheme.key)
+        #expect(AppTheme.stored(in: defaults) == .dark)
+        defaults.set("light", forKey: AppTheme.key)
+        #expect(AppTheme.stored(in: defaults) == .light)
+        // Something Settings wouldn't write, such as an old or misspelled value.
+        defaults.set("sepia", forKey: AppTheme.key)
+        #expect(AppTheme.stored(in: defaults) == .system)
+    }
+
+    @Test func eachThemeSetsTheApplicationsAppearance() {
+        #expect(AppTheme.system.appearance == nil)
+        #expect(AppTheme.light.appearance?.name == .aqua)
+        #expect(AppTheme.dark.appearance?.name == .darkAqua)
+
+        let application = NSApplication.shared
+        let before = application.appearance
+        defer { application.appearance = before }
+        AppTheme.dark.apply(to: application)
+        #expect(application.appearance?.name == .darkAqua)
+        #expect(application.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua)
+        AppTheme.light.apply(to: application)
+        #expect(application.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .aqua)
+        AppTheme.system.apply(to: application)
+        #expect(application.appearance == nil)
+    }
+
+    @Test func settingsShowsItFirstOnAppearance() {
+        #expect(AppTheme.allCases.map(\.title) == ["System", "Light", "Dark"])
+        #expect(SettingsGroup.allCases.first { $0.page == .appearance } == .interface)
+        #expect(SettingsGroup.interface.items == [.theme])
+        #expect(SettingsItem.theme.title == "Theme")
+        // Search finds it by any of its choices, and by what people call them.
+        for query in ["theme", "Dark", "light mode", "System", "Appearance"] {
+            #expect(SettingsItem.theme.matches(query), "\(query)")
+        }
+    }
+}

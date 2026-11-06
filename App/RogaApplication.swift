@@ -28,6 +28,8 @@ struct RogaApplication: App {
         let updates = Updates()
         _updates = State(initialValue: updates)
         sparkle = SparkleUpdates(updates: updates)
+        // Before any window shows, so that a dark theme never starts light.
+        AppTheme.applyStored()
     }
 
     var body: some Scene {

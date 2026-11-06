@@ -2,7 +2,7 @@
 
 Wireframes for a Settings window with a sidebar of pages, laid out like the Claude app's own settings and styled like Roga's dialogs ([decision 29](../../decisions/0029-dialogs-that-say-what-happens-and-show-the-command.md)). They're on the Settings page of the design canvas [yaga layout options](https://claude.ai/artifact/4WQVua6gwKqSBoiRdf2FhX), and [`boards.py`](boards.py) draws every board.
 
-Settings is built as a sheet, in [`SettingsSheet.swift`](../../../RogaKit/Sources/RogaUI/Settings/SettingsSheet.swift) and [`SettingsControls.swift`](../../../RogaKit/Sources/RogaUI/Settings/SettingsControls.swift), drawn to the boards' measurements and colors rather than with the system's lists and forms. It has the options Roga already had, on Appearance, Git and Advanced, and the agents' pages that [decision 41](../../decisions/0041-agents-status-from-their-hooks-and-messages-from-their-clis.md) added: the Commit page's Generate section, the Agents page, and a page for Claude Code and for Codex. The other pages and every other proposal on the boards wait until they're decided.
+Settings is built as a sheet, in [`SettingsSheet.swift`](../../../RogaKit/Sources/RogaUI/Settings/SettingsSheet.swift) and [`SettingsControls.swift`](../../../RogaKit/Sources/RogaUI/Settings/SettingsControls.swift), drawn to the boards' measurements and colors rather than with the system's lists and forms. It has the options Roga already had, on Appearance, Git and Advanced, the theme, and the agents' pages that [decision 41](../../decisions/0041-agents-status-from-their-hooks-and-messages-from-their-clis.md) added: the Commit page's Generate section, the Agents page, and a page for Claude Code and for Codex. The other pages and every other proposal on the boards wait until they're decided.
 
 ## Regenerating the boards
 
@@ -21,7 +21,7 @@ Rows tagged **In the app** on the boards are what today's settings window or men
 | Page | What's on it | In the app today |
 | --- | --- | --- |
 | General | Reopening windows, the rail of organizations, the editor and terminal for Open in…, updates | The terminal for Open in Terminal, checking for updates and downloading them, and the rail from the View menu |
-| Appearance | Theme, text size, the house's animations, the code font and diff options, how lists are shown | The animation speed, and the file layout, branch sort and folded descriptions from menus |
+| Appearance | Theme, text size, the house's animations, the code font and diff options, how lists are shown | The theme, the animation speed, and the file layout, branch sort and folded descriptions from menus |
 | Git | Which git runs and why one was passed over, name and email, fetching, pulling and pushing | Fetching when Roga becomes active |
 | Commit | The long first line, generating messages with an agent, the Commit button, signing, discarding | The Generate section, and the 72-character mark and asking before discarding many files as fixed behavior |
 | Agents | Command-line agents Roga found, and their hooks for working status | Claude Code and Codex, each with a page of its own, without Add a Command |
@@ -67,9 +67,11 @@ Each hook runs `roga-hook hook --host <agent> --event <name>`, a launcher in Rog
 
 - **The marks go on the right of a sidebar row, before the count of uncommitted files,** and stay while the pointer is over the row. The waiting mark is an amber `circle-alert` rather than the boards' triangle, because a red triangle already means conflicts ([decision 28](../../decisions/0028-show-a-worktree-thats-stuck-partway.md)). Decided on November 5, 2026.
 
+- **A theme of Roga's own.** Appearance starts with an Interface section and its Theme: System, which is the default, Light and Dark, with Lucide's `monitor`, `sun` and `moon`. Roga sets the application's appearance, so every window, sheet and menu changes at once, and it applies the stored theme as it starts, before its first window, so a dark theme never shows a light window first. The board draws the three choices as icons only, and the app puts each word beside its icon, because a monitor alone doesn't say "follow the system". The graph's lanes, the badges, the diff, the house (still or moving) and the menus all follow while they're on screen. A menu that's open while the theme changes keeps the look it opened with, as any macOS menu does, and the next one opens in the new theme. Built on November 6, 2026.
+
 ## Still to decide
 
 - **Which proposals to keep.** Open in Editor, reopening windows at launch, text size and date formats would each need work outside Settings first. A switch for the rail would have to become app-wide or say which window it means.
 - **Answering permission requests in Roga.** GitKraken offers it. It makes a hook wait for Roga, so the boards draw it off, and Roga leaves it out for now.
 - **More agents.** Cursor Agent, Gemini CLI, Copilot CLI and a custom command are on the boards. Each needs its own way to install hooks and to run without tools.
-- **Whether the boards should catch up.** They still draw the triangle, the shorter commands and the old help under the command block, and General's Windows section, its Editor row and its help for updates.
+- **Whether the boards should catch up.** They still draw the triangle, the shorter commands and the old help under the command block, General's Windows section, its Editor row and its help for updates, and the theme's choices as icons without their words.
