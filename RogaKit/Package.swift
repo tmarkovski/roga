@@ -21,6 +21,9 @@ let package = Package(
     platforms: [.macOS("26.0")],
     products: [
         .library(name: "RogaUI", targets: ["RogaUI"]),
+        // What the `roga` helper inside Roga.app is built from. Each agent hook
+        // runs the helper, so it links nothing but Foundation.
+        .library(name: "AgentHooks", targets: ["AgentHooks"]),
         .executable(name: "roga-bench", targets: ["roga-bench"]),
     ],
     targets: [
@@ -41,6 +44,19 @@ let package = Package(
         .target(
             name: "RepositoryEngine",
             dependencies: ["GitCore", "GitRunner", "CommitGraph"],
+            swiftSettings: settings
+        ),
+        // Hearing from agents through their hooks: what the helper sends, how
+        // Roga listens for it, and what the events mean for a session.
+        .target(
+            name: "AgentHooks",
+            swiftSettings: settings
+        ),
+        // Running agents' command-line tools: finding them, installing Roga's
+        // hooks in them, and writing commit messages with them.
+        .target(
+            name: "AgentEngine",
+            dependencies: ["GitCore", "GitRunner"],
             swiftSettings: settings
         ),
         // The only target with resources. It doesn't make the main actor its default,
@@ -67,7 +83,7 @@ let package = Package(
         ),
         .target(
             name: "RogaUI",
-            dependencies: ["GitCore", "GitRunner", "CommitGraph", "RepositoryEngine", "HistoryUI", "DiffUI", "IconUI", "MenuUI"],
+            dependencies: ["GitCore", "GitRunner", "CommitGraph", "RepositoryEngine", "AgentHooks", "AgentEngine", "HistoryUI", "DiffUI", "IconUI", "MenuUI"],
             swiftSettings: viewSettings
         ),
         .executableTarget(
@@ -96,13 +112,23 @@ let package = Package(
             swiftSettings: settings
         ),
         .testTarget(
+            name: "AgentHooksTests",
+            dependencies: ["AgentHooks"],
+            swiftSettings: settings
+        ),
+        .testTarget(
+            name: "AgentEngineTests",
+            dependencies: ["AgentEngine", "GitCore", "GitRunner", "TestSupport"],
+            swiftSettings: settings
+        ),
+        .testTarget(
             name: "DiffUITests",
             dependencies: ["DiffUI", "GitCore"],
             swiftSettings: viewSettings
         ),
         .testTarget(
             name: "RogaUITests",
-            dependencies: ["RogaUI", "HistoryUI", "DiffUI", "IconUI", "MenuUI", "RepositoryEngine", "CommitGraph", "GitCore", "GitRunner", "TestSupport"],
+            dependencies: ["RogaUI", "HistoryUI", "DiffUI", "IconUI", "MenuUI", "RepositoryEngine", "AgentHooks", "AgentEngine", "CommitGraph", "GitCore", "GitRunner", "TestSupport"],
             swiftSettings: viewSettings
         ),
         // Shared by the test targets: the git the tests run, and the test
