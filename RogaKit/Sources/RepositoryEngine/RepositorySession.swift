@@ -8,9 +8,10 @@ import GitRunner
 ///
 /// For now a session lists worktrees and refs, reads history, the text of
 /// commits, the files they changed and their patches, reads what's uncommitted
-/// in a worktree, checks out and deletes branches, goes to commits, deletes linked worktrees,
-/// fetches, pulls and pushes, and keeps the commit-graph files up to date. Watching
-/// for changes comes later, as ARCHITECTURE.md describes.
+/// in a worktree, checks out and deletes branches, goes to commits, deletes linked worktrees
+/// and mends them when their folders move, fetches, pulls and pushes, and keeps the
+/// commit-graph files up to date. Watching for changes comes later, as
+/// ARCHITECTURE.md describes.
 public actor RepositorySession {
     public nonisolated let location: RepositoryLocation
     public nonisolated let git: Git
@@ -104,6 +105,18 @@ public actor RepositorySession {
         } catch let error as ParseError {
             throw RepositoryError.unexpectedOutput(command, error.description)
         }
+    }
+
+    /// Mends the links between the repository and a linked worktree that moved to
+    /// `folder`, or without a folder, every linked worktree that's still where git
+    /// last saw it, after the main worktree moved (`WorktreeRepair`).
+    ///
+    /// - Throws: `GitError` when git can't, as when the folder isn't a linked
+    ///   worktree. A folder that's another of the repository's worktrees mends
+    ///   nothing and doesn't throw.
+    @concurrent
+    public nonisolated func repairWorktrees(movedTo folder: String? = nil) async throws {
+        _ = try await Self.run(WorktreeRepair.arguments(movedTo: folder), in: location.commonDirectory, git: git)
     }
 
     /// Who owns the repository, from its remotes' URLs, with `origin`'s owner
@@ -273,13 +286,19 @@ public actor RepositorySession {
         return lastFetch()
     }
 
+    /// What a fetch someone asks for runs, by its arguments after `git`, which the
+    /// Fetch button's tooltip shows.
+    public nonisolated static func fetchArguments(from remote: String) -> [String] {
+        ["fetch", remote]
+    }
+
     /// Fetches because someone asked to, whenever Roga last did.
     ///
     /// - Throws: `GitError` when git can't fetch, which says why.
     public func fetch(from remote: String, in worktree: String) async throws {
         await clearTheWayForSomeone()
         let git = git
-        let command = RemoteCommands.asked(["fetch", remote], in: worktree)
+        let command = RemoteCommands.asked(Self.fetchArguments(from: remote), in: worktree)
         lastQuietFetch = .now
         if let error = await runFetch(isQuiet: false, { () async throws(any Error) in _ = try await git.run(command) }) {
             throw error
@@ -435,7 +454,25 @@ public actor RepositorySession {
         }
     }
 
-    /// Says whether a worktree is partway through a merge or a rebase.
+    /// Finds out what's worth knowing before reverting a commit in a worktree,
+    /// without changing anything.
+    ///
+    /// - Throws: `CommitRevert.Missing` when the repository doesn't have the commit.
+    @concurrent
+    public nonisolated func prepareToRevert(_ commit: ObjectID, in worktree: String) async throws -> CommitRevert {
+        guard let info = try await commits([commit]).first ?? nil else { throw CommitRevert.Missing(commit: commit) }
+        return try await CommitRevert.prepare(info, in: worktree, format: location.format, git: git)
+    }
+
+    /// Reverts a commit in a worktree, against its `HEAD`.
+    ///
+    /// - Throws: `GitError` when git refuses, which says why.
+    @concurrent
+    public nonisolated func revert(_ revert: CommitRevert, _ way: CommitRevert.Way, in worktree: String) async throws -> CommitRevert.Outcome {
+        try await revert.run(way, in: worktree, git: git)
+    }
+
+    /// Says whether a worktree is partway through a merge, a rebase or a revert.
     @concurrent
     public nonisolated func stoppedWork(in worktree: String) async throws -> StoppedWork? {
         try await RemoteCommands.stoppedWork(in: worktree, git: git)
@@ -449,7 +486,7 @@ public actor RepositorySession {
         RemoteCommands.stoppedWorkFromFiles(in: worktree)
     }
 
-    /// Goes back to before a merge or a rebase that stopped partway.
+    /// Goes back to before a merge, a rebase or a revert that stopped partway.
     @concurrent
     public nonisolated func abort(_ work: StoppedWork, in worktree: String) async throws {
         _ = try await Self.run(work.abortArguments, in: worktree, git: git)

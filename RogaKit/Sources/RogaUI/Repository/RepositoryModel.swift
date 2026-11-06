@@ -101,6 +101,8 @@ final class RepositoryModel {
     var checkoutFailure: CheckoutFailure?
     /// Going to a commit that's waiting for someone to agree to it.
     var pendingCommitSwitch: PendingCommitSwitch?
+    /// Reverting a commit, while someone chooses whether to commit it.
+    var pendingRevert: CommitRevert?
 
     /// The request whose history has loaded completely.
     @ObservationIgnored private var loaded: LoadRequest?
@@ -135,6 +137,8 @@ final class RepositoryModel {
     /// The running checkout. It isn't tied to any view either, because cancelling
     /// it would stop git while it may be writing the worktree's files.
     @ObservationIgnored private(set) var checkout: Task<Void, Never>?
+    /// Finding out what reverting a commit would come to.
+    @ObservationIgnored private(set) var preparingRevert: Task<Void, Never>?
 
     private struct RowText {
         var subject: String
@@ -193,6 +197,7 @@ final class RepositoryModel {
             selectRow(0)
         }
         branch.showPreview = { [weak self] commits in self?.preview(commits) }
+        branch.stagedFiles = { [weak self] in self?.stagedFiles ?? 0 }
     }
 
     /// The file selected in whichever panel is showing, which the diff panel
@@ -465,6 +470,63 @@ final class RepositoryModel {
         }
     }
 
+    // MARK: Reverting
+
+    /// Whether a commit can be reverted now. git won't start one while the worktree
+    /// is partway through something, and nothing runs alongside what's running.
+    var canRevert: Bool {
+        !branch.isBusy && branch.unfinished == nil && checkout == nil && preparingRevert == nil
+    }
+
+    /// The commit of a row, or nil for the row for uncommitted changes.
+    func commit(atRow row: Int) -> ObjectID? {
+        guard let history, row >= rowOffset, row - rowOffset < history.rows.count else { return nil }
+        return history.graph.id(at: history.rows[row - rowOffset])
+    }
+
+    /// Finds out what reverting a commit in this worktree would come to, and asks
+    /// about it. It always asks, because that's where the choice is.
+    func askToRevert(commit id: ObjectID) {
+        guard canRevert else { return }
+        preparingRevert = Task {
+            do {
+                pendingRevert = try await session.prepareToRevert(id, in: worktree)
+            } catch {
+                branch.failure = BranchModel.Failure(title: "Can't revert \(id.hex.prefix(8))", error: error, changedNothing: true)
+            }
+            preparingRevert = nil
+        }
+    }
+
+    /// Reverts the commit that was asked about, the way someone chose. A revert that
+    /// commits selects its commit. One that leaves its changes staged selects the
+    /// row for them, where the commit box starts with git's message.
+    func confirmRevert(_ way: CommitRevert.Way) {
+        guard let revert = pendingRevert, !branch.isBusy, way == .leavingUncommitted || revert.canCommit else { return }
+        pendingRevert = nil
+        let short = String(revert.commit.hex.prefix(8))
+        branch.run(.reverting, failure: "Can't revert \(short)", changesNothing: true) { [weak self, session, worktree] in
+            switch try await session.revert(revert, way, in: worktree) {
+            case .committed(let id):
+                self?.selectNewCommit(id)
+                return "Reverted \(short)"
+            case .leftUncommitted:
+                self?.selectChangesOnceTheyShow()
+                self?.composer.askForFocus()
+                return nil
+            case .stoppedOnConflicts:
+                let status = try? await session.status(in: worktree)
+                self?.branch.conflict = BranchModel.Conflict(
+                    work: .revert(commit: revert.commit),
+                    files: status?.conflicted.map(\.path) ?? [],
+                    ran: revert.arguments(way),
+                    stagedBefore: way == .leavingUncommitted ? revert.stagedCount : 0
+                )
+                return nil
+            }
+        }
+    }
+
     private func run(_ commitSwitch: CommitSwitch) async {
         await sayingIfSlow(commitSwitch.shortCommit) {
             do {
@@ -509,9 +571,12 @@ final class RepositoryModel {
         // A failure is usually a bare repository, which has no files to list.
         let status = try? await session.status(in: worktree)
         let stopped = try? await session.stoppedWork(in: worktree)
+        // The tooltip names the commit being reverted.
+        var subject: String?
+        if case .revert(let commit?) = stopped { subject = (try? await session.commits([commit]))?.first??.subject }
         guard !Task.isCancelled else { return }
         show(uncommittedFiles: status?.fileCount ?? 0, staged: status?.staged.count ?? 0)
-        show(unfinished: UnfinishedWork(work: stopped, conflicts: status?.conflicted.count ?? 0))
+        show(unfinished: UnfinishedWork(work: stopped, conflicts: status?.conflicted.count ?? 0, subject: subject))
         composer.worktreeIsPartway(through: stopped)
         selectedChanges.refresh()
     }

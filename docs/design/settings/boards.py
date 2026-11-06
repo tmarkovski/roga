@@ -115,8 +115,9 @@ body{margin:0}
 .sh{display:flex;align-items:center;gap:10px;min-height:26px;margin-bottom:4px}
 .sh h3{margin:0;flex:1 1 0;font-size:15px;font-weight:600}
 .sd{margin:0 0 8px;color:var(--tx2);font-size:12.5px;line-height:18px}
-.r{display:flex;align-items:center;gap:16px;min-height:56px;padding:10px 0}
-.r.nh{min-height:46px}
+.r{display:flex;align-items:flex-start;gap:16px;min-height:56px;padding:10px 0}
+.r.nh{min-height:46px;align-items:center}
+.r>.rc{height:18px}
 .r+.r,.r+.blk,.blk+.r,.blk+.blk{border-top:1px solid var(--hair)}
 .blk{padding:12px 0}
 .rl{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:2px}
@@ -142,7 +143,7 @@ body{margin:0}
 .tf::placeholder{color:var(--tx2)}
 .ta{width:100%;min-height:84px;border:1px solid var(--line);border-radius:10px;padding:9px 11px;font:inherit;line-height:1.45;background:var(--sheet);color:var(--tx);resize:none;outline:none;display:block}
 .seg{display:inline-grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:2px;padding:2px;background:var(--card);border-radius:10px}
-.seg button{height:26px;padding:0 11px;border:0;border-radius:8px;background:none;color:var(--tx);font:inherit;font-weight:500;white-space:nowrap;display:grid;place-items:center;cursor:default}
+.seg button{height:26px;padding:0 11px;border:0;border-radius:8px;background:none;color:var(--tx);font:inherit;font-weight:500;white-space:nowrap;display:flex;align-items:center;justify-content:center;gap:6px;cursor:default}
 .seg button .ic{color:var(--tx2)}
 .seg button.on{background:var(--sheet);box-shadow:0 0 0 .5px var(--line),0 1px 2px rgba(0,0,0,.08)}
 .seg button.on .ic{color:var(--tx)}
@@ -172,10 +173,10 @@ body{margin:0}
 .dl.hh{color:var(--tx2);background:var(--card)}
 
 .lst{border:1px solid var(--hair);border-radius:12px;overflow:hidden}
-.ar{display:flex;align-items:center;gap:12px;min-height:58px;padding:10px 12px 10px 14px}
+.ar{display:flex;align-items:flex-start;gap:12px;min-height:58px;padding:10px 12px 10px 14px}
 .ar+.ar{border-top:1px solid var(--hair)}
-.mg{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;font-size:11.5px;font-weight:600;background:var(--card);color:var(--tx);flex:none;letter-spacing:-.01em}
-.ar.off .mg{color:var(--tx2)}
+.ar>.rc,.hk>.rc{height:18px}
+.ar.off .an b,.hk.off .an b{color:var(--tx2)}
 .an{display:flex;flex-direction:column;gap:2px;flex:1 1 0;min-width:0;border:0;background:none;padding:0;font:inherit;color:var(--tx);text-align:left;cursor:default}
 .an b{font-weight:500}
 .ap{font:11.5px ui-monospace,"SF Mono",Menlo,monospace;font-variant-ligatures:none;color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -305,7 +306,7 @@ body{margin:0}
 .lgr svg{width:14px;height:14px;flex:none;display:block}
 .lgr .ref{font:12px ui-monospace,"SF Mono",Menlo,monospace;font-variant-ligatures:none;width:150px;flex:none}
 .lgr .lv{color:var(--tx2)}
-.hk{display:flex;align-items:center;gap:12px;min-height:58px;padding:10px 12px 10px 14px}
+.hk{display:flex;align-items:flex-start;gap:12px;min-height:58px;padding:10px 12px 10px 14px}
 .hk+.hk{border-top:1px solid var(--hair)}
 .okt{color:var(--ok);font-weight:500}
 .ntc{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:12px;background:var(--card);font-size:12.5px;color:var(--tx2)}
@@ -361,15 +362,15 @@ def seg(ctx: Ctx, key: str, options: list[str], selected: str, label: str, icons
         ctx.segs[key] = (options, selected)
     parts = []
     for option in options:
-        inner = ic(icons[option]) if icons else esc(option)
-        aria = f' aria-label="{esc(option)}"' if icons else ""
+        # An icon goes before its word, which says what the icon alone can't.
+        inner = (ic(icons[option]) if icons else "") + esc(option)
         if ctx.live:
             k = seg_key(key, option)
-            parts.append(f'<button class="{{{{sg.{k}}}}}"{aria} onClick="{{{{pick.{k}}}}}">{inner}</button>')
+            parts.append(f'<button class="{{{{sg.{k}}}}}" onClick="{{{{pick.{k}}}}}">{inner}</button>')
         else:
             cls = ' class="on"' if option == selected else ""
             pressed = "true" if option == selected else "false"
-            parts.append(f'<button{cls} aria-pressed="{pressed}"{aria}>{inner}</button>')
+            parts.append(f'<button{cls} aria-pressed="{pressed}">{inner}</button>')
     return f'<div class="seg" role="group" aria-label="{esc(label)}">{"".join(parts)}</div>'
 
 
@@ -500,7 +501,7 @@ def page_general(ctx: Ctx) -> tuple[str, int]:
 def page_appearance(ctx: Ctx) -> tuple[str, int]:
     theme = seg(ctx, "theme", ["System", "Light", "Dark"], "System", "Theme", {"System": "monitor", "Light": "sun", "Dark": "moon"})
     s1 = section("Interface", [
-        row("Theme", theme, cw=110),
+        row("Theme", theme, cw=280),
         row("Text size", popup("Medium"), "For the sidebar, history and file lists. Diffs have their own size below.", cw=110),
     ])
     path = house_path()
@@ -621,20 +622,20 @@ def page_advanced(ctx: Ctx) -> tuple[str, int]:
 
 
 AGENTS = [
-    # key, monogram, name, detail, state
-    ("claude", "Cl", "Claude Code", "~/.local/bin/claude · 2.1.286", "on"),
-    ("codex", "Cx", "Codex", "/opt/homebrew/bin/codex · 0.137.0", "on"),
-    ("cursor", "Cu", "Cursor Agent", "~/.local/bin/cursor-agent · 2025.08.08", "off"),
-    ("ollama", "Ol", "Ollama", "ollama run {model} · your command", "on"),
-    ("gemini", "Ge", "Gemini CLI", "Found at /opt/homebrew/bin/gemini, but it stopped before saying its version: Library not loaded: libsimdjson.29.dylib", "broken"),
-    ("copilot", "Co", "GitHub Copilot CLI", "Not found. It installs with npm install -g @github/copilot.", "missing"),
+    # key, name, detail, state
+    ("claude", "Claude Code", "~/.local/bin/claude · 2.1.286", "on"),
+    ("codex", "Codex", "/opt/homebrew/bin/codex · 0.137.0", "on"),
+    ("cursor", "Cursor Agent", "~/.local/bin/cursor-agent · 2025.08.08", "off"),
+    ("ollama", "Ollama", "ollama run {model} · your command", "on"),
+    ("gemini", "Gemini CLI", "Found at /opt/homebrew/bin/gemini, but it stopped before saying its version: Library not loaded: libsimdjson.29.dylib", "broken"),
+    ("copilot", "GitHub Copilot CLI", "Not found. It installs with npm install -g @github/copilot.", "missing"),
 ]
 
 
 def agent_rows(ctx: Ctx) -> tuple[str, int]:
     rows = []
     height = 0
-    for key, mono, name, detail, state in AGENTS:
+    for key, name, detail, state in AGENTS:
         drill = ' onClick="{{go.%s}}"' % key if ctx.live and key in ("claude", "codex") else ""
         if state in ("on", "off"):
             cls = "ap"
@@ -649,7 +650,7 @@ def agent_rows(ctx: Ctx) -> tuple[str, int]:
             right = f'<button class="lnk">Install {ic("ext", "ic xs")}</button>'
             h = 59
         rows.append(
-            f'<div class="ar{" off" if state in ("off", "missing", "broken") else ""}"><span class="mg" aria-hidden="true">{mono}</span>'
+            f'<div class="ar{" off" if state in ("off", "missing", "broken") else ""}">'
             f'<button class="an"{drill}><b>{esc(name)}</b><span class="{cls}">{esc(detail)}</span></button>'
             f'<div class="rc">{right}</div></div>'
         )
@@ -668,18 +669,18 @@ PLUGINS = "~/Library/Application Support/sh.roga.app/plugins"
 def hook_rows(ctx: Ctx) -> tuple[str, int]:
     install_click = ' onClick="{{openHooks}}"' if ctx.live else ""
     rows = [
-        ('<span class="mg" aria-hidden="true">Cl</span>', "Claude Code",
+        ("Claude Code",
          f'<span class="okt">Installed</span>, as the roga-hooks plugin. Last heard from 2 minutes ago, in acme/api.',
          '<button class="b sec sm">Remove</button>', ""),
-        ('<span class="mg" aria-hidden="true">Cx</span>', "Codex",
+        ("Codex",
          "Not installed. Codex asks you to trust a new hook the first time it runs.",
          f'<button class="b pri sm"{install_click}>Install…</button>', ""),
-        ('<span class="mg" aria-hidden="true">Cu</span>', "Cursor Agent",
+        ("Cursor Agent",
          "Roga doesn't know how to hear from it yet.", "", " off"),
     ]
     out = "".join(
-        f'<div class="hk{off}">{mg}<div class="an"><b>{esc(name)}</b><span class="ap dim">{detail}</span></div><div class="rc">{btn}</div></div>'
-        for mg, name, detail, btn, off in rows
+        f'<div class="hk{off}"><div class="an"><b>{esc(name)}</b><span class="ap dim">{detail}</span></div><div class="rc">{btn}</div></div>'
+        for name, detail, btn, off in rows
     )
     return f'<div class="lst">{out}</div>', 59 + 59 + 59 + 2
 

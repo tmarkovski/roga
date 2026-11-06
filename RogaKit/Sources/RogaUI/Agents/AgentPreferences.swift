@@ -111,15 +111,6 @@ extension AgentKind {
     static func effortTitle(_ effort: String) -> String {
         effort.isEmpty ? "Default" : effort.prefix(1).uppercased() + effort.dropFirst()
     }
-
-    /// The two letters on the agent's tile in Settings, as on the design
-    /// canvas, since Roga doesn't draw the agents' own logos.
-    var monogram: String {
-        switch self {
-        case .claude: "Cl"
-        case .codex: "Cx"
-        }
-    }
 }
 
 /// What's chosen for one agent, as UserDefaults has it, with each default

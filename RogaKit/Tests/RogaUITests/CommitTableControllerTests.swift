@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import Testing
 @testable import CommitGraph
+import GitCore
 @testable import HistoryUI
 
 /// How the commit list reports its selection. Only what the user does is
@@ -132,7 +133,11 @@ struct CommitTableBadgeTests {
         var checkedOut: [Badge] = []
         var wentTo: [Int] = []
         var deleted: [[String]] = []
+        var reverted: [ObjectID] = []
         var isBusy = false
+        var canRevert = true
+        /// The commit of each row, which changes when history loads again.
+        var commits: [ObjectID?] = (0..<3).map { CommitTableBadgeTests.commit($0) }
         private(set) lazy var controller = CommitTableController(source: CommitTableController.Source(
             count: { 3 },
             content: { CommitTableBadgeTests.content(ofRow: $0) },
@@ -141,7 +146,10 @@ struct CommitTableBadgeTests {
             checkOut: { [unowned self] in checkedOut.append($0) },
             goToRow: { [unowned self] in wentTo.append($0) },
             deleteBranches: { [unowned self] in deleted.append($0) },
-            isBusy: { [unowned self] in isBusy }
+            isBusy: { [unowned self] in isBusy },
+            commitOfRow: { [unowned self] in commits[$0] },
+            revert: { [unowned self] in reverted.append($0) },
+            canRevert: { [unowned self] in canRevert }
         ))
 
         init() {
@@ -160,6 +168,10 @@ struct CommitTableBadgeTests {
         }
     }
 
+    static func commit(_ number: Int) -> ObjectID {
+        ObjectID(hex: String(repeating: String(number), count: 40))!
+    }
+
     static func content(ofRow row: Int) -> CommitRowContent {
         let badges = switch row {
         case 1: badges
@@ -169,11 +181,29 @@ struct CommitTableBadgeTests {
         return CommitRowContent(shortID: "abcd1234", badges: badges, subject: "A subject")
     }
 
-    @Test func aRowsMenuHasOneItemForDeleting() throws {
+    @Test func aRowsMenuRevertsItsCommitThenDeletesItsBranches() throws {
         let list = List()
         let menu = try #require(list.controller.menu(forRow: 1))
-        #expect(menu.items.map(\.title) == ["Delete…"])
+        #expect(menu.items.map(\.title) == ["Revert…", "Delete…"])
         #expect(!menu.items[0].isSectionHeader)
+    }
+
+    @Test func revertsTheCommitTheMenuWasOpenedOn() throws {
+        let list = List()
+        let menu = try #require(list.controller.menu(forRow: 1))
+        // History loads again while the menu is open, and another commit takes the row.
+        list.commits[1] = CommitTableBadgeTests.commit(9)
+        _ = (menu.items[0].target as? NSObject)?.perform(menu.items[0].action, with: menu.items[0])
+        #expect(list.reverted == [CommitTableBadgeTests.commit(1)])
+        #expect(list.deleted.isEmpty)
+    }
+
+    @Test func revertIsDisabledWhenItCantRunNow() throws {
+        let list = List()
+        list.canRevert = false
+        let menu = try #require(list.controller.menu(forRow: 1))
+        #expect(!menu.items[0].isEnabled)
+        #expect(menu.items[1].isEnabled)
     }
 
     @Test func listsEveryBranchWithLocalOnesFirstAndRemoteOnesFromAToZ() {
@@ -285,18 +315,18 @@ struct CommitTableBadgeTests {
     @Test func aRowsMenuAsksAboutEveryBranchOnTheCommit() throws {
         let list = List()
         let menu = try #require(list.controller.menu(forRow: 1))
-        let item = menu.items[0]
+        let item = menu.items[1]
         _ = (item.target as? NSObject)?.perform(item.action, with: item)
         #expect(list.deleted == [["refs/heads/main", "refs/heads/feature", "refs/remotes/origin/feature"]])
     }
 
-    @Test func aRowsMenuIsDisabledWhileSomethingRuns() throws {
+    @Test func deletingIsDisabledWhileSomethingRuns() throws {
         let list = List()
-        #expect(try #require(list.controller.menu(forRow: 1)).items[0].isEnabled)
+        #expect(try #require(list.controller.menu(forRow: 1)).items[1].isEnabled)
         list.isBusy = true
         let menu = try #require(list.controller.menu(forRow: 1))
         #expect(!menu.autoenablesItems)
-        #expect(!menu.items[0].isEnabled)
+        #expect(!menu.items[1].isEnabled)
     }
 
     @Test func theRowForUncommittedChangesOffersToDiscardThem() throws {
@@ -321,10 +351,10 @@ struct CommitTableBadgeTests {
         #expect(try #require(controller.menu(forRow: 0)).items[0].isEnabled == false)
     }
 
-    @Test func aRowWithoutBranchesHasNoMenu() {
+    @Test func aRowWithoutBranchesCanOnlyBeReverted() throws {
         let list = List()
-        #expect(list.controller.menu(forRow: 0) == nil)
-        #expect(list.controller.menu(forRow: 2) == nil)
+        #expect(try #require(list.controller.menu(forRow: 0)).items.map(\.title) == ["Revert…"])
+        #expect(try #require(list.controller.menu(forRow: 2)).items.map(\.title) == ["Revert…"])
     }
 
     /// A right-click in the middle of a row, as the table gets it.
@@ -371,6 +401,8 @@ struct CommitTableBadgeTests {
 
     @Test func aRowWithoutAMenuHasNoOutlineToOpen() throws {
         let list = List()
+        // Every commit can be reverted, so only a row without one has no menu.
+        list.commits[0] = nil
         #expect(list.table.menu(for: try Self.rightClick(onRow: 0, in: list.table)) == nil)
     }
 

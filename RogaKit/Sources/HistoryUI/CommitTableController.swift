@@ -1,4 +1,5 @@
 import AppKit
+import GitCore
 import MenuUI
 
 /// The commit list: a view-based `NSTableView` whose rows have a fixed
@@ -35,6 +36,12 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
         public var deleteBranches: ([String]) -> Void
         /// Whether something's running that deleting a branch has to wait for.
         public var isBusy: () -> Bool
+        /// The commit of a row, or nil for the row for uncommitted changes.
+        public var commitOfRow: (Int) -> ObjectID?
+        /// Says that the user chose to revert a commit.
+        public var revert: (ObjectID) -> Void
+        /// Whether a commit can be reverted now.
+        public var canRevert: () -> Bool
         /// Says that the user chose to discard everything uncommitted.
         public var discardChanges: () -> Void
         /// Whether everything uncommitted can go now.
@@ -49,6 +56,9 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
             goToRow: @escaping (Int) -> Void = { _ in },
             deleteBranches: @escaping ([String]) -> Void = { _ in },
             isBusy: @escaping () -> Bool = { false },
+            commitOfRow: @escaping (Int) -> ObjectID? = { _ in nil },
+            revert: @escaping (ObjectID) -> Void = { _ in },
+            canRevert: @escaping () -> Bool = { true },
             discardChanges: @escaping () -> Void = {},
             canDiscardChanges: @escaping () -> Bool = { true }
         ) {
@@ -60,6 +70,9 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
             self.goToRow = goToRow
             self.deleteBranches = deleteBranches
             self.isBusy = isBusy
+            self.commitOfRow = commitOfRow
+            self.revert = revert
+            self.canRevert = canRevert
             self.discardChanges = discardChanges
             self.canDiscardChanges = canDiscardChanges
         }
@@ -232,10 +245,11 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
         }
     }
 
-    /// What right-clicking a row offers, which is one item for deleting, whatever
-    /// points to its commit (decision 38). Its dialog lists the branches and holds the
-    /// choice, including those whose badges don't fit in the row. A row with no branch
-    /// that could go has no menu.
+    /// What right-clicking a row offers. Every commit can be reverted, with the choice
+    /// of committing that in its dialog (decision 44). A commit with a branch that could
+    /// go also has one item for deleting, whatever points to it (decision 38). Its
+    /// dialog lists the branches and holds the choice, including those whose badges
+    /// don't fit in the row.
     func menu(forRow row: Int) -> NSMenu? {
         let content = source.content(row)
         if content.isWorkingTree {
@@ -245,13 +259,21 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
                 },
             ])
         }
-        guard content.hasBranchThatCanGo else { return nil }
-        let branches = content.branches
-        return RefMenu.make([
-            .command("Delete…", isDestructive: true, isEnabled: !source.isBusy()) { [weak self] in
+        var entries: [RefMenu.Entry] = []
+        // The commit, rather than the row, because history can load again while the
+        // menu is open, and the rows move.
+        if let commit = source.commitOfRow(row) {
+            entries.append(.command("Revert…", isEnabled: source.canRevert()) { [weak self] in
+                self?.source.revert(commit)
+            })
+        }
+        if content.hasBranchThatCanGo {
+            let branches = content.branches
+            entries.append(.command("Delete…", isDestructive: true, isEnabled: !source.isBusy()) { [weak self] in
                 self?.source.deleteBranches(branches)
-            },
-        ])
+            })
+        }
+        return entries.isEmpty ? nil : RefMenu.make(entries)
     }
 
     @objc private func visibleRowsMayHaveChanged(_ notification: Notification) {

@@ -1,6 +1,6 @@
 # 26. A fetch shows only its words
 
-Accepted on 2026-11-04.
+Accepted on 2026-11-04. Partly superseded by [decision 45](0045-fetch-and-new-branch-as-buttons-and-the-commit-count-with-history.md), which turns the Fetch button while a fetch runs, so that neither **Fetching…** nor **Fetched** opens in the title row. Its last consequence, the counts' room opening a frame at a time as they come back, still holds.
 
 ## Context
 

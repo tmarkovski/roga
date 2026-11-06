@@ -27,6 +27,10 @@ struct DialogText: Equatable, ExpressibleByStringInterpolation {
         mutating func appendInterpolation(code: String) {
             parts.append(.code(code))
         }
+
+        mutating func appendInterpolation(_ text: DialogText) {
+            parts += text.parts
+        }
     }
 
     var parts: [Part]
@@ -167,6 +171,9 @@ struct DialogButton {
     var title: String
     var kind: Kind
     var isEnabled = true
+    /// Whether Return presses it, when it's the primary button. It doesn't when
+    /// what's being asked is probably a slip, so that it takes a click.
+    var pressesWithReturn = true
     /// What the terminal block shows while the pointer is on this button, when that
     /// isn't what it usually shows. It needs as many lines, because a sheet can't
     /// change size.

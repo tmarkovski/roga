@@ -111,7 +111,7 @@ enum IndexCommands {
     /// the lines git would leave out as comments.
     static func message(for work: StoppedWork, in worktree: String, git: Git) async throws -> String? {
         let name = switch work {
-        case .merge: "MERGE_MSG"
+        case .merge, .revert: "MERGE_MSG"
         case .rebase: "rebase-merge/message"
         }
         let path = try await git.text(GitCommand("rev-parse", "--path-format=absolute", "--git-path", name, in: worktree))

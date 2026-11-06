@@ -85,8 +85,6 @@ struct AgentPreferencesTests {
         #expect(AgentKind.effortChoices.map(AgentKind.effortTitle) == ["Default", "Low", "Medium", "High"])
         #expect(AgentKind.claude.modelChoices == ["", "haiku", "sonnet", "opus"])
         #expect(AgentKind.codex.modelChoices == [""])
-        #expect(AgentKind.claude.monogram == "Cl")
-        #expect(AgentKind.codex.monogram == "Cx")
     }
 
     // MARK: Splitting arguments

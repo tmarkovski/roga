@@ -33,16 +33,18 @@ enum RemoteCommands {
         return command
     }
 
-    /// Says whether a worktree is partway through a merge or a rebase, whoever
-    /// started it. A pull that hit a conflict leaves it that way.
+    /// Says whether a worktree is partway through a merge, a rebase or a revert,
+    /// whoever started it. A pull that hit a conflict leaves it that way, and so
+    /// does a revert that hit one or was left uncommitted.
     static func stoppedWork(in worktree: String, git: Git) async throws -> StoppedWork? {
         let command = GitCommand(
-            "rev-parse", "--path-format=absolute", "--git-path", "MERGE_HEAD", "--git-path", "rebase-merge", "--git-path", "rebase-apply",
+            "rev-parse", "--path-format=absolute",
+            "--git-path", "MERGE_HEAD", "--git-path", "rebase-merge", "--git-path", "rebase-apply", "--git-path", "REVERT_HEAD",
             in: worktree
         )
         let paths = try await git.text(command).split(separator: "\n").map(String.init)
-        guard paths.count == 3 else { return nil }
-        return stoppedWork(mergeHead: paths[0], rebaseFolders: Array(paths[1...]))
+        guard paths.count == 4 else { return nil }
+        return stoppedWork(mergeHead: paths[0], rebaseFolders: [paths[1], paths[2]], revertHead: paths[3])
     }
 
     /// Says the same by reading the worktree's own git directory, without git,
@@ -52,17 +54,21 @@ enum RemoteCommands {
         guard let directory = gitDirectory(ofWorktree: worktree) else { return nil }
         return stoppedWork(
             mergeHead: directory + "/MERGE_HEAD",
-            rebaseFolders: [directory + "/rebase-merge", directory + "/rebase-apply"]
+            rebaseFolders: [directory + "/rebase-merge", directory + "/rebase-apply"],
+            revertHead: directory + "/REVERT_HEAD"
         )
     }
 
-    private static func stoppedWork(mergeHead: String, rebaseFolders: [String]) -> StoppedWork? {
+    private static func stoppedWork(mergeHead: String, rebaseFolders: [String], revertHead: String) -> StoppedWork? {
         if FileManager.default.fileExists(atPath: mergeHead) { return .merge }
         for folder in rebaseFolders where FileManager.default.fileExists(atPath: folder) {
             // `git am` uses this folder too, and `git rebase --abort` won't undo it.
             if FileManager.default.fileExists(atPath: folder + "/applying") { return nil }
             let head = (try? String(contentsOfFile: folder + "/head-name", encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines)
             return .rebase(branch: head?.hasPrefix("refs/heads/") == true ? head : nil)
+        }
+        if let text = try? String(contentsOfFile: revertHead, encoding: .utf8) {
+            return .revert(commit: ObjectID(hex: text.trimmingCharacters(in: .whitespacesAndNewlines)))
         }
         return nil
     }
