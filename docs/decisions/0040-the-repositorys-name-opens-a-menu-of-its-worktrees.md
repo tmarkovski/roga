@@ -1,6 +1,6 @@
 # 40. The repository's name opens a menu of its worktrees
 
-Accepted on 2026-11-05. This changes how the title row starts, which [decision 19](0019-pull-and-push-from-the-branch-in-the-title-row.md) set as the repository's name in plain text, and fixes [issue 12](https://github.com/tmarkovski/yaga/issues/12) for every menu that `RefMenu` draws.
+Accepted on 2026-11-05. This changes how the title row starts, which [decision 19](0019-pull-and-push-from-the-branch-in-the-title-row.md) set as the repository's name in plain text, and fixes [issue 12](https://github.com/tmarkovski/yaga/issues/12) for every menu that `RefMenu` draws. [Decision 41](0041-agents-status-from-their-hooks-and-messages-from-their-clis.md) adds the agent's status at the front of the second line, where this one left room for it.
 
 ## Context
 

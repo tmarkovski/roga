@@ -1,6 +1,6 @@
 # 11. Keep the Xcode project thin and the code in a local Swift package
 
-Accepted on 2026-11-01.
+Accepted on 2026-11-01. [Decision 41](0041-agents-status-from-their-hooks-and-messages-from-their-clis.md) adds a second target, `RogaHelper`, which builds the `roga` helper that agents' hooks run into the app's `Contents/Helpers`. Its code is in the package too, so the rest of this decision still holds.
 
 ## Context
 

@@ -48,6 +48,7 @@ We drew six layouts at 1440 by 860 on the design canvas's Commit page: the panel
 | Stage All | Option-Command-S |
 | Unstage All | Shift-Option-Command-S |
 | Write Commit Message | Command-L |
+| Generate Message, added by [decision 41](0041-agents-status-from-their-hooks-and-messages-from-their-clis.md) | Option-Command-L |
 | Commit | Command-Return |
 | Commit and Push | Shift-Command-Return |
 | Amend | Option-Command-Return |

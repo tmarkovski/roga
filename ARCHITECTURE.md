@@ -11,23 +11,25 @@ A window has a sidebar that lists every repository the user has added, with its 
 From the bottom up, the code is in these layers:
 
 1. **Git itself.** This layer covers the object IDs, refs, commits, status entries and diffs that Roga works with, and parsers for the git output that describes them.
-2. **Running git and reading its files.** One module starts git processes, and another reads commit-graph files and lays out history.
-3. **Repository sessions.** This layer loads and caches what each repository contains, watches it for changes, and publishes snapshots.
+2. **Running git and reading its files.** One module starts git and every other program Roga runs, and another reads commit-graph files and lays out history.
+3. **Repository sessions and agents.** This layer loads and caches what each repository contains, watches it for changes, and publishes snapshots. Beside it, two modules deal with coding agents (decision 41): one finds them, installs their hooks and runs them to write commit messages, and the other hears their hooks through a socket and works out what each session is doing.
 4. **Views.** The commit list and the diff view are AppKit. The window, the sidebar, the refs panel, details and settings are SwiftUI.
-5. **The app target.** This holds the entry point, Sparkle, and the resources that only an app bundle can have.
+5. **The app target and the helper.** The app target holds the entry point, Sparkle, and the resources that only an app bundle can have. The helper, `roga`, is the small program every agent hook runs, which ships inside the app.
 
 ## Project layout
 
-The Xcode project contains only the app target, and it's saved in Xcode's JSON format. Everything else is in a local Swift package called RogaKit, which the app depends on (decision 11). The package and its modules exist, but most of the files below are still to be written. Their names show where things go and will change as the code is written.
+The Xcode project has two targets, the app and `RogaHelper`, which builds the `roga` helper into the app's `Contents/Helpers`, and it's saved in Xcode's JSON format. Everything else is in a local Swift package called RogaKit, which both depend on (decision 11). The package and its modules exist, but most of the files below are still to be written. Their names show where things go and will change as the code is written.
 
 ```text
 roga/
-├── Roga.xcodeproj/                 JSON project file (project.xcproj) with only the app target
+├── Roga.xcodeproj/                 JSON project file (project.xcproj) with the app and the helper
 ├── App/                            the app target
 │   ├── RogaApplication.swift       entry point, scenes, Sparkle updater
 │   ├── CheckForUpdatesButton.swift
 │   ├── Info.plist                  Sparkle's feed address and public key
 │   └── AppIcon.icon                the app icon, in Icon Composer's format
+├── Helper/
+│   └── main.swift                  the roga helper that agents' hooks run, which calls HookHelper.main()
 ├── RogaKit/                        the local Swift package
 │   ├── Package.swift
 │   ├── Sources/
@@ -54,6 +56,8 @@ roga/
 │   │   │   ├── GitInstallation.swift   finding git and checking its version
 │   │   │   ├── GitVersion.swift        reading git version and the 2.44 minimum
 │   │   │   ├── LoginShellPath.swift    the PATH from the user's login shell
+│   │   │   ├── ExecutableSearch.swift  finding a program in PATH and in well-known folders
+│   │   │   ├── Program.swift           running programs other than git, such as the agents
 │   │   │   ├── Spawn.swift             posix_spawn, process exit, stopping a process group
 │   │   │   ├── Pipes.swift             reading and writing pipes with DispatchIO
 │   │   │   ├── GitCommand.swift        the arguments, options and environment of one command
@@ -78,9 +82,25 @@ roga/
 │   │   │   ├── BranchDeletion.swift    what deleting a branch would lose, and deleting it
 │   │   │   ├── WorktreeDeletion.swift  what deleting a linked worktree would lose
 │   │   │   ├── DiffLoader.swift        the files a commit changed, and their patches
+│   │   │   ├── StagedChanges.swift     what's staged, cut down to what an agent can read quickly
 │   │   │   ├── RepositoryWatcher.swift FSEvents
 │   │   │   ├── CommitGraphUpkeep.swift decision 6
 │   │   │   └── Snapshots.swift
+│   │   ├── AgentHooks/                 system frameworks only, decision 41
+│   │   │   ├── HookHelper.swift        what the roga helper does with one hook
+│   │   │   ├── HookEvent.swift         the one line of JSON it sends
+│   │   │   ├── HookSocket.swift        where the socket is
+│   │   │   ├── HookListener.swift      the app's end of the socket
+│   │   │   ├── AgentProcess.swift      the agent's process, found by walking up from the helper
+│   │   │   └── AgentSessions.swift     what the events say each session is doing
+│   │   ├── AgentEngine/                decision 41
+│   │   │   ├── AgentKind.swift         Claude Code and Codex
+│   │   │   ├── AgentInstallation.swift finding an agent and its version
+│   │   │   ├── HookPlugin.swift        the roga-hooks plugin's files
+│   │   │   ├── HookInstaller.swift     installing and removing it with each agent's commands, and its status
+│   │   │   ├── ClaudeSessionList.swift reading claude agents --json
+│   │   │   ├── CodexConfiguration.swift what Roga reads in Codex's config.toml
+│   │   │   └── CommitMessage*.swift    the request, the prompt, the command, the reply and cleaning it up
 │   │   ├── IconUI/                     AppKit and SwiftUI, decision 24
 │   │   │   ├── Icon.swift              an icon as an image, and which icon stands for what in Roga
 │   │   │   ├── GeneratedIcons.swift    every icon's name, written by Scripts/generate-icons.swift
@@ -102,6 +122,7 @@ roga/
 │   │   │   ├── DiffTextBuilder.swift   attributed text, laid out ahead of time
 │   │   │   └── ChangedWords.swift      which words of changed lines differ
 │   │   ├── RogaUI/                     SwiftUI
+│   │   │   ├── Agents/                 finding agents, the marks, and what each worktree's agents are doing
 │   │   │   ├── Workspace/              windows, finding git, the sidebar and the saved list of repositories
 │   │   │   ├── Repository/             the repository model, panels, the refs panel, commit details
 │   │   │   ├── Dialogs/                the sheet for everything Roga asks or reports, with its command (decision 29)
@@ -115,6 +136,8 @@ roga/
 │       ├── GitRunnerTests/
 │       ├── CommitGraphTests/
 │       ├── RepositoryEngineTests/
+│       ├── AgentHooksTests/            the helper, the socket and what events mean
+│       ├── AgentEngineTests/           finding agents, their hooks and the commit message, with fake agents
 │       ├── DiffUITests/                the text a patch shows, and handing documents between text views
 │       ├── RogaUITests/                the list of repositories, the models windows keep, and selecting commits and files
 │       ├── TestSupport/                the git the tests run, and the test repositories
@@ -139,18 +162,22 @@ roga/
 | `GitRunner` | Finding git and checking its version, starting git, streaming its output, cancelling it, the long-running `cat-file` process, and the log of commands | `GitCore` | Foundation |
 | `CommitGraph` | Reading commit-graph files and split chains through memory mapping, ordering history, and laying out graph lanes | `GitCore` | Foundation |
 | `RepositoryEngine` | One session per repository: loading and caching history, refs, worktrees, status and diffs, watching the file system, keeping the commit-graph file current, and publishing snapshots | `GitCore`, `GitRunner`, `CommitGraph` | Foundation, CoreServices |
+| `AgentHooks` | The `roga` helper's work, the socket the app listens on, finding an agent's process, and what hook events say each session is doing | nothing | Foundation, Darwin, Dispatch, Synchronization |
+| `AgentEngine` | Finding Claude Code and Codex, installing Roga's hooks in them, asking Claude Code what's running, and running an agent to write a commit message | `GitCore`, `GitRunner` | Foundation |
 | `IconUI` | The app's icons, as custom symbols, and which icon stands for what | nothing | AppKit, SwiftUI |
 | `MenuUI` | The menu for right-clicking a ref or a sidebar row, which the commit list, the refs panel and the sidebar share, and the title row's menu of worktrees | `IconUI` | AppKit |
 | `HistoryUI` | The commit list: the table, drawing rows and graph lanes, keyboard handling and accessibility | `GitCore`, `CommitGraph`, `IconUI`, `MenuUI` | AppKit |
 | `DiffUI` | The diff view: the TextKit 1 text view, line numbers, line backgrounds, and building attributed text | `GitCore` | AppKit |
 | `RogaUI` | Windows, the sidebar, the refs panel, details, settings, menus and onboarding, and the main-actor models that connect sessions to views | all of the above | SwiftUI, AppKit |
 | App target | The entry point, Sparkle, the Info.plist and assets | `RogaUI`, Sparkle | SwiftUI |
+| `RogaHelper` target | The `roga` helper, built into `Contents/Helpers` | `AgentHooks` | Foundation |
 | `roga-bench` | Benchmarks for the performance targets in the roadmap | `GitCore`, `GitRunner`, `CommitGraph`, `RepositoryEngine`, `HistoryUI`, `DiffUI` | AppKit |
 
 These rules keep the layers apart:
 
 - `GitCore`, `GitRunner`, `CommitGraph` and `RepositoryEngine` never import AppKit or SwiftUI. They can be tested and benchmarked without a window.
-- Only `GitRunner` starts processes. Views never run git. They ask a session, and the session decides what to run.
+- Only `GitRunner` starts processes. Views never run git. They ask a session, and the session decides what to run. The agents run through the same `Programs`, with the same command log.
+- `AgentHooks` uses only what ships with macOS and Swift (Foundation, Darwin, Dispatch and Synchronization) and no other module, because the helper links it and runs on every tool call an agent makes.
 - `HistoryUI` and `DiffUI` don't know about sessions. They take plain data and closures, so the benchmark tool can drive them with real data and no app around them.
 - Sparkle is linked only into the app target.
 - Icons come from `IconUI`, never from SF Symbols, and a test checks that (decision 24). A control with only an icon names itself with `accessibilityLabel`, because an icon says nothing to VoiceOver.
@@ -361,6 +388,15 @@ Wherever `/usr/bin/git` comes up in the search, Roga runs it only if `xcode-sele
 The project and CI use Xcode 27.2, because of the JSON project format. CI runs on GitHub's `xcode-27` runner image. For now it runs only when started by hand, from the Actions tab or with `gh workflow run ci.yml`, to save macOS runner minutes. It builds and tests RogaKit twice, once with git 2.44.0, which `Scripts/build-git.sh` builds from source and CI caches, and once with the git that comes with the image. It also builds the app.
 
 The app's bundle identifier is `sh.roga.app`, and the app is named Roga. It isn't sandboxed, and the hardened runtime that notarization requires is turned on by a build setting, so the app needs no entitlements file. Development builds are signed to run locally and don't need a developer account.
+
+The `roga` helper is built by its own target and copied into `Contents/Helpers`, signed on copy with the app's identity (decision 41). A few of its settings aren't obvious:
+
+- The target is called `RogaHelper` and its module `RogaHelper`, while its product is `roga`. On a disk that ignores case, a target named `roga` shares `Roga.build` with the app and picks up the app's generated files, and a module named `roga` overwrites the app's in the products folder.
+- `SKIP_INSTALL=YES` keeps the archive an app archive, so exporting it still works.
+- `ENTITLEMENTS_REQUIRED=NO`, because a command-line tool defaults to signing with an application identifier the app doesn't have.
+- An Info.plist built into the binary gives it the signing identifier `sh.roga.app.helper`.
+
+`roga --version` prints which app the helper is inside, and which version, which is the quickest check that a build carries it.
 
 `Scripts/release.sh` archives the app, signs it with a Developer ID, notarizes and staples it, zips it, and adds it to the Sparkle appcast (decision 1). The zips are published as GitHub releases, and the appcast at `https://roga.sh/appcast.xml`. [docs/releasing.md](docs/releasing.md) describes the one-time setup and the steps for each release. Sparkle starts only when the Info.plist has the public key that updates are signed with, so development builds never look for updates.
 
