@@ -142,7 +142,7 @@ body{margin:0}
 .tf::placeholder{color:var(--tx2)}
 .ta{width:100%;min-height:84px;border:1px solid var(--line);border-radius:10px;padding:9px 11px;font:inherit;line-height:1.45;background:var(--sheet);color:var(--tx);resize:none;outline:none;display:block}
 .seg{display:inline-grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:2px;padding:2px;background:var(--card);border-radius:10px}
-.seg button{height:26px;padding:0 11px;border:0;border-radius:8px;background:none;color:var(--tx);font:inherit;font-weight:500;white-space:nowrap;display:grid;place-items:center;cursor:default}
+.seg button{height:26px;padding:0 11px;border:0;border-radius:8px;background:none;color:var(--tx);font:inherit;font-weight:500;white-space:nowrap;display:flex;align-items:center;justify-content:center;gap:6px;cursor:default}
 .seg button .ic{color:var(--tx2)}
 .seg button.on{background:var(--sheet);box-shadow:0 0 0 .5px var(--line),0 1px 2px rgba(0,0,0,.08)}
 .seg button.on .ic{color:var(--tx)}
@@ -361,15 +361,15 @@ def seg(ctx: Ctx, key: str, options: list[str], selected: str, label: str, icons
         ctx.segs[key] = (options, selected)
     parts = []
     for option in options:
-        inner = ic(icons[option]) if icons else esc(option)
-        aria = f' aria-label="{esc(option)}"' if icons else ""
+        # An icon goes before its word, which says what the icon alone can't.
+        inner = (ic(icons[option]) if icons else "") + esc(option)
         if ctx.live:
             k = seg_key(key, option)
-            parts.append(f'<button class="{{{{sg.{k}}}}}"{aria} onClick="{{{{pick.{k}}}}}">{inner}</button>')
+            parts.append(f'<button class="{{{{sg.{k}}}}}" onClick="{{{{pick.{k}}}}}">{inner}</button>')
         else:
             cls = ' class="on"' if option == selected else ""
             pressed = "true" if option == selected else "false"
-            parts.append(f'<button{cls} aria-pressed="{pressed}"{aria}>{inner}</button>')
+            parts.append(f'<button{cls} aria-pressed="{pressed}">{inner}</button>')
     return f'<div class="seg" role="group" aria-label="{esc(label)}">{"".join(parts)}</div>'
 
 
@@ -500,7 +500,7 @@ def page_general(ctx: Ctx) -> tuple[str, int]:
 def page_appearance(ctx: Ctx) -> tuple[str, int]:
     theme = seg(ctx, "theme", ["System", "Light", "Dark"], "System", "Theme", {"System": "monitor", "Light": "sun", "Dark": "moon"})
     s1 = section("Interface", [
-        row("Theme", theme, cw=110),
+        row("Theme", theme, cw=280),
         row("Text size", popup("Medium"), "For the sidebar, history and file lists. Diffs have their own size below.", cw=110),
     ])
     path = house_path()
