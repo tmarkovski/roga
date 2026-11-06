@@ -27,7 +27,7 @@ struct BranchControl: View {
 
 /// The branch's name, which opens the menu with everything that can be done.
 private struct BranchChip: View {
-    @Bindable var branch: BranchModel
+    let branch: BranchModel
     let worktree: Worktree
     let switchBranch: (() -> Void)?
     let showWorktree: (String, ObjectID?) -> Void
@@ -48,6 +48,9 @@ private struct BranchChip: View {
                 } else {
                     Text(worktree.title)
                         .truncationMode(.middle)
+                        // A few letters at each end, so that the repository's
+                        // name truncates before this goes altogether.
+                        .frame(minWidth: Self.shortestNameWidth(worktree.title))
                 }
                 Icon.dropdown.image
                     .font(.system(size: 10, weight: .semibold))
@@ -61,7 +64,7 @@ private struct BranchChip: View {
             .frame(height: 26)
             .background {
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(branch.isCreatingBranch ? Palette.selection : isHovering ? Palette.hover : .clear)
+                    .fill(isHovering ? Palette.hover : .clear)
             }
             .contentShape(Rectangle())
             .onHover { isHovering = $0 }
@@ -71,9 +74,99 @@ private struct BranchChip: View {
         .menuIndicator(.hidden)
         .help(branch.summary())
         .accessibilityLabel("Branch \(worktree.title)")
+    }
+
+    /// How narrow the branch's name can get: all of a short one, and otherwise
+    /// about two letters, an ellipsis and two letters.
+    private static func shortestNameWidth(_ name: String) -> Double {
+        let width = (name as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 13)]).width.rounded(.up)
+        return min(width, 40)
+    }
+}
+
+/// Fetch and New Branch, as icons at the right end of the title row, before
+/// history's commands (decision 45). They stay where they are while the branch's
+/// name and counts change. The branch's menu has both as well.
+struct BranchButtons: View {
+    let branch: BranchModel
+    let worktree: Worktree
+    /// Shows one of the repository's worktrees in the window.
+    let showWorktree: (String, ObjectID?) -> Void
+
+    var body: some View {
+        HStack(spacing: 2) {
+            FetchButton(branch: branch)
+            NewBranchButton(branch: branch, worktree: worktree, showWorktree: showWorktree)
+        }
+    }
+}
+
+/// Fetches from the branch's remote. Its icon turns while any fetch runs, the
+/// one Roga starts by itself included, so that nothing opens in the title row
+/// for a fetch. Clicking it during one Roga started stops that and fetches
+/// again, so that anything that goes wrong is reported.
+private struct FetchButton: View {
+    let branch: BranchModel
+    @Environment(\.accessibilityReduceMotion) private var reducesMotion
+
+    var body: some View {
+        // Often enough to keep "Last fetched 4 min ago" right in the tooltip.
+        TimelineView(.periodic(from: .now, by: 30)) { context in
+            Button(action: branch.fetch) {
+                Icon.fetch.image
+                    .modifier(Turning(isTurning: branch.isFetching, reducesMotion: reducesMotion))
+            }
+            .buttonStyle(.icon)
+            .disabled(branch.status?.remote == nil)
+            .help(branch.fetchHelp(now: context.date))
+            .accessibilityLabel("Fetch")
+            .accessibilityValue(branch.isFetching ? "Fetching" : "")
+        }
+    }
+}
+
+/// Turns an icon round, once a second, for as long as something runs. It
+/// finishes the turn it's on rather than snapping back, so even a quick fetch
+/// shows a whole turn. Someone who asked for less motion sees it fade in and out
+/// instead.
+private struct Turning: ViewModifier {
+    let isTurning: Bool
+    let reducesMotion: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .symbolEffect(.rotate.clockwise.wholeSymbol, options: .repeat(.continuous).speed(2), isActive: isTurning && !reducesMotion)
+            .symbolEffect(.pulse.wholeSymbol, options: .repeat(.continuous), isActive: isTurning && reducesMotion)
+    }
+}
+
+/// Opens the popover for a new branch, which hangs from this button however it
+/// was asked for: here, from the branch's menu, with Shift-Command-B, or from
+/// New Worktree… in the menu of the repository's worktrees.
+private struct NewBranchButton: View {
+    @Bindable var branch: BranchModel
+    let worktree: Worktree
+    let showWorktree: (String, ObjectID?) -> Void
+
+    var body: some View {
+        Button {
+            branch.isCreatingBranch = true
+        } label: {
+            Icon.newBranch.image
+        }
+        .buttonStyle(.icon(isOn: branch.isCreatingBranch))
+        .help(help)
+        .accessibilityLabel("New Branch")
         .popover(isPresented: $branch.isCreatingBranch, arrowEdge: .bottom) {
             NewBranchPopover(branch: branch, showWorktree: showWorktree)
         }
+    }
+
+    /// Where the new branch starts, as in `New Branch from main`.
+    private var help: String {
+        if let name = worktree.branch { return "New Branch from \(Ref.shortName(name))" }
+        if let head = worktree.head { return "New Branch from \(head.hex.prefix(8))" }
+        return "New Branch"
     }
 }
 
@@ -127,7 +220,8 @@ struct BranchMenuItems: View {
 /// house zooms in, then the words come out beside it and move what's to their
 /// right along. When git is done the words change to what happened and the house
 /// zooms out, and when those words have had their moment, they close up again.
-/// A fetch has no house, so only its words come and go.
+/// A commit has no house, so only its words come and go. A fetch shows nothing
+/// here, because the Fetch button turns instead (decision 45).
 private struct BranchCounts: View {
     /// How the title row moves from one step to the next.
     private enum Motion {
@@ -161,7 +255,7 @@ private struct BranchCounts: View {
     @Environment(\.accessibilityReduceMotion) private var reducesMotion
 
     private var activity: Activity {
-        if let action = branch.action { .running(action) }
+        if let action = branch.action, action != .fetching { .running(action) }
         else if let finished = branch.finished { .finished(finished) }
         else { .idle }
     }
@@ -248,8 +342,8 @@ private struct BranchCounts: View {
             }
         case .running(let action):
             guard let house = action.houseAnimation else {
-                // Outside the animation, because turning Fetched into these moves
-                // what's to the right past where it ends up.
+                // Outside the animation, because turning what just happened into
+                // these moves what's to the right past where it ends up.
                 shown.words = action.title
                 shown.arrival = .fade
                 // On one curve, so that what's to the right moves steadily rather

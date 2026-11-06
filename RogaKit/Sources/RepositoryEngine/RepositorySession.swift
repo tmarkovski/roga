@@ -286,13 +286,19 @@ public actor RepositorySession {
         return lastFetch()
     }
 
+    /// What a fetch someone asks for runs, by its arguments after `git`, which the
+    /// Fetch button's tooltip shows.
+    public nonisolated static func fetchArguments(from remote: String) -> [String] {
+        ["fetch", remote]
+    }
+
     /// Fetches because someone asked to, whenever Roga last did.
     ///
     /// - Throws: `GitError` when git can't fetch, which says why.
     public func fetch(from remote: String, in worktree: String) async throws {
         await clearTheWayForSomeone()
         let git = git
-        let command = RemoteCommands.asked(["fetch", remote], in: worktree)
+        let command = RemoteCommands.asked(Self.fetchArguments(from: remote), in: worktree)
         lastQuietFetch = .now
         if let error = await runFetch(isQuiet: false, { () async throws(any Error) in _ = try await git.run(command) }) {
             throw error
