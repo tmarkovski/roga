@@ -20,7 +20,7 @@ Rows tagged **In the app** on the boards are what today's settings window or men
 
 | Page | What's on it | In the app today |
 | --- | --- | --- |
-| General | Reopening windows, the rail of organizations, the editor and terminal for Open in…, updates | The rail, from the View menu |
+| General | Reopening windows, the rail of organizations, the editor and terminal for Open in…, updates | The terminal for Open in Terminal, checking for updates and downloading them, and the rail from the View menu |
 | Appearance | Theme, text size, the house's animations, the code font and diff options, how lists are shown | The animation speed, and the file layout, branch sort and folded descriptions from menus |
 | Git | Which git runs and why one was passed over, name and email, fetching, pulling and pushing | Fetching when Roga becomes active |
 | Commit | The long first line, generating messages with an agent, the Commit button, signing, discarding | The Generate section, and the 72-character mark and asking before discarding many files as fixed behavior |
@@ -61,11 +61,15 @@ Each hook runs `roga-hook hook --host <agent> --event <name>`, a launcher in Rog
 
 - **The agents' pages, built for Claude Code and Codex.** The Commit page has only its Generate section. The Agents page has the agents Roga found, Look Again, each agent's hooks with Install… or Remove…, the switch for the sidebar's marks and their legend. Each agent's page has its command's settings, the flags Roga always adds and why, Run a Test, and its hooks, but no model or effort of its own beyond the ones the Commit page and the Generate popover share. Left out: other agents, Add a Command, notifications, putting the worktrees that need you first, and answering permission requests in Roga. The help under the command block changed: the board's says the agent also reads the repository's CLAUDE.md or AGENTS.md, but `--safe-mode` leaves Claude Code's out, so the help says what's turned off instead. Built on November 6, 2026.
 
+- **The General page, with only what works.** General comes first, beside Appearance, and Settings opens there the first time. It has two of the boards' three sections. **Open in** has Terminal, a popup of the terminals Roga finds on this Mac that open a new window in a folder they're handed: Terminal, iTerm, Ghostty and Warp. Open in Terminal uses the one chosen, or Terminal while that one is gone. Only Terminal could be tried here. **Updates** has Check for updates automatically and Download updates automatically, which are Sparkle's own settings, so its window's checkbox and these switches stay in step. Download is off and dimmed while checking is off, since Sparkle downloads only what its daily check finds. A copy of Roga built without Sparkle's key, as every build is until the first release, says so in a note above them and turns both off. The help under Check for updates says the sidebar shows a new version, rather than the board's "asks before it installs anything", which Download would make untrue. Left out: **Windows**, because reopening windows is new behavior nobody has asked for yet and the rail is kept by each window, which the View menu already handles; and **Editor**, because there's no Open in Editor yet. A switch that does nothing is worse than a short page. Sparkle no longer asks on the second launch whether to check, because `SUEnableAutomaticChecks` is on and General has the switch. Built on November 6, 2026.
+
+- **A new version shows in the sidebar, not in Sparkle's window,** above the gear on the rail, or at the bottom of the list while the rail is hidden ([decision 43](../../decisions/0043-show-a-new-version-in-the-sidebar-rather-than-sparkles-window.md)). Decided on November 6, 2026.
+
 - **The marks go on the right of a sidebar row, before the count of uncommitted files,** and stay while the pointer is over the row. The waiting mark is an amber `circle-alert` rather than the boards' triangle, because a red triangle already means conflicts ([decision 28](../../decisions/0028-show-a-worktree-thats-stuck-partway.md)). Decided on November 5, 2026.
 
 ## Still to decide
 
-- **Which proposals to keep.** Open in Editor and Open in Terminal, text size and date formats would each need work outside Settings first.
+- **Which proposals to keep.** Open in Editor, reopening windows at launch, text size and date formats would each need work outside Settings first. A switch for the rail would have to become app-wide or say which window it means.
 - **Answering permission requests in Roga.** GitKraken offers it. It makes a hook wait for Roga, so the boards draw it off, and Roga leaves it out for now.
 - **More agents.** Cursor Agent, Gemini CLI, Copilot CLI and a custom command are on the boards. Each needs its own way to install hooks and to run without tools.
-- **Whether the boards should catch up.** They still draw the triangle, the shorter commands and the old help under the command block.
+- **Whether the boards should catch up.** They still draw the triangle, the shorter commands and the old help under the command block, and General's Windows section, its Editor row and its help for updates.

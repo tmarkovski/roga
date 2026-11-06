@@ -39,6 +39,9 @@ struct Sidebar: View {
     @State private var repairs = WorktreeRepairModel()
     @FocusState private var isFocused: Bool
     @Environment(\.openWindow) private var openWindow
+    /// A new version of Roga, which the rail shows above the gear, or the list
+    /// at its bottom while the rail is hidden.
+    @Environment(Updates.self) private var updates: Updates?
 
     var body: some View {
         let groups = list.groups
@@ -49,6 +52,13 @@ struct Sidebar: View {
                         RailButton(title: "Add Repositories", isOpen: isPresented, action: { isAddingRepositories = true }) {
                             Icon.plus.image
                                 .font(.system(size: 15, weight: .light))
+                        }
+                    }
+                    if let updates, let pending = updates.pending {
+                        RailButton(title: pending.title, action: updates.open) {
+                            Icon.circleArrowUp.image
+                                .font(.system(size: 15))
+                                .foregroundStyle(Palette.action)
                         }
                     }
                     // Settings isn't something the list can show, so it keeps
@@ -75,6 +85,10 @@ struct Sidebar: View {
                     }
                 }
                 rows(groups: groups)
+                if !showsRail, let updates, let pending = updates.pending {
+                    UpdateRow(pending: pending, action: updates.open)
+                        .padding(EdgeInsets(top: 0, leading: 8, bottom: 8, trailing: 8))
+                }
             }
             .frame(maxWidth: .infinity)
         }
@@ -451,6 +465,35 @@ struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
             if isEnabled && canSelect { action() }
         }
         .onHover { isHovering = $0 }
+    }
+}
+
+/// A new version of Roga, at the bottom of the list while the rail and its
+/// gear are hidden, in the brand's orange.
+private struct UpdateRow: View {
+    let pending: Updates.Pending
+    let action: () -> Void
+
+    var body: some View {
+        SidebarRow(agent: nil, action: action) {
+            HStack(spacing: 8) {
+                Icon.circleArrowUp.image
+                    .font(.system(size: 14))
+                Text(pending.title)
+                    .font(.system(size: 13, weight: .medium))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(Palette.action)
+        } trailing: {
+            EmptyView()
+        } commands: {
+            EmptyView()
+        }
+        .help(pending.title)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(pending.title)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction(.default, action)
     }
 }
 
@@ -924,11 +967,6 @@ private func uncommittedFilesDescription(_ count: Int, hasConflicts: Bool = fals
 
 func reveal(_ path: String) {
     NSWorkspace.shared.activateFileViewerSelecting([URL(filePath: path)])
-}
-
-func openInTerminal(_ path: String) {
-    guard let terminal = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Terminal") else { return }
-    NSWorkspace.shared.open([URL(filePath: path)], withApplicationAt: terminal, configuration: NSWorkspace.OpenConfiguration())
 }
 
 extension Worktree {
