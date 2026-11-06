@@ -67,3 +67,44 @@ Until `SUPublicEDKey` is in the Info.plist, the app doesn't start Sparkle, and t
 6. Update the Homebrew cask, once there is one.
 
 Keep `build/updates` between releases. `generate_appcast` updates the `appcast.xml` it finds there, and it uses the zips of earlier releases to build smaller delta updates.
+
+## Trying an update before a release
+
+The notice for a new version ([decision 43](decisions/0043-show-a-new-version-in-the-sidebar-rather-than-sparkles-window.md)) and Sparkle's installing can be tried with two copies of a Debug build, a test key and an appcast served from this Mac. Nothing goes to roga.sh, GitHub or the keychain.
+
+1. Make a test key in a file with Homebrew's OpenSSL, since the system's LibreSSL has no Ed25519, and print its public half for the Info.plist:
+
+   ```bash
+   /opt/homebrew/bin/openssl genpkey -algorithm ed25519 -out test-key.pem
+   ```
+
+   ```bash
+   /opt/homebrew/bin/openssl pkey -in test-key.pem -pubout -outform DER | tail -c 32 | base64
+   ```
+
+2. Copy the Debug build twice, as `old/RogaUpd.app` and `new/RogaUpd.app`. In each copy's Info.plist, set `CFBundleIdentifier` to a test ID such as `sh.roga.test.update`, so that it has its own defaults and Application Support, set `SUFeedURL` to `http://127.0.0.1:8765/appcast.xml` and add `SUPublicEDKey` with the test key. Give the old copy a lower `CFBundleVersion` and `CFBundleShortVersionString` than the new one, such as 3 and 1.3 against 4 and 1.4, then sign each with `codesign --force --deep -s -`.
+3. Zip the new copy with `ditto -c -k --sequesterRsrc --keepParent`, sign the zip, and write an `appcast.xml` beside it with one item whose enclosure has the zip's address, its `length` and that signature as `sparkle:edSignature`:
+
+   ```bash
+   /opt/homebrew/bin/openssl pkeyutl -sign -inkey test-key.pem -rawin -in RogaUpd-1.4.zip | base64
+   ```
+
+4. Serve that folder on this Mac only. Sparkle accepts an `http` feed because the update is signed, and logs a warning about it.
+
+   ```bash
+   python3 -m http.server 8765 --bind 127.0.0.1
+   ```
+
+5. Open the old copy. It has never checked, so Sparkle checks at once, and the arrow shows above the gear without Sparkle's window. To try Restart to Update, quit it, then turn on downloading and clear the last check, and open it again:
+
+   ```bash
+   defaults write sh.roga.test.update SUAutomaticallyUpdate -bool true
+   ```
+
+   ```bash
+   defaults delete sh.roga.test.update SULastCheckTime
+   ```
+
+   Sparkle relaunches the installed copy through launchd, so it starts without any environment the old one was opened with, such as a different `HOME`.
+
+6. Afterward, delete the test ID's defaults and its folders in `~/Library/Caches` and `~/Library/Application Support`.

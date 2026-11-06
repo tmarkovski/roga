@@ -24,9 +24,10 @@ The Xcode project has two targets, the app and `RogaHelper`, which builds the `r
 roga/
 ├── Roga.xcodeproj/                 JSON project file (project.xcproj) with the app and the helper
 ├── App/                            the app target
-│   ├── RogaApplication.swift       entry point, scenes, Sparkle updater
+│   ├── RogaApplication.swift       entry point and scenes
+│   ├── SparkleUpdates.swift        Sparkle, and the state of updates that RogaUI shows (decision 43)
 │   ├── CheckForUpdatesButton.swift
-│   ├── Info.plist                  Sparkle's feed address and public key
+│   ├── Info.plist                  Sparkle's feed address, public key and automatic checks
 │   └── AppIcon.icon                the app icon, in Icon Composer's format
 ├── Helper/
 │   └── main.swift                  the roga helper that agents' hooks run, which calls HookHelper.main()
@@ -124,7 +125,7 @@ roga/
 │   │   │   └── ChangedWords.swift      which words of changed lines differ
 │   │   ├── RogaUI/                     SwiftUI
 │   │   │   ├── Agents/                 finding agents, the marks, and what each worktree's agents are doing
-│   │   │   ├── Workspace/              windows, finding git, the sidebar and the saved list of repositories
+│   │   │   ├── Workspace/              windows, finding git, the sidebar, the saved list of repositories and the update notice
 │   │   │   ├── Repository/             the repository model, panels, the refs panel, commit details
 │   │   │   ├── Dialogs/                the sheet for everything Roga asks or reports, with its command (decision 29)
 │   │   │   ├── House/                  the house's joints, its animations and drawing them (decision 21)

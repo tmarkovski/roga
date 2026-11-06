@@ -1,17 +1,14 @@
 import AppKit
-import Sparkle
 import SwiftUI
 import RogaUI
 
 @main
 struct RogaApplication: App {
-    // Sparkle starts only when the Info.plist has the public key that release
-    // builds are signed with, so development builds never look for updates.
-    private let updaterController = SPUStandardUpdaterController(
-        startingUpdater: Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") != nil,
-        updaterDelegate: nil,
-        userDriverDelegate: nil
-    )
+    /// Sparkle, which finds new versions of Roga and installs them.
+    private let sparkle: SparkleUpdates
+    /// What every window and Settings show of Sparkle: a new version waiting,
+    /// and whether it checks and downloads by itself.
+    @State private var updates: Updates
 
     /// The git every window uses, which Roga finds once at launch.
     @State private var gitProvider = GitProvider()
@@ -28,6 +25,9 @@ struct RogaApplication: App {
     init() {
         // Repositories are switched in the sidebar (decision 13).
         NSWindow.allowsAutomaticWindowTabbing = false
+        let updates = Updates()
+        _updates = State(initialValue: updates)
+        sparkle = SparkleUpdates(updates: updates)
     }
 
     var body: some Scene {
@@ -40,6 +40,7 @@ struct RogaApplication: App {
                 .environment(settingsRequest)
                 .environment(agents)
                 .environment(agentMonitor)
+                .environment(updates)
         }
         // Wide enough for the sidebar, the refs panel and the panels between
         // them.
@@ -47,7 +48,7 @@ struct RogaApplication: App {
         .windowToolbarStyle(.unifiedCompact)
         .commands {
             CommandGroup(after: .appInfo) {
-                CheckForUpdatesButton(updater: updaterController.updater)
+                CheckForUpdatesButton(updater: sparkle.updater)
             }
             RepositoryCommands(list: repositories, agents: agents)
             SettingsCommands(request: settingsRequest)

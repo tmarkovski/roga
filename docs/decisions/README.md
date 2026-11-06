@@ -50,5 +50,6 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [40](0040-the-repositorys-name-opens-a-menu-of-its-worktrees.md) | The repository's name opens a menu of its worktrees | Accepted |
 | [41](0041-agents-status-from-their-hooks-and-messages-from-their-clis.md) | Show what agents are doing from their hooks, and write commit messages with their CLIs | Accepted |
 | [42](0042-run-each-line-down-to-its-parent-in-its-lanes-color.md) | Run each line down to its parent, in its lane's color | Accepted |
+| [43](0043-show-a-new-version-in-the-sidebar-rather-than-sparkles-window.md) | Show a new version in the sidebar, rather than in Sparkle's window | Accepted |
 | [44](0044-revert-a-commit-from-its-menu-in-history.md) | Revert a commit from its menu in history | Accepted |
 | [45](0045-fetch-and-new-branch-as-buttons-and-the-commit-count-with-history.md) | Fetch and New Branch as buttons, and the number of commits with history's commands | Accepted |
