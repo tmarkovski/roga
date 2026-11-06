@@ -12,14 +12,21 @@ import SwiftUI
 /// with gray on hover and when selected, and swap a label for commands on
 /// hover, which a sidebar list can't do. So it handles the arrow keys
 /// itself.
+///
+/// A row that an agent is working in, waiting in or has finished in has a mark
+/// for it (decision 41), unless the person turned the marks off in Settings.
 struct Sidebar: View {
     let list: RepositoryList
+    /// What agents are doing, which the rows read for their marks.
+    let monitor: AgentMonitor
     @Binding var selection: WorktreeSelection?
     /// What the rail has selected. Setting it picks a scope.
     @Binding var scope: SidebarScope
     @Binding var place: SidebarPlace
     let showsRail: Bool
     let locate: (ListedRepository) -> Void
+    /// Whether the rows show agents' marks, as the person chose in Settings.
+    var marks = AgentMarksSetting()
     @State private var isAddingRepositories = false
     @State private var adding = AddRepositoriesChoices()
     @State private var deletions = WorktreeDeletionModel()
@@ -117,7 +124,7 @@ struct Sidebar: View {
                 .accessibilityAddTraits(.isHeader)
         case .repository(let repository, let title, let detail):
             let home = repository.home
-            RepositoryRow(repository: repository, list: list, title: title, detail: detail, isSelected: selection == home) {
+            RepositoryRow(repository: repository, list: list, title: title, detail: detail, isSelected: selection == home, agents: agents(of: item)) {
                 select(home)
             } toggle: {
                 isFocused = true
@@ -136,7 +143,8 @@ struct Sidebar: View {
                 hasConflicts: repository.conflictedWorktrees.contains(worktree.path),
                 isDeleting: repository.deletingWorktrees.contains(worktree.path),
                 isSelected: selection == row,
-                isLast: isLast
+                isLast: isLast,
+                agents: agents(of: item)
             ) {
                 select(row)
             } openInNewWindow: {
@@ -145,12 +153,18 @@ struct Sidebar: View {
                 deletions.askToDelete(worktree, in: repository, list: list)
             }
             .id(row)
-        case .hiddenWorktrees(let repository, let title, let uncommittedFiles, let hasConflicts):
-            HiddenWorktreesRow(title: title, uncommittedFiles: uncommittedFiles, hasConflicts: hasConflicts) {
+        case .hiddenWorktrees(let repository, let title, _, let uncommittedFiles, let hasConflicts):
+            HiddenWorktreesRow(title: title, uncommittedFiles: uncommittedFiles, hasConflicts: hasConflicts, agents: agents(of: item)) {
                 isFocused = true
                 list.setExpanded(true, repository)
             }
         }
+    }
+
+    /// Where a row finds what agents are doing in the worktrees it stands for,
+    /// or nil while the marks are turned off.
+    func agents(of item: SidebarItem) -> RowAgents? {
+        marks.monitor(monitor).map { RowAgents(monitor: $0, list: list, worktrees: item.markedWorktrees) }
     }
 
     private func select(_ row: WorktreeSelection) {
@@ -333,9 +347,17 @@ private struct ScopeHeader<Trailing: View>: View {
 /// little darker while it's selected. Its top right corner shows a label,
 /// which gives way to the row's commands while the pointer is over it. The
 /// commands are 24-point buttons 4 points from the row's top and right edges.
+///
+/// An agent's mark comes before the label, and stays before the commands on
+/// hover, so that what an agent is doing still shows while the pointer is
+/// there (decision 41). It's 6 points from what follows it. With nothing after
+/// it, those 6 points leave the mark where a count would end. Its box is the
+/// same size whatever it shows, so a mark changing never moves anything.
 private struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
     var isSelected = false
     var isEnabled = true
+    /// What agents are doing in the row's worktrees, or nil for no mark.
+    var agent: AgentSummary?
     let action: () -> Void
     @ViewBuilder var content: Content
     @ViewBuilder var trailing: Trailing
@@ -348,6 +370,10 @@ private struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
                 .frame(maxHeight: .infinity)
             Spacer(minLength: 6)
             HStack(spacing: 0) {
+                if let agent {
+                    SidebarMark(summary: agent)
+                        .padding(.trailing, 6)
+                }
                 if isHovering && isEnabled {
                     commands
                 } else {
@@ -430,13 +456,15 @@ private struct RepositoryRow: View {
     let title: String
     let detail: String?
     let isSelected: Bool
+    let agents: RowAgents?
     let select: () -> Void
     let toggle: () -> Void
     let openInNewWindow: () -> Void
     let locate: () -> Void
 
     var body: some View {
-        SidebarRow(isSelected: isSelected, action: select) {
+        let agent = agents?.summary
+        SidebarRow(isSelected: isSelected, agent: agent, action: select) {
             HStack(spacing: 3) {
                 Text(title)
                     .font(.system(size: 14))
@@ -476,7 +504,7 @@ private struct RepositoryRow: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
         .accessibilityValue(
-            [detail, linkedWorktreesDescription, uncommittedFilesDescription(ownUncommittedFiles, hasConflicts: ownHasConflicts), linkedWorktrees > 0 ? (repository.isExpanded ? "Expanded" : "Collapsed") : nil, problem]
+            [detail, linkedWorktreesDescription, agent?.description, uncommittedFilesDescription(ownUncommittedFiles, hasConflicts: ownHasConflicts), linkedWorktrees > 0 ? (repository.isExpanded ? "Expanded" : "Collapsed") : nil, problem]
                 .compactMap(\.self)
                 .joined(separator: ", ")
         )
@@ -554,12 +582,14 @@ private struct WorktreeRow: View {
     let isDeleting: Bool
     let isSelected: Bool
     let isLast: Bool
+    let agents: RowAgents?
     let select: () -> Void
     let openInNewWindow: () -> Void
     let delete: () -> Void
 
     var body: some View {
-        SidebarRow(isSelected: isSelected, isEnabled: !worktree.isPrunable && !isDeleting, action: select) {
+        let agent = agents?.summary
+        SidebarRow(isSelected: isSelected, isEnabled: !worktree.isPrunable && !isDeleting, agent: agent, action: select) {
             Text(worktree.title)
                 .font(.system(size: 14))
                 .lineLimit(1)
@@ -588,7 +618,7 @@ private struct WorktreeRow: View {
         .help(worktree.path)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(worktree.title)
-        .accessibilityValue([subtitle, uncommittedFilesDescription(uncommittedFiles, hasConflicts: hasConflicts)].compactMap(\.self).joined(separator: ", "))
+        .accessibilityValue([subtitle, agent?.description, uncommittedFilesDescription(uncommittedFiles, hasConflicts: hasConflicts)].compactMap(\.self).joined(separator: ", "))
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction(.default, select)
         .accessibilityActions {
@@ -634,14 +664,17 @@ private struct WorktreeRow: View {
 
 /// The row under a collapsed repository that stands for the worktrees it
 /// hides, and shows them. Its count stays on hover, since it has no commands.
+/// Its mark is the most urgent of theirs.
 private struct HiddenWorktreesRow: View {
     let title: String
     let uncommittedFiles: Int
     let hasConflicts: Bool
+    let agents: RowAgents?
     let show: () -> Void
 
     var body: some View {
-        SidebarRow(action: show) {
+        let agent = agents?.summary
+        SidebarRow(agent: agent, action: show) {
             Text(title)
                 .font(.system(size: 13))
                 .foregroundStyle(.secondary)
@@ -655,7 +688,7 @@ private struct HiddenWorktreesRow: View {
         .overlay { WorktreeConnector(isLast: true) }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
-        .accessibilityValue(uncommittedFilesDescription(uncommittedFiles, hasConflicts: hasConflicts) ?? "")
+        .accessibilityValue([agent?.description, uncommittedFilesDescription(uncommittedFiles, hasConflicts: hasConflicts)].compactMap(\.self).joined(separator: ", "))
         .accessibilityAddTraits(.isButton)
         .accessibilityAction(.default, show)
     }
@@ -724,6 +757,109 @@ private struct UncommittedCount: View {
         .font(.system(size: 13))
         .foregroundStyle(hasConflicts ? Palette.red : Color.orange)
         .padding(.trailing, 7)
+    }
+}
+
+/// Whether the person has agents' marks turned on in Settings, for the views
+/// that say what agents are doing: the sidebar's rows and the worktree menu.
+/// While the marks are off, neither says anything about agents, so that
+/// nothing shows what the person turned off (decision 41).
+///
+/// Both views read it through this, rather than each keeping the key, so that
+/// they can't come to disagree, and so that tests can give it defaults of
+/// their own.
+struct AgentMarksSetting: DynamicProperty {
+    @AppStorage private var showsMarks: Bool
+
+    /// - Parameter store: Where the choice is kept. Nil is the view's
+    ///   `defaultAppStorage`, which is the standard defaults unless something
+    ///   sets others.
+    init(store: UserDefaults? = nil) {
+        _showsMarks = AppStorage(wrappedValue: true, AgentPreferences.showsMarksKey, store: store)
+    }
+
+    /// The monitor while the marks show, or nil while they're turned off.
+    func monitor(_ monitor: AgentMonitor) -> AgentMonitor? {
+        showsMarks ? monitor : nil
+    }
+}
+
+/// Where a row finds what agents are doing in the worktrees it stands for.
+///
+/// Each row asks in its own body, rather than the list asking for all of them,
+/// so that a mark changing redraws the rows and leaves the list, which would
+/// lay out every row again, alone.
+struct RowAgents {
+    let monitor: AgentMonitor
+    let list: RepositoryList
+    /// The folders of the worktrees the row stands for.
+    let worktrees: [String]
+
+    var summary: AgentSummary? {
+        monitor.summary(forWorktrees: worktrees, in: list)
+    }
+}
+
+/// A row's mark for its agents, with a tooltip that says what they're doing
+/// and, from a minute on, for how long, as in "Claude Code is working, for 6
+/// minutes". It redraws as that reaches another minute, and not in between.
+struct SidebarMark: View {
+    let summary: AgentSummary
+
+    /// The canvas draws marks 14 points wide.
+    private static let size: CGFloat = 14
+    /// The circle-alert fills its box, while the ring's outer edge is 13/16 of
+    /// it, so the waiting mark is drawn this much smaller to look as big as a
+    /// ring on the row beside it. Measured, both are then 0.81 of the box.
+    private static let waitingScale: CGFloat = 0.88
+
+    var body: some View {
+        TimelineView(minutes) { context in
+            AgentMark(state: summary.state, size: isWaiting ? Self.size * Self.waitingScale : Self.size)
+                .frame(width: Self.size, height: Self.size)
+                .help(summary.help(now: context.date))
+        }
+    }
+
+    private var isWaiting: Bool {
+        if case .waiting = summary.state { true } else { false }
+    }
+
+    /// When the tooltip changes. A finished mark's never does.
+    var minutes: WholeMinutes {
+        WholeMinutes(of: [summary])
+    }
+}
+
+/// The moments when an agent that has been doing something since one of these
+/// dates has been at it for another whole minute, which is when what says for
+/// how long changes. Each comes a second after the minute, so that rounding
+/// can't leave the count a minute short.
+nonisolated struct WholeMinutes: TimelineSchedule, Equatable {
+    var since: [Date]
+
+    private static let margin: TimeInterval = 1
+
+    init(since: [Date]) {
+        self.since = since
+    }
+
+    /// The minutes of those of these agents that say for how long they've
+    /// been at it, which are the ones working or waiting. A finished one says
+    /// no time, so it has none, and nothing redraws for it.
+    @MainActor init(of agents: [AgentSummary?]) {
+        since = agents.compactMap { agent in
+            agent.flatMap { $0.state == .finished ? nil : $0.since }
+        }
+    }
+
+    func entries(from start: Date, mode: TimelineScheduleMode) -> UnfoldFirstSequence<Date> {
+        sequence(first: start) { [since] date in
+            since.map { begun in
+                let minutes = ((date.timeIntervalSince(begun) - Self.margin) / 60).rounded(.down)
+                return begun.addingTimeInterval(max(1, minutes + 1) * 60 + Self.margin)
+            }.min()
+        }
     }
 }
 

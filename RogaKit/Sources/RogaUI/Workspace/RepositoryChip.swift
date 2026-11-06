@@ -53,6 +53,42 @@ struct RepositoryChip: View {
     }
 }
 
+/// The chip for the worktree a window shows, with the menu of its repository's
+/// worktrees.
+///
+/// It works the menu out in its own body, which reads what agents are doing,
+/// so that a mark changing redraws the chip rather than the whole window.
+/// While an agent works or waits in one of the worktrees, it also redraws as
+/// that agent reaches another minute, so that the menu says for how long.
+struct WorktreeChip: View {
+    let repository: ListedRepository
+    let worktree: Worktree
+    /// The model of the worktree on screen, once its repository is open.
+    let model: RepositoryModel?
+    let actions: WorktreeMenu.Actions
+    let monitor: AgentMonitor
+    let list: RepositoryList
+    /// Whether the menu says what agents are doing. It follows the sidebar's
+    /// marks, so that turning them off hides agents here too.
+    var marks = AgentMarksSetting()
+
+    var body: some View {
+        let facts = facts
+        TimelineView(WholeMinutes(of: facts.map(\.agent))) { context in
+            RepositoryChip(
+                name: repository.name,
+                isMain: worktree.isMain,
+                entries: WorktreeMenu.entries(for: facts, shown: worktree.path, now: context.date, actions: actions)
+            )
+        }
+    }
+
+    /// What the menu says about each of the repository's worktrees.
+    var facts: [WorktreeFacts] {
+        WorktreeMenu.facts(of: repository, shown: worktree.path, model: model, agents: marks.monitor(monitor), in: list)
+    }
+}
+
 /// What the menu of a repository's worktrees says about one of them.
 struct WorktreeFacts: Equatable {
     var worktree: Worktree
@@ -61,6 +97,8 @@ struct WorktreeFacts: Equatable {
     var unfinished: UnfinishedWork?
     var upstream: UpstreamCounts?
     var isDeleting = false
+    /// What agents are doing in it, as its mark in the sidebar shows.
+    var agent: AgentSummary?
 }
 
 /// The menu that the repository's name in the title row opens. It lists each of
@@ -77,9 +115,10 @@ enum WorktreeMenu {
         var openInTerminal: (String) -> Void
     }
 
-    static func entries(for facts: [WorktreeFacts], shown: String, actions: Actions) -> [RefMenu.Entry] {
+    /// - Parameter now: The time to say how long agents have been at it from.
+    static func entries(for facts: [WorktreeFacts], shown: String, now: Date = .now, actions: Actions) -> [RefMenu.Entry] {
         var entries: [RefMenu.Entry] = facts.filter { !$0.worktree.isBare }.map { facts in
-            .choice(choice(for: facts, isCurrent: facts.worktree.path == shown) { actions.show(facts.worktree.path) })
+            .choice(choice(for: facts, isCurrent: facts.worktree.path == shown, now: now) { actions.show(facts.worktree.path) })
         }
         entries.append(.divider)
         entries.append(.command("New Worktree…", isEnabled: actions.newWorktree != nil) { actions.newWorktree?() })
@@ -89,12 +128,12 @@ enum WorktreeMenu {
     }
 
     /// A worktree's row, named for its branch as the sidebar names it.
-    static func choice(for facts: WorktreeFacts, isCurrent: Bool, action: @escaping () -> Void) -> RefMenu.Choice {
+    static func choice(for facts: WorktreeFacts, isCurrent: Bool, now: Date = .now, action: @escaping () -> Void) -> RefMenu.Choice {
         let worktree = facts.worktree
         return RefMenu.Choice(
             title: worktree.title,
             icon: (worktree.isMain ? Icon.repository : Icon.worktree).nsImage,
-            details: details(for: facts),
+            details: details(for: facts, now: now),
             count: count(for: facts),
             isCurrent: isCurrent,
             isEnabled: !worktree.isPrunable && !facts.isDeleting,
@@ -103,13 +142,18 @@ enum WorktreeMenu {
         )
     }
 
-    /// The second line: whether the worktree is going away or its folder is
-    /// missing, what it's stuck partway through, how far its branch is from its
-    /// upstream, whether it's locked, and last, its folder, which is the part to
-    /// cut short.
-    static func details(for facts: WorktreeFacts) -> [RefMenu.Detail] {
+    /// The second line: what agents are doing there, as in "Agent working · 6
+    /// min", in amber while one waits for you (decision 41), whether the
+    /// worktree is going away or its folder is missing, what it's stuck partway
+    /// through, how far its branch is from its upstream, whether it's locked,
+    /// and last, its folder, which is the part to cut short.
+    static func details(for facts: WorktreeFacts, now: Date = .now) -> [RefMenu.Detail] {
         let worktree = facts.worktree
         var details: [RefMenu.Detail] = []
+        if let agent = facts.agent {
+            let isWaiting = if case .waiting = agent.state { true } else { false }
+            details.append(RefMenu.Detail(agent.menuDetail(now: now), color: isWaiting ? agentWaitingColor : nil))
+        }
         if facts.isDeleting {
             details.append(RefMenu.Detail("Deleting…"))
         } else if worktree.isPrunable {
@@ -149,10 +193,20 @@ enum WorktreeMenu {
             : RefMenu.Count(facts.uncommittedFiles.formatted(), color: .systemOrange)
     }
 
+    /// The amber of the waiting mark, for the menu, which AppKit draws. Made
+    /// from SwiftUI's color, it keeps both its light and its dark version.
+    static let agentWaitingColor = NSColor(AgentColors.warn)
+
     /// What's known about each of a repository's worktrees. The one the window
     /// shows takes what its model last read, which is fresher than the
     /// sidebar's look.
-    static func facts(of repository: ListedRepository, shown: String, model: RepositoryModel?) -> [WorktreeFacts] {
+    ///
+    /// - Parameters:
+    ///   - agents: What agents are doing in them, or nil while their marks are
+    ///     turned off.
+    ///   - list: The sidebar's list, in which the monitor finds the worktree
+    ///     each agent is in.
+    static func facts(of repository: ListedRepository, shown: String, model: RepositoryModel?, agents: AgentMonitor?, in list: RepositoryList) -> [WorktreeFacts] {
         repository.worktrees.map { worktree in
             var facts = WorktreeFacts(
                 worktree: worktree,
@@ -162,6 +216,7 @@ enum WorktreeMenu {
                 upstream: worktree.branch.flatMap { repository.upstreams[$0] },
                 isDeleting: repository.deletingWorktrees.contains(worktree.path)
             )
+            facts.agent = agents?.summary(forWorktree: worktree.path, in: list)
             if worktree.path == shown, let branch = model?.branch {
                 facts.unfinished = branch.unfinished
                 if let status = branch.status, status.branch == worktree.branch {

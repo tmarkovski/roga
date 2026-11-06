@@ -225,8 +225,10 @@ struct AgentMonitorTests {
         let folder = try AgentTestSupport.folder()
         let pidFile = folder + "/pid"
         let programs = Programs(searchPath: "/usr/bin:/bin")
+        // The child lives until the test stops it, rather than for a set time,
+        // so a busy machine can't end it before the test has read its start.
         let child = Task {
-            try await programs.run(ProgramCommand("/bin/sh", ["-c", "echo $$ > '\(pidFile)'; exec /bin/sleep 1"]))
+            try await programs.run(ProgramCommand("/bin/sh", ["-c", "echo $$ > '\(pidFile)'; exec /bin/sleep 60"]))
         }
         #expect(await AgentTestSupport.eventually { FileManager.default.contents(atPath: pidFile).map { !$0.isEmpty } ?? false })
         let text = try String(contentsOfFile: pidFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -237,7 +239,8 @@ struct AgentMonitorTests {
         defer { monitor.stop() }
         monitor.receive(event("UserPromptSubmit", "a", in: "/git/api", at: 0, pid: pid, processStart: processStart))
         #expect(monitor.summary(forWorktree: "/git/api", in: list)?.state == .working)
-        _ = try await child.value
+        #expect(kill(pid, SIGTERM) == 0)
+        _ = await child.result
         #expect(await AgentTestSupport.eventually { monitor.sessions.isEmpty })
         #expect(monitor.summary(forWorktree: "/git/api", in: list) == nil)
 

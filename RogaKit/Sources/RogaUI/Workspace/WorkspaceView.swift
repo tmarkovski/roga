@@ -161,7 +161,7 @@ public struct WorkspaceView: View {
 
     public var body: some View {
         NavigationSplitView(columnVisibility: $columns) {
-            Sidebar(list: list, selection: selection, scope: scope, place: place, showsRail: showsRail, locate: locate)
+            Sidebar(list: list, monitor: agentMonitor, selection: selection, scope: scope, place: place, showsRail: showsRail, locate: locate)
                 .overlay(alignment: .trailing) {
                     // A line between the sidebar and the worktree, from the
                     // top of the window to the bottom.
@@ -415,10 +415,14 @@ public struct WorkspaceView: View {
     private var titleRow: some View {
         HStack(spacing: 6) {
             if let (repository, worktree) = shown, let worktree, let selected = window?.selection {
-                RepositoryChip(
-                    name: repository.name,
-                    isMain: worktree.isMain,
-                    entries: worktreeMenu(of: repository, shown: worktree, selected: selected)
+                let model = shownModel
+                WorktreeChip(
+                    repository: repository,
+                    worktree: worktree,
+                    model: model,
+                    actions: worktreeMenuActions(shown: worktree, selected: selected, model: model),
+                    monitor: agentMonitor,
+                    list: list
                 )
                 .fixedSize()
             } else {
@@ -468,23 +472,18 @@ public struct WorkspaceView: View {
         .frame(maxWidth: titleRowWidth, alignment: .leading)
     }
 
-    /// The menu of the shown repository's worktrees, which the chip with its name
-    /// opens.
-    private func worktreeMenu(of repository: ListedRepository, shown worktree: Worktree, selected: WorktreeSelection) -> [RefMenu.Entry] {
-        let model = shownModel
-        return WorktreeMenu.entries(
-            for: WorktreeMenu.facts(of: repository, shown: worktree.path, model: model),
-            shown: worktree.path,
-            actions: WorktreeMenu.Actions(
-                show: { folder in
-                    selection.wrappedValue = WorktreeSelection(repository: selected.repository, worktree: folder)
-                },
-                newWorktree: model.flatMap { model in
-                    model.branch.isBusy || worktree.isBare ? nil : { model.branch.startNewWorktree() }
-                },
-                reveal: reveal,
-                openInTerminal: openInTerminal
-            )
+    /// What the menu of the shown repository's worktrees does, which the chip
+    /// with its name opens.
+    private func worktreeMenuActions(shown worktree: Worktree, selected: WorktreeSelection, model: RepositoryModel?) -> WorktreeMenu.Actions {
+        WorktreeMenu.Actions(
+            show: { folder in
+                selection.wrappedValue = WorktreeSelection(repository: selected.repository, worktree: folder)
+            },
+            newWorktree: model.flatMap { model in
+                model.branch.isBusy || worktree.isBare ? nil : { model.branch.startNewWorktree() }
+            },
+            reveal: reveal,
+            openInTerminal: openInTerminal
         )
     }
 
