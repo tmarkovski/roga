@@ -18,11 +18,12 @@ final class BranchModel {
         case pushing
         case forcePushing
         case fetching
-        case undoingPull
+        case undoing
         case aborting
         case deletingFromRemote
         case committing
         case continuingRebase
+        case reverting
 
         var title: String {
             switch self {
@@ -30,11 +31,12 @@ final class BranchModel {
             case .pushing: "Pushing…"
             case .forcePushing: "Force pushing…"
             case .fetching: "Fetching…"
-            case .undoingPull: "Undoing…"
+            case .undoing: "Undoing…"
             case .aborting: "Aborting…"
             case .deletingFromRemote: "Deleting…"
             case .committing: "Committing…"
             case .continuingRebase: "Continuing…"
+            case .reverting: "Reverting…"
             }
         }
     }
@@ -70,15 +72,24 @@ final class BranchModel {
         }
     }
 
-    /// A pull that hit a conflict, which Roga can't resolve, so it asks whether
-    /// to undo the pull or leave it for the command line.
+    /// A pull or a revert that hit a conflict, which Roga can't resolve, so it asks
+    /// whether to undo it or leave it for the command line.
     struct Conflict: Equatable {
-        var pull: StoppedWork
+        /// The merge or rebase a pull stopped partway through, or the revert.
+        var work: StoppedWork
         /// The files in conflict. git prints these to its standard output, which
         /// a failure doesn't keep, so they come from asking it again.
         var files: [String]
         /// What ran and stopped, by its arguments after `git`.
         var ran: [String]? = nil
+        /// How many files were staged before a revert that was to leave its changes
+        /// uncommitted. Undoing it takes those back to `HEAD` too.
+        var stagedBefore = 0
+
+        /// Whether a pull stopped, rather than a revert.
+        var startedByPull: Bool {
+            if case .revert = work { false } else { true }
+        }
     }
 
     /// A force push that's waiting for someone to agree to what it overwrites.
@@ -173,14 +184,15 @@ final class BranchModel {
     /// What to tell the user about something that didn't work, until they've
     /// seen it.
     var failure: Failure?
-    /// A pull that stopped on a conflict, until the user has said what to do.
+    /// A pull or a revert that stopped on a conflict, until the user has said what
+    /// to do.
     var conflict: Conflict?
     /// A pull that needs someone to choose between rebasing and merging.
     var pullChoice: PullChoice?
     /// What the worktree is stuck partway through, whoever started it, which
     /// takes the place of the counts. The worktree's model keeps this current.
     var unfinished: UnfinishedWork?
-    /// A merge or a rebase that's waiting for someone to agree to abort it.
+    /// A merge, a rebase or a revert that's waiting for someone to agree to abort it.
     var pendingAbort: StoppedWork?
     /// A force push that's waiting for someone to agree to it.
     var forcePush: ForcePush?
@@ -212,6 +224,8 @@ final class BranchModel {
     @ObservationIgnored var lookAgain: () -> Void = {}
     /// Asks the worktree's model to select the row for uncommitted changes.
     @ObservationIgnored var showChanges: () -> Void = {}
+    /// How many files are staged in the worktree, which aborting a revert takes back.
+    @ObservationIgnored var stagedFiles: () -> Int = { 0 }
     /// Asks history to tint these commits, or none.
     @ObservationIgnored var showPreview: ([ObjectID]) -> Void = { _ in }
     /// How long the house takes to play once for an action, which is how long
@@ -324,7 +338,7 @@ final class BranchModel {
                 // clean up, rather than one that was there already.
                 if !wasStopped, let stopped = try? await session.stoppedWork(in: worktree) {
                     let status = try? await session.status(in: worktree)
-                    self.conflict = Conflict(pull: stopped, files: status?.conflicted.map(\.path) ?? [], ran: error.gitArguments)
+                    self.conflict = Conflict(work: stopped, files: status?.conflicted.map(\.path) ?? [], ran: error.gitArguments)
                     return nil
                 }
                 throw error
@@ -333,17 +347,19 @@ final class BranchModel {
         }
     }
 
-    /// Goes back to before the pull that stopped on a conflict.
-    func undoPull() {
+    /// Goes back to before the pull or the revert that stopped on a conflict.
+    func undoConflict() {
         guard let conflict else { return }
         self.conflict = nil
-        run(.undoingPull, failure: "Can't undo the pull") { [session, worktree] in
-            try await session.abort(conflict.pull, in: worktree)
-            return "Undid the pull"
+        let what = conflict.startedByPull ? "pull" : conflict.work.noun
+        run(.undoing, failure: "Can't undo the \(what)") { [session, worktree] in
+            try await session.abort(conflict.work, in: worktree)
+            return "Undid the \(what)"
         }
     }
 
-    /// Asks whether to abort the merge or rebase the worktree is partway through.
+    /// Asks whether to abort the merge, rebase or revert the worktree is partway
+    /// through.
     func askToAbort() {
         guard !isBusy, let work = unfinished?.work else { return }
         pendingAbort = work

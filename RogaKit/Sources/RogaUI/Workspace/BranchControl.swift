@@ -371,7 +371,7 @@ private struct UnfinishedWorkControl: View {
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help(unfinished.work.map { "\(unfinished.title). You can finish from the command line, or \(BranchModel.command($0.abortArguments)) goes back." } ?? unfinished.title)
+        .help(unfinished.help)
         .accessibilityLabel(unfinished.title)
     }
 }
