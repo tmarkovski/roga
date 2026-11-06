@@ -15,11 +15,13 @@ private func hook(
     notification: String? = nil,
     source: String? = nil,
     subagent: String? = nil,
-    backgroundTasks: Int? = nil
+    backgroundTasks: Int? = nil,
+    activity: String? = nil
 ) -> HookEvent {
     HookEvent(
         host: host, event: event, session: session, cwd: cwd, pid: pid, processStart: processStart, tool: tool,
-        notification: notification, source: source, subagent: subagent, backgroundTasks: backgroundTasks, time: time
+        notification: notification, source: source, subagent: subagent, backgroundTasks: backgroundTasks,
+        activity: activity, time: time
     )
 }
 
@@ -29,6 +31,10 @@ private let b = SessionKey(host: .claude, id: "b")
 extension AgentSessions {
     fileprivate func phase(_ key: SessionKey = a) -> AgentPhase? {
         sessions[key]?.phase
+    }
+
+    fileprivate func activity(_ key: SessionKey = a) -> String? {
+        sessions[key]?.activity
     }
 
     /// Sessions that have each been through `events`.
@@ -651,6 +657,124 @@ struct AgentSessionsTests {
         #expect(sessions.quietWorking(for: .seconds(90), now: date(90)) == [a, codex])
         #expect(sessions.quietWorking(for: .seconds(90), now: date(140)) == [a, b, codex])
         #expect(sessions.quietWorking(for: .milliseconds(89_500), now: date(89.5)) == [a, codex])
+    }
+
+    // MARK: - What a session is doing
+
+    @Test func keepsTheLatestLineOfEachSession() {
+        var sessions = AgentSessions(hook("UserPromptSubmit", at: 1))
+        #expect(sessions.activity() == nil)
+        sessions.apply(hook("PreToolUse", at: 2, tool: "Bash", activity: "Run the test suite"))
+        #expect(sessions.activity() == "Run the test suite")
+        // A tool that ends leaves its line until the next one starts.
+        sessions.apply(hook("PostToolUse", at: 3, tool: "Bash"))
+        #expect(sessions.activity() == "Run the test suite")
+        // So does a tool that only keeps the task list, which has no line.
+        sessions.apply(hook("PreToolUse", at: 4, tool: "TaskUpdate"))
+        #expect(sessions.activity() == "Run the test suite")
+        sessions.apply(hook("PreToolUse", at: 5, tool: "Read", activity: "Reading notes.txt"))
+        #expect(sessions.activity() == "Reading notes.txt")
+        sessions.apply(hook("PreToolUse", session: "b", at: 5, tool: "Grep", activity: "Searching the code"))
+        #expect(sessions.activity(b) == "Searching the code")
+
+        sessions.apply(hook("PermissionRequest", at: 6, tool: "Bash", activity: "git push"))
+        #expect(sessions.phase() == .waiting(.permission))
+        #expect(sessions.activity() == "git push")
+        // A notification of the same prompt has no line, and changes nothing.
+        sessions.apply(hook("Notification", at: 7, notification: "permission_prompt"))
+        #expect(sessions.activity() == "git push")
+        sessions.apply(hook("PostToolUse", at: 8, tool: "Bash"))
+        #expect(sessions.phase() == .working)
+        #expect(sessions.activity() == "git push")
+
+        sessions.apply(hook("Stop", at: 9, activity: "Pushed the branch"))
+        #expect(sessions.phase() == .finished(failed: false))
+        #expect(sessions.activity() == "Pushed the branch")
+        // A new turn starts with no line.
+        sessions.apply(hook("UserPromptSubmit", at: 10))
+        #expect(sessions.activity() == nil)
+        #expect(sessions.activity(b) == "Searching the code")
+    }
+
+    @Test func aQuestionSaysWhatItAsks() {
+        let sessions = AgentSessions(
+            hook("UserPromptSubmit", at: 1),
+            hook("PreToolUse", at: 2, tool: "ExitPlanMode", activity: "Wants a plan approved")
+        )
+        #expect(sessions.phase() == .waiting(.question))
+        #expect(sessions.activity() == "Wants a plan approved")
+    }
+
+    @Test func aSubagentsToolsDontReplaceItsParentsLine() {
+        var sessions = AgentSessions(
+            hook("UserPromptSubmit", at: 1),
+            hook("PreToolUse", at: 2, tool: "Agent", activity: "Subagent: Find where hooks are parsed"),
+            hook("SubagentStart", at: 3, subagent: "x")
+        )
+        sessions.apply(hook("PreToolUse", at: 4, tool: "Read", subagent: "x", activity: "Reading HookHelper.swift"))
+        sessions.apply(hook("PermissionRequest", at: 5, tool: "Bash", subagent: "x", activity: "rm"))
+        sessions.apply(hook("Stop", at: 6, subagent: "x", activity: "Found it"))
+        sessions.apply(hook("SubagentStop", at: 7, subagent: "x"))
+        #expect(sessions.activity() == "Subagent: Find where hooks are parsed")
+        // A subagent's event is still enough to show a session Roga hadn't
+        // heard of as working, with nothing yet to say what it does.
+        let unknown = AgentSessions(hook("PreToolUse", at: 4, tool: "Read", subagent: "x", activity: "Reading a.swift"))
+        #expect(unknown.phase() == .working)
+        #expect(unknown.activity() == nil)
+    }
+
+    @Test func aLateEventDoesntUndoANewerLine() {
+        var sessions = AgentSessions(
+            hook("UserPromptSubmit", at: 1),
+            hook("PreToolUse", at: 10, tool: "Bash", activity: "Run the test suite"),
+            hook("Stop", at: 20, activity: "All tests pass")
+        )
+        sessions.apply(hook("PreToolUse", at: 15, tool: "Read", activity: "Reading a.swift"))
+        #expect(sessions.phase() == .finished(failed: false))
+        #expect(sessions.activity() == "All tests pass")
+
+        sessions.apply(hook("UserPromptSubmit", at: 30))
+        sessions.apply(hook("PreToolUse", at: 32, tool: "Edit", activity: "Editing b.swift"))
+        sessions.apply(hook("PreToolUse", at: 31, tool: "Read", activity: "Reading b.swift"))
+        #expect(sessions.activity() == "Editing b.swift")
+        // An event from long before is new, because the clock went back.
+        sessions.apply(hook("PreToolUse", at: 1, tool: "Read", activity: "Reading c.swift"))
+        #expect(sessions.activity() == "Reading c.swift")
+    }
+
+    @Test func whatEndsATurnSaysWhatItLeaves() {
+        let tool = hook("PreToolUse", at: 2, tool: "Bash", activity: "Run the test suite")
+        // A reply with no words in it has no line.
+        #expect(AgentSessions(tool, hook("Stop", at: 3)).activity() == nil)
+        #expect(AgentSessions(tool, hook("StopFailure", at: 3)).activity() == nil)
+        let codex = SessionKey(host: .codex, id: "a")
+        let codexTool = hook("PreToolUse", host: .codex, at: 2, tool: "Bash", activity: "swift test")
+        #expect(AgentSessions(codexTool, hook("Interrupt", host: .codex, at: 3)).activity(codex) == nil)
+        #expect(AgentSessions(tool, hook("SessionStart", at: 3, source: "clear")).activity() == nil)
+        #expect(AgentSessions(tool, hook("SessionStart", at: 3, source: "compact")).activity() == "Run the test suite")
+        // With background tasks still running, the reply says what it waits for.
+        let waiting = AgentSessions(tool, hook("Stop", at: 3, backgroundTasks: 1, activity: "The build runs in the background"))
+        #expect(waiting.phase() == .working)
+        #expect(waiting.activity() == "The build runs in the background")
+    }
+
+    @Test func askingTheAgentClearsALineThatNoLongerFits() {
+        var sessions = AgentSessions(
+            hook("UserPromptSubmit", at: 1),
+            hook("PreToolUse", at: 2, tool: "Bash", activity: "Run the test suite")
+        )
+        // Busy agrees with working, so the line stays.
+        sessions.observe(a, .busy, cwd: nil, pid: nil, at: date(100))
+        #expect(sessions.activity() == "Run the test suite")
+        // After Esc, which sends nothing, the agent says it's idle.
+        sessions.observe(a, .idle, cwd: nil, pid: nil, at: date(200))
+        #expect(sessions.phase() == .idle)
+        #expect(sessions.activity() == nil)
+
+        var finished = AgentSessions(hook("Stop", at: 1, activity: "Done"))
+        finished.observe(a, .busy, cwd: nil, pid: nil, at: date(100))
+        #expect(finished.phase() == .working)
+        #expect(finished.activity() == nil)
     }
 
     @Test func applyingSaysWhetherAnythingChanged() {

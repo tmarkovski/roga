@@ -55,6 +55,11 @@ public struct AgentSession: Sendable, Hashable {
     public var lastEvent: Date
     /// How many of the agent's subagents are running.
     public var subagents: Int
+    /// What the agent is doing, as the helper's short line says it
+    /// (decision 43): the tool it started last or wants to be allowed, or
+    /// once it finished, the first line of its reply. It's nil when no line
+    /// came since the turn began.
+    public var activity: String?
 
     public init(
         key: SessionKey,
@@ -64,7 +69,8 @@ public struct AgentSession: Sendable, Hashable {
         phase: AgentPhase,
         phaseSince: Date,
         lastEvent: Date,
-        subagents: Int = 0
+        subagents: Int = 0,
+        activity: String? = nil
     ) {
         self.key = key
         self.cwd = cwd
@@ -74,6 +80,7 @@ public struct AgentSession: Sendable, Hashable {
         self.phaseSince = phaseSince
         self.lastEvent = lastEvent
         self.subagents = subagents
+        self.activity = activity
     }
 
     mutating func enter(_ phase: AgentPhase, at time: Date) {
@@ -139,10 +146,10 @@ public struct AgentSessions: Sendable, Hashable {
     /// Hook events come from separate helper processes, so two close
     /// together can arrive in either order, and the listener can drain
     /// several connections at once in any order. So an event from before the
-    /// last one that said what the session is doing never changes the phase:
-    /// a tool's late PostToolUse can't undo the Stop that came after it. A
-    /// late event still fills in a folder or a process Roga doesn't know
-    /// yet, and still counts its subagent.
+    /// last one that said what the session is doing never changes the phase
+    /// or the line: a tool's late PostToolUse can't undo the Stop that came
+    /// after it. A late event still fills in a folder or a process Roga
+    /// doesn't know yet, and still counts its subagent.
     @discardableResult
     public mutating func apply(_ event: HookEvent) -> Bool {
         guard let id = event.session, !id.isEmpty else { return false }
@@ -196,6 +203,9 @@ public struct AgentSessions: Sendable, Hashable {
         }
         if !Self.isLate(time, after: heard.phase), let phase = Self.phase(after: event, from: known?.phase) {
             session.enter(phase, at: time)
+            if event.subagent == nil {
+                session.activity = Self.activity(after: event, from: session.activity)
+            }
             // A subagent's own event only guesses at a session Roga hadn't
             // heard of, so it doesn't hold back the main agent's late ones.
             if event.subagent == nil || event.event == "SubagentStart" {
@@ -280,6 +290,7 @@ public struct AgentSessions: Sendable, Hashable {
             return true
         }
         let hooksKnowMore = Self.isLate(time, after: heard[key]?.phase)
+        let phaseBefore = session.phase
         if !hooksKnowMore {
             let isActive = session.phase == .working || session.phase.isWaiting
             let hooksEndItsWait = heardFromHooks(key)
@@ -293,6 +304,11 @@ public struct AgentSessions: Sendable, Hashable {
             default:
                 break
             }
+        }
+        // The answer says nothing about what the agent is doing, so a line
+        // from before it no longer fits.
+        if session.phase != phaseBefore {
+            session.activity = nil
         }
         if session.cwd == nil {
             session.cwd = cwd
@@ -394,6 +410,23 @@ public struct AgentSessions: Sendable, Hashable {
             return .idle
         default:
             return nil
+        }
+    }
+
+    /// The line a session shows after an event from its main agent that says
+    /// what it's doing (decision 43). A tool that starts or asks to be
+    /// allowed brings its own line, and a tool that only keeps the agent's
+    /// task list, which has none, leaves the one before. A tool that ends
+    /// leaves its line until the next one starts, so the line doesn't come
+    /// and go between tools. `Stop` brings the first line of the reply, and
+    /// a new turn, a new session, a failure or an interrupt clears it.
+    static func activity(after event: HookEvent, from current: String?) -> String? {
+        switch event.event {
+        case "PreToolUse", "PermissionRequest": event.activity ?? current
+        case "Stop": event.activity
+        case "UserPromptSubmit", "StopFailure", "Interrupt": nil
+        case "SessionStart": event.source == "compact" ? current : nil
+        default: current
         }
     }
 
