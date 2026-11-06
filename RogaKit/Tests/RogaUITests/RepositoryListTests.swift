@@ -434,6 +434,58 @@ struct RepositoryListTests {
         #expect(try await makeList().repositories.count == 1)
         #expect(try Data(contentsOf: store.unreadableFile) == Data("not json".utf8))
     }
+
+    // MARK: The worktree a folder is in
+
+    @Test func findsTheWorktreeAFolderIsIn() async throws {
+        let repository = try await copyRepository(try await Fixture.repository("basic"), into: folder)
+        // Claude Code puts its worktrees inside the main checkout.
+        try await runGit("worktree", "add", "--quiet", repository + "/.claude/worktrees/fix", "feature", in: repository)
+        let list = try await makeList()
+        _ = try await list.add(folder: repository)
+        let main = WorktreeSelection(repository: repository + "/.git", worktree: repository)
+        let fix = WorktreeSelection(repository: repository + "/.git", worktree: repository + "/.claude/worktrees/fix")
+
+        #expect(list.worktree(containing: repository) == main)
+        #expect(list.worktree(containing: repository + "/src/") == main)
+        #expect(list.worktree(containing: repository + "/.claude/worktrees/fix") == fix)
+        #expect(list.worktree(containing: repository + "/.claude/worktrees/fix/src") == fix)
+        // A folder that only starts the same way is somewhere else.
+        #expect(list.worktree(containing: repository + "-old") == nil)
+        #expect(list.worktree(containing: folder) == nil)
+        #expect(list.worktree(containing: "/") == nil)
+    }
+
+    @Test func comparesFoldersAsTheyReallyAre() async throws {
+        let repository = try await copyRepository(try await Fixture.repository("basic"), into: folder)
+        let list = try await makeList()
+        _ = try await list.add(folder: repository)
+        let main = WorktreeSelection(repository: repository + "/.git", worktree: repository)
+
+        // The temporary folder is behind a symbolic link, which the test's
+        // folder is resolved past and an agent might not be.
+        let unresolved = FileManager.default.temporaryDirectory.path(percentEncoded: false)
+        let link = (unresolved.hasSuffix("/") ? unresolved : unresolved + "/") + (folder as NSString).lastPathComponent + "/basic"
+        #expect(link != repository)
+        #expect(list.worktree(containing: link + "/src") == main)
+        #expect(list.worktree(containing: repository + "/src/../src/./") == main)
+        try FileManager.default.createSymbolicLink(atPath: folder + "/shortcut", withDestinationPath: repository)
+        #expect(list.worktree(containing: folder + "/shortcut/src") == main)
+        // A folder that's been deleted is still in its worktree.
+        #expect(list.worktree(containing: link + "/gone/deeper") == main)
+    }
+
+    @Test func aBareRepositoryOrAMissingWorktreeHoldsNothing() {
+        let list = RepositoryList(listing: [
+            ListedRepository(path: "/git/server.git", worktrees: [Worktree(path: "/git/server.git", isMain: true, isBare: true)]),
+            ListedRepository(path: "/git/api/.git", worktrees: [
+                Worktree(path: "/git/api", isMain: true),
+                Worktree(path: "/git/api/old", isPrunable: true),
+            ]),
+        ])
+        #expect(list.worktree(containing: "/git/server.git/hooks") == nil)
+        #expect(list.worktree(containing: "/git/api/old/src")?.worktree == "/git/api")
+    }
 }
 
 @discardableResult

@@ -57,6 +57,14 @@ public final class RepositoryList {
         lastSelection = contents.lastSelection
     }
 
+    /// A list of repositories that it neither opens nor reads from a file, for
+    /// checking what depends on which worktrees are listed. What it saves goes
+    /// to a temporary file.
+    init(listing repositories: [ListedRepository]) {
+        store = RepositoryStore(file: FileManager.default.temporaryDirectory.appending(path: "roga-list-\(UUID().uuidString).json"))
+        self.repositories = repositories
+    }
+
     var isConnected: Bool { git != nil }
 
     /// The repositories grouped the way the rail picks them.
@@ -91,6 +99,47 @@ public final class RepositoryList {
 
     func repository(at path: String) -> ListedRepository? {
         repositories.first { $0.path == path }
+    }
+
+    /// The listed worktree that a folder is in: the worktree whose folder it
+    /// is, or else the deepest one that holds it, because Claude Code puts its
+    /// worktrees inside the main checkout. An agent says which folder it works
+    /// in, and this is how its session finds its row (decision 41).
+    ///
+    /// Paths are compared standardized and with symbolic links resolved, since
+    /// an agent and git can spell the same folder differently, and a worktree
+    /// holds only what's under its folder, so `/a/api` doesn't hold
+    /// `/a/api-old`. Bare repositories and worktrees whose folders are gone
+    /// hold nothing.
+    func worktree(containing folder: String) -> WorktreeSelection? {
+        let target = Self.comparablePath(folder)
+        var found: (selection: WorktreeSelection, length: Int)?
+        for repository in repositories {
+            for worktree in repository.worktrees where !worktree.isBare && !worktree.isPrunable {
+                let path = Self.comparablePath(worktree.path)
+                guard path.count > found?.length ?? -1,
+                      target == path || target.hasPrefix(path.hasSuffix("/") ? path : path + "/")
+                else { continue }
+                found = (WorktreeSelection(repository: repository.path, worktree: worktree.path), path.count)
+            }
+        }
+        return found?.selection
+    }
+
+    /// A path without `.` and `..`, a trailing slash or symbolic links, so that
+    /// two spellings of a folder compare equal. When the folder doesn't exist,
+    /// as when an agent works in one that's been deleted, the part of the path
+    /// that does is resolved.
+    static func comparablePath(_ path: String) -> String {
+        let standardized = URL(filePath: path).standardized.path(percentEncoded: false)
+        let trimmed = standardized.count > 1 && standardized.hasSuffix("/") ? String(standardized.dropLast()) : standardized
+        if let resolved = realpath(trimmed, nil) {
+            defer { free(resolved) }
+            return String(cString: resolved)
+        }
+        let parent = (trimmed as NSString).deletingLastPathComponent
+        guard !parent.isEmpty, parent != trimmed else { return trimmed }
+        return (comparablePath(parent) as NSString).appendingPathComponent((trimmed as NSString).lastPathComponent)
     }
 
     /// Adds the repository that `folder` is in, unless it's listed already,

@@ -39,7 +39,17 @@ struct ProcessEntry: Sendable, Hashable {
     }
 }
 
-enum AgentProcess {
+public enum AgentProcess {
+    /// When a process started, in seconds since 1970, as the helper sends it
+    /// in `HookEvent.processStart`, or nil when there's no such process.
+    ///
+    /// The app asks when it starts watching an agent's process, so that it
+    /// can tell the process is gone, or that its ID now belongs to another
+    /// process, before it waits for an exit that already happened.
+    public static func startTime(of pid: Int32) -> Double? {
+        ProcessEntry(pid: pid)?.start
+    }
+
     /// The programs that stand between an agent and the helper without being
     /// the agent: Codex runs every hook in a login shell, and the launcher in
     /// Application Support is a shell script.

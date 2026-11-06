@@ -108,6 +108,7 @@ public enum Icon: String, CaseIterable, Sendable {
     case split = "split"
     case squareMinus = "square-minus"
     case squarePlus = "square-plus"
+    case squareTerminal = "square-terminal"
     case tag = "tag"
     case tagPlus = "tag-plus"
     case tagX = "tag-x"

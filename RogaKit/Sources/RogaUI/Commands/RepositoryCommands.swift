@@ -5,6 +5,8 @@ import SwiftUI
 /// The menu commands for opening repositories and for their history.
 public struct RepositoryCommands: Commands {
     let list: RepositoryList
+    /// The agents that write commit messages, for Generate's commands.
+    let agents: AgentProvider
     @FocusedValue(\.selection) private var selection
     @FocusedValue(\.repository) private var repository
     @FocusedValue(\.sidebarVisibility) private var sidebarVisibility
@@ -61,8 +63,9 @@ public struct RepositoryCommands: Commands {
     static let discardAllShortcut = KeyboardShortcut(.delete, modifiers: [.shift, .option, .command])
     static let undoDiscardShortcut = KeyboardShortcut("z", modifiers: [.shift, .option, .command])
 
-    public init(list: RepositoryList) {
+    public init(list: RepositoryList, agents: AgentProvider) {
         self.list = list
+        self.agents = agents
     }
 
     public var body: some Commands {

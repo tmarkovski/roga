@@ -1,3 +1,4 @@
+import AgentEngine
 import IconUI
 import SwiftUI
 
@@ -19,11 +20,13 @@ extension UserDefaults {
 }
 
 /// The pages of Settings, in the order its sidebar lists them. The design
-/// canvas has more pages, which wait until there's something to put on them
-/// (docs/design/settings).
+/// canvas has a General page too, which waits until there's something to put
+/// on it (docs/design/settings).
 enum SettingsPage: String, CaseIterable, Identifiable {
     case appearance
     case git
+    case commit
+    case agents
     case advanced
 
     var id: Self { self }
@@ -32,6 +35,8 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         switch self {
         case .appearance: "Appearance"
         case .git: "Git"
+        case .commit: "Commit"
+        case .agents: "Agents"
         case .advanced: "Advanced"
         }
     }
@@ -40,13 +45,14 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         switch self {
         case .appearance: .palette
         case .git: .branch
+        case .commit: .gitCommitHorizontal
+        case .agents: .squareTerminal
         case .advanced: .wrench
         }
     }
 
-    /// The sidebar's groups, with a line between each, as on the canvas, where
-    /// General, Commit and Agents share them.
-    static let groups: [[SettingsPage]] = [[.appearance], [.git], [.advanced]]
+    /// The sidebar's groups, with a line between each, as on the canvas.
+    static let groups: [[SettingsPage]] = [[.appearance], [.git, .commit], [.agents], [.advanced]]
 }
 
 /// A heading on a page, and the settings under it.
@@ -137,7 +143,9 @@ struct SettingsSheet: View {
     @Environment(\.dismiss) private var dismiss
     /// It opens on the page it was on last, because going back is usually to
     /// change the same thing again.
-    @AppStorage("settingsPage") private var page = SettingsPage.appearance
+    @AppStorage(SettingsDestination.pageKey) private var page = SettingsPage.appearance
+    /// The agent whose own page shows, under Agents, or nil for the page itself.
+    @AppStorage(SettingsDestination.agentKey) private var agent: AgentKind?
     @State private var query = ""
 
     @AppStorage(UserDefaults.houseAnimationSpeedKey) private var speed = 1.0
@@ -158,7 +166,7 @@ struct SettingsSheet: View {
         HStack(spacing: 0) {
             // The sidebar runs the sheet's full height, with the search field
             // at its top, level with the page's title.
-            SettingsSidebar(page: $page, query: $query)
+            SettingsSidebar(page: $page, agent: $agent, query: $query)
                 .frame(width: 216)
                 .frame(maxHeight: .infinity)
                 .background(SettingsColors.sidebar)
@@ -180,9 +188,17 @@ struct SettingsSheet: View {
         .presentationSizing(.fitted)
     }
 
-    /// The page's name, rather than "Settings", which the sheet already is.
+    /// What shows, from what's stored.
+    private var destination: SettingsDestination {
+        SettingsDestination(page: page, agent: agent)
+    }
+
+    /// The page's name, rather than "Settings", which the sheet already is,
+    /// or the agent's on its own page.
     private var title: String {
-        trimmedQuery.isEmpty ? page.title : "Search"
+        guard trimmedQuery.isEmpty else { return "Search" }
+        if case .agent(let kind) = destination { return kind.name }
+        return page.title
     }
 
     private var titleBar: some View {
@@ -213,8 +229,10 @@ struct SettingsSheet: View {
 
     @ViewBuilder private var content: some View {
         if trimmedQuery.isEmpty {
+            // An agent's own page has nothing on it yet.
+            let groups = destination == .page(page) ? SettingsGroup.allCases.filter { $0.page == page } : []
             VStack(alignment: .leading, spacing: 30) {
-                ForEach(SettingsGroup.allCases.filter { $0.page == page }, id: \.self) { group in
+                ForEach(groups, id: \.self) { group in
                     section(group, items: group.items, namesPage: false)
                 }
             }
@@ -281,6 +299,8 @@ struct SettingsSheet: View {
 /// The search field, the pages, and Roga's version at the bottom.
 private struct SettingsSidebar: View {
     @Binding var page: SettingsPage
+    /// The agent whose page shows. Choosing a page, Agents included, leaves it.
+    @Binding var agent: AgentKind?
     @Binding var query: String
 
     var body: some View {
@@ -298,6 +318,7 @@ private struct SettingsSidebar: View {
                 ForEach(group) { item in
                     PageButton(page: item, isSelected: query.isEmpty && page == item) {
                         page = item
+                        agent = nil
                         query = ""
                     }
                 }

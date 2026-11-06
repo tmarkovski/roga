@@ -19,6 +19,11 @@ struct RogaApplication: App {
     @State private var repositories = RepositoryList()
     /// Settings asked for with no window open, which the next window shows.
     @State private var settingsRequest = SettingsRequest()
+    /// The agents' command-line tools, which every window uses, and which
+    /// start once git is ready (decision 41).
+    @State private var agents = AgentProvider(supportFolder: AgentProvider.standardSupportFolder, helperPath: AgentProvider.bundledHelperPath)
+    /// What the agents' hooks say they're doing, for the sidebar's marks.
+    @State private var agentMonitor = AgentMonitor(supportFolder: AgentProvider.standardSupportFolder)
 
     init() {
         // Repositories are switched in the sidebar (decision 13).
@@ -33,6 +38,8 @@ struct RogaApplication: App {
                 .environment(gitProvider)
                 .environment(repositories)
                 .environment(settingsRequest)
+                .environment(agents)
+                .environment(agentMonitor)
         }
         // Wide enough for the sidebar, the refs panel and the panels between
         // them.
@@ -42,7 +49,7 @@ struct RogaApplication: App {
             CommandGroup(after: .appInfo) {
                 CheckForUpdatesButton(updater: updaterController.updater)
             }
-            RepositoryCommands(list: repositories)
+            RepositoryCommands(list: repositories, agents: agents)
             SettingsCommands(request: settingsRequest)
         }
         // For looking at the house's animations up close. It's listed in the

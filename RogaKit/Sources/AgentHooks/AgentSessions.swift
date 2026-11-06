@@ -318,8 +318,9 @@ public struct AgentSessions: Sendable, Hashable {
     /// Whether something from `time` comes from before `last`, so that it
     /// arrived late. Something much older than `last` is new instead,
     /// because the clock must have been set back, and nothing is late when
-    /// there's no `last`.
-    static func isLate(_ time: Date, after last: Date?) -> Bool {
+    /// there's no `last`. It's public so that the app orders what it keeps
+    /// about events in the same way.
+    public static func isLate(_ time: Date, after last: Date?) -> Bool {
         guard let last else { return false }
         let age = last.timeIntervalSince(time)
         return age > 0 && age <= clockChange
@@ -397,8 +398,9 @@ public struct AgentSessions: Sendable, Hashable {
     /// Whether an event's `cwd` says where the session is. Since Codex 0.166,
     /// the tool events' `cwd` is the folder the command runs in, which can be
     /// anywhere. A subagent can work in a worktree of its own, which doesn't
-    /// move the session.
-    static func movesTheFolder(_ event: HookEvent) -> Bool {
+    /// move the session. It's public so that the app can tell where an event
+    /// came from in the same way, for one that names no session it knows.
+    public static func movesTheFolder(_ event: HookEvent) -> Bool {
         guard event.subagent == nil else { return false }
         if event.host == .codex {
             return !["PreToolUse", "PostToolUse", "PermissionRequest"].contains(event.event)
