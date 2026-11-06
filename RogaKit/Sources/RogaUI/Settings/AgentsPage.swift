@@ -67,8 +67,8 @@ struct AgentListSection: View {
     }
 }
 
-/// An agent in the list: its tile, its name and program, whether Roga uses
-/// it, and the chevron to its page.
+/// An agent in the list: its name and program, whether Roga uses it, and the
+/// chevron to its page, beside the name.
 private struct AgentRow: View {
     let kind: AgentKind
     let show: (SettingsDestination) -> Void
@@ -83,14 +83,12 @@ private struct AgentRow: View {
 
     var body: some View {
         let isFound = agents.installation(kind) != nil
-        HStack(spacing: 12) {
-            AgentMonogram(kind: kind, isDimmed: !isFound || !isEnabled)
+        HStack(alignment: .settingsFirstLine, spacing: 12) {
             Button {
                 show(.agent(kind))
             } label: {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(kind.name)
-                        .fontWeight(.medium)
+                    AgentName(kind: kind, isDimmed: !isFound || !isEnabled)
                     ProgramLineText(line: AgentSummaries.programLine(agents.lookups[kind]))
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -114,6 +112,7 @@ private struct AgentRow: View {
                 .help("\(kind.name) Settings")
                 .accessibilityLabel("\(kind.name) Settings")
             }
+            .alignmentGuide(.settingsFirstLine) { $0[VerticalAlignment.center] }
         }
         .padding(EdgeInsets(top: 10, leading: 14, bottom: 10, trailing: 12))
         .frame(minHeight: 58)
@@ -205,18 +204,17 @@ struct WorkingStatusSection: View {
 
 /// An agent's hooks, in the list on the Agents page: whether they're
 /// installed and when Roga last heard from them, the button that installs or
-/// removes them, and what went wrong, in red.
+/// removes them, beside the agent's name so that it stays put as the words
+/// under the name change, and what went wrong, in red.
 private struct HookRow: View {
     let kind: AgentKind
     let line: HookLine
     let open: (AgentKind, HooksDialog.Action) -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
-            AgentMonogram(kind: kind, isDimmed: line.button == nil)
+        HStack(alignment: .settingsFirstLine, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(kind.name)
-                    .fontWeight(.medium)
+                AgentName(kind: kind, isDimmed: line.button == nil)
                 HookLineText(line: line, size: 12)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -229,6 +227,7 @@ private struct HookRow: View {
                 // The page has a button for each agent, so VoiceOver's list
                 // of buttons needs the agent's name in each.
                 .accessibilityLabel(button.spokenTitle(kind))
+                .alignmentGuide(.settingsFirstLine) { $0[VerticalAlignment.center] }
             }
         }
         .padding(EdgeInsets(top: 10, leading: 14, bottom: 10, trailing: 12))
@@ -301,20 +300,18 @@ private struct ProgramLineText: View {
     }
 }
 
-/// The two letters on an agent's gray tile, since Roga doesn't draw the
-/// agents' own logos. They're gray while Roga can't use the agent.
-struct AgentMonogram: View {
+/// An agent's name at the top of its row, which is gray while Roga can't use
+/// the agent, because Roga didn't find it or it's turned off. The row's
+/// controls sit on the middle of its line.
+private struct AgentName: View {
     let kind: AgentKind
     var isDimmed = false
 
     var body: some View {
-        Text(kind.monogram)
-            .font(.system(size: 11.5, weight: .semibold))
-            .kerning(-0.1)
+        Text(kind.name)
+            .fontWeight(.medium)
             .foregroundStyle(isDimmed ? SettingsColors.note : .primary)
-            .frame(width: 30, height: 30)
-            .background(SettingsColors.card, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .accessibilityHidden(true)
+            .alignmentGuide(.settingsFirstLine) { $0[VerticalAlignment.center] }
     }
 }
 
