@@ -435,7 +435,25 @@ public actor RepositorySession {
         }
     }
 
-    /// Says whether a worktree is partway through a merge or a rebase.
+    /// Finds out what's worth knowing before reverting a commit in a worktree,
+    /// without changing anything.
+    ///
+    /// - Throws: `CommitRevert.Missing` when the repository doesn't have the commit.
+    @concurrent
+    public nonisolated func prepareToRevert(_ commit: ObjectID, in worktree: String) async throws -> CommitRevert {
+        guard let info = try await commits([commit]).first ?? nil else { throw CommitRevert.Missing(commit: commit) }
+        return try await CommitRevert.prepare(info, in: worktree, format: location.format, git: git)
+    }
+
+    /// Reverts a commit in a worktree, against its `HEAD`.
+    ///
+    /// - Throws: `GitError` when git refuses, which says why.
+    @concurrent
+    public nonisolated func revert(_ revert: CommitRevert, _ way: CommitRevert.Way, in worktree: String) async throws -> CommitRevert.Outcome {
+        try await revert.run(way, in: worktree, git: git)
+    }
+
+    /// Says whether a worktree is partway through a merge, a rebase or a revert.
     @concurrent
     public nonisolated func stoppedWork(in worktree: String) async throws -> StoppedWork? {
         try await RemoteCommands.stoppedWork(in: worktree, git: git)
@@ -449,7 +467,7 @@ public actor RepositorySession {
         RemoteCommands.stoppedWorkFromFiles(in: worktree)
     }
 
-    /// Goes back to before a merge or a rebase that stopped partway.
+    /// Goes back to before a merge, a rebase or a revert that stopped partway.
     @concurrent
     public nonisolated func abort(_ work: StoppedWork, in worktree: String) async throws {
         _ = try await Self.run(work.abortArguments, in: worktree, git: git)

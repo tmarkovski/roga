@@ -1,6 +1,6 @@
 # 38. One Delete… on a commit, with its branches in the dialog
 
-Accepted on 2026-11-05. Replaces what [decision 33](0033-one-row-in-a-menu-and-the-choice-in-the-dialog.md) says about a branch and its upstream sharing a row in history, and goes further than it did against [decision 29](0029-dialogs-that-say-what-happens-and-show-the-command.md)'s rule about adding no questions. The rest of both decisions still holds.
+Accepted on 2026-11-05. Replaces what [decision 33](0033-one-row-in-a-menu-and-the-choice-in-the-dialog.md) says about a branch and its upstream sharing a row in history, and goes further than it did against [decision 29](0029-dialogs-that-say-what-happens-and-show-the-command.md)'s rule about adding no questions. The rest of both decisions still holds. [Decision 44](0044-revert-a-commit-from-its-menu-in-history.md) puts **Revert…** above **Delete…**, so a commit with no branch that could go has a menu too.
 
 ## Context
 

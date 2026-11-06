@@ -173,9 +173,9 @@ struct BranchModelTests {
         model.branch.pull(.merge)
         await model.branch.running?.value
         #expect(model.branch.failure == nil)
-        #expect(model.branch.conflict == BranchModel.Conflict(pull: .merge, files: ["conflict.txt"], ran: ["pull", "--no-rebase", "--ff"]))
+        #expect(model.branch.conflict == BranchModel.Conflict(work: .merge, files: ["conflict.txt"], ran: ["pull", "--no-rebase", "--ff"]))
 
-        model.branch.undoPull()
+        model.branch.undoConflict()
         await model.branch.running?.value
         #expect(model.branch.conflict == nil)
         #expect(try await git("rev-parse", "HEAD", in: clones.work) == mine)
@@ -361,7 +361,7 @@ struct BranchModelTests {
         let clones = try await clones()
         let model = model(clones, fetches: false)
         let files = (1...7).map { "file\($0).txt" }
-        model.branch.conflict = BranchModel.Conflict(pull: .rebase(branch: "refs/heads/main"), files: files, ran: ["pull", "--rebase"])
+        model.branch.conflict = BranchModel.Conflict(work: .rebase(branch: "refs/heads/main"), files: files, ran: ["pull", "--rebase"])
         let dialog = try dialogContent(model)
         #expect(dialog.title == "The pull stopped on a conflict")
         #expect(dialog.message?.plain.hasPrefix("main is partway through a rebase, with 7 files in conflict.") == true)

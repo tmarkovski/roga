@@ -247,8 +247,10 @@ private struct DialogActionButton: View {
         switch button.kind {
         case .secondary, .partlyDestructive:
             base
-        case .primary:
+        case .primary where button.pressesWithReturn:
             base.keyboardShortcut(.defaultAction)
+        case .primary:
+            base
         case .destructive:
             base.keyboardShortcut(.return, modifiers: .command)
         }
