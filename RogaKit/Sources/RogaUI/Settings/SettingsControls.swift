@@ -38,8 +38,9 @@ extension VerticalAlignment {
     }
 
     /// The middle of a row's first line, which is its name, for the controls
-    /// at the row's top right. They stay beside the name however many lines
-    /// go under it, as a row's commands do elsewhere in Roga.
+    /// at the row's top right, in every row of Settings. They stay beside the
+    /// name however many lines go under it, as a row's commands do elsewhere
+    /// in Roga.
     static let settingsFirstLine = VerticalAlignment(SettingsFirstLine.self)
 }
 
@@ -92,7 +93,8 @@ extension SettingsSection where Aside == EmptyView {
 }
 
 /// One setting: its name and gray help on the left, and its control on the
-/// right. Help that's more than words, such as a program's path in the code
+/// right, on the name's line, so that it stays beside the name however long
+/// the help is or however it changes. Help that's more than words, such as a program's path in the code
 /// font, goes in `detail`, and `help` then says all of it in words. VoiceOver
 /// reads the name and the detail as one element, with `help` as its value,
 /// so it hears the whole sentence once rather than the detail's pieces.
@@ -115,7 +117,7 @@ struct SettingsRow<Detail: View, Control: View>: View {
     }
 
     var body: some View {
-        HStack(spacing: 16) {
+        HStack(alignment: .settingsFirstLine, spacing: 16) {
             if let spokenDetail {
                 words
                     .accessibilityElement(children: .ignore)
@@ -129,9 +131,11 @@ struct SettingsRow<Detail: View, Control: View>: View {
                     .fixedSize()
                     .accessibilityLabel(title)
                     .accessibilityHint(help ?? "")
+                    .alignmentGuide(.settingsFirstLine) { $0[VerticalAlignment.center] }
             } else {
                 control
                     .fixedSize()
+                    .alignmentGuide(.settingsFirstLine) { $0[VerticalAlignment.center] }
             }
         }
         .padding(.vertical, 10)
@@ -154,6 +158,7 @@ struct SettingsRow<Detail: View, Control: View>: View {
     private var words: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
+                .alignmentGuide(.settingsFirstLine) { $0[VerticalAlignment.center] }
             if let detail {
                 detail
                     .font(.system(size: 12.5))

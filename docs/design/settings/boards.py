@@ -115,8 +115,9 @@ body{margin:0}
 .sh{display:flex;align-items:center;gap:10px;min-height:26px;margin-bottom:4px}
 .sh h3{margin:0;flex:1 1 0;font-size:15px;font-weight:600}
 .sd{margin:0 0 8px;color:var(--tx2);font-size:12.5px;line-height:18px}
-.r{display:flex;align-items:center;gap:16px;min-height:56px;padding:10px 0}
-.r.nh{min-height:46px}
+.r{display:flex;align-items:flex-start;gap:16px;min-height:56px;padding:10px 0}
+.r.nh{min-height:46px;align-items:center}
+.r>.rc{height:18px}
 .r+.r,.r+.blk,.blk+.r,.blk+.blk{border-top:1px solid var(--hair)}
 .blk{padding:12px 0}
 .rl{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:2px}
