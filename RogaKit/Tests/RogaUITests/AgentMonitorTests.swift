@@ -346,18 +346,18 @@ struct AgentMonitorTests {
 
     @Test func theWorktreeMenuSaysHowLongFromAMinuteOn() {
         let working = AgentSummary(state: .working, since: start, hosts: [.claude], sessions: 1)
-        #expect(working.menuDetail(now: start.addingTimeInterval(59)) == "Agent working")
-        #expect(working.menuDetail(now: start.addingTimeInterval(6 * 60 + 5)) == "Agent working · 6 min")
-        #expect(working.menuDetail(now: start.addingTimeInterval(65 * 60)) == "Agent working · 1 hr 5 min")
+        #expect(working.menuDetail(now: start.addingTimeInterval(59)) == "Claude Code working")
+        #expect(working.menuDetail(now: start.addingTimeInterval(6 * 60 + 5)) == "Claude Code working · 6 min")
+        #expect(working.menuDetail(now: start.addingTimeInterval(65 * 60)) == "Claude Code working · 1 hr 5 min")
         #expect(working.help(now: start.addingTimeInterval(30)) == "Claude Code is working")
         #expect(working.help(now: start.addingTimeInterval(6 * 60)) == "Claude Code is working, for 6 minutes")
         #expect(working.help(now: start.addingTimeInterval(60)) == "Claude Code is working, for 1 minute")
         let waiting = AgentSummary(state: .waiting(.question), since: start, hosts: [.codex], sessions: 1)
-        #expect(waiting.menuDetail(now: start.addingTimeInterval(120)) == "Agent waiting for you · 2 min")
+        #expect(waiting.menuDetail(now: start.addingTimeInterval(120)) == "Codex waiting for you · 2 min")
         let several = AgentSummary(state: .waiting(.permission), since: start, hosts: [.claude, .codex], sessions: 2)
         #expect(several.description == "2 agents are waiting for you")
         let finished = AgentSummary(state: .finished, since: start, hosts: [.codex], sessions: 1)
-        #expect(finished.menuDetail(now: start.addingTimeInterval(3600)) == "Agent finished")
+        #expect(finished.menuDetail(now: start.addingTimeInterval(3600)) == "Codex finished")
         #expect(finished.help(now: start.addingTimeInterval(3600)) == "Codex finished")
         #expect(AgentSummary(state: .finished, since: start, hosts: [.claude], sessions: 3).description == "3 agents finished")
     }
@@ -371,8 +371,8 @@ struct AgentMonitorTests {
         #expect(working.description == "Claude Code is working: Run the test suite")
         #expect(working.help(now: start.addingTimeInterval(30)) == "Claude Code is working: Run the test suite")
         #expect(working.help(now: start.addingTimeInterval(6 * 60)) == "Claude Code is working: Run the test suite, for 6 minutes")
-        #expect(working.menuDetail(now: start.addingTimeInterval(6 * 60)) == "Run the test suite · 6 min")
-        #expect(working.menuDetail(now: start.addingTimeInterval(30)) == "Run the test suite")
+        #expect(working.menuDetail(now: start.addingTimeInterval(6 * 60)) == "Claude Code: Run the test suite · 6 min")
+        #expect(working.menuDetail(now: start.addingTimeInterval(30)) == "Claude Code: Run the test suite")
 
         // Codex's tool events don't say where the session is, so its prompt does.
         monitor.receive(event("UserPromptSubmit", "b", host: .codex, in: "/git/api-login", at: 0))
@@ -380,19 +380,19 @@ struct AgentMonitorTests {
         let waiting = try #require(monitor.summary(forWorktree: "/git/api-login", in: list))
         #expect(waiting.description == "Codex is waiting for you to allow: git push")
         #expect(waiting.help(now: start.addingTimeInterval(130)) == "Codex is waiting for you to allow: git push, for 2 minutes")
-        #expect(waiting.menuDetail(now: start.addingTimeInterval(130)) == "Waiting to allow: git push · 2 min")
+        #expect(waiting.menuDetail(now: start.addingTimeInterval(130)) == "Codex needs your OK: git push · 2 min")
 
         monitor.receive(event("PreToolUse", "a", in: "/git/api", at: 20, tool: "AskUserQuestion", activity: "Asked a question"))
         let question = try #require(monitor.summary(forWorktree: "/git/api", in: list))
         #expect(question.description == "Claude Code is waiting for you: Asked a question")
-        #expect(question.menuDetail(now: start.addingTimeInterval(140)) == "Asked a question · 2 min")
+        #expect(question.menuDetail(now: start.addingTimeInterval(140)) == "Claude Code: Asked a question · 2 min")
 
         // The reply's first line shows in the tooltip, never with how long,
-        // and the menu keeps its short line.
+        // and the menu keeps its short line, with the agent's name.
         monitor.receive(event("Stop", "a", in: "/git/api", at: 30, activity: "Added the activity line to the tooltip"))
         let finished = try #require(monitor.summary(forWorktree: "/git/api", in: list))
         #expect(finished.help(now: start.addingTimeInterval(3600)) == "Claude Code finished: Added the activity line to the tooltip")
-        #expect(finished.menuDetail(now: start.addingTimeInterval(3600)) == "Agent finished")
+        #expect(finished.menuDetail(now: start.addingTimeInterval(3600)) == "Claude Code finished")
     }
 
     @Test func severalSessionsKeepTheirCount() throws {
@@ -451,7 +451,29 @@ struct AgentMonitorTests {
         #expect(summary?.activity == "Run the tests")
         let none = AgentSummary([(host: .codex, phase: .working, since: start, activity: nil)])
         #expect(none?.description == "Codex is working")
-        #expect(none?.menuDetail(now: start) == "Agent working")
+        #expect(none?.menuDetail(now: start) == "Codex working")
+    }
+
+    /// Next to Roga's own lines in the worktree menu, such as "Rebasing main",
+    /// a bare "git push" could read as something Roga is doing.
+    @Test func theWorktreeMenuNamesTheAgent() {
+        func line(_ state: AgentSummary.State, _ hosts: [AgentHost], _ activity: String? = nil, sessions: Int = 1, minutes: Double) -> String {
+            AgentSummary(state: state, since: start, hosts: hosts, sessions: sessions, activity: activity)
+                .menuDetail(now: start.addingTimeInterval(minutes * 60 + 5))
+        }
+        #expect(line(.working, [.claude], "Run the test suite", minutes: 6) == "Claude Code: Run the test suite · 6 min")
+        #expect(line(.waiting(.permission), [.codex], "git push", minutes: 2) == "Codex needs your OK: git push · 2 min")
+        #expect(line(.waiting(.question), [.claude], "Wants a plan approved", minutes: 2) == "Claude Code: Wants a plan approved · 2 min")
+        #expect(line(.working, [.claude], minutes: 6) == "Claude Code working · 6 min")
+        #expect(line(.waiting(.permission), [.codex], minutes: 2) == "Codex waiting for you · 2 min")
+        #expect(line(.waiting(.question), [.codex], minutes: 2) == "Codex waiting for you · 2 min")
+        #expect(line(.finished, [.claude], "Added the line to the menu", minutes: 60) == "Claude Code finished")
+        #expect(line(.finished, [.codex], minutes: 60) == "Codex finished")
+        // Several sessions keep their count, since one name can't speak for
+        // all of them.
+        #expect(line(.working, [.claude, .codex], sessions: 2, minutes: 6) == "2 agents working · 6 min")
+        #expect(line(.waiting(.permission), [.claude], sessions: 2, minutes: 2) == "2 agents waiting for you · 2 min")
+        #expect(line(.finished, [.claude, .codex], sessions: 3, minutes: 60) == "3 agents finished")
     }
 
     // MARK: Processes

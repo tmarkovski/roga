@@ -44,12 +44,12 @@ Claude's description of a command, a subagent's description and the reply's firs
 
 | | Tooltip | Worktree menu |
 | --- | --- | --- |
-| Working | Claude Code is working: Run the test suite, for 6 minutes | Run the test suite · 6 min |
-| Waiting to be allowed | Codex is waiting for you to allow: git push, for 2 minutes | Waiting to allow: git push · 2 min |
-| Waiting for an answer | Claude Code is waiting for you: Wants a plan approved, for 2 minutes | Wants a plan approved · 2 min |
-| Finished | Claude Code finished: Added the activity line to the tooltip | Agent finished |
+| Working | Claude Code is working: Run the test suite, for 6 minutes | Claude Code: Run the test suite · 6 min |
+| Waiting to be allowed | Codex is waiting for you to allow: git push, for 2 minutes | Codex needs your OK: git push · 2 min |
+| Waiting for an answer | Claude Code is waiting for you: Wants a plan approved, for 2 minutes | Claude Code: Wants a plan approved · 2 min |
+| Finished | Claude Code finished: Added the activity line to the tooltip | Claude Code finished |
 
-The lines read as different parts of speech, "Run the test suite", "git push" and "Editing notes.txt", so each comes after a colon rather than inside a sentence. The menu leaves out a finished agent's reply, because its line is short and the worktree's folder follows it. Until a session has a line, as before its first tool starts, the words are decision 41's. So are the words for several sessions behind one mark, as in "2 agents are working", since one line can't speak for all of them. VoiceOver reads the line as part of the row, as it reads the mark.
+The lines read as different parts of speech, "Run the test suite", "git push" and "Editing notes.txt", so each comes after a colon rather than inside a sentence. The menu now names the agent where decision 41 said "Agent", as in "Claude Code working · 6 min" before a session has a line, because the menu also has Roga's own lines, such as "Rebasing main · 2 conflicts", and a bare "git push · 6 min" could read as something Roga is doing. The menu leaves out a finished agent's reply, because its line is short and the worktree's folder follows it. Until a session has a line, as before its first tool starts, the tooltip's words are decision 41's. So are the words for several sessions behind one mark, in the tooltip and the menu, as in "2 agents are working" and "2 agents working · 6 min", since one line can't speak for all of them. VoiceOver reads the line as part of the row, as it reads the mark.
 
 The line is kept apart from what the marks are drawn from, since it changes with nearly every tool an agent starts. Only the rows that show a mark read it, so a new line redraws those rows and leaves the rest of the sidebar alone.
 

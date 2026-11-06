@@ -142,11 +142,12 @@ enum WorktreeMenu {
         )
     }
 
-    /// The second line: what agents are doing there, as in "Agent working · 6
-    /// min", in amber while one waits for you (decision 41), whether the
-    /// worktree is going away or its folder is missing, what it's stuck partway
-    /// through, how far its branch is from its upstream, whether it's locked,
-    /// and last, its folder, which is the part to cut short.
+    /// The second line: what agents are doing there, as in "Claude Code: Run
+    /// the test suite · 6 min" or "2 agents working · 6 min", in amber while
+    /// one waits for you (decisions 41 and 43), whether the worktree is going
+    /// away or its folder is missing, what it's stuck partway through, how far
+    /// its branch is from its upstream, whether it's locked, and last, its
+    /// folder, which is the part to cut short.
     static func details(for facts: WorktreeFacts, now: Date = .now) -> [RefMenu.Detail] {
         let worktree = facts.worktree
         var details: [RefMenu.Detail] = []

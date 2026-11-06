@@ -168,9 +168,9 @@ struct WorktreeMenuTests {
     @Test func whatAnAgentIsDoingComesFirstOnTheSecondLine() {
         let working = WorktreeFacts(worktree: fixLogin, upstream: UpstreamCounts(ahead: 2), agent: agent(.working))
         // Under a minute, it leaves the time out.
-        #expect(WorktreeMenu.details(for: working, now: start.addingTimeInterval(59)).map(\.text) == ["Agent working", "↑2", "~/agents/fix-login"])
+        #expect(WorktreeMenu.details(for: working, now: start.addingTimeInterval(59)).map(\.text) == ["Claude Code working", "↑2", "~/agents/fix-login"])
         let details = WorktreeMenu.details(for: working, now: start.addingTimeInterval(6 * 60 + 59))
-        #expect(details.map(\.text) == ["Agent working · 6 min", "↑2", "~/agents/fix-login"])
+        #expect(details.map(\.text) == ["Claude Code working · 6 min", "↑2", "~/agents/fix-login"])
         #expect(details.allSatisfy { $0.color == nil })
 
         let both = WorktreeFacts(worktree: fixLogin, isDeleting: true, agent: agent(.working, sessions: 2))
@@ -179,13 +179,34 @@ struct WorktreeMenuTests {
 
     @Test func anAgentWaitingForYouIsAmberAndOneThatFinishedSaysNoTime() throws {
         let waiting = WorktreeMenu.details(for: WorktreeFacts(worktree: fixLogin, agent: agent(.waiting(.permission))), now: start.addingTimeInterval(120))
-        #expect(waiting.map(\.text) == ["Agent waiting for you · 2 min", "~/agents/fix-login"])
+        #expect(waiting.map(\.text) == ["Claude Code waiting for you · 2 min", "~/agents/fix-login"])
         #expect(waiting.first?.color == WorktreeMenu.agentWaitingColor)
         #expect(waiting.last?.color == nil)
 
         let finished = WorktreeMenu.details(for: WorktreeFacts(worktree: fixLogin, agent: agent(.finished)), now: start.addingTimeInterval(3600))
-        #expect(finished.map(\.text) == ["Agent finished", "~/agents/fix-login"])
+        #expect(finished.map(\.text) == ["Claude Code finished", "~/agents/fix-login"])
         #expect(finished.allSatisfy { $0.color == nil })
+    }
+
+    @Test func whatTheAgentSaysItsDoingFollowsItsName() {
+        func details(_ state: AgentSummary.State, _ host: AgentHost, _ activity: String) -> [RefMenu.Detail] {
+            let agent = AgentSummary(state: state, since: start, hosts: [host], sessions: 1, activity: activity)
+            return WorktreeMenu.details(
+                for: WorktreeFacts(worktree: fixLogin, unfinished: UnfinishedWork(work: .rebase(branch: "refs/heads/main"), conflicts: 2), agent: agent),
+                now: start.addingTimeInterval(6 * 60 + 5)
+            )
+        }
+        let working = details(.working, .claude, "Run the test suite")
+        #expect(working.map(\.text) == ["Claude Code: Run the test suite · 6 min", "Rebasing main · 2 conflicts", "~/agents/fix-login"])
+        #expect(working.first?.color == nil)
+        let waiting = details(.waiting(.permission), .codex, "git push")
+        #expect(waiting.map(\.text) == ["Codex needs your OK: git push · 6 min", "Rebasing main · 2 conflicts", "~/agents/fix-login"])
+        #expect(waiting.first?.color == WorktreeMenu.agentWaitingColor)
+        let question = details(.waiting(.question), .claude, "Wants a plan approved")
+        #expect(question.first?.text == "Claude Code: Wants a plan approved · 6 min")
+        #expect(question.first?.color == WorktreeMenu.agentWaitingColor)
+        // The reply stays in the mark's tooltip.
+        #expect(details(.finished, .claude, "Added the line to the menu").first?.text == "Claude Code finished")
     }
 
     @Test func theAmberHasALightAndADarkVersion() throws {
@@ -209,7 +230,7 @@ struct WorktreeMenuTests {
             now: start.addingTimeInterval(65 * 60),
             actions: actions()
         )
-        #expect(choices(entries).map(\.detailText) == ["~/code/agents-demo", "Agent working · 1 hr 5 min · ~/agents/fix-login"])
+        #expect(choices(entries).map(\.detailText) == ["~/code/agents-demo", "Claude Code working · 1 hr 5 min · ~/agents/fix-login"])
     }
 
     private func event(_ name: String, _ session: String, host: AgentHost = .claude, in cwd: String, at seconds: Double) -> HookEvent {
@@ -290,7 +311,7 @@ struct WorktreeMenuTests {
         #expect(times == [130, 141, 181, 201, 241])
         // Each one says the next minute, not the one before it.
         let summary = AgentSummary(state: .working, since: second, hosts: [.claude], sessions: 1)
-        #expect(summary.menuDetail(now: start.addingTimeInterval(times[1])) == "Agent working · 2 min")
+        #expect(summary.menuDetail(now: start.addingTimeInterval(times[1])) == "Claude Code working · 2 min")
 
         #expect(Array(WholeMinutes(since: []).entries(from: now, mode: .normal)) == [now])
         // Before an agent's first minute, the next is its first.

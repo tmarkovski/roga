@@ -707,26 +707,28 @@ struct AgentSummary: Equatable {
         return "\(description), for \(Self.longDuration(minutes: minutes))"
     }
 
-    /// The second line of the worktree menu's row, such as "Agent working · 6
-    /// min", "2 agents working · 6 min", "Agent waiting for you · 2 min" or
-    /// "Agent finished". It leaves the time out under a minute, and for
-    /// what's finished.
+    /// The second line of the worktree menu's row, such as "Claude Code
+    /// working · 6 min", "2 agents working · 6 min", "Codex waiting for you ·
+    /// 2 min" or "Claude Code finished". It leaves the time out under a
+    /// minute, and for what's finished.
     ///
-    /// With one session whose agent said what it's doing, the line takes the
-    /// place of the words, as in "Run the test suite · 6 min", "Waiting to
-    /// allow: git push · 2 min" or "Asked a question · 2 min". A finished
-    /// session's reply stays in the tooltip, since the menu's line is short
-    /// and its folder comes after.
+    /// With one session whose agent said what it's doing, the line follows
+    /// the agent's name, as in "Claude Code: Run the test suite · 6 min",
+    /// "Codex needs your OK: git push · 2 min" or "Claude Code: Wants a plan
+    /// approved · 2 min". The name keeps a bare "git push" from reading as
+    /// something Roga is doing, next to its own lines such as "Rebasing main"
+    /// (decision 43). A finished session's reply stays in the tooltip, since
+    /// the menu's line is short and its folder comes after.
     func menuDetail(now: Date) -> String {
-        let agents = sessions == 1 ? "Agent" : "\(sessions) agents"
+        let agent = sessions == 1 ? hosts.first?.name ?? "Agent" : "\(sessions) agents"
         let words: String
         switch (state, activity) {
-        case (.working, let activity?): words = activity
-        case (.waiting(.permission), let activity?): words = "Waiting to allow: \(activity)"
-        case (.waiting(.question), let activity?): words = activity
-        case (.working, nil): words = "\(agents) working"
-        case (.waiting, nil): words = "\(agents) waiting for you"
-        case (.finished, _): return "\(agents) finished"
+        case (.working, let activity?): words = "\(agent): \(activity)"
+        case (.waiting(.permission), let activity?): words = "\(agent) needs your OK: \(activity)"
+        case (.waiting(.question), let activity?): words = "\(agent): \(activity)"
+        case (.working, nil): words = "\(agent) working"
+        case (.waiting, nil): words = "\(agent) waiting for you"
+        case (.finished, _): return "\(agent) finished"
         }
         let minutes = Self.minutes(from: since, to: now)
         return minutes > 0 ? "\(words) · \(Self.shortDuration(minutes: minutes))" : words
