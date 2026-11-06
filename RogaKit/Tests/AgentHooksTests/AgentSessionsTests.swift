@@ -705,6 +705,50 @@ struct AgentSessionsTests {
         #expect(sessions.activity() == "Wants a plan approved")
     }
 
+    @Test func anAnsweredQuestionLeavesNoLine() {
+        for (tool, line) in [("AskUserQuestion", "Asked a question"), ("ExitPlanMode", "Wants a plan approved")] {
+            for end in ["PostToolUse", "PostToolUseFailure"] {
+                var sessions = AgentSessions(
+                    hook("UserPromptSubmit", at: 1),
+                    hook("PreToolUse", at: 2, tool: tool, activity: line)
+                )
+                sessions.apply(hook(end, at: 3, tool: tool))
+                #expect(sessions.phase() == .working)
+                #expect(sessions.activity() == nil)
+            }
+        }
+        let codex = SessionKey(host: .codex, id: "a")
+        var sessions = AgentSessions(
+            hook("UserPromptSubmit", host: .codex, at: 1),
+            hook("PreToolUse", host: .codex, at: 2, tool: "request_user_input", activity: "Asked a question")
+        )
+        sessions.apply(hook("PostToolUse", host: .codex, at: 3, tool: "request_user_input"))
+        #expect(sessions.activity(codex) == nil)
+        // Only the question's own end clears it. Claude's tools aren't
+        // Codex's questions, and the other way round.
+        let other = AgentSessions(
+            hook("PreToolUse", host: .codex, at: 2, tool: "Bash", activity: "swift test"),
+            hook("PostToolUse", host: .codex, at: 3, tool: "AskUserQuestion")
+        )
+        #expect(other.activity(codex) == "swift test")
+        // A late end of a question doesn't clear the line of the tool after it.
+        sessions.apply(hook("PreToolUse", host: .codex, at: 5, tool: "Bash", activity: "swift test"))
+        sessions.apply(hook("PostToolUse", host: .codex, at: 4, tool: "request_user_input"))
+        #expect(sessions.activity(codex) == "swift test")
+    }
+
+    @Test func aDeniedToolLeavesNoLine() {
+        var sessions = AgentSessions(
+            hook("UserPromptSubmit", at: 1),
+            hook("PermissionRequest", at: 2, tool: "Bash", activity: "git push")
+        )
+        sessions.apply(hook("PermissionDenied", at: 3, tool: "Bash"))
+        #expect(sessions.phase() == .working)
+        #expect(sessions.activity() == nil)
+        sessions.apply(hook("PreToolUse", at: 4, tool: "Read", activity: "Reading notes.txt"))
+        #expect(sessions.activity() == "Reading notes.txt")
+    }
+
     @Test func aSubagentsToolsDontReplaceItsParentsLine() {
         var sessions = AgentSessions(
             hook("UserPromptSubmit", at: 1),

@@ -418,13 +418,17 @@ public struct AgentSessions: Sendable, Hashable {
     /// allowed brings its own line, and a tool that only keeps the agent's
     /// task list, which has none, leaves the one before. A tool that ends
     /// leaves its line until the next one starts, so the line doesn't come
-    /// and go between tools. `Stop` brings the first line of the reply, and
-    /// a new turn, a new session, a failure or an interrupt clears it.
+    /// and go between tools, except a question that has been answered, whose
+    /// line no longer holds once the agent works on. A denied tool's line
+    /// goes too, since the agent goes on without it. `Stop` brings the first
+    /// line of the reply, and a new turn, a new session, a failure or an
+    /// interrupt clears it.
     static func activity(after event: HookEvent, from current: String?) -> String? {
         switch event.event {
         case "PreToolUse", "PermissionRequest": event.activity ?? current
+        case "PostToolUse", "PostToolUseFailure": asksAQuestion(event) ? nil : current
         case "Stop": event.activity
-        case "UserPromptSubmit", "StopFailure", "Interrupt": nil
+        case "UserPromptSubmit", "StopFailure", "Interrupt", "PermissionDenied": nil
         case "SessionStart": event.source == "compact" ? current : nil
         default: current
         }
