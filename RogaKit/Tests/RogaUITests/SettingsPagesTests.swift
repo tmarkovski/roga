@@ -1,8 +1,11 @@
 import AgentEngine
 import AgentHooks
+import AppKit
 import Foundation
 import GitCore
 import GitRunner
+import IconUI
+import Synchronization
 import SwiftUI
 import Testing
 @testable import RogaUI
@@ -22,8 +25,13 @@ struct SettingsPagesTests {
     let defaultsName: String
     let now = Date(timeIntervalSince1970: 1_800_000_000)
 
-    static let claude = AgentInstallation(kind: .claude, executable: NSHomeDirectory() + "/.local/bin/claude", version: AgentVersion(major: 2, minor: 1, patch: 286))
-    static let codex = AgentInstallation(kind: .codex, executable: "/opt/homebrew/bin/codex", version: AgentVersion(major: 0, minor: 166, patch: 0))
+    /// Agents at paths that can't exist, so that nothing a test does with
+    /// them could run the claude or codex installed on this Mac.
+    static let claude = AgentInstallation(kind: .claude, executable: "/nonexistent/bin/claude", version: AgentVersion(major: 2, minor: 1, patch: 286))
+    static let codex = AgentInstallation(kind: .codex, executable: "/nonexistent/bin/codex", version: AgentVersion(major: 0, minor: 166, patch: 0))
+    /// One in the home folder, for how its path is drawn with `~`. There's
+    /// nothing there either.
+    static let homeClaude = AgentInstallation(kind: .claude, executable: NSHomeDirectory() + "/nonexistent/bin/claude", version: AgentVersion(major: 2, minor: 1, patch: 286))
 
     init() throws {
         folder = try AgentTestSupport.folder()
@@ -60,8 +68,8 @@ struct SettingsPagesTests {
         return provider
     }
 
-    private func line(_ kind: AgentKind, _ provider: AgentProvider, attempted: HooksDialog.Action? = nil, heard: AgentProvider.Heard? = nil) -> HookLine {
-        AgentSummaries.hookLine(kind, agents: provider, attempted: attempted, heard: heard, now: now) { "in " + ($0 as NSString).lastPathComponent }
+    private func line(_ kind: AgentKind, _ provider: AgentProvider, heard: AgentProvider.Heard? = nil) -> HookLine {
+        AgentSummaries.hookLine(kind, agents: provider, heard: heard, now: now) { "in " + ($0 as NSString).lastPathComponent }
     }
 
     /// A provider with the fake Claude Code and a fake Codex that can't add
@@ -104,34 +112,53 @@ struct SettingsPagesTests {
 
     @Test func anAgentsRowSaysWhereItsProgramIs() {
         #expect(AgentSummaries.programLine(nil) == ProgramLine(text: "Looking…", tone: .plain))
-        #expect(AgentSummaries.programLine(.found(Self.claude)) == ProgramLine(text: "~/.local/bin/claude · 2.1.286", tone: .path))
+        #expect(AgentSummaries.programLine(.found(Self.homeClaude)) == ProgramLine(text: "~/nonexistent/bin/claude · 2.1.286", tone: .path))
+        #expect(AgentSummaries.programLine(.found(Self.claude)) == ProgramLine(text: "/nonexistent/bin/claude · 2.1.286", tone: .path))
         #expect(AgentSummaries.programLine(.notFound) == ProgramLine(text: "Not found in your login shell's PATH.", tone: .plain))
     }
 
     @Test func anAgentRogaCantUseSaysWhyInAmber() {
-        let old = SkippedAgent(kind: .codex, executable: NSHomeDirectory() + "/bin/codex", reason: .tooOld(AgentVersion(major: 0, minor: 120, patch: 0)))
-        #expect(AgentSummaries.programLine(.unusable([old])) == ProgramLine(text: "~/bin/codex is Codex 0.120.0, older than 0.131.0.", tone: .warn))
+        let old = SkippedAgent(kind: .codex, executable: NSHomeDirectory() + "/nonexistent/bin/codex", reason: .tooOld(AgentVersion(major: 0, minor: 120, patch: 0)))
+        #expect(AgentSummaries.programLine(.unusable([old])) == ProgramLine(text: "~/nonexistent/bin/codex is Codex 0.120.0, older than 0.131.0.", tone: .warn))
         #expect(AgentSummaries.programLine(.configuredUnusable(old)).tone == .warn)
-        #expect(AgentSummaries.programLine(.configuredMissing("/usr/local/bin/codex")) == ProgramLine(text: "Roga can't find or run /usr/local/bin/codex, which you chose.", tone: .warn))
+        #expect(AgentSummaries.programLine(.configuredMissing("/nonexistent/local/bin/codex")) == ProgramLine(text: "Roga can't find or run /nonexistent/local/bin/codex, which you chose.", tone: .warn))
     }
 
     @Test func theProgramRowSaysHowRogaCameToIt() {
-        let found = AgentDetailPage.programDetail(.claude, lookup: .found(Self.claude), isChosen: false, isFirstInPath: true)
-        #expect(found.path == "~/.local/bin/claude")
+        let found = AgentDetailPage.programDetail(.claude, lookup: .found(Self.homeClaude), isChosen: false, isFirstInPath: true)
+        #expect(found.path == "~/nonexistent/bin/claude")
         #expect(found.version == "Claude Code 2.1.286")
         #expect(found.sentence == "Found in your login shell's PATH.")
-        #expect(found.plain == "~/.local/bin/claude · Claude Code 2.1.286. Found in your login shell's PATH.")
+        #expect(found.plain == "~/nonexistent/bin/claude · Claude Code 2.1.286. Found in your login shell's PATH.")
         #expect(AgentDetailPage.programDetail(.claude, lookup: .found(Self.claude), isChosen: true, isFirstInPath: false).sentence == "Chosen by you.")
         #expect(AgentDetailPage.programDetail(.claude, lookup: .found(Self.claude), isChosen: false, isFirstInPath: false).sentence.hasPrefix("Found outside"))
         // Codex runs the newest copy, wherever it is.
         var newest = Self.codex
-        newest.others = [FoundAgent(executable: "/usr/local/bin/codex", version: AgentVersion(major: 0, minor: 140, patch: 0))]
+        newest.others = [FoundAgent(executable: "/nonexistent/local/bin/codex", version: AgentVersion(major: 0, minor: 140, patch: 0))]
         #expect(AgentDetailPage.programDetail(.codex, lookup: .found(newest), isChosen: false, isFirstInPath: false).sentence == "The newest of the copies Roga found.")
-        let missing = AgentDetailPage.programDetail(.codex, lookup: .configuredMissing("/usr/local/bin/codex"), isChosen: true, isFirstInPath: false)
+        let missing = AgentDetailPage.programDetail(.codex, lookup: .configuredMissing("/nonexistent/local/bin/codex"), isChosen: true, isFirstInPath: false)
         #expect(missing.isWarning)
-        #expect(missing.path == "/usr/local/bin/codex")
+        #expect(missing.path == "/nonexistent/local/bin/codex")
         #expect(AgentDetailPage.programDetail(.codex, lookup: .notFound, isChosen: false, isFirstInPath: false).sentence == "Not found in your login shell's PATH.")
         #expect(AgentDetailPage.programDetail(.codex, lookup: nil, isChosen: false, isFirstInPath: false).sentence == "Looking…")
+    }
+
+    @Test func pathIsInTheCodeFontWithoutTheKeysGround() throws {
+        let words = try #require(SettingsGroup.commandLineAgents.styledDescription)
+        #expect(String(words.characters) == SettingsGroup.commandLineAgents.description)
+        let font = AttributeScopes.SwiftUIAttributes.FontAttribute.self
+        let typed = words.runs.filter { $0[font] != nil }
+        #expect(typed.map { String(words[$0.range].characters) } == ["PATH"])
+        #expect(typed.first?[font] == .system(size: 12.5, design: .monospaced))
+        #expect(words.runs.allSatisfy { $0[AttributeScopes.SwiftUIAttributes.BackgroundColorAttribute.self] == nil })
+        // Working status has nothing typed in it.
+        #expect(SettingsGroup.workingStatus.styledDescription?.runs.count == 1)
+    }
+
+    @Test func lookAgainHasTheBoardsIcon() {
+        // The canvas draws Lucide's rotate-cw, one arrow, not refresh-cw's two.
+        #expect(AgentListSection.lookAgainIcon == .rotateCw)
+        #expect(Icon.rotateCw.nsImage != nil)
     }
 
     // MARK: The hooks' rows
@@ -204,8 +231,28 @@ struct SettingsPagesTests {
             hookStatus: [.claude: .notInstalled, .codex: .installed],
             hookWork: [.claude: .installing, .codex: .removing]
         )
-        #expect(line(.claude, agents).button == .init(action: .install, title: "Installing…", isEnabled: false))
-        #expect(line(.codex, agents).button == .init(action: .remove, title: "Removing…", isEnabled: false))
+        #expect(line(.claude, agents).button == .init(action: .install, title: "Installing…", isEnabled: false, isWorking: true))
+        #expect(line(.codex, agents).button == .init(action: .remove, title: "Removing…", isEnabled: false, isWorking: true))
+    }
+
+    @Test func eachHooksButtonNamesItsAgentToVoiceOver() {
+        defer { clean() }
+        let agents = provider(
+            lookups: [.claude: .found(Self.claude), .codex: .found(Self.codex)],
+            hookStatus: [.claude: .notInstalled, .codex: .installed]
+        )
+        // The titles stay as the canvas draws them.
+        #expect(line(.claude, agents).button?.title == "Install…")
+        #expect(line(.claude, agents).button?.spokenTitle(.claude) == "Install Roga's hooks in Claude Code")
+        #expect(line(.codex, agents).button?.title == "Remove…")
+        #expect(line(.codex, agents).button?.spokenTitle(.codex) == "Remove Roga's hooks from Codex")
+        // While the commands run, it says so.
+        agents.setStateForTests(hookWork: [.claude: .installing, .codex: .removing])
+        #expect(line(.claude, agents).button?.spokenTitle(.claude) == "Installing Roga's hooks in Claude Code")
+        #expect(line(.codex, agents).button?.spokenTitle(.codex) == "Removing Roga's hooks from Codex")
+        // They're the dialog's own titles.
+        #expect(HookLine.Offer(action: .install, title: "Install…", isEnabled: true).spokenTitle(.codex) == HooksDialog.title(.init(kind: .codex, action: .install)))
+        #expect(HookLine.Offer(action: .remove, title: "Remove…", isEnabled: true).spokenTitle(.claude) == HooksDialog.title(.init(kind: .claude, action: .remove)))
     }
 
     @Test func aFailureShowsTheAgentsOwnWords() {
@@ -214,62 +261,66 @@ struct SettingsPagesTests {
         let agents = provider(
             lookups: [.codex: .found(Self.codex)],
             hookStatus: [.codex: .notInstalled],
-            hookWork: [.codex: .failed(words)]
+            hookWork: [.codex: .failed(.install, words)]
         )
-        #expect(line(.codex, agents, attempted: .install).problems == [words])
+        #expect(line(.codex, agents).problems == [words])
         // It can be tried again.
-        #expect(line(.codex, agents, attempted: .install).button?.isEnabled == true)
+        #expect(line(.codex, agents).button?.isEnabled == true)
         // While Roga checks again, right after the failure, it stays.
         agents.setStateForTests(hookStatus: [:])
-        #expect(line(.codex, agents, attempted: .install).problems == [words])
+        #expect(line(.codex, agents).problems == [words])
         // So it does while Roga looks for the agent again.
         agents.setStateForTests(lookups: [:])
-        #expect(line(.codex, agents, attempted: .install).problems == [words])
-    }
-
-    @Test func aFailureGoesOnceTheStatusNoLongerOffersWhatFailed() {
-        defer { clean() }
-        let agents = provider(
-            lookups: [.claude: .found(Self.claude), .codex: .found(Self.codex)],
-            hookStatus: [.claude: .installed, .codex: .notInstalled],
-            hookWork: [.claude: .failed("It failed."), .codex: .failed("It failed.")]
-        )
-        // An install that failed, and hooks that are installed now.
-        #expect(line(.claude, agents, attempted: .install).problems.isEmpty)
-        #expect(line(.claude, agents, attempted: .install).tone == .installed)
-        // A remove that failed, and hooks that are still installed.
-        #expect(line(.claude, agents, attempted: .remove).problems == ["It failed."])
-        // A remove that failed, and hooks that are gone now.
-        #expect(line(.codex, agents, attempted: .remove).problems.isEmpty)
-        // A failure that this sheet didn't run, or forgot when someone looked
-        // again, doesn't show.
-        #expect(line(.codex, agents).problems.isEmpty)
-        let attempts = HookAttempts()
-        attempts.record(.install, for: [.claude, .codex])
-        #expect(attempts.actions == [.claude: .install, .codex: .install])
-        attempts.forget()
-        #expect(line(.codex, agents, attempted: attempts.actions[.codex]).problems.isEmpty)
+        #expect(line(.codex, agents).problems == [words])
         // Once Roga can't find the agent, the line says that instead.
         agents.setStateForTests(lookups: [.codex: .notFound])
-        #expect(line(.codex, agents, attempted: .install).problems.isEmpty)
+        #expect(line(.codex, agents).problems.isEmpty)
     }
 
     @Test func aFailedInstallGoesFromTheRowOnceItsFixed() async throws {
         defer { clean() }
         let agents = try await startedWithFailingCodex()
-        let attempts = HookAttempts()
-        attempts.record(.install, for: [.codex])
         #expect(await !agents.installHooks([.codex]))
         #expect(await AgentTestSupport.eventually { agents.hookStatus[.codex] == .notInstalled })
-        let failed = line(.codex, agents, attempted: attempts.actions[.codex])
+        let failed = line(.codex, agents)
         #expect(failed.problems == ["Error: marketplace `roga` is already added from a different source"])
 
         try fixCodex()
         agents.refreshHookStatus()
         #expect(await AgentTestSupport.eventually { agents.hookStatus[.codex] == .installed })
-        let fixed = line(.codex, agents, attempted: attempts.actions[.codex])
+        let fixed = line(.codex, agents)
         #expect(fixed.tone == .installed)
         #expect(fixed.problems.isEmpty)
+    }
+
+    @Test func aFailureShowsInEverySheetUntilSomeoneLooksAgain() async throws {
+        defer { clean() }
+        let agents = try await startedWithFailingCodex()
+        #expect(await !agents.installHooks([.codex]))
+        #expect(await AgentTestSupport.eventually { agents.hookStatus[.codex] == .notInstalled })
+        // A sheet that opens afresh checks the hooks again, and the failure
+        // still applies, so its row shows it too.
+        agents.refreshHookStatus()
+        #expect(await AgentTestSupport.eventually { agents.hookStatus[.codex] == .notInstalled })
+        #expect(line(.codex, agents).problems == ["Error: marketplace `roga` is already added from a different source"])
+        agents.lookAgain()
+        #expect(line(.codex, agents).problems.isEmpty)
+    }
+
+    @Test func theHooksRowReadsAsOneSentenceToVoiceOver() {
+        defer { clean() }
+        let agents = provider(
+            helper: false,
+            lookups: [.codex: .found(Self.codex)],
+            hookStatus: [.codex: .notInstalled],
+            hookWork: [.codex: .failed(.install, "Error: marketplace `roga` is already added from a different source")]
+        )
+        #expect(line(.codex, agents).spoken == "Not installed. Codex asks you to trust a new hook the first time it runs. This copy of Roga has no roga helper, so it can't install hooks. Error: marketplace `roga` is already added from a different source.")
+        // With a detail, the row reads its help as the value; without one,
+        // the help shows as it is and isn't read twice.
+        let detailed = SettingsRow(title: "Hooks", help: "Not installed.", namesControl: false) { Text("Not installed.") } control: { EmptyView() }
+        #expect(detailed.spokenDetail == "Not installed.")
+        #expect(SettingsRow(title: "Effort", help: "Passed as --effort.") { EmptyView() }.spokenDetail == nil)
     }
 
     @Test func withoutTheHelperInstallCantWork() {
@@ -290,9 +341,66 @@ struct SettingsPagesTests {
                 Worktree(path: "/git/acme/api/.claude/worktrees/fix", branch: "refs/heads/agent/fix-login"),
             ]),
         ])
-        #expect(AgentSummaries.place(of: "/git/acme/api/Sources", in: list) == "in acme/api")
-        #expect(AgentSummaries.place(of: "/git/acme/api/.claude/worktrees/fix", in: list) == "on agent/fix-login in acme/api")
-        #expect(AgentSummaries.place(of: "/elsewhere/scratch", in: list) == "in scratch")
+        let places = HeardPlaces()
+        #expect(places.place(of: "/git/acme/api/Sources", in: list) == "in acme/api")
+        #expect(places.place(of: "/git/acme/api/.claude/worktrees/fix", in: list) == "on agent/fix-login in acme/api")
+        #expect(places.place(of: "/elsewhere/scratch", in: list) == "in scratch")
+    }
+
+    @Test func placingWhereAnAgentWasHeardResolvesEachFolderOnceAwayFromTheMainActor() async {
+        let resolved = Mutex<[String]>([])
+        let onMain = Mutex(0)
+        let places = HeardPlaces { path in
+            resolved.withLock { $0.append(path) }
+            if Thread.isMainThread { onMain.withLock { $0 += 1 } }
+            return path
+        }
+        var worktrees = (0..<3).map { Worktree(path: $0 == 0 ? "/git/acme/api" : "/git/acme/api-\($0)", branch: "refs/heads/b\($0)", isMain: $0 == 0) }
+        func list(_ worktrees: [Worktree]) -> RepositoryList {
+            RepositoryList(listing: [ListedRepository(path: "/git/acme/api/.git", owners: ["acme"], worktrees: worktrees)])
+        }
+        let listed = list(worktrees)
+        // The hooks' rows ask on every event an agent sends.
+        for _ in 0..<20 {
+            #expect(places.place(of: "/git/acme/api-1/Sources", in: listed) == "on b1 in acme/api")
+        }
+        #expect(await AgentTestSupport.eventually { !places.isResolving })
+        // Three worktrees and the folder, once each, and none of them on the
+        // main actor.
+        #expect(resolved.withLock { $0.count } == 4)
+        #expect(onMain.withLock { $0 } == 0)
+        for _ in 0..<20 {
+            #expect(places.place(of: "/git/acme/api-1/Sources", in: listed) == "on b1 in acme/api")
+        }
+        _ = places.place(of: "/elsewhere/scratch", in: listed)
+        #expect(await AgentTestSupport.eventually { !places.isResolving })
+        #expect(resolved.withLock { $0.count } == 5)
+
+        // A commit in a worktree moves its HEAD, and the list reads it
+        // again, but its folders are the same.
+        worktrees[2].head = ObjectID(hex: "0123456789abcdef0123456789abcdef01234567")
+        worktrees[1].branch = "refs/heads/agent/fix-login"
+        #expect(places.place(of: "/git/acme/api-1/Sources", in: list(worktrees)) == "on agent/fix-login in acme/api")
+        #expect(!places.isResolving)
+
+        // A new worktree is one more folder to resolve.
+        worktrees.append(Worktree(path: "/git/acme/api-1/Sources", branch: "refs/heads/nested"))
+        #expect(places.place(of: "/git/acme/api-1/Sources", in: list(worktrees)) == "on nested in acme/api")
+        #expect(await AgentTestSupport.eventually { !places.isResolving })
+        #expect(resolved.withLock { $0 } == ["/git/acme/api", "/git/acme/api-1", "/git/acme/api-2", "/git/acme/api-1/Sources", "/elsewhere/scratch"])
+    }
+
+    @Test func aFolderSpelledThroughALinkIsPlacedOnceItsResolved() async throws {
+        let real = folder + "/real/api"
+        try FileManager.default.createDirectory(atPath: real + "/Sources", withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(atPath: folder + "/link", withDestinationPath: folder + "/real")
+        let list = RepositoryList(listing: [
+            ListedRepository(path: real + "/.git", owners: ["acme"], worktrees: [Worktree(path: real, branch: "refs/heads/main", isMain: true)]),
+        ])
+        let places = HeardPlaces()
+        let heard = folder + "/link/api/Sources"
+        _ = places.place(of: heard, in: list)
+        #expect(await AgentTestSupport.eventually { !places.isResolving && places.place(of: heard, in: list) == "in acme/api" })
     }
 
     @Test func howLongAgoIsInWords() {
@@ -310,7 +418,16 @@ struct SettingsPagesTests {
         #expect(AgentSummaries.listeningNotice(.listening) == nil)
         #expect(AgentSummaries.listeningNotice(.starting) == nil)
         #expect(AgentSummaries.listeningNotice(.anotherCopy)?.hasPrefix("Another copy of Roga is listening") == true)
-        #expect(AgentSummaries.listeningNotice(.failed("The socket's path is too long")) == "Roga can't listen for the agents' hooks, so it can't show their marks in the sidebar. The socket's path is too long.")
+        // The listener's error already says that Roga can't listen, and
+        // where, so the notice says it once, with the home folder as ~.
+        let socket = NSHomeDirectory() + "/Library/Application Support/sh.roga.app/hooks.sock"
+        let inUse = AgentSummaries.listeningNotice(.failed(String(describing: HookListenerError.system("bind", path: socket, errorNumber: EADDRINUSE))))
+        #expect(inUse == "Roga can't listen for agents' hooks at ~/Library/Application Support/sh.roga.app/hooks.sock, because bind failed: Address already in use. Until it can, the sidebar can't show the agents' marks.")
+        let tooLong = AgentSummaries.listeningNotice(.failed(String(describing: HookListenerError.pathTooLong(socket))))
+        #expect(tooLong?.components(separatedBy: "can't listen").count == 2, "\(tooLong ?? "")")
+        #expect(tooLong?.contains(NSHomeDirectory()) == false)
+        // Words that don't say it get the notice's own start.
+        #expect(AgentSummaries.listeningNotice(.failed("The socket's path is too long")) == "Roga can't listen for the agents' hooks. The socket's path is too long. Until it can, the sidebar can't show the agents' marks.")
     }
 
     @Test func anotherCopyListeningShowsTheNotice() async throws {
@@ -361,6 +478,31 @@ struct SettingsPagesTests {
         #expect(HooksDialog.kinds(for: install, alsoOther: true) == [.claude, .codex])
         #expect(HooksDialog.kinds(for: install, alsoOther: false) == [.claude])
         #expect(HooksDialog.kinds(for: remove, alsoOther: true) == [.claude])
+    }
+
+    @Test func removingSaysWhatEachAgentKeeps() {
+        defer { clean() }
+        let agents = provider(lookups: [.claude: .found(Self.claude), .codex: .found(Self.codex)])
+        // Codex's commands leave the trust it recorded for the hooks in its
+        // config.toml, which Roga doesn't edit, so neither dialog may say
+        // that nothing stays.
+        let codexRemove = HooksDialog.Request(kind: .codex, action: .remove)
+        let codexInstall = HooksDialog.Request(kind: .codex, action: .install)
+        let codexWords = [HooksDialog.message(codexRemove)]
+            + HooksDialog.facts(codexRemove, agents: agents).map(\.what)
+            + HooksDialog.facts(codexInstall, agents: agents).map(\.what)
+        for words in codexWords {
+            #expect(!words.contains("nothing"), "\(words)")
+            #expect(!words.contains("Nothing"), "\(words)")
+        }
+        #expect(HooksDialog.message(codexRemove).hasSuffix("Codex keeps in its config.toml any trust you gave Roga's hooks, so if you install the same hooks again, it won't ask again."))
+        #expect(HooksDialog.facts(codexInstall, agents: agents).last?.what == "Runs codex plugin remove. Codex keeps any trust you gave the hooks.")
+        #expect(HooksDialog.facts(codexRemove, agents: agents)[1].what.hasSuffix("but keeps any trust you gave its hooks."))
+        // Claude Code's settings keep nothing of Roga's, and it deletes its
+        // copy of the plugin by itself.
+        let claudeRemove = HooksDialog.Request(kind: .claude, action: .remove)
+        #expect(HooksDialog.message(claudeRemove).hasSuffix("Its settings keep nothing of Roga's, and it deletes its own copy of the plugin later."))
+        #expect(HooksDialog.facts(HooksDialog.Request(kind: .claude, action: .install), agents: agents).last?.what == "Runs claude plugin uninstall, which leaves nothing of Roga's in its settings.")
     }
 
     @Test func theDialogShowsTheExactCommands() async throws {
@@ -414,7 +556,7 @@ struct SettingsPagesTests {
         let words = "marketplace `roga` is already added from a different source"
         let agents = provider(
             lookups: [.claude: .found(Self.claude), .codex: .found(Self.codex)],
-            hookWork: [.codex: .failed(words)]
+            hookWork: [.codex: .failed(.install, words)]
         )
         let failed = HooksDialog.failed([.claude, .codex], agents: agents)
         #expect(failed == [HooksDialog.Failure(kind: .codex, words: words)])
@@ -425,7 +567,7 @@ struct SettingsPagesTests {
 
         let both = provider(
             lookups: [.claude: .found(Self.claude), .codex: .found(Self.codex)],
-            hookWork: [.claude: .failed("Claude Code's words."), .codex: .failed(words)]
+            hookWork: [.claude: .failed(.install, "Claude Code's words."), .codex: .failed(.install, words)]
         )
         let all = HooksDialog.failed([.claude, .codex], agents: both)
         #expect(HooksDialog.failureHeading(.install, failed: all.map(\.kind)) == "Claude Code and Codex didn't install Roga's hooks")
@@ -479,6 +621,42 @@ struct SettingsPagesTests {
         #expect(GenerateChoices.noAgentTitle(off) == "Turned off")
         // Its model and effort are still the found one's.
         #expect(GenerateChoices.shownAgent(off) == .claude)
+    }
+
+    @Test func returnStartsANewLineInTheInstructions() async throws {
+        let typed = Typed("First line")
+        let area = SettingsTextArea(text: Binding { typed.text } set: { typed.text = $0 }, label: "Instructions")
+        let host = NSHostingView(rootView: area.frame(width: 400))
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 400, height: 200), styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = host
+        defer { window.contentView = nil }
+        host.layoutSubtreeIfNeeded()
+        // The box is the first view that takes typing: a text view, or a
+        // field whose editor is one.
+        let box = try #require(Self.subviews(of: host).first { $0 is NSTextView || $0 is NSTextField })
+        #expect(window.makeFirstResponder(box))
+        let editor = try #require(window.firstResponder as? NSTextView)
+        editor.setSelectedRange(NSRange(location: (editor.string as NSString).length, length: 0))
+        let returnKey = try #require(NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: window.windowNumber,
+            context: nil,
+            characters: "\r",
+            charactersIgnoringModifiers: "\r",
+            isARepeat: false,
+            keyCode: 36
+        ))
+        editor.keyDown(with: returnKey)
+        editor.insertText("Second line", replacementRange: editor.selectedRange())
+        #expect(await AgentTestSupport.eventually(within: .seconds(2)) { typed.text == "First line\nSecond line" }, "The instructions are \(typed.text.debugDescription)")
+    }
+
+    /// The views under a view, depth first.
+    private static func subviews(of view: NSView) -> [NSView] {
+        view.subviews.flatMap { [$0] + subviews(of: $0) }
     }
 
     @Test func pickersOfferWhatsStoredToo() {
@@ -582,7 +760,9 @@ struct SettingsPagesTests {
 
     @Test func theFlagsCardListsFlagsTheCommandHas() {
         for kind in AgentKind.allCases {
-            let agent = CommitMessageAgent(kind: kind, executable: kind.executableName, model: "m", effort: "low")
+            // A server named as the card writes the placeholder, so that row
+            // is found word for word.
+            let agent = CommitMessageAgent(kind: kind, executable: kind.executableName, model: "m", effort: "low", mcpServers: ["<name>"])
             let arguments = CommitMessageCommand.command(for: agent, worktree: "/tmp", style: "s", hasDraft: false).arguments
             for flag in AgentDetailPage.flags(kind) {
                 let words = flag.flag.split(separator: " ").map(String.init).filter { $0 != "…" }
@@ -650,6 +830,29 @@ struct SettingsPagesTests {
         #expect(run.state == .idle)
     }
 
+    /// Quitting Roga stops a running test. Posting the real notification here
+    /// would stop other suites' monitors too, so this checks that the run
+    /// watches for it only while the agent runs.
+    @Test func aRunningTestStopsWhenRogaQuits() async {
+        let run = AgentTestRun()
+        let agent = CommitMessageAgent(kind: .codex, executable: "/nonexistent/bin/codex")
+        #expect(!run.isWatchingForQuit)
+        run.start(agent, style: "") { _, _ in
+            try await Task.sleep(for: .seconds(30))
+            return ProgramResult(status: .exited(0), output: [], errorOutput: "", duration: .zero)
+        }
+        #expect(run.isWatchingForQuit)
+        run.stop()
+        #expect(!run.isWatchingForQuit)
+
+        run.start(agent, style: "") { _, _ in
+            ProgramResult(status: .exited(0), output: Array("Fix the sign-in button".utf8), errorOutput: "", duration: .milliseconds(10))
+        }
+        #expect(run.isWatchingForQuit)
+        #expect(await AgentTestSupport.eventually { !run.isRunning })
+        #expect(!run.isWatchingForQuit)
+    }
+
     // MARK: Search
 
     @Test func searchFindsTheNewSettingsByTheirWords() {
@@ -671,6 +874,16 @@ struct SettingsPagesTests {
         #expect(Set(found("Agents")).isSuperset(of: [.agentList, .hooks, .showsMarks, .marksLegend]))
         #expect(SettingsGroup.generate.items.allSatisfy { $0.group.page == .commit })
         #expect(SettingsGroup.allCases.filter { $0.page == .agents } == [.commandLineAgents, .workingStatus])
+    }
+}
+
+/// What someone typed in a box, for a binding to write to.
+@MainActor
+private final class Typed {
+    var text: String
+
+    init(_ text: String) {
+        self.text = text
     }
 }
 

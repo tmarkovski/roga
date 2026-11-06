@@ -15,6 +15,14 @@ public struct CommitMessageAgent: Sendable, Hashable {
     public var extraArguments: [String]
     /// How long the agent may take before Roga stops it.
     public var timeLimit: Duration
+    /// Codex's MCP servers, which the run turns off one by one, since Codex
+    /// has no flag that turns them all off (see `CodexConfiguration`).
+    public var mcpServers: [String]
+    /// Codex's `config.toml`, which the run reads again for its MCP servers
+    /// just before it starts, or nil to go by `mcpServers` alone. Codex
+    /// refuses to start when told to turn off a server it no longer has, as
+    /// after `codex mcp remove`, so the names have to be the file's as it is.
+    public var codexConfigurationFile: String?
 
     public init(
         kind: AgentKind,
@@ -22,7 +30,9 @@ public struct CommitMessageAgent: Sendable, Hashable {
         model: String? = nil,
         effort: String? = nil,
         extraArguments: [String] = [],
-        timeLimit: Duration = .seconds(60)
+        timeLimit: Duration = .seconds(60),
+        mcpServers: [String] = [],
+        codexConfigurationFile: String? = nil
     ) {
         self.kind = kind
         self.executable = executable
@@ -30,5 +40,7 @@ public struct CommitMessageAgent: Sendable, Hashable {
         self.effort = effort
         self.extraArguments = extraArguments
         self.timeLimit = timeLimit
+        self.mcpServers = mcpServers
+        self.codexConfigurationFile = codexConfigurationFile
     }
 }

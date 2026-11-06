@@ -34,10 +34,13 @@ enum FakeAgent {
 
     /// A script that records each run as one line in `log`, each argument in
     /// brackets, and then runs `then`.
+    ///
+    /// The line goes in one write, so that two runs at once that share a log
+    /// can't mix their arguments into one line.
     static func recording(to log: String, then body: String = "exit 0") -> String {
         """
-        for argument in "$@"; do printf '[%s]' "$argument" >> '\(log)'; done
-        printf '\\n' >> '\(log)'
+        line=''; for argument in "$@"; do line="$line[$argument]"; done
+        printf '%s\\n' "$line" >> '\(log)'
         \(body)
         """
     }

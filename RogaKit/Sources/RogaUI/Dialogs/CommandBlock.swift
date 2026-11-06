@@ -17,7 +17,17 @@ struct CommandBlock: View {
     @State private var clearing: Task<Void, Never>?
 
     /// How tall it gets before it scrolls, because a hook can say a lot.
-    private static let maximumHeight: CGFloat = 220
+    static let maximumHeight: CGFloat = 220
+    /// The same for the compact block, which gets taller, because it's the
+    /// only place a popover shows its command (decision 29). Codex's long
+    /// arguments wrap its command onto about ten lines in Generate's popover,
+    /// and with overlay scrollers nothing would say that its end had
+    /// scrolled out of sight.
+    static let compactMaximumHeight: CGFloat = 320
+
+    private var maximumHeight: CGFloat {
+        isCompact ? Self.compactMaximumHeight : Self.maximumHeight
+    }
 
     /// The room between lines, and between the lines that a long command wraps
     /// onto. A block with an agent's command is drawn as the Settings boards draw
@@ -50,7 +60,7 @@ struct CommandBlock: View {
     }
 
     var body: some View {
-        ClampedHeight(maximum: Self.maximumHeight) {
+        ClampedHeight(maximum: maximumHeight) {
             ScrollView(.vertical) {
                 VStack(alignment: .leading, spacing: lineGap.between) {
                     ForEach(Array(lines.enumerated()), id: \.offset) { _, line in

@@ -1,4 +1,5 @@
 import AgentEngine
+import AppKit
 import Foundation
 import GitCore
 import GitRunner
@@ -10,7 +11,9 @@ import RepositoryEngine
 ///
 /// It belongs to the worktree's `CommitComposer`. Its run is a task of its own
 /// rather than a view's, so leaving the worktree doesn't stop the agent, and the
-/// message is in the box, saved as the draft, on coming back.
+/// message is in the box, saved as the draft, on coming back. A box made for
+/// the worktree again while the agent writes takes it over from the one that
+/// started it, through `MessageGenerators`.
 @Observable
 final class MessageGenerator {
     enum Phase: Equatable {
@@ -56,8 +59,11 @@ final class MessageGenerator {
         /// Nothing's staged and the commit isn't an amend, so there's nothing
         /// to describe yet.
         case nothingStaged
-        /// The box is busy committing, rebasing or writing already, or the
-        /// files haven't been listed yet.
+        /// A rebase has stopped, and the box shows the message of the commit
+        /// it stopped on, which isn't the agent's to write.
+        case rebasing
+        /// The box is busy committing or writing already, Amend hasn't put the
+        /// commit's message in it yet, or the files haven't been listed yet.
         case busy
     }
 
@@ -67,26 +73,40 @@ final class MessageGenerator {
     /// programs run it.
     @ObservationIgnored var run: (@Sendable (ProgramCommand, [UInt8]) async throws -> ProgramResult)?
     @ObservationIgnored var now: () -> Date = { Date() }
-    /// The composer whose box it writes in, which owns it.
-    @ObservationIgnored weak var composer: CommitComposer?
+    /// The composer whose box it writes in, which is the newest one made for
+    /// its worktree while an agent writes.
+    @ObservationIgnored private(set) weak var composer: CommitComposer?
     /// The run under way, which isn't tied to any view.
     @ObservationIgnored private(set) var running: Task<Void, Never>?
     /// What the latest run asked the agent, for tests.
     @ObservationIgnored private(set) var lastRequest: CommitMessageRequest?
+    /// What was in the box before the agent wrote, which Stop and Undo give
+    /// back, and which a box that takes the agent over shows meanwhile.
+    @ObservationIgnored private(set) var before = ""
+    /// Whether the agent is rewriting the message of the commit `HEAD` is on,
+    /// so that a box that takes it over turns Amend on.
+    @ObservationIgnored private(set) var amends = false
 
-    @ObservationIgnored private let session: RepositorySession
-    @ObservationIgnored private let worktree: String
-    @ObservationIgnored private let changes: SelectedChanges
-    /// What was in the box before the agent wrote, which Stop and Undo give back.
-    @ObservationIgnored private var before = ""
+    /// The agents writing in every worktree, which this one is among while
+    /// it writes.
+    @ObservationIgnored private let generators: MessageGenerators
+    /// The composer it writes in, held while an agent writes, so that a
+    /// message that arrives after its worktree has left Roga's memory still
+    /// becomes its draft.
+    @ObservationIgnored private var holding: CommitComposer?
     /// Counts runs, so that one that was stopped or replaced can't fill the box
     /// when it ends.
     @ObservationIgnored private var runs = 0
 
-    init(session: RepositorySession, worktree: String, changes: SelectedChanges) {
-        self.session = session
-        self.worktree = worktree
-        self.changes = changes
+    init(generators: MessageGenerators) {
+        self.generators = generators
+    }
+
+    /// Writes in `composer`'s box from now on, as when a box made for the
+    /// worktree again takes over an agent that's writing.
+    func attach(to composer: CommitComposer) {
+        self.composer = composer
+        if isWriting { holding = composer }
     }
 
     var isWriting: Bool {
@@ -94,8 +114,12 @@ final class MessageGenerator {
     }
 
     var readiness: Readiness {
-        guard let composer, !isWriting, composer.phase != .committing, let loaded = changes.loaded else { return .busy }
-        if case .rebase = composer.stoppedWork { return .busy }
+        guard let composer, !isWriting, composer.phase != .committing, let loaded = composer.changes.loaded else { return .busy }
+        if case .rebase = composer.stoppedWork { return .rebasing }
+        // Right after Amend is ticked, the box still has the draft for a new
+        // commit. Generating then would rewrite that draft as the amended
+        // commit's message, and Undo would put it back under Amend.
+        if composer.isReadingAmendedMessage { return .busy }
         if loaded.staged.isEmpty, !composer.isAmending { return .nothingStaged }
         return .ready
     }
@@ -107,6 +131,7 @@ final class MessageGenerator {
         guard let setup, let composer, readiness == .ready else { return }
         runs += 1
         let run = runs
+        let (session, worktree, changes) = (composer.session, composer.worktree, composer.changes)
         let message = composer.message
         let draft = message.allSatisfy(\.isWhitespace) ? nil : message
         let amending = composer.isAmending
@@ -115,10 +140,11 @@ final class MessageGenerator {
             try await programs.run(command, input: input)
         }
         before = message
+        amends = amending
         phase = .writing(Writing(kind: setup.kind, since: now()))
-        // The task holds on to the composer, so that a message that arrives
-        // after its worktree has left Roga's memory still becomes its draft.
-        running = Task { [session, worktree, changes, composer] in
+        holding = composer
+        generators.started(self, in: worktree)
+        running = Task { [session, worktree, changes] in
             do {
                 // A press of Space may still be on its way to git.
                 await changes.applyingIndexChanges?.value
@@ -145,11 +171,14 @@ final class MessageGenerator {
                 try Task.checkCancellation()
                 let written = try await CommitMessageWriter.write(request, with: setup.agent, run: runner)
                 guard run == runs else { return }
-                let stagedAfter = Self.stagedFiles(in: changes.loaded)
-                running = nil
+                // The box may be one made for the worktree again since, whose
+                // files are the ones Roga lists now.
+                let box = holding ?? self.composer
+                let stagedAfter = Self.stagedFiles(in: box?.changes.loaded)
                 // The box changes while the phase still says writing, so that
                 // the change isn't taken for an edit, which sends the note away.
-                composer.message = written.text
+                box?.message = written.text
+                ended()
                 phase = .written(Written(
                     label: setup.label,
                     duration: written.duration,
@@ -158,7 +187,7 @@ final class MessageGenerator {
                 ))
             } catch {
                 guard run == runs else { return }
-                running = nil
+                ended()
                 fail(error, kind: setup.kind)
             }
         }
@@ -169,9 +198,17 @@ final class MessageGenerator {
         guard isWriting else { return }
         runs += 1
         running?.cancel()
-        running = nil
+        let box = holding ?? composer
+        ended()
         phase = .idle
-        if let composer, composer.message != before { composer.message = before }
+        if let box, box.message != before { box.message = before }
+    }
+
+    /// Lets go of what a run holds once it's over, however it ended.
+    private func ended() {
+        running = nil
+        holding = nil
+        generators.ended(self)
     }
 
     /// Puts back what was in the box before the agent wrote.
@@ -273,5 +310,61 @@ final class MessageGenerator {
             patch: staged.patch,
             isCut: staged.isCut
         )
+    }
+}
+
+/// The agents writing commit messages, by the worktree each writes for
+/// (decision 41).
+///
+/// A worktree's commit box is made again when the window that showed it is
+/// closed and another opens it, or once a window has shown eight other
+/// worktrees, and its agent may still be writing then. The new box takes the
+/// agent over: it waits with the bars, offers Stop and gets the message,
+/// rather than offer Generate again and lose the message to its next keystroke.
+///
+/// Roga stops them all when it quits. Each agent runs in a process group of
+/// its own, with a time limit that only Roga keeps, so it would otherwise go
+/// on running, and spend a request on a message nobody sees.
+final class MessageGenerators {
+    /// The ones Roga's windows share.
+    static let shared: MessageGenerators = {
+        let generators = MessageGenerators()
+        generators.stopWhenRogaQuits()
+        return generators
+    }()
+
+    private var writing: [String: MessageGenerator] = [:]
+    private var termination: (any NSObjectProtocol)?
+
+    /// The generator whose agent is writing for the worktree in `folder`.
+    func writing(in folder: String) -> MessageGenerator? {
+        writing[folder]
+    }
+
+    func started(_ generator: MessageGenerator, in folder: String) {
+        writing[folder] = generator
+    }
+
+    func ended(_ generator: MessageGenerator) {
+        writing = writing.filter { $0.value !== generator }
+    }
+
+    /// Stops every agent that's writing, and gives each box back what it had.
+    func stopAll() {
+        for generator in Array(writing.values) {
+            generator.stop()
+        }
+    }
+
+    private func stopWhenRogaQuits() {
+        termination = NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.stopAll()
+            }
+        }
     }
 }

@@ -6,6 +6,7 @@ import Testing
 @testable import RogaUI
 
 @MainActor
+@Suite(.removesTemporaryFolders)
 struct SidebarLayoutTests {
     /// A repository with a main worktree and linked ones with these names, at
     /// `/git/<name>`.
@@ -295,6 +296,47 @@ struct SidebarLayoutTests {
         #expect(marks() == [nil, nil, nil])
         defaults.set(true, forKey: AgentPreferences.showsMarksKey)
         #expect(marks() == [.working, .working, .waiting(.permission)])
+    }
+
+    /// How wide a row draws its words on the right, "Deleting…", in a row
+    /// `width` points wide whose branch's name is long.
+    private func wordsWidth(inRow width: CGFloat, agent: AgentSummary?) throws -> CGFloat {
+        nonisolated final class Measured: @unchecked Sendable { var width: CGFloat = 0 }
+        let measured = Measured()
+        let row = SidebarRow(agent: agent, action: {}) {
+            Text("agent/a-branch-with-a-long-name")
+                .font(.system(size: 14))
+                .lineLimit(1)
+                .truncationMode(.middle)
+        } trailing: {
+            Text("Deleting…")
+                .font(.system(size: 13))
+                .padding(.trailing, 7)
+                .background {
+                    GeometryReader { proxy in
+                        let _ = (measured.width = proxy.size.width)
+                        Color.clear
+                    }
+                }
+        } commands: {
+            EmptyView()
+        }
+        let renderer = ImageRenderer(content: row.frame(width: width))
+        _ = try #require(renderer.cgImage)
+        return measured.width
+    }
+
+    @Test func aMarkTakesItsRoomFromTheBranchRatherThanTheWordsBesideIt() throws {
+        let working = AgentSummary(state: .working, since: .now, hosts: [.claude], sessions: 1)
+        let whole = try wordsWidth(inRow: 400, agent: nil)
+        #expect(whole > 50)
+        // A row in the sidebar at its narrowest, 256 points with the rail.
+        let narrow = try wordsWidth(inRow: 183, agent: nil)
+        let marked = try wordsWidth(inRow: 183, agent: working)
+        let wide = try wordsWidth(inRow: 400, agent: working)
+        #expect(narrow == whole)
+        #expect(marked == whole)
+        #expect(wide == whole)
     }
 
     // MARK: All

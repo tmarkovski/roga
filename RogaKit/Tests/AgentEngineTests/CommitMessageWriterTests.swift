@@ -136,6 +136,31 @@ struct CommitMessageWriterTests {
         #expect(written == WrittenMessage(text: "Fix a", duration: .seconds(6)))
     }
 
+    @Test func turnsOffCodexsMCPServersAsTheyAreWhenItRuns() async throws {
+        // Someone removed one with `codex mcp remove` since Roga last looked,
+        // and Codex won't start when told to turn off a server it hasn't got.
+        let folder = try makeFolder()
+        let file = folder + "/config.toml"
+        try "[mcp_servers.docs]\nurl = \"https://example.com/mcp\"\n".write(toFile: file, atomically: true, encoding: .utf8)
+        let agent = CommitMessageAgent(kind: .codex, executable: "/bin/codex", mcpServers: ["docs", "removed"], codexConfigurationFile: file)
+        let runs = Runs()
+        _ = try await CommitMessageWriter.write(request, with: agent) { command, input in
+            runs.record(command, input)
+            return ProgramResult(status: .exited(0), output: Array("Fix a\n".utf8), errorOutput: "", duration: .seconds(6))
+        }
+        let arguments = try #require(runs.all.first).command.arguments
+        #expect(arguments.contains("mcp_servers.docs.enabled=false"))
+        #expect(!arguments.contains("mcp_servers.removed.enabled=false"))
+
+        // Without the file, Codex has none of its own.
+        try FileManager.default.removeItem(atPath: file)
+        _ = try await CommitMessageWriter.write(request, with: agent) { command, input in
+            runs.record(command, input)
+            return ProgramResult(status: .exited(0), output: Array("Fix a\n".utf8), errorOutput: "", duration: .seconds(6))
+        }
+        #expect(!runs.all[1].command.arguments.contains { $0.hasPrefix("mcp_servers.") })
+    }
+
     @Test func runsARealProgramWithTheInputTheMarkerAndTheFolder() async throws {
         // A stand-in for claude that answers only when it gets what Claude
         // Code would: -p first, the task last after --, the tagged input on

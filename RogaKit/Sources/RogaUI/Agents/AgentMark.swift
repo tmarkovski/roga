@@ -17,10 +17,15 @@ struct AgentMark: View {
     /// box at 14 points.
     var size: CGFloat = 14
 
-    /// How much of the icon's width the waiting mark's font size is, so that
-    /// the circle is as wide as the ring. Roga's icons are as wide as their
-    /// 24-point grid, which comes to 1.128 times the font's size.
+    /// How much of the icon's width the waiting mark's font size is. Roga's
+    /// icons are as wide as their 24-point grid, which comes to 1.128 times
+    /// the font's size.
     private static let iconWidthPerPoint: CGFloat = 1.128
+    /// How much smaller than its box the circle-alert is drawn. At full size
+    /// it would fill the box, while the ring's outer edge is 13/16 of it. At
+    /// this size both measure about 0.81 of the box, so the two look as big
+    /// as each other in the sidebar and in the legends in Settings alike.
+    private static let waitingScale: CGFloat = 0.88
 
     var body: some View {
         Group {
@@ -29,7 +34,7 @@ struct AgentMark: View {
                 ring
             case .waiting:
                 Icon.circleAlert.image
-                    .font(.system(size: size / Self.iconWidthPerPoint, weight: .medium))
+                    .font(.system(size: size * Self.waitingScale / Self.iconWidthPerPoint, weight: .medium))
                     .foregroundStyle(AgentColors.warn)
             case .finished:
                 Circle()

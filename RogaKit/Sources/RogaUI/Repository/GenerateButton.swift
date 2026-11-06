@@ -113,13 +113,21 @@ struct GenerateButton<Choices: View>: View {
 
 extension GenerateButton {
     /// What the main button's tooltip says: why it can't run when nothing's
-    /// staged, and otherwise what a click does and its shortcut.
+    /// staged or a rebase has stopped, and otherwise what a click does. While
+    /// the box is busy for a while, as when a commit is being made, it leaves
+    /// out the shortcut, which can't run yet either.
     static func help(agent: AgentKind, rewrites: Bool, readiness: MessageGenerator.Readiness) -> String {
-        if readiness == .nothingStaged { return "Stage files to write a message for them" }
-        let shortcut = RepositoryCommands.generateMessageShortcut.symbols
-        return rewrites
-            ? "Rewrite with \(agent.name), starting from your words (\(shortcut))"
-            : "Write the message with \(agent.name) (\(shortcut))"
+        let words = rewrites ? "Rewrite with \(agent.name), starting from your words" : "Write the message with \(agent.name)"
+        switch readiness {
+        case .ready:
+            return "\(words) (\(RepositoryCommands.generateMessageShortcut.symbols))"
+        case .nothingStaged:
+            return "Stage files to write a message for them"
+        case .rebasing:
+            return "\(agent.name) can write a message once the rebase is done"
+        case .busy:
+            return words
+        }
     }
 }
 

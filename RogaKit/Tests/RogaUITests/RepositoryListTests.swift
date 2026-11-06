@@ -264,7 +264,11 @@ struct RepositoryListTests {
         await list.refresh()
         let before = statusCommands(in: log).count
 
+        // A request that comes before the look has begun to read is answered
+        // by that look, so the other two wait until it's reading. Its status
+        // takes a second.
         async let first: Void = list.refresh()
+        #expect(await AgentTestSupport.eventually { statusCommands(in: log).count > before })
         async let second: Void = list.refresh()
         async let third: Void = list.refresh()
         _ = await (first, second, third)
@@ -507,5 +511,9 @@ func makeTemporaryFolder() throws -> String {
     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
     let resolved = try #require(realpath(folder.path(percentEncoded: false), nil))
     defer { free(resolved) }
-    return String(cString: resolved)
+    let path = String(cString: resolved)
+    // It goes when the test ends, in a suite that removes its folders, and
+    // otherwise when the tests are done.
+    TemporaryFolders.forThisTest.add(path)
+    return path
 }

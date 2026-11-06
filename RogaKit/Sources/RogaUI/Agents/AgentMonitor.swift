@@ -14,7 +14,9 @@ import Observation
 /// decision 41 allows: it watches each agent's process and ends its sessions
 /// when it exits, and it asks `claude agents --json` about Claude Code's
 /// sessions at launch and whenever one has said it's working for a while
-/// without a word since. It never guesses from files changing.
+/// without a word since. A session that only that answer told Roga about,
+/// with no hook event since, is also asked about at every check while it
+/// waits, because it may never send one. It never guesses from files changing.
 ///
 /// While this copy of Roga can't hear the hooks, because another copy has the
 /// socket or it couldn't be opened, it asks Claude Code nothing, so no marks
@@ -44,6 +46,9 @@ public final class AgentMonitor {
     /// the session's own folder, as `AgentSessions` keeps it, rather than the
     /// event's, since Codex's tool events name the folder the command runs in.
     private(set) var lastHeard: [AgentHost: AgentProvider.Heard] = [:]
+    /// The latest event's time from each agent, which `lastHeard` can be
+    /// behind, so that a late event is still told apart.
+    @ObservationIgnored private var latestHeard: [AgentHost: Date] = [:]
 
     /// What the marks need of each session: it changes far less often than the
     /// sessions do, since every tool an agent runs moves its `lastEvent`, and
@@ -69,6 +74,10 @@ public final class AgentMonitor {
     /// keep Claude Code's sessions while a question about quiet ones was under
     /// way.
     @ObservationIgnored private var seedingIsDue = false
+    /// Whether the loop that asks what's running last saw that Roga could
+    /// keep Claude Code's sessions, so that it asks again only once that
+    /// stops and comes true anew. Tests wait on it.
+    @ObservationIgnored private(set) var couldSeed = false
     /// The quiet sessions that asking Claude Code said nothing about, by the
     /// time of their last event then: it didn't list them, or gave them a
     /// status Roga doesn't read. Asking again wouldn't say more, so Roga waits
@@ -81,8 +90,18 @@ public final class AgentMonitor {
     /// worktrees as they are, since every row asks.
     @ObservationIgnored private var placement: Placement?
     @ObservationIgnored private var marksVersion = 0
+    /// Folders as they compare, with symbolic links resolved, by how agents
+    /// and git spell them.
+    @ObservationIgnored private var comparableFolders: [String: String] = [:]
+    @ObservationIgnored private var foldersBeingResolved: Set<String> = []
+    /// Goes up each time a folder resolves to something other than how it's
+    /// spelled, so that the rows place their marks again.
+    private var foldersVersion = 0
     /// The clock, which tests set.
     @ObservationIgnored var now: () -> Date = Date.init
+    /// How a folder is resolved to compare it with the worktrees' folders,
+    /// away from the main actor, which tests count.
+    @ObservationIgnored var resolvePath: @Sendable (String) -> String = RepositoryList.comparablePath
 
     /// How long a Claude Code session can say it's working with no event before
     /// Roga asks whether it is. Long tools are quiet, and so is a session after
@@ -126,8 +145,22 @@ public final class AgentMonitor {
         }
     }
 
-    /// Stops listening and watching, and lets go of the socket.
+    /// Stops listening and watching, and lets go of the socket. `start` starts
+    /// it all again.
     func stop() {
+        letGo()
+        listening = .starting
+    }
+
+    /// A monitor nobody holds stops, rather than leaving its loops waiting
+    /// and its observer with the notification center.
+    isolated deinit {
+        letGo()
+    }
+
+    /// Ends everything `start` began. It touches nothing that views observe,
+    /// so that `deinit` can call it too.
+    private func letGo() {
         reading?.cancel()
         reading = nil
         seeding?.cancel()
@@ -135,18 +168,27 @@ public final class AgentMonitor {
         checking?.cancel()
         checking = nil
         seedingIsDue = false
+        couldSeed = false
         listener?.stop()
         listener = nil
         for watcher in watchers.values { watcher.source.cancel() }
         watchers = [:]
-        listening = .starting
+        if let termination { NotificationCenter.default.removeObserver(termination) }
+        termination = nil
     }
+
+    /// Whether it stops by itself when Roga quits, which it does from `start`
+    /// until `stop`.
+    var isWatchingForTermination: Bool { termination != nil }
 
     private func listen() {
         do {
             let listener = try HookListener(supportFolder: supportFolder)
             self.listener = listener
             listening = .listening
+            // Every copy of Roga with this bundle ID shares the launcher, and
+            // the one that hears the hooks is the one it should run.
+            agents?.pointTheHooksHere()
             let events = listener.events
             reading = Task { [weak self] in
                 for await event in events {
@@ -168,30 +210,32 @@ public final class AgentMonitor {
         // when the question fails, so that a claude that can't answer isn't
         // run every half a minute.
         seeding = Task { [weak self] in
-            var couldSeed = false
             for await canSeed in Observations({ @MainActor [weak self] in self?.canSeed ?? false }) {
-                guard let self else { return }
-                if canSeed, !couldSeed {
-                    seedingIsDue = true
-                    await askClaude()
+                guard let monitor = self else { return }
+                if canSeed, !monitor.couldSeed {
+                    monitor.couldSeed = true
+                    monitor.seedingIsDue = true
+                    await monitor.askClaude()
                 } else if !canSeed {
-                    seedingIsDue = false
+                    monitor.couldSeed = false
+                    monitor.seedingIsDue = false
                 }
-                couldSeed = canSeed
             }
         }
+        // Both loops hold the monitor only while they ask, and not while they
+        // wait, so that a monitor nobody else holds goes away.
         checking = Task { [weak self] in
             while (try? await Task.sleep(for: interval)) != nil {
-                guard let self else { return }
-                await askClaude()
+                guard let monitor = self else { return }
+                await monitor.askClaude()
             }
         }
     }
 
     /// Whether asking Claude Code what's running would show sessions that
     /// Roga can keep current: Roga hears the hooks, and Claude Code runs them.
-    /// Without them, a wait that the answer showed would never end, since only
-    /// a hook event ends one.
+    /// Without them, no session the answer showed would ever send an event,
+    /// and Roga would have to ask about each one again and again.
     private var canSeed: Bool {
         guard listening == .listening, let agents else { return false }
         return agents.installation(.claude) != nil && agents.hookStatus[.claude] == .installed
@@ -214,10 +258,23 @@ public final class AgentMonitor {
 
     /// Notes when an agent was last heard from, unless a later event already
     /// said, since events can arrive out of order.
+    ///
+    /// Settings says it in whole minutes, so `lastHeard`, which it observes,
+    /// changes only with the folder or once what it holds is
+    /// `heardRefreshInterval` old. Otherwise every tool an agent runs would
+    /// redraw the hooks rows. What it shows can be that much behind.
     private func hear(from host: AgentHost, at date: Date, in folder: String?) {
-        if let heard = lastHeard[host], AgentSessions.isLate(date, after: heard.date) { return }
+        if let latest = latestHeard[host], AgentSessions.isLate(date, after: latest) { return }
+        latestHeard[host] = date
+        if let shown = lastHeard[host], shown.cwd == folder,
+           date.timeIntervalSince(shown.date) < Self.heardRefreshInterval {
+            return
+        }
         lastHeard[host] = AgentProvider.Heard(date: date, cwd: folder)
     }
+
+    /// How old `lastHeard` gets before an event in the same folder moves it.
+    static let heardRefreshInterval: TimeInterval = 30
 
     /// Asks Claude Code about its sessions, when one has shown working for
     /// `quietLimit` with no event, or what's running, as at launch, when
@@ -231,6 +288,14 @@ public final class AgentMonitor {
     /// another `CLAUDE_CONFIG_DIR`. Its process exiting ends it. One with no
     /// process to watch would never end, so it becomes idle, and if it's
     /// working after all, its next event says so.
+    ///
+    /// A session that Roga knows only from an answer, which no hook event has
+    /// come from, is asked about at every check while it waits, and while it
+    /// works, once it has been quiet as long as any other. It may have
+    /// started before the hooks were installed, and such a session never
+    /// loads them, so the answer is all that can end its wait. Once the
+    /// answer no longer lists it, or Claude Code can't answer, nothing can
+    /// keep it current, and it becomes idle.
     func askClaude(always: Bool = false) async {
         guard !isAskingClaude, listening == .listening, let agents, let claude = agents.installation(.claude), let programs = agents.programs else { return }
         let asked = now()
@@ -238,10 +303,18 @@ public final class AgentMonitor {
         // A session that has sent an event since is quiet anew.
         unanswered = unanswered.filter { state.sessions[$0.key]?.lastEvent == $0.value }
         var quiet: [SessionKey: Date] = [:]
-        for key in state.quietWorking(for: Self.quietLimit, now: asked) where key.host == .claude && unanswered[key] == nil {
-            quiet[key] = state.sessions[key]?.lastEvent
+        var hookless: [SessionKey] = []
+        for key in state.quietWorking(for: Self.quietLimit, now: asked) where key.host == .claude {
+            if !state.heardFromHooks(key) {
+                hookless.append(key)
+            } else if unanswered[key] == nil {
+                quiet[key] = state.sessions[key]?.lastEvent
+            }
         }
-        guard seeds || !quiet.isEmpty else { return }
+        for session in state.sessions.values where session.key.host == .claude && !state.heardFromHooks(session.key) {
+            if case .waiting = session.phase { hookless.append(session.key) }
+        }
+        guard seeds || !quiet.isEmpty || !hookless.isEmpty else { return }
         if seeds { seedingIsDue = false }
         isAskingClaude = true
         defer { isAskingClaude = false }
@@ -265,6 +338,12 @@ public final class AgentMonitor {
             } else {
                 unanswered[key] = lastEvent
             }
+        }
+        // A hook that came while Roga asked speaks for the session from now
+        // on, and one that ended meanwhile stays ended. One listed with a
+        // status Roga doesn't read is asked about again.
+        for key in hookless where !named.contains(key) && !state.heardFromHooks(key) && state.sessions[key] != nil {
+            if state.observe(key, .idle, cwd: nil, pid: nil, at: asked) { changed = true }
         }
         if changed { publish() }
     }
@@ -365,11 +444,15 @@ public final class AgentMonitor {
         }
     }
 
-    /// Which worktree each mark is in, for one version of the marks and one
-    /// list of worktrees.
+    /// Which worktree each mark is in, for one version of the marks, of the
+    /// folders resolved, and of the worktrees' folders.
     private struct Placement {
         var marksVersion: Int
-        var worktrees: [[Worktree]]
+        var foldersVersion: Int
+        /// The folders of the worktrees that can hold a session, in the
+        /// list's order. That's all placing reads of the worktrees, so a
+        /// commit or a checkout in one of them leaves the placement as it is.
+        var worktrees: [String]
         var byWorktree: [String: [Mark]]
     }
 
@@ -404,7 +487,7 @@ public final class AgentMonitor {
     /// until then it notes the look anyway.
     func markSeen(worktree path: String) {
         let seenAt = seen[path]
-        if let placement, placement.marksVersion == marksVersion {
+        if let placement, placement.marksVersion == marksVersion, placement.foldersVersion == foldersVersion {
             let hasDot = placement.byWorktree[path, default: []].contains { mark in
                 if case .finished = mark.phase { seenAt.map { mark.since > $0 } ?? true } else { false }
             }
@@ -413,29 +496,99 @@ public final class AgentMonitor {
         seen[path] = now()
     }
 
-    /// The marks by the worktree each is in. Each call reads `marks` and the
-    /// list's worktrees, so that a view that asks redraws when either changes.
+    /// Someone selected the worktree a window shows, and so looked at it.
+    func selected(worktree path: String?) {
+        if let path { markSeen(worktree: path) }
+    }
+
+    /// A window shows the worktree at `path`, and either what agents do
+    /// there changed, or the window came to the front or went back. While
+    /// the window is in front, what finishes there is seen as it finishes,
+    /// and what finished while it was behind is seen once it comes to the
+    /// front.
+    func showing(worktree path: String?, appearsActive: Bool, in list: RepositoryList) {
+        guard appearsActive, let path, summary(forWorktree: path, in: list)?.state == .finished else { return }
+        markSeen(worktree: path)
+    }
+
+    /// The marks by the worktree each is in. Each call reads `marks`, the
+    /// folders resolved and the list's worktrees, so that a view that asks
+    /// redraws when any of them changes.
     private func placedMarks(in list: RepositoryList) -> [String: [Mark]] {
         let marks = marks
-        let worktrees = list.repositories.map(\.worktrees)
-        if let placement, placement.marksVersion == marksVersion, placement.worktrees == worktrees {
+        let foldersVersion = foldersVersion
+        let worktrees = list.repositories.flatMap { repository in
+            repository.worktrees.lazy.filter { !$0.isBare && !$0.isPrunable }.map(\.path)
+        }
+        if let placement, placement.marksVersion == marksVersion, placement.foldersVersion == foldersVersion, placement.worktrees == worktrees {
             return placement.byWorktree
         }
+        // A session is in the deepest worktree that holds its folder, as
+        // `RepositoryList.worktree(containing:)` finds it, with the folders
+        // as they compare: the worktrees' only once some mark needs them.
+        var places: [(folder: String, value: String)]?
         var byWorktree: [String: [Mark]] = [:]
-        var folders: [String: String?] = [:]
+        var placed: [String: String?] = [:]
         for mark in marks.values {
             guard let cwd = mark.cwd else { continue }
             let worktree: String?
-            if let known = folders[cwd] {
+            if let known = placed[cwd] {
                 worktree = known
             } else {
-                worktree = list.worktree(containing: cwd)?.worktree
-                folders[cwd] = worktree
+                let candidates = places ?? worktrees.map { (folder: comparable($0), value: $0) }
+                places = candidates
+                worktree = RepositoryList.deepest(holding: comparable(cwd), in: candidates)
+                placed[cwd] = worktree
             }
             if let worktree { byWorktree[worktree, default: []].append(mark) }
         }
-        placement = Placement(marksVersion: marksVersion, worktrees: worktrees, byWorktree: byWorktree)
+        placement = Placement(marksVersion: marksVersion, foldersVersion: foldersVersion, worktrees: worktrees, byWorktree: byWorktree)
+        forgetFolders(keeping: worktrees + marks.values.compactMap(\.cwd))
         return byWorktree
+    }
+
+    // MARK: Folders
+
+    /// A folder as it compares with the worktrees' folders: with symbolic
+    /// links resolved once Roga has resolved it, and until then only
+    /// standardized, which for nearly every folder is the same.
+    ///
+    /// Resolving a path asks the file system about each folder in it, which
+    /// takes a while on a slow volume and forever on a stalled one, and rows
+    /// ask for their marks as they draw, on the main actor. So each spelling
+    /// is resolved once, away from the main actor, and the marks are placed
+    /// again when that changes where one goes.
+    private func comparable(_ folder: String) -> String {
+        if let known = comparableFolders[folder] { return known }
+        let spelled = RepositoryList.standardizedPath(folder)
+        if foldersBeingResolved.insert(folder).inserted {
+            let resolve = resolvePath
+            Task { [weak self] in
+                let resolved = await Self.resolve(folder, with: resolve)
+                self?.finishResolving(folder, as: resolved, spelled: spelled)
+            }
+        }
+        return spelled
+    }
+
+    @concurrent
+    private static func resolve(_ folder: String, with resolve: @Sendable (String) -> String) async -> String {
+        resolve(folder)
+    }
+
+    private func finishResolving(_ folder: String, as resolved: String, spelled: String) {
+        foldersBeingResolved.remove(folder)
+        comparableFolders[folder] = resolved
+        if resolved != spelled { foldersVersion &+= 1 }
+    }
+
+    /// Keeps the folders resolved from growing without end as agents move
+    /// around, by forgetting those that nothing places any more, once there
+    /// are many.
+    private func forgetFolders(keeping used: [String]) {
+        guard comparableFolders.count > 256 else { return }
+        let used = Set(used)
+        comparableFolders = comparableFolders.filter { used.contains($0.key) }
     }
 }
 

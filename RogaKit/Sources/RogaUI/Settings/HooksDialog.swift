@@ -11,10 +11,9 @@ import SwiftUI
 /// agent's own words where the card of what changes was, since a sheet keeps
 /// the size it opened at.
 struct HooksDialog: View {
-    enum Action: Hashable {
-        case install
-        case remove
-    }
+    /// Install or Remove, the provider's own, since a failure it keeps says
+    /// which of the two failed.
+    typealias Action = AgentProvider.HookAction
 
     /// What someone asked for: which agent, and whether to install or
     /// remove. `offers` is the other agent, when Install also offers to
@@ -36,9 +35,6 @@ struct HooksDialog: View {
 
     let request: Request
     @Environment(AgentProvider.self) private var agents
-    /// Where the Settings sheet keeps what it ran, so that its rows know
-    /// which action a failure belongs to.
-    @Environment(HookAttempts.self) private var attempts: HookAttempts?
     @Environment(\.dismiss) private var dismiss
     /// Whether to install in the agent `offers` names too.
     @State private var alsoOther = true
@@ -124,7 +120,6 @@ struct HooksDialog: View {
     private func run(_ kinds: [AgentKind]) {
         isWorking = true
         failures = []
-        attempts?.record(request.action, for: kinds)
         Task {
             let worked: Bool
             switch request.action {
@@ -149,6 +144,12 @@ struct HooksDialog: View {
         }
     }
 
+    /// What the hooks do, or what removing them stops, and what stays.
+    ///
+    /// The agents' own commands don't leave the same behind. Claude Code's
+    /// settings keep nothing of Roga's, and it deletes its copy of the plugin
+    /// by itself later. Codex keeps in its config.toml the trust someone gave
+    /// the hooks, and Roga never edits that file.
     static func message(_ request: Request) -> String {
         let name = request.kind.name
         switch request.action {
@@ -156,7 +157,11 @@ struct HooksDialog: View {
             let trust = request.kind == .codex ? " Codex asks you to trust them the first time they run." : ""
             return "\(name) will tell Roga when a session starts, works, asks you something and stops, and in which folder. The hooks only report, so they never change what \(name) does.\(trust)"
         case .remove:
-            return "\(name) will stop telling Roga what its sessions are doing, so the sidebar won't mark the worktrees it works in. Nothing of Roga's stays behind in \(name)."
+            let stays = switch request.kind {
+            case .claude: "Its settings keep nothing of Roga's, and it deletes its own copy of the plugin later."
+            case .codex: "Codex keeps in its config.toml any trust you gave Roga's hooks, so if you install the same hooks again, it won't ask again."
+            }
+            return "\(name) will stop telling Roga what its sessions are doing, so the sidebar won't mark the worktrees it works in. \(stays)"
         }
     }
 
@@ -171,18 +176,22 @@ struct HooksDialog: View {
         switch request.action {
         case .install:
             let removal = switch request.kind {
-            case .claude: "claude plugin uninstall"
-            case .codex: "codex plugin remove"
+            case .claude: "Runs claude plugin uninstall, which leaves nothing of Roga's in its settings."
+            case .codex: "Runs codex plugin remove. Codex keeps any trust you gave the hooks."
             }
             return [
                 ("roga-hooks", "A plugin, kept with Roga's files in Application Support."),
                 (file, "Gets the plugin's folder and turns it on, through \(name)'s own commands."),
-                ("Remove", "Runs \(removal), and leaves nothing behind."),
+                ("Remove", removal),
             ]
         case .remove:
+            let loses = switch request.kind {
+            case .claude: "Loses the plugin and its folder, through Claude Code's own commands."
+            case .codex: "Loses the plugin and its folder, through Codex's own commands, but keeps any trust you gave its hooks."
+            }
             return [
                 ("roga-hooks", "Comes out of \(name), and stays with Roga's files in Application Support."),
-                (file, "Loses the plugin and its folder, through \(name)'s own commands."),
+                (file, loses),
                 ("Install…", "Puts them back whenever you want the sidebar's marks again."),
             ]
         }
@@ -250,11 +259,12 @@ struct HooksDialog: View {
         return lines
     }
 
-    /// The agents whose commands failed, in the order they ran, and how.
+    /// The agents whose commands failed, in the order they ran, and how. The
+    /// dialog keeps them as they were when the commands finished, so that it
+    /// shows them in full even once the rows no longer do.
     static func failed(_ kinds: [AgentKind], agents: AgentProvider) -> [Failure] {
         kinds.compactMap { kind in
-            guard case .failed(let words)? = agents.hookWork[kind] else { return nil }
-            return Failure(kind: kind, words: words)
+            agents.hookWork[kind]?.failure.map { Failure(kind: kind, words: $0) }
         }
     }
 
@@ -295,28 +305,5 @@ struct HookFailures: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(SettingsColors.danger, lineWidth: 1)
         }
-    }
-}
-
-/// What Install or Remove last ran for each agent from one Settings sheet.
-///
-/// The provider keeps how an agent's last Install or Remove failed, but not
-/// which of the two it was. The rows ask here, so that a failure goes once
-/// the agent's status no longer offers the action that failed, as when
-/// someone fixed it in Terminal, and when someone looks again. A sheet that
-/// opens afresh has run nothing, so it doesn't show an older sheet's
-/// failures; the dialog that ran the commands showed them.
-@MainActor @Observable
-final class HookAttempts {
-    private(set) var actions: [AgentKind: HooksDialog.Action] = [:]
-
-    /// Notes that `action` is about to run in each of `kinds`.
-    func record(_ action: HooksDialog.Action, for kinds: [AgentKind]) {
-        for kind in kinds { actions[kind] = action }
-    }
-
-    /// Forgets what ran, so that the rows stop showing how it failed.
-    func forget() {
-        actions = [:]
     }
 }

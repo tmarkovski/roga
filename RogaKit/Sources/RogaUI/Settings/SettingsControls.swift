@@ -80,7 +80,9 @@ extension SettingsSection where Aside == EmptyView {
 
 /// One setting: its name and gray help on the left, and its control on the
 /// right. Help that's more than words, such as a program's path in the code
-/// font, goes in `detail`, and `help` is then what VoiceOver reads.
+/// font, goes in `detail`, and `help` then says all of it in words. VoiceOver
+/// reads the name and the detail as one element, with `help` as its value,
+/// so it hears the whole sentence once rather than the detail's pieces.
 ///
 /// VoiceOver calls the control by the setting's name, unless `namesControl`
 /// is off, for buttons that say what they do, such as Choose….
@@ -101,23 +103,14 @@ struct SettingsRow<Detail: View, Control: View>: View {
 
     var body: some View {
         HStack(spacing: 16) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                if let detail {
-                    detail
-                        .font(.system(size: 12.5))
-                        .lineSpacing(3)
-                        .foregroundStyle(SettingsColors.note)
-                        .fixedSize(horizontal: false, vertical: true)
-                } else if let help, !help.isEmpty {
-                    Text(help)
-                        .font(.system(size: 12.5))
-                        .lineSpacing(3)
-                        .foregroundStyle(SettingsColors.note)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+            if let spokenDetail {
+                words
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(title)
+                    .accessibilityValue(spokenDetail)
+            } else {
+                words
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
             if namesControl {
                 control
                     .fixedSize()
@@ -134,6 +127,35 @@ struct SettingsRow<Detail: View, Control: View>: View {
 
     private var hasHelp: Bool {
         detail != nil || help?.isEmpty == false
+    }
+
+    /// What VoiceOver reads after the name when a detail shows: `help`,
+    /// which says in words what the detail draws. Without a detail, the help
+    /// shows as it is and is read as it shows.
+    var spokenDetail: String? {
+        guard detail != nil, let help, !help.isEmpty else { return nil }
+        return help
+    }
+
+    /// The name, and the help or the detail under it.
+    private var words: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+            if let detail {
+                detail
+                    .font(.system(size: 12.5))
+                    .lineSpacing(3)
+                    .foregroundStyle(SettingsColors.note)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if let help, !help.isEmpty {
+                Text(help)
+                    .font(.system(size: 12.5))
+                    .lineSpacing(3)
+                    .foregroundStyle(SettingsColors.note)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -525,16 +547,21 @@ struct SettingsTextField: View {
 
 /// A box for a paragraph, as wide as its row, that grows with what's typed in
 /// it from the height of four lines.
+///
+/// It's a text editor rather than a field, so that Return starts a new line,
+/// as in the canvas's textarea: in a field, Return would end the editing and
+/// type nothing.
 struct SettingsTextArea: View {
     @Binding var text: String
     let label: String
 
     var body: some View {
-        TextField("", text: $text, axis: .vertical)
-            .textFieldStyle(.plain)
+        TextEditor(text: $text)
             .font(.system(size: 13))
             // The canvas's lines are 1.45 times the font apart.
             .lineSpacing(3.3)
+            .scrollContentBackground(.hidden)
+            .scrollDisabled(true)
             .accessibilityLabel(label)
             .padding(EdgeInsets(top: 9, leading: 11, bottom: 9, trailing: 11))
             .frame(maxWidth: .infinity, minHeight: 84, alignment: .topLeading)
@@ -661,6 +688,22 @@ struct SettingsNotice<Actions: View>: View {
 }
 
 extension AttributedString {
+    /// Words with names in them that are typed rather than said, such as
+    /// PATH, each set in the code font as the canvas's `.mono` sets them. They
+    /// keep the words' size and color and have no gray ground, which the
+    /// canvas keeps for a key, such as a command to run.
+    static func settingsWords(_ text: String, typedNames names: [String]) -> AttributedString {
+        var words = AttributedString(text)
+        for name in names {
+            var start = words.startIndex
+            while let found = words[start...].range(of: name) {
+                words[found].font = .system(size: 12.5, design: .monospaced)
+                start = found.upperBound
+            }
+        }
+        return words
+    }
+
     /// Words with short commands in them, each set as the canvas sets a key:
     /// in the code font on a gray ground, as in "Each hook runs `roga hook`".
     static func settingsWords(_ parts: [(text: String, isCode: Bool)]) -> AttributedString {

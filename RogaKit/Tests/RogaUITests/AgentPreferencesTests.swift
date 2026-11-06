@@ -5,7 +5,7 @@ import Testing
 
 /// What's stored about agents: the defaults while nothing is, the difference
 /// between an empty value and an absent one, and how extra arguments split.
-@Suite(.timeLimit(.minutes(1)))
+@Suite(.timeLimit(.minutes(1)), .removesTemporaryFolders)
 struct AgentPreferencesTests {
     let defaults: UserDefaults
     let name: String
@@ -116,6 +116,16 @@ struct AgentPreferencesTests {
         #expect(AgentSettings.splitArguments("\"say \\\"hi\\\" \\n\"") == ["say \"hi\" \\n"])
         // Single quotes take everything as it is.
         #expect(AgentSettings.splitArguments("'a\\b'") == ["a\\b"])
+    }
+
+    @Test func aBackslashBeforeANewLineJoinsTheLines() {
+        // A shell drops both, in double quotes and out, as `sh` does here.
+        #expect(AgentSettings.splitArguments("\"a\\\nb\"") == ["ab"])
+        #expect(AgentSettings.splitArguments("c\\\nd") == ["cd"])
+        // Between arguments it's nothing, rather than an empty one.
+        #expect(AgentSettings.splitArguments("--x \\\n --y") == ["--x", "--y"])
+        // Single quotes keep both.
+        #expect(AgentSettings.splitArguments("'p\\\nq'") == ["p\\\nq"])
     }
 
     @Test func aQuoteThatIsntClosedRunsToTheEnd() {

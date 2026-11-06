@@ -67,13 +67,13 @@ import Testing
     @Test func aProgramShowsByItsNameWithLongArgumentsShortened() {
         let tokens = ShellCommand.tokens(claudeCommand)
         #expect(tokens.map(\.text) == [
-            "claude", "-p", "--safe-mode", "--model", "haiku", "--effort", "low", "--tools=", "--no-session-persistence",
-            "--output-format", "json", "--system-prompt", "'You write git commit messages. Reply wit…'",
+            "claude", "-p", "--safe-mode", "--setting-sources", "user", "--model", "haiku", "--effort", "low", "--tools=",
+            "--no-session-persistence", "--output-format", "json", "--system-prompt", "'You write git commit messages. Reply wit…'",
             "--", "'Write the commit message for the staged…'",
         ])
         #expect(tokens.map(\.kind) == [
-            .command, .option, .option, .option, .value, .option, .value, .option, .option,
-            .option, .value, .option, .text,
+            .command, .option, .option, .option, .value, .option, .value, .option, .value, .option,
+            .option, .option, .value, .option, .text,
             .option, .text,
         ])
     }

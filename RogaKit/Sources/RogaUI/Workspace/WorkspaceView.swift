@@ -63,13 +63,13 @@ private struct AgentMarksSeen: View {
         Color.clear
             .accessibilityHidden(true)
             .onChange(of: worktree, initial: true) { _, worktree in
-                if let worktree { monitor.markSeen(worktree: worktree) }
+                monitor.selected(worktree: worktree)
             }
             .onChange(of: shownState) {
-                markSeenIfFinished()
+                monitor.showing(worktree: worktree, appearsActive: appearsActive, in: list)
             }
             .onChange(of: appearsActive) {
-                markSeenIfFinished()
+                monitor.showing(worktree: worktree, appearsActive: appearsActive, in: list)
             }
     }
 
@@ -77,11 +77,6 @@ private struct AgentMarksSeen: View {
     private var shownState: AgentSummary.State? {
         guard let worktree else { return nil }
         return monitor.summary(forWorktree: worktree, in: list)?.state
-    }
-
-    private func markSeenIfFinished() {
-        guard appearsActive, shownState == .finished, let worktree else { return }
-        monitor.markSeen(worktree: worktree)
     }
 }
 

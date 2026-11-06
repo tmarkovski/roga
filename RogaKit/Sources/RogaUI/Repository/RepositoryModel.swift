@@ -156,7 +156,8 @@ final class RepositoryModel {
         reportConflicts: @escaping (Bool) -> Void = { _ in },
         reportBranchChange: @escaping () async -> Void = {},
         fetchesByItself: @escaping () -> Bool = { UserDefaults.standard.fetchesByItself },
-        drafts: CommitDrafts = .standard
+        drafts: CommitDrafts = .standard,
+        generators: MessageGenerators = .shared
     ) {
         self.session = session
         self.worktree = worktree
@@ -168,7 +169,7 @@ final class RepositoryModel {
         selectedChanges = SelectedChanges(session: session, worktree: worktree, selectedFile: selectedCommit.selectedFile, fileList: selectedCommit.fileList)
         refs = RefsModel(session: session, worktree: worktree)
         branch = BranchModel(session: session, worktree: worktree, fetchesByItself: fetchesByItself, reportBranchChange: reportBranchChange)
-        composer = CommitComposer(session: session, worktree: worktree, branch: branch, changes: selectedChanges, drafts: drafts)
+        composer = CommitComposer(session: session, worktree: worktree, branch: branch, changes: selectedChanges, drafts: drafts, generators: generators)
         selectedChanges.onLoad = { [weak self] changes in self?.show(uncommittedFiles: changes.fileCount, staged: changes.staged.count) }
         selectedChanges.onFailure = { [weak branch] title, error in branch?.failure = BranchModel.Failure(title: title, error: error, changedNothing: true) }
         selectedChanges.onDiscard = { [weak self] words, canUndo in

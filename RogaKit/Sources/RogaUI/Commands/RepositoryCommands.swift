@@ -236,8 +236,9 @@ extension RepositoryCommands {
     /// An agent in the Changes menu's Generate With (decision 41).
     struct GenerateWithItem: Equatable {
         var kind: AgentKind
-        /// The agent and its model, as in "Claude Code · haiku", or the agent
-        /// alone when its model is its own default.
+        /// The agent and its model, as in "Claude Code · haiku". With the
+        /// agent's own default, that's Codex's model from its `config.toml`
+        /// when Roga could read it, and otherwise the agent alone.
         var title: String
         /// Whether it's the one Generate runs, which a checkmark shows.
         var isCurrent: Bool
@@ -248,11 +249,9 @@ extension RepositoryCommands {
     static func generateWithItems(_ agents: AgentProvider) -> [GenerateWithItem] {
         let current = agents.generateAgent
         return agents.usableAgents.map { kind in
-            GenerateWithItem(
-                kind: kind,
-                title: GenerationSetup.label(kind, model: agents.settings[kind]?.model ?? kind.recommendedModel),
-                isCurrent: kind == current
-            )
+            var model = agents.settings[kind]?.model ?? kind.recommendedModel
+            if model.isEmpty, kind == .codex, let known = agents.codexDefaultModel { model = known }
+            return GenerateWithItem(kind: kind, title: GenerationSetup.label(kind, model: model), isCurrent: kind == current)
         }
     }
 }
@@ -347,6 +346,9 @@ private struct ChangesMenuItems: View {
             }
             .disabled(openSettings == nil)
         }
+        // The message's items are a group of their own, apart from making the
+        // commit, as the canvas's Changes menu has them.
+        Divider()
         Button(composer?.action.title ?? "Commit") {
             composer?.commit()
         }

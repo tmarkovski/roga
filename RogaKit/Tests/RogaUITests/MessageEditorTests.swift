@@ -39,13 +39,14 @@ struct MessageEditorTests {
             editor.update(scrollView, coordinator: coordinator)
         }
 
-        @MainActor static func editor(_ message: Message, isEditable: Bool) -> MessageEditor {
+        @MainActor static func editor(_ message: Message, isEditable: Bool, isCovered: Bool = false) -> MessageEditor {
             MessageEditor(
                 text: Binding { message.text } set: { message.text = $0 },
                 isEditable: isEditable,
                 focusRequests: 0,
                 textHeight: .constant(0),
-                leave: {}
+                leave: {},
+                isCovered: isCovered
             )
         }
 
@@ -59,9 +60,9 @@ struct MessageEditorTests {
 
         /// Puts text in the binding, as the composer does, and lets the editor
         /// hear of it.
-        @MainActor func show(_ text: String, isEditable: Bool = true) {
+        @MainActor func show(_ text: String, isEditable: Bool = true, isCovered: Bool = false) {
             message.text = text
-            step { Self.editor(message, isEditable: isEditable).update(scrollView, coordinator: coordinator) }
+            step { Self.editor(message, isEditable: isEditable, isCovered: isCovered).update(scrollView, coordinator: coordinator) }
         }
 
         @MainActor func step(_ body: () -> Void) {
@@ -116,5 +117,22 @@ struct MessageEditorTests {
         editor.show("my words")
         #expect(editor.textView.isEditable)
         #expect(editor.textView.string == "my words")
+    }
+
+    /// While an agent writes, the gray bars cover the text view, which still
+    /// has the text from before, so VoiceOver mustn't find it there.
+    @Test func aCoveredEditorIsntReadAloud() throws {
+        let editor = try Editor()
+        editor.type("my words")
+        #expect(editor.textView.isAccessibilityElement())
+        #expect(editor.scrollView.isAccessibilityElement())
+
+        editor.show("my words", isEditable: false, isCovered: true)
+        #expect(!editor.textView.isAccessibilityElement())
+        #expect(!editor.scrollView.isAccessibilityElement())
+
+        editor.show("Rename the app")
+        #expect(editor.textView.isAccessibilityElement())
+        #expect(editor.scrollView.isAccessibilityElement())
     }
 }

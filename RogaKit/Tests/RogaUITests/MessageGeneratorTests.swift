@@ -10,12 +10,15 @@ import Testing
 
 /// Generate in the commit box, against real git, with a fake agent in place of
 /// running one: what it asks for, what it puts in the box, and what the line
-/// under the box offers afterward.
-@Suite(.timeLimit(.minutes(1)))
+/// under the box offers afterward. Each test has agents writing of its own,
+/// apart from Roga's windows' and other tests'.
+@Suite(.timeLimit(.minutes(1)), .removesTemporaryFolders)
 struct MessageGeneratorTests {
     struct Worktree {
         var model: RepositoryModel
         var path: String
+        var drafts: CommitDrafts
+        var generators: MessageGenerators
         var changes: SelectedChanges { model.selectedChanges }
         var composer: CommitComposer { model.composer }
         var generator: MessageGenerator { model.composer.generator }
@@ -93,6 +96,7 @@ struct MessageGeneratorTests {
         try await TestGit.make().text(GitCommand(arguments, in: folder))
     }
 
+    /// A clone of the basic fixture, in a folder that goes when the test ends.
     func worktree(drafts: CommitDrafts = .none) async throws -> Worktree {
         let folder = try makeTemporaryFolder()
         let path = folder + "/work"
@@ -100,10 +104,25 @@ struct MessageGeneratorTests {
         try await git("config", "user.name", "T", in: path)
         try await git("config", "user.email", "t@example.com", in: path)
         let session = try await RepositorySession.open(containing: path, git: try await TestGit.make())
-        let model = RepositoryModel(session: session, worktree: path, fetchesByItself: { false }, drafts: drafts)
+        let generators = MessageGenerators()
+        let model = makeModel(session: session, path: path, drafts: drafts, generators: generators)
+        return Worktree(model: model, path: path, drafts: drafts, generators: generators)
+    }
+
+    func makeModel(session: RepositorySession, path: String, drafts: CommitDrafts, generators: MessageGenerators) -> RepositoryModel {
+        let model = RepositoryModel(session: session, worktree: path, fetchesByItself: { false }, drafts: drafts, generators: generators)
         model.branch.timeToPlayHouse = { _ in .zero }
         model.branch.timeToShowFinished = { _ in .seconds(600) }
-        return Worktree(model: model, path: path)
+        return model
+    }
+
+    /// The worktree's model made again, as when the window that showed it
+    /// was closed and another opens it, or after a window has shown eight
+    /// other worktrees.
+    func madeAgain(_ work: Worktree) -> Worktree {
+        var again = work
+        again.model = makeModel(session: work.model.session, path: work.path, drafts: work.drafts, generators: work.generators)
+        return again
     }
 
     func write(_ text: String, to path: String, in repository: String) throws {
@@ -240,6 +259,63 @@ struct MessageGeneratorTests {
         #expect(work.composer.isAmending)
     }
 
+    @Test func waitsForAmendToPutTheCommitsMessageInTheBox() async throws {
+        let work = try await worktree()
+        try write("notes\n", to: "notes.txt", in: work.path)
+        try await open(work)
+        work.composer.message = "my draft for a new commit"
+        work.composer.setAmending(true)
+        // The box still has the draft for a new commit, which isn't the
+        // message being amended.
+        #expect(work.composer.message == "my draft for a new commit")
+        #expect(work.generator.readiness == .busy)
+        let agent = Agent.claude("Add a second line to the app")
+        await generate(work, with: agent)
+        #expect(work.generator.lastRequest == nil)
+        #expect(agent.calls.withLock { $0.isEmpty })
+
+        await work.composer.readingMessage?.value
+        #expect(work.composer.message == "Change the app\n\nThe body says why.")
+        #expect(work.generator.readiness == .ready)
+        await generate(work, with: agent)
+        #expect(work.generator.lastRequest?.draft == "Change the app\n\nThe body says why.")
+        // Undo gives back the commit's own message, not the other draft.
+        work.generator.undo()
+        #expect(work.composer.isAmending)
+        #expect(work.composer.message == "Change the app\n\nThe body says why.")
+    }
+
+    /// Committing waits for the commit's message too, which Generate does
+    /// above, so that Amend Commit can't replace it with the other draft.
+    @Test func amendCommitWaitsForTheCommitsMessage() async throws {
+        let work = try await worktree()
+        try write("notes\n", to: "notes.txt", in: work.path)
+        try await open(work)
+        work.composer.message = "my draft for a new commit"
+        work.composer.setAmending(true)
+        #expect(work.composer.action == .init(title: "Amend Commit", isEnabled: false))
+        work.composer.commit()
+        #expect(work.composer.phase == .idle)
+
+        await work.composer.readingMessage?.value
+        #expect(work.composer.message == "Change the app\n\nThe body says why.")
+        #expect(work.composer.action == .init(title: "Amend Commit", isEnabled: true))
+    }
+
+    @Test func amendTurnedOffBeforeItsReadIsntWaitedFor() async throws {
+        let work = try await staged()
+        work.composer.setAmending(true)
+        #expect(work.generator.readiness == .busy)
+        work.composer.setAmending(false)
+        #expect(work.generator.readiness == .ready)
+        // On again before the first read is back, it waits for its own read.
+        work.composer.setAmending(true)
+        #expect(work.generator.readiness == .busy)
+        await work.composer.readingMessage?.value
+        #expect(work.generator.readiness == .ready)
+        #expect(work.composer.message == "Change the app\n\nThe body says why.")
+    }
+
     @Test func doesNothingWithNothingStaged() async throws {
         let work = try await worktree()
         try write("Roga\n", to: "README.md", in: work.path)
@@ -262,7 +338,7 @@ struct MessageGeneratorTests {
     @Test func waitsDuringARebase() async throws {
         let work = try await staged()
         work.composer.worktreeIsPartway(through: .rebase(branch: nil))
-        #expect(work.generator.readiness == .busy)
+        #expect(work.generator.readiness == .rebasing)
     }
 
     // MARK: While it writes
@@ -321,6 +397,130 @@ struct MessageGeneratorTests {
         await work.generator.running?.value
         #expect(work.composer.message == "Rename the app")
         if case .written = work.generator.phase {} else { Issue.record("Expected a written message") }
+    }
+
+    /// A message for a box that has gone from Roga's memory, and that no new
+    /// box has taken over, is the worktree's draft when it comes back.
+    @Test func aMessageForABoxThatsGoneBecomesItsDraft() async throws {
+        let drafts = Drafts()
+        let agent = Agent.claude("Rename the app", waits: true)
+        let path: String
+        let running: Task<Void, Never>?
+        do {
+            let work = try await staged(drafts: drafts.drafts)
+            work.generator.run = agent.run
+            work.generator.generate(with: setup())
+            #expect(await AgentTestSupport.eventually { agent.calls.withLock { !$0.isEmpty } })
+            path = work.path
+            running = work.generator.running
+        }
+        agent.answer()
+        await running?.value
+        #expect(drafts.saved.withLock { $0[path] } == "Rename the app")
+    }
+
+    /// A box made for the worktree again while the agent writes, as when its
+    /// window was closed and another opened it, takes the agent over, rather
+    /// than offer Generate again and lose the message to its first keystroke.
+    @Test func aBoxMadeAgainTakesOverTheAgent() async throws {
+        let drafts = Drafts()
+        let work = try await staged(drafts: drafts.drafts)
+        work.composer.message = "my words"
+        let agent = Agent.claude("Rename the app in the readme", waits: true)
+        let first = work.generator
+        first.run = agent.run
+        first.generate(with: setup())
+        #expect(await AgentTestSupport.eventually { agent.calls.withLock { !$0.isEmpty } })
+        let running = first.running
+
+        let again = madeAgain(work)
+        #expect(again.generator === first)
+        #expect(again.generator.isWriting)
+        #expect(again.composer.isMessageReadOnly)
+        #expect(again.composer.message == "my words")
+        #expect(!again.composer.action.isEnabled)
+        // The box it was writing in has let it go.
+        #expect(work.generator !== first)
+        #expect(work.generator.phase == .idle)
+        #expect(!work.composer.isMessageReadOnly)
+
+        agent.answer()
+        await running?.value
+        #expect(again.composer.message == "Rename the app in the readme")
+        if case .written = again.generator.phase {} else { Issue.record("Expected a written message, got \(again.generator.phase)") }
+        #expect(work.composer.message == "my words")
+        #expect(work.generator.phase == .idle)
+        #expect(work.generators.writing(in: work.path) == nil)
+        again.composer.message += "\n\nIt's called Roga now."
+        #expect(drafts.saved.withLock { $0[work.path] } == "Rename the app in the readme\n\nIt's called Roga now.")
+    }
+
+    @Test func aBoxMadeAgainCanStopTheAgent() async throws {
+        let work = try await staged()
+        work.composer.message = "my words"
+        let agent = Agent.claude("Rename the app", waits: true)
+        work.generator.run = agent.run
+        work.generator.generate(with: setup())
+        #expect(await AgentTestSupport.eventually { agent.calls.withLock { !$0.isEmpty } })
+        let running = work.generator.running
+
+        let again = madeAgain(work)
+        again.generator.stop()
+        #expect(again.generator.phase == .idle)
+        #expect(!again.composer.isMessageReadOnly)
+        #expect(again.composer.message == "my words")
+        #expect(await wasStopped(agent, running: running))
+        #expect(again.composer.message == "my words")
+        #expect(work.generators.writing(in: work.path) == nil)
+    }
+
+    /// An agent rewriting the message of the commit `HEAD` is on goes on with
+    /// Amend in the new box, whose draft for a new commit is the one from
+    /// before Amend.
+    @Test func aBoxMadeAgainTakesOverAnAmend() async throws {
+        let drafts = Drafts()
+        let work = try await worktree(drafts: drafts.drafts)
+        try write("notes\n", to: "notes.txt", in: work.path)
+        try await open(work)
+        work.composer.message = "my draft"
+        work.composer.setAmending(true)
+        await settled(work)
+        let agent = Agent.claude("Add a second line to the app", waits: true)
+        work.generator.run = agent.run
+        work.generator.generate(with: setup())
+        #expect(await AgentTestSupport.eventually { agent.calls.withLock { !$0.isEmpty } })
+        let running = work.generator.running
+
+        let again = madeAgain(work)
+        #expect(again.composer.isAmending)
+        #expect(again.composer.message == "Change the app\n\nThe body says why.")
+        try await open(again)
+        #expect(again.composer.heading.lead == "Amend")
+        agent.answer()
+        await running?.value
+        #expect(again.composer.message == "Add a second line to the app")
+        #expect(drafts.saved.withLock { $0[work.path] } == "my draft")
+        again.composer.setAmending(false)
+        #expect(again.composer.message == "my draft")
+    }
+
+    /// Quitting Roga stops every agent that's writing, since each runs in a
+    /// process group of its own, which quitting doesn't end.
+    @Test func quittingStopsEveryAgent() async throws {
+        let work = try await staged()
+        work.composer.message = "my words"
+        let agent = Agent.claude("Rename the app", waits: true)
+        work.generator.run = agent.run
+        work.generator.generate(with: setup())
+        #expect(await AgentTestSupport.eventually { agent.calls.withLock { !$0.isEmpty } })
+        let running = work.generator.running
+        #expect(work.generators.writing(in: work.path) === work.generator)
+
+        work.generators.stopAll()
+        #expect(work.generator.phase == .idle)
+        #expect(work.composer.message == "my words")
+        #expect(work.generators.writing(in: work.path) == nil)
+        #expect(await wasStopped(agent, running: running))
     }
 
     @Test func saysWhenTheStagedFilesChangedWhileItWrote() async throws {

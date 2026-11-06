@@ -99,6 +99,12 @@ enum SettingsGroup: CaseIterable {
         }
     }
 
+    /// The description as its page draws it, with names that are typed, such
+    /// as PATH, in the code font, as the canvas sets them.
+    var styledDescription: AttributedString? {
+        description.map { AttributedString.settingsWords($0, typedNames: ["PATH"]) }
+    }
+
     var items: [SettingsItem] {
         SettingsItem.allCases.filter { $0.group == self }
     }
@@ -181,7 +187,7 @@ enum SettingsItem: CaseIterable {
         case .matchesStyle:
             "Sends the last 20 commit subjects along with the diff."
         case .generateCommand:
-            "It runs in the worktree's folder with its tools, hooks and plugins off, so it can't change anything. Agents are set up on the Agents page."
+            "It runs in the worktree's folder with its tools, hooks, plugins and MCP servers off, and without the repository's own agent settings, so it can't change anything. Agents are set up on the Agents page."
         case .showsMarks:
             "Marks each worktree an agent is working in, waiting in, or has finished in."
         case .generateEffort, .instructions, .agentList, .hooks, .marksLegend:
@@ -223,9 +229,6 @@ struct SettingsSheet: View {
     /// opened. Each check costs a run of each agent, and of `claude agents`
     /// after it, so it happens once a sheet rather than each time Agents shows.
     @State private var hasCheckedHooks = false
-    /// What Install and Remove ran from this sheet, so that the hooks' rows
-    /// show a failure only while it still applies.
-    @State private var hookAttempts = HookAttempts()
 
     @AppStorage(UserDefaults.houseAnimationSpeedKey) private var speed = 1.0
     @AppStorage(FileListSettings.layout) private var fileLayout = FileLayout.list
@@ -264,7 +267,6 @@ struct SettingsSheet: View {
         .frame(width: Self.size.width, height: Self.size.height)
         .background(SettingsColors.surface)
         .font(.system(size: 13))
-        .environment(hookAttempts)
         .presentationSizing(.fitted)
         .onChange(of: destination.page == .agents, initial: true) { _, showsAgents in
             guard showsAgents, !hasCheckedHooks else { return }

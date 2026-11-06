@@ -111,28 +111,49 @@ public final class RepositoryList {
     /// holds only what's under its folder, so `/a/api` doesn't hold
     /// `/a/api-old`. Bare repositories and worktrees whose folders are gone
     /// hold nothing.
+    ///
+    /// It asks the file system about every worktree's folder, so it's for
+    /// one folder at a time. The agents' monitor, which places a mark for
+    /// each row as it draws, resolves folders away from the main actor and
+    /// compares them with `deepest(holding:in:)`.
     func worktree(containing folder: String) -> WorktreeSelection? {
-        let target = Self.comparablePath(folder)
-        var found: (selection: WorktreeSelection, length: Int)?
-        for repository in repositories {
-            for worktree in repository.worktrees where !worktree.isBare && !worktree.isPrunable {
-                let path = Self.comparablePath(worktree.path)
-                guard path.count > found?.length ?? -1,
-                      target == path || target.hasPrefix(path.hasSuffix("/") ? path : path + "/")
-                else { continue }
-                found = (WorktreeSelection(repository: repository.path, worktree: worktree.path), path.count)
+        let places = repositories.flatMap { repository in
+            repository.worktrees.filter { !$0.isBare && !$0.isPrunable }.map { worktree in
+                (folder: Self.comparablePath(worktree.path), value: WorktreeSelection(repository: repository.path, worktree: worktree.path))
             }
         }
-        return found?.selection
+        return Self.deepest(holding: Self.comparablePath(folder), in: places)
+    }
+
+    /// Of some folders, each with what it stands for, what stands for the
+    /// deepest one that holds `target`: `target` itself, or a folder it's
+    /// under. Both sides have to be comparable already, as
+    /// `comparablePath(_:)` makes them. A match ends at a `/`, so `/a/api`
+    /// doesn't hold `/a/api-old`.
+    nonisolated static func deepest<Value>(holding target: String, in places: [(folder: String, value: Value)]) -> Value? {
+        var found: (value: Value, length: Int)?
+        for (folder, value) in places {
+            guard folder.count > found?.length ?? -1,
+                  target == folder || target.hasPrefix(folder.hasSuffix("/") ? folder : folder + "/")
+            else { continue }
+            found = (value, folder.count)
+        }
+        return found?.value
+    }
+
+    /// A path without `.` and `..` or a trailing slash, worked out from its
+    /// text alone, without asking the file system.
+    nonisolated static func standardizedPath(_ path: String) -> String {
+        let standardized = URL(filePath: path).standardized.path(percentEncoded: false)
+        return standardized.count > 1 && standardized.hasSuffix("/") ? String(standardized.dropLast()) : standardized
     }
 
     /// A path without `.` and `..`, a trailing slash or symbolic links, so that
     /// two spellings of a folder compare equal. When the folder doesn't exist,
     /// as when an agent works in one that's been deleted, the part of the path
     /// that does is resolved.
-    static func comparablePath(_ path: String) -> String {
-        let standardized = URL(filePath: path).standardized.path(percentEncoded: false)
-        let trimmed = standardized.count > 1 && standardized.hasSuffix("/") ? String(standardized.dropLast()) : standardized
+    nonisolated static func comparablePath(_ path: String) -> String {
+        let trimmed = standardizedPath(path)
         if let resolved = realpath(trimmed, nil) {
             defer { free(resolved) }
             return String(cString: resolved)

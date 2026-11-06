@@ -352,8 +352,10 @@ private struct ScopeHeader<Trailing: View>: View {
 /// hover, so that what an agent is doing still shows while the pointer is
 /// there (decision 41). It's 6 points from what follows it. With nothing after
 /// it, those 6 points leave the mark where a count would end. Its box is the
-/// same size whatever it shows, so a mark changing never moves anything.
-private struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
+/// same size whatever it shows, so a mark changing never moves anything. In a
+/// narrow row, the mark and the label keep their width and the row's own text
+/// gives way, as the counts stay in the title row.
+struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
     var isSelected = false
     var isEnabled = true
     /// What agents are doing in the row's worktrees, or nil for no mark.
@@ -363,6 +365,24 @@ private struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
     @ViewBuilder var trailing: Trailing
     @ViewBuilder var commands: Commands
     @State private var isHovering = false
+
+    init(
+        isSelected: Bool = false,
+        isEnabled: Bool = true,
+        agent: AgentSummary?,
+        action: @escaping () -> Void,
+        @ViewBuilder content: () -> Content,
+        @ViewBuilder trailing: () -> Trailing,
+        @ViewBuilder commands: () -> Commands
+    ) {
+        self.isSelected = isSelected
+        self.isEnabled = isEnabled
+        self.agent = agent
+        self.action = action
+        self.content = content()
+        self.trailing = trailing()
+        self.commands = commands()
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
@@ -380,6 +400,10 @@ private struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
                     trailing
                 }
             }
+            // The mark and what follows it keep their width, so that a
+            // narrow row cuts the branch's name short rather than a count or
+            // the words beside the mark.
+            .fixedSize(horizontal: true, vertical: false)
             .frame(height: 24)
             .padding(.top, 4)
         }
@@ -806,23 +830,12 @@ struct RowAgents {
 struct SidebarMark: View {
     let summary: AgentSummary
 
-    /// The canvas draws marks 14 points wide.
-    private static let size: CGFloat = 14
-    /// The circle-alert fills its box, while the ring's outer edge is 13/16 of
-    /// it, so the waiting mark is drawn this much smaller to look as big as a
-    /// ring on the row beside it. Measured, both are then 0.81 of the box.
-    private static let waitingScale: CGFloat = 0.88
-
     var body: some View {
         TimelineView(minutes) { context in
-            AgentMark(state: summary.state, size: isWaiting ? Self.size * Self.waitingScale : Self.size)
-                .frame(width: Self.size, height: Self.size)
+            // The canvas draws marks 14 points wide, which is AgentMark's size.
+            AgentMark(state: summary.state)
                 .help(summary.help(now: context.date))
         }
-    }
-
-    private var isWaiting: Bool {
-        if case .waiting = summary.state { true } else { false }
     }
 
     /// When the tooltip changes. A finished mark's never does.

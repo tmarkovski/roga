@@ -8,7 +8,7 @@ import Testing
 
 /// The menu that the repository's name in the title row opens: a row for each
 /// worktree, and what its second line says.
-@Suite(.timeLimit(.minutes(1)))
+@Suite(.timeLimit(.minutes(1)), .removesTemporaryFolders)
 struct WorktreeMenuTests {
     private let home = NSHomeDirectory()
     private var main: Worktree { Worktree(path: home + "/code/agents-demo", branch: "refs/heads/main", isMain: true) }

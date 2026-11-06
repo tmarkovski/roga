@@ -251,7 +251,10 @@ public struct AgentSessions: Sendable, Hashable {
     /// Status comes from the hooks (decision 41), and this only clears what
     /// they leave stale. The agent calls a finished session idle, so idle
     /// leaves a finished one alone, and busy leaves a waiting one alone, so
-    /// that only a hook event ends a wait.
+    /// that only a hook event ends a wait. That holds only while hooks speak
+    /// for the session, though: one that started before the hooks were
+    /// installed never loads them, so for a session no hook event has come
+    /// from, the agent's word is all there is, and busy ends its wait too.
     ///
     /// Asking the agent takes a moment, and hook events keep arriving
     /// meanwhile. When one of them said what the session is doing after the
@@ -279,8 +282,9 @@ public struct AgentSessions: Sendable, Hashable {
         let hooksKnowMore = Self.isLate(time, after: heard[key]?.phase)
         if !hooksKnowMore {
             let isActive = session.phase == .working || session.phase.isWaiting
+            let hooksEndItsWait = heardFromHooks(key)
             switch observed {
-            case .busy where !isActive:
+            case .busy where !isActive || (session.phase.isWaiting && !hooksEndItsWait):
                 session.enter(.working, at: time)
             case .waiting where !session.phase.isWaiting:
                 session.enter(.waiting(.permission), at: time)
@@ -300,6 +304,14 @@ public struct AgentSessions: Sendable, Hashable {
         session.lastEvent = max(session.lastEvent, time)
         sessions[key] = session
         return sessions != before
+    }
+
+    /// Whether any hook event has come from a session, which shows that its
+    /// agent runs Roga's hooks. A session Roga knows only from asking the
+    /// agent may have started before the hooks were installed, and then no
+    /// hook will ever say what it does next, so the app has to keep asking.
+    public func heardFromHooks(_ key: SessionKey) -> Bool {
+        heard[key] != nil
     }
 
     /// The sessions that have shown working for at least `quiet` without any

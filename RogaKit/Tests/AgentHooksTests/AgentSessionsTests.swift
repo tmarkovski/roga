@@ -510,6 +510,29 @@ struct AgentSessionsTests {
         }
     }
 
+    @Test func busyEndsTheWaitOfASessionNoHookSpeaksFor() {
+        // It started before the hooks were installed, so it never loads them,
+        // and only the agent can say that the wait is over.
+        var sessions = AgentSessions()
+        sessions.observe(a, .waiting, cwd: "/w", pid: 42, at: date(5))
+        #expect(!sessions.heardFromHooks(a))
+        sessions.observe(a, .busy, cwd: nil, pid: nil, at: date(40))
+        #expect(sessions.phase() == .working)
+        sessions.observe(a, .waiting, cwd: nil, pid: nil, at: date(70))
+        sessions.observe(a, .idle, cwd: nil, pid: nil, at: date(100))
+        #expect(sessions.phase() == .idle)
+
+        // Once a hook has spoken for it, only a hook ends its wait.
+        sessions.observe(a, .waiting, cwd: nil, pid: nil, at: date(130))
+        sessions.apply(hook("CwdChanged", at: 131, cwd: "/w/src"))
+        #expect(sessions.heardFromHooks(a))
+        sessions.observe(a, .busy, cwd: nil, pid: nil, at: date(160))
+        #expect(sessions.phase() == .waiting(.permission))
+        // And it's no longer heard from once it ends.
+        sessions.apply(hook("SessionEnd", at: 170))
+        #expect(!sessions.heardFromHooks(a))
+    }
+
     @Test func waitingLeavesAQuestionAsItIs() {
         var sessions = AgentSessions(hook("PreToolUse", at: 1, tool: "ExitPlanMode"))
         sessions.observe(a, .waiting, cwd: nil, pid: nil, at: date(10))

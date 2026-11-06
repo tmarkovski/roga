@@ -44,7 +44,9 @@ struct CommitBox: View {
         GenerateButtonState(
             showsButton: showsGenerateButton,
             agent: agents?.generateAgent,
-            hasText: composer.hasMessage,
+            // What the box shows, which during a rebase is the message of the
+            // commit it stopped on rather than the draft underneath.
+            hasText: !composer.shownMessage.allSatisfy(\.isWhitespace),
             isWriting: generator.isWriting,
             readiness: generator.readiness
         )
@@ -179,15 +181,19 @@ struct CommitBox: View {
         let fitted = min(max(textHeight, Self.shortest - room), Self.tallest - room)
         return ZStack(alignment: .topLeading) {
             // The text view stays while an agent writes, so that its undo and the
-            // keyboard's place in it are still there afterward.
+            // keyboard's place in it are still there afterward. It's hidden from
+            // VoiceOver too, which would otherwise read the text from before
+            // under bars that say the message is being written.
             MessageEditor(
                 text: Binding { composer.shownMessage } set: { composer.message = $0 },
                 isEditable: !composer.isMessageReadOnly,
                 focusRequests: composer.focusRequests,
                 textHeight: $textHeight,
-                leave: leave
+                leave: leave,
+                isCovered: isWriting
             )
             .opacity(isWriting ? 0 : 1)
+            .accessibilityHidden(isWriting)
             if isWriting {
                 CommitBoxBars()
             } else {
@@ -483,6 +489,11 @@ struct MessageEditor: NSViewRepresentable {
     let focusRequests: Int
     @Binding var textHeight: Double
     let leave: () -> Void
+    /// Whether something else is drawn in its place, as the gray bars are
+    /// while an agent writes. VoiceOver then skips the text view, which still
+    /// has the text from before, since AppKit doesn't skip a view for being
+    /// see-through.
+    var isCovered = false
 
     private static let subjectAttributes: [NSAttributedString.Key: Any] = [
         .font: NSFont.systemFont(ofSize: 13, weight: .semibold),
@@ -545,6 +556,10 @@ struct MessageEditor: NSViewRepresentable {
         if textView.isEditable != isEditable {
             textView.isEditable = isEditable
             textView.textColor = isEditable ? .labelColor : .secondaryLabelColor
+        }
+        if textView.isAccessibilityElement() == isCovered {
+            textView.setAccessibilityElement(!isCovered)
+            scrollView.setAccessibilityElement(!isCovered)
         }
         if textView.string != text {
             coordinator.replaceText(with: text)

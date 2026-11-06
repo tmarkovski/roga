@@ -436,8 +436,8 @@ public enum HookHelper {
     ///
     /// A development build and a copy for trying things each carry their own
     /// helper, and the launcher in Application Support runs the one inside
-    /// whichever copy started last, so this is how to tell which one a hook
-    /// reaches. It finds the app the same way the helper finds its socket.
+    /// whichever copy last took the hooks' socket, so this is how to tell
+    /// which one a hook reaches. It finds the app the same way the helper finds its socket.
     /// The version is the app's, from its Info.plist, because the helper is
     /// built and shipped with the app and has no version of its own.
     static func versionLine(executable: String?) -> String {

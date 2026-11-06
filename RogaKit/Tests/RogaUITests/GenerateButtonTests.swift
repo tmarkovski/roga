@@ -9,7 +9,7 @@ import Testing
 /// What the Generate button, its popover and the Changes menu show for each
 /// state of the agents, with a provider whose state is set rather than found,
 /// and defaults of the test's own.
-@Suite(.timeLimit(.minutes(1)))
+@Suite(.timeLimit(.minutes(1)), .removesTemporaryFolders)
 struct GenerateButtonTests {
     let defaults: UserDefaults
     let defaultsName: String
@@ -25,7 +25,7 @@ struct GenerateButtonTests {
     }
 
     private func found(_ kind: AgentKind) -> AgentLookup {
-        .found(AgentInstallation(kind: kind, executable: "/opt/homebrew/bin/" + kind.rawValue, version: AgentVersion(major: 2, minor: 1, patch: 290)))
+        .found(AgentInstallation(kind: kind, executable: "/nonexistent/bin/" + kind.rawValue, version: AgentVersion(major: 2, minor: 1, patch: 290)))
     }
 
     /// A provider that has found both agents, or the lookups given.
@@ -53,6 +53,14 @@ struct GenerateButtonTests {
         let state = GenerateButtonState(showsButton: true, agent: .claude, hasText: false, isWriting: false, readiness: .nothingStaged)
         #expect(state == .shown(agent: .claude, rewrites: false, readiness: .nothingStaged))
         #expect(GenerateButton<EmptyView>.help(agent: .claude, rewrites: false, readiness: .nothingStaged) == "Stage files to write a message for them")
+    }
+
+    /// Grayed out, it doesn't offer a shortcut that can't run, and during a
+    /// rebase it says why.
+    @Test func saysWhyItWaits() {
+        #expect(GenerateButton<EmptyView>.help(agent: .claude, rewrites: false, readiness: .busy) == "Write the message with Claude Code")
+        #expect(GenerateButton<EmptyView>.help(agent: .codex, rewrites: true, readiness: .busy) == "Rewrite with Codex, starting from your words")
+        #expect(GenerateButton<EmptyView>.help(agent: .claude, rewrites: true, readiness: .rebasing) == "Claude Code can write a message once the rebase is done")
     }
 
     @Test func isHiddenWhenTurnedOffWithoutAnAgentOrWhileWriting() {
@@ -123,9 +131,30 @@ struct GenerateButtonTests {
             Issue.record("Expected the command")
             return
         }
-        #expect(command.executable == "/opt/homebrew/bin/codex")
+        #expect(command.executable == "/nonexistent/bin/codex")
         #expect(command.arguments.first == "exec")
         #expect(command.directory == "/tmp/work")
+    }
+
+    /// The popover is the only place its command shows, so Codex's, which
+    /// wraps onto more lines than a dialog's block shows before it scrolls,
+    /// shows whole, with the room under its last line.
+    @Test func showsCodexsCommandWhole() throws {
+        defer { clean() }
+        let provider = provider()
+        // A model of its own and extra arguments make it longer still.
+        defaults.set("gpt-6-astra-mini", forKey: AgentPreferences.modelKey(.codex))
+        defaults.set("-c model_verbosity=low", forKey: AgentPreferences.extraArgumentsKey(.codex))
+        provider.reloadSettings()
+        for kind in AgentKind.allCases {
+            let setup = try #require(provider.generation(with: kind))
+            let block = CommandBlock(lines: setup.terminal(worktree: "/Users/someone/git/acme/api", hasDraft: true), isCompact: true)
+            let height = NSHostingView(rootView: block.frame(width: GeneratePopover.width)).fittingSize.height
+            #expect(height < CommandBlock.compactMaximumHeight, "\(kind.name)'s command is cut at \(height) points")
+            if kind == .codex {
+                #expect(height > CommandBlock.maximumHeight)
+            }
+        }
     }
 
     // MARK: Grays
@@ -178,17 +207,31 @@ struct GenerateButtonTests {
     @Test func generateWithListsTheUsableAgentsWithTheirModels() {
         defer { clean() }
         let provider = provider()
+        // Codex on its own default, which its config.toml names.
+        provider.setStateForTests(codexDefaultModel: .some("gpt-6-astra"))
         #expect(RepositoryCommands.generateWithItems(provider) == [
             .init(kind: .claude, title: "Claude Code · haiku", isCurrent: true),
-            .init(kind: .codex, title: "Codex", isCurrent: false),
+            .init(kind: .codex, title: "Codex · gpt-6-astra", isCurrent: false),
         ])
-        defaults.set("gpt-6-astra", forKey: AgentPreferences.modelKey(.codex))
+        defaults.set("o5-mini", forKey: AgentPreferences.modelKey(.codex))
         provider.reloadSettings()
         provider.setGenerateAgent(.codex)
         #expect(RepositoryCommands.generateWithItems(provider) == [
             .init(kind: .claude, title: "Claude Code · haiku", isCurrent: false),
-            .init(kind: .codex, title: "Codex · gpt-6-astra", isCurrent: true),
+            .init(kind: .codex, title: "Codex · o5-mini", isCurrent: true),
         ])
+    }
+
+    @Test func generateWithNamesTheAgentAloneWhenItsDefaultIsUnknown() {
+        defer { clean() }
+        let provider = provider()
+        #expect(provider.codexDefaultModel == nil)
+        #expect(RepositoryCommands.generateWithItems(provider).map(\.title) == ["Claude Code · haiku", "Codex"])
+        // Claude Code's own default isn't one Roga can read.
+        defaults.set("", forKey: AgentPreferences.modelKey(.claude))
+        provider.reloadSettings()
+        provider.setStateForTests(codexDefaultModel: .some("gpt-6-astra"))
+        #expect(RepositoryCommands.generateWithItems(provider).map(\.title) == ["Claude Code", "Codex · gpt-6-astra"])
     }
 
     @Test func generateWithLeavesOutAgentsThatCantRun() {

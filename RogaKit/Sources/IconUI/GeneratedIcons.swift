@@ -101,6 +101,7 @@ public enum Icon: String, CaseIterable, Sendable {
     case refreshCw = "refresh-cw"
     case rotateCcw = "rotate-ccw"
     case rotateCcwClock = "rotate-ccw-clock"
+    case rotateCw = "rotate-cw"
     case search = "search"
     case server = "server"
     case settings = "settings"

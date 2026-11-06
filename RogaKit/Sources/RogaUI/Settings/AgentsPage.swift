@@ -26,10 +26,13 @@ struct AgentListSection: View {
     var namesPage = false
     let show: (SettingsDestination) -> Void
     @Environment(AgentProvider.self) private var agents
-    @Environment(HookAttempts.self) private var attempts: HookAttempts?
+
+    /// Look Again's icon: Lucide's rotate-cw, one arrow going round, as the
+    /// canvas draws it, rather than refresh-cw's pair.
+    static let lookAgainIcon = Icon.rotateCw
 
     var body: some View {
-        SettingsSection(title: SettingsGroup.commandLineAgents.title, description: namesPage ? nil : SettingsGroup.commandLineAgents.description.map(AttributedString.init)) {
+        SettingsSection(title: SettingsGroup.commandLineAgents.title, description: namesPage ? nil : SettingsGroup.commandLineAgents.styledDescription) {
             if namesPage {
                 Text(SettingsPage.agents.title)
                     .foregroundStyle(SettingsColors.note)
@@ -38,11 +41,10 @@ struct AgentListSection: View {
                 Button {
                     // Looking again starts afresh, so what failed before
                     // goes from the hooks' rows.
-                    attempts?.forget()
                     agents.lookAgain()
                 } label: {
                     HStack(spacing: 6) {
-                        Icon.refreshCw.image
+                        Self.lookAgainIcon.image
                             .font(.system(size: 11))
                         Text("Look Again")
                     }
@@ -126,12 +128,12 @@ struct WorkingStatusSection: View {
     @Environment(AgentProvider.self) private var agents
     @Environment(AgentMonitor.self) private var monitor
     @Environment(RepositoryList.self) private var list
-    @Environment(HookAttempts.self) private var attempts: HookAttempts?
     @AppStorage(AgentPreferences.showsMarksKey) private var showsMarks = true
     @State private var dialog: HooksDialog.Request?
+    @State private var places = HeardPlaces()
 
     var body: some View {
-        SettingsSection(title: SettingsGroup.workingStatus.title, description: namesPage ? nil : SettingsGroup.workingStatus.description.map(AttributedString.init)) {
+        SettingsSection(title: SettingsGroup.workingStatus.title, description: namesPage ? nil : SettingsGroup.workingStatus.styledDescription) {
             if namesPage {
                 Text(SettingsPage.agents.title)
                     .foregroundStyle(SettingsColors.note)
@@ -144,7 +146,6 @@ struct WorkingStatusSection: View {
         .sheet(item: $dialog) { request in
             HooksDialog(request: request)
                 .environment(agents)
-                .environment(attempts)
         }
     }
 
@@ -160,8 +161,8 @@ struct WorkingStatusSection: View {
                         ForEach(AgentKind.allCases) { kind in
                             HookRow(
                                 kind: kind,
-                                line: AgentSummaries.hookLine(kind, agents: agents, attempted: attempts?.actions[kind], heard: heard(kind), now: .now) {
-                                    AgentSummaries.place(of: $0, in: list)
+                                line: AgentSummaries.hookLine(kind, agents: agents, heard: heard(kind), now: .now) {
+                                    places.place(of: $0, in: list)
                                 },
                                 open: open
                             )
@@ -225,6 +226,9 @@ private struct HookRow: View {
                 }
                 .buttonStyle(.settings(button.action == .install ? .primary : .secondary, small: true))
                 .disabled(!button.isEnabled)
+                // The page has a button for each agent, so VoiceOver's list
+                // of buttons needs the agent's name in each.
+                .accessibilityLabel(button.spokenTitle(kind))
             }
         }
         .padding(EdgeInsets(top: 10, leading: 14, bottom: 10, trailing: 12))
@@ -375,6 +379,21 @@ struct HookLine: Equatable {
         var action: HooksDialog.Action
         var title: String
         var isEnabled: Bool
+        /// Whether the action is under way, so the button says it's working.
+        var isWorking = false
+
+        /// What VoiceOver calls the button, which names the agent, since the
+        /// visible title leaves that to the row: "Install Roga's hooks in
+        /// Claude Code", or "Installing Roga's hooks in Claude Code" while it
+        /// runs.
+        func spokenTitle(_ kind: AgentKind) -> String {
+            switch (action, isWorking) {
+            case (.install, false): "Install Roga's hooks in \(kind.name)"
+            case (.install, true): "Installing Roga's hooks in \(kind.name)"
+            case (.remove, false): "Remove Roga's hooks from \(kind.name)"
+            case (.remove, true): "Removing Roga's hooks from \(kind.name)"
+            }
+        }
     }
 
     var tone: Tone
@@ -384,6 +403,11 @@ struct HookLine: Equatable {
     var note: String?
     /// What failed, in the agent's or the system's own words, in red.
     var problems: [String] = []
+
+    /// All of it as sentences, for VoiceOver to read once, as the row's value.
+    var spoken: String {
+        ([text] + [note].compactMap(\.self) + problems).map(AgentSummaries.sentence).joined(separator: " ")
+    }
 
     static let installed = "Installed"
 }
@@ -412,23 +436,16 @@ enum AgentSummaries {
     /// What an agent's hooks line says and offers. Install needs the agent
     /// found, and the `roga` helper inside this copy of Roga for its hooks
     /// to run. While Install or Remove runs, its button says so and waits.
-    ///
-    /// - Parameter attempted: What the sheet last ran in this agent,
-    ///   Install or Remove, which is what a failure the provider keeps
-    ///   belongs to. Without it, the failure isn't shown. With it, the
-    ///   failure shows while Roga looks and checks again, and while the
-    ///   status still offers that action. A failed install goes once the
-    ///   status says the hooks are installed, and a failed remove once it
-    ///   says they aren't.
+    /// How it last failed shows for as long as the provider keeps it, which
+    /// is while it still applies.
     static func hookLine(
         _ kind: AgentKind,
         agents: AgentProvider,
-        attempted: HooksDialog.Action?,
         heard: AgentProvider.Heard?,
         now: Date,
         place: (String) -> String
     ) -> HookLine {
-        let failure: String? = if case .failed(let words)? = agents.hookWork[kind], attempted != nil { words } else { nil }
+        let failure = agents.hookWork[kind]?.failure
         let filesError = agents.pluginFilesError.map { [$0] } ?? []
 
         guard case .found? = agents.lookups[kind] else {
@@ -442,44 +459,40 @@ enum AgentSummaries {
 
         let tone: HookLine.Tone
         let text: String
-        var action: HooksDialog.Action?
         switch agents.hookStatus[kind] {
         case nil:
             (tone, text) = (.plain, "Checking…")
         case .notInstalled?:
             let trust = kind == .codex ? " Codex asks you to trust a new hook the first time it runs." : ""
-            (tone, text, action) = (.plain, "Not installed.\(trust)", .install)
+            (tone, text) = (.plain, "Not installed.\(trust)")
         case .installed?:
             let last = heardSentence(heard, now: now, place: place).map { " " + $0 } ?? ""
-            (tone, text, action) = (.installed, "\(HookLine.installed), as the roga-hooks plugin.\(last)", .remove)
+            (tone, text) = (.installed, "\(HookLine.installed), as the roga-hooks plugin.\(last)")
         case .needsTrust?:
-            (tone, text, action) = (.warn, "Installed, but Codex hasn't trusted it yet. Open /hooks in Codex to trust it.", .remove)
+            (tone, text) = (.warn, "Installed, but Codex hasn't trusted it yet. Open /hooks in Codex to trust it.")
         case .disabled?:
-            (tone, text, action) = (.warn, "Installed, but turned off in \(kind.name).", .remove)
+            (tone, text) = (.warn, "Installed, but turned off in \(kind.name).")
         case .anotherCopy(let folder)?:
-            // Claude Code moves the hooks to this copy when it installs them,
-            // and Codex refuses until the other copy's are removed.
-            (tone, text, action) = (.warn, "Installed by another copy of Roga, from \(abbreviated(folder)).", kind == .claude ? .install : .remove)
+            (tone, text) = (.warn, "Installed by another copy of Roga, from \(abbreviated(folder)).")
         case .unknown(let words)?:
-            (tone, text, action) = (.warn, "Roga couldn't tell whether it's installed: \(sentence(words))", .install)
+            (tone, text) = (.warn, "Roga couldn't tell whether it's installed: \(sentence(words))")
         }
 
+        let action = agents.hookStatus[kind].map { AgentProvider.offeredAction($0, for: kind) }
         var button = action.map { HookLine.Offer(action: $0, title: $0 == .install ? "Install…" : "Remove…", isEnabled: true) }
         var note: String?
         switch agents.hookWork[kind] {
         case .installing?:
-            button = HookLine.Offer(action: .install, title: "Installing…", isEnabled: false)
+            button = HookLine.Offer(action: .install, title: "Installing…", isEnabled: false, isWorking: true)
         case .removing?:
-            button = HookLine.Offer(action: .remove, title: "Removing…", isEnabled: false)
+            button = HookLine.Offer(action: .remove, title: "Removing…", isEnabled: false, isWorking: true)
         case .failed?, nil:
             if button?.action == .install, agents.helperPath == nil {
                 button?.isEnabled = false
                 note = "This copy of Roga has no roga helper, so it can't install hooks."
             }
         }
-        let stillApplies = agents.hookStatus[kind] == nil || action == attempted
-        let problems = (stillApplies ? failure.map { [$0] } ?? [] : []) + filesError
-        return HookLine(tone: tone, text: text, button: button, note: note, problems: problems)
+        return HookLine(tone: tone, text: text, button: button, note: note, problems: (failure.map { [$0] } ?? []) + filesError)
     }
 
     /// "Last heard from 2 minutes ago, in acme/api.", or nil when Roga hasn't
@@ -492,9 +505,10 @@ enum AgentSummaries {
 
     /// Where an agent was working, as the sidebar knows it: the repository
     /// with its owner, as in "in acme/api", with the branch for a linked
-    /// worktree, and otherwise the folder's name.
-    static func place(of folder: String, in list: RepositoryList) -> String {
-        guard let selection = list.worktree(containing: folder), let repository = list.repository(at: selection.repository) else {
+    /// worktree, and otherwise the folder's name. `selection` is the listed
+    /// worktree the folder is in, which `HeardPlaces` finds.
+    static func place(of folder: String, at selection: WorktreeSelection?, in list: RepositoryList) -> String {
+        guard let selection, let repository = list.repository(at: selection.repository) else {
             return "in " + (folder as NSString).lastPathComponent
         }
         if let worktree = repository.worktrees.first(where: { $0.path == selection.worktree }), !worktree.isMain {
@@ -516,20 +530,33 @@ enum AgentSummaries {
     }
 
     /// Why the sidebar can't show marks, or nil when it can.
+    ///
+    /// When the socket couldn't be opened, the listener's own words say so
+    /// and where, as in "Roga can't listen for agents' hooks at …, because
+    /// bind failed: Address already in use.", so the notice starts with them
+    /// rather than saying it twice.
     static func listeningNotice(_ listening: AgentMonitor.Listening) -> String? {
         switch listening {
         case .starting, .listening:
-            nil
+            return nil
         case .anotherCopy:
-            "Another copy of Roga is listening for the agents' hooks, so this one can't show their marks in the sidebar. Quit the other copy, then try again."
+            return "Another copy of Roga is listening for the agents' hooks, so this one can't show their marks in the sidebar. Quit the other copy, then try again."
         case .failed(let words):
-            "Roga can't listen for the agents' hooks, so it can't show their marks in the sidebar. \(sentence(words))"
+            let reason = sentence(abbreviatingPaths(in: words))
+            let lead = reason.hasPrefix("Roga can't listen") ? "" : "Roga can't listen for the agents' hooks. "
+            return "\(lead)\(reason) Until it can, the sidebar can't show the agents' marks."
         }
     }
 
     /// A path with the home folder as `~`.
     static func abbreviated(_ path: String) -> String {
         (path as NSString).abbreviatingWithTildeInPath
+    }
+
+    /// Words with the home folder as `~` in the paths they mention, as
+    /// Settings writes paths everywhere else.
+    static func abbreviatingPaths(in words: String) -> String {
+        words.replacingOccurrences(of: NSHomeDirectory() + "/", with: "~/")
     }
 
     /// Words as a sentence: trimmed, with a period unless they end in one.
@@ -542,4 +569,86 @@ enum AgentSummaries {
     private static func count(_ number: Int, _ unit: String) -> String {
         number == 1 ? "1 \(unit)" : "\(number) \(unit)s"
     }
+}
+
+/// Where the hooks' rows say an agent was last heard from, as the sidebar
+/// names the folder (`AgentSummaries.place`). Each page that says it keeps
+/// one.
+///
+/// Those rows redraw for every event an agent sends, which is each tool it
+/// runs, and finding a folder's worktree as `RepositoryList.worktree(containing:)`
+/// does resolves every worktree's folder on the file system, on the main
+/// actor: with a few hundred worktrees, over 10 ms each time, and forever on
+/// a stalled volume. So this resolves each folder once, away from the main
+/// actor, as the agents' monitor does for the marks, and a redraw only
+/// compares what's resolved. Until a folder is, it compares as it's spelled,
+/// which for nearly every folder is the same, and the rows say the place
+/// again once it changes where the folder goes.
+@Observable
+final class HeardPlaces {
+    /// Folders as they compare, with symbolic links resolved, by how git and
+    /// the agents spell them.
+    @ObservationIgnored private var resolved: [String: String] = [:]
+    @ObservationIgnored private var resolving: Set<String> = []
+    /// Goes up when a folder resolves to something other than its spelling,
+    /// so that the rows that read a place read it again.
+    private var version = 0
+    /// How a folder becomes comparable, away from the main actor, which
+    /// tests count.
+    @ObservationIgnored private let resolve: @Sendable (String) -> String
+
+    init(resolve: @escaping @Sendable (String) -> String = RepositoryList.comparablePath) {
+        self.resolve = resolve
+    }
+
+    /// Where a folder is, as in "in acme/api" or "on agent/fix-login in
+    /// acme/api", or the folder's own name when it's not in the sidebar.
+    func place(of folder: String, in list: RepositoryList) -> String {
+        _ = version
+        var unresolved: [String] = []
+        func comparable(_ folder: String) -> String {
+            if let known = resolved[folder] { return known }
+            unresolved.append(folder)
+            return RepositoryList.standardizedPath(folder)
+        }
+        let places = list.repositories.flatMap { repository in
+            repository.worktrees.filter { !$0.isBare && !$0.isPrunable }.map { worktree in
+                (folder: comparable(worktree.path), value: WorktreeSelection(repository: repository.path, worktree: worktree.path))
+            }
+        }
+        let selection = RepositoryList.deepest(holding: comparable(folder), in: places)
+        resolveLater(unresolved)
+        return AgentSummaries.place(of: folder, at: selection, in: list)
+    }
+
+    /// Resolves folders together, away from the main actor, unless they're
+    /// being resolved already.
+    private func resolveLater(_ folders: [String]) {
+        let folders = folders.filter { resolving.insert($0).inserted }
+        guard !folders.isEmpty else { return }
+        let resolve = resolve
+        Task { [weak self] in
+            let results = await Self.resolve(folders, with: resolve)
+            self?.finishResolving(results)
+        }
+    }
+
+    @concurrent
+    private static func resolve(_ folders: [String], with resolve: @Sendable (String) -> String) async -> [(folder: String, resolved: String)] {
+        folders.map { ($0, resolve($0)) }
+    }
+
+    private func finishResolving(_ results: [(folder: String, resolved: String)]) {
+        var moved = false
+        for (folder, comparable) in results {
+            resolving.remove(folder)
+            resolved[folder] = comparable
+            if comparable != RepositoryList.standardizedPath(folder) { moved = true }
+        }
+        if moved { version &+= 1 }
+    }
+
+    /// Whether a folder it was asked about is still being resolved, for
+    /// tests.
+    var isResolving: Bool { !resolving.isEmpty }
 }

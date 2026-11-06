@@ -3,6 +3,7 @@ import Foundation
 import GitCore
 import GitRunner
 import Observation
+import Synchronization
 import Testing
 @testable import AgentHooks
 @testable import RogaUI
@@ -10,7 +11,7 @@ import Testing
 /// Hook events in, marks out: which state wins, what's been seen, which worktree
 /// a session is in, and how stale sessions are cleared, by a process exiting and
 /// by asking a fake `claude agents --json`.
-@Suite(.timeLimit(.minutes(1)))
+@Suite(.timeLimit(.minutes(1)), .removesTemporaryFolders)
 struct AgentMonitorTests {
     /// A repository at /git/api with a linked worktree of its own and one that
     /// Claude Code made inside the main checkout, and another repository whose
@@ -47,7 +48,8 @@ struct AgentMonitorTests {
         let summary = monitor.summary(forWorktree: "/git/api", in: list)
         #expect(summary == AgentSummary(state: .working, since: start.addingTimeInterval(10), hosts: [.claude], sessions: 1))
         #expect(summary?.description == "Claude Code is working")
-        #expect(monitor.lastHeard[.claude] == AgentProvider.Heard(date: start.addingTimeInterval(10), cwd: "/git/api"))
+        // The second event is in the same folder and too soon to move it.
+        #expect(monitor.lastHeard[.claude] == AgentProvider.Heard(date: start, cwd: "/git/api"))
     }
 
     @Test func waitingBeatsWorkingAndWorkingBeatsFinished() {
@@ -149,6 +151,44 @@ struct AgentMonitorTests {
         #expect(monitor.summary(forWorktree: "/git/api", in: list) == nil)
     }
 
+    // MARK: What a window shows
+
+    @Test func selectingAWorktreeSeesWhatFinishedThere() {
+        let monitor = monitor()
+        monitor.receive(event("Stop", "a", in: "/git/api", at: 10))
+        monitor.receive(event("Stop", "b", in: "/git/api-login", at: 10))
+        monitor.selected(worktree: nil)
+        #expect(monitor.summary(forWorktree: "/git/api", in: list)?.state == .finished)
+        monitor.selected(worktree: "/git/api")
+        #expect(monitor.summary(forWorktree: "/git/api", in: list) == nil)
+        #expect(monitor.summary(forWorktree: "/git/api-login", in: list)?.state == .finished)
+    }
+
+    @Test func whatFinishesInTheShownWorktreeIsSeenWhileTheWindowIsInFront() {
+        let monitor = monitor()
+        monitor.receive(event("UserPromptSubmit", "a", in: "/git/api", at: 0))
+        // Working isn't something to see.
+        monitor.showing(worktree: "/git/api", appearsActive: true, in: list)
+        #expect(monitor.summary(forWorktree: "/git/api", in: list)?.state == .working)
+        monitor.receive(event("Stop", "a", in: "/git/api", at: 60))
+        monitor.showing(worktree: "/git/api", appearsActive: true, in: list)
+        #expect(monitor.summary(forWorktree: "/git/api", in: list) == nil)
+    }
+
+    @Test func whatFinishedBehindIsSeenWhenTheWindowComesToTheFront() {
+        let monitor = monitor()
+        monitor.receive(event("Stop", "a", in: "/git/api", at: 60))
+        monitor.showing(worktree: "/git/api", appearsActive: false, in: list)
+        #expect(monitor.summary(forWorktree: "/git/api", in: list)?.state == .finished)
+        // Another window, in front, shows another worktree.
+        monitor.showing(worktree: "/git/api-login", appearsActive: true, in: list)
+        monitor.showing(worktree: nil, appearsActive: true, in: list)
+        #expect(monitor.summary(forWorktree: "/git/api", in: list)?.state == .finished)
+        // The window comes to the front.
+        monitor.showing(worktree: "/git/api", appearsActive: true, in: list)
+        #expect(monitor.summary(forWorktree: "/git/api", in: list) == nil)
+    }
+
     // MARK: Which worktree
 
     @Test func theDeepestWorktreeHoldsTheSession() {
@@ -187,6 +227,109 @@ struct AgentMonitorTests {
         let hidden = monitor.summary(forWorktrees: ["/git/api-login", "/git/api/.claude/worktrees/fix"], in: list)
         #expect(hidden == AgentSummary(state: .waiting(.permission), since: start.addingTimeInterval(5), hosts: [.codex], sessions: 1))
         #expect(monitor.summary(forWorktrees: [], in: list) == nil)
+    }
+
+    /// Counts the folders a monitor resolves, and notes any it resolved on
+    /// the main thread, where a stalled volume would hang the app.
+    private nonisolated final class Resolutions: Sendable {
+        private let state = Mutex<(folders: [String], onMainThread: Int)>(([], 0))
+        var folders: [String] { state.withLock { $0.folders } }
+        var onMainThread: Int { state.withLock { $0.onMainThread } }
+
+        func resolve(_ path: String) -> String {
+            let isMain = Thread.isMainThread
+            state.withLock { state in
+                state.folders.append(path)
+                if isMain { state.onMainThread += 1 }
+            }
+            return RepositoryList.comparablePath(path)
+        }
+    }
+
+    @Test func placingMarksResolvesEachFolderOnceAwayFromTheMainThread() async {
+        // Resolving a folder asks the file system about each folder in its
+        // path, and every row asks where the marks are as it draws.
+        let resolutions = Resolutions()
+        let monitor = monitor()
+        monitor.resolvePath = { resolutions.resolve($0) }
+        monitor.receive(event("UserPromptSubmit", "a", in: "/git/api", at: 0))
+        monitor.receive(event("UserPromptSubmit", "b", in: "/git/api/src", at: 0))
+        monitor.receive(event("UserPromptSubmit", "c", in: "/git/api/src", at: 0))
+        // Until a folder is resolved, it compares as it's spelled, which is
+        // the same for these.
+        #expect(monitor.summary(forWorktree: "/git/api", in: list)?.sessions == 3)
+        // The list has four worktrees, one of them where a session is, and
+        // the other sessions are in one more folder.
+        #expect(await AgentTestSupport.eventually { resolutions.folders.count == 5 })
+        _ = monitor.summary(forWorktree: "/git/api-login", in: list)
+        #expect(monitor.summary(forWorktree: "/git/api", in: list)?.sessions == 3)
+
+        // A mark changing places the sessions again, without resolving their
+        // folders again.
+        monitor.receive(event("Stop", "a", in: "/git/api", at: 10))
+        #expect(monitor.summary(forWorktree: "/git/api", in: list)?.sessions == 2)
+
+        // A commit or a checkout in a worktree changes nothing placing reads.
+        var changed = list.repositories[0].worktrees
+        changed[1].head = ObjectID(hex: String(repeating: "a", count: 40))
+        changed[2].branch = "refs/heads/other"
+        let committed = RepositoryList(listing: [ListedRepository(path: "/git/api/.git", worktrees: changed)] + list.repositories.dropFirst())
+        #expect(monitor.summary(forWorktree: "/git/api", in: committed)?.sessions == 2)
+
+        // Only a worktree that's new is resolved.
+        let grown = RepositoryList(listing: list.repositories + [
+            ListedRepository(path: "/git/web/.git", worktrees: [Worktree(path: "/git/web", branch: "refs/heads/main", isMain: true)]),
+        ])
+        #expect(monitor.summary(forWorktree: "/git/api", in: grown)?.sessions == 2)
+        #expect(await AgentTestSupport.eventually { resolutions.folders.count == 6 })
+        try? await Task.sleep(for: .milliseconds(100))
+        #expect(resolutions.folders.count == 6)
+        #expect(Set(resolutions.folders).count == 6)
+        #expect(resolutions.onMainThread == 0)
+    }
+
+    @Test func aFolderThatTakesLongToResolveDoesntHoldUpTheRows() async {
+        // As on a network volume that has stopped answering.
+        nonisolated final class Stuck: Sendable {
+            let release = DispatchSemaphore(value: 0)
+            let isStuck = Mutex(true)
+        }
+        let stuck = Stuck()
+        let monitor = monitor()
+        monitor.resolvePath = { path in
+            if path == "/git/api/src" {
+                _ = stuck.release.wait(timeout: .now() + 10)
+                stuck.isStuck.withLock { $0 = false }
+            }
+            return RepositoryList.comparablePath(path)
+        }
+        monitor.receive(event("UserPromptSubmit", "a", in: "/git/api/src", at: 0))
+        #expect(monitor.summary(forWorktree: "/git/api", in: list)?.state == .working)
+        #expect(stuck.isStuck.withLock { $0 })
+        stuck.release.signal()
+        #expect(await AgentTestSupport.eventually { !stuck.isStuck.withLock { $0 } })
+        #expect(monitor.summary(forWorktree: "/git/api", in: list)?.state == .working)
+    }
+
+    @Test func aFolderSpelledThroughALinkFindsItsWorktreeOnceResolved() async throws {
+        nonisolated final class Changes: @unchecked Sendable { var count = 0 }
+        let folder = try AgentTestSupport.folder()
+        try FileManager.default.createDirectory(atPath: folder + "/api/src", withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(atPath: folder + "/shortcut", withDestinationPath: folder + "/api")
+        let list = RepositoryList(listing: [
+            ListedRepository(path: folder + "/api/.git", worktrees: [Worktree(path: folder + "/api", branch: "refs/heads/main", isMain: true)]),
+        ])
+        let monitor = monitor()
+        monitor.receive(event("UserPromptSubmit", "a", in: folder + "/shortcut/src", at: 0))
+        // The row that asks first is told again once the folder is resolved.
+        let changes = Changes()
+        withObservationTracking {
+            _ = monitor.summary(forWorktree: folder + "/api", in: list)
+        } onChange: {
+            changes.count += 1
+        }
+        #expect(await AgentTestSupport.eventually { changes.count > 0 })
+        #expect(monitor.summary(forWorktree: folder + "/api", in: list)?.state == .working)
     }
 
     @Test func aWorktreeAddedLaterGetsItsSessions() {
@@ -269,19 +412,53 @@ struct AgentMonitorTests {
         monitor.receive(event("UserPromptSubmit", "a", host: .codex, in: "/git/api", at: 0))
         // Since Codex 0.166, its tool events name the folder the command runs
         // in, which isn't where the session is.
-        monitor.receive(event("PreToolUse", "a", host: .codex, in: "/private/tmp/build", at: 5))
-        #expect(monitor.lastHeard[.codex] == AgentProvider.Heard(date: start.addingTimeInterval(5), cwd: "/git/api"))
+        // The events are further apart than `heardRefreshInterval`, so that
+        // each one moves it.
+        monitor.receive(event("PreToolUse", "a", host: .codex, in: "/private/tmp/build", at: 40))
+        #expect(monitor.lastHeard[.codex] == AgentProvider.Heard(date: start.addingTimeInterval(40), cwd: "/git/api"))
         // An event that arrives late doesn't move it back.
         monitor.receive(event("PostToolUse", "a", host: .codex, in: "/private/tmp/build", at: 3))
-        #expect(monitor.lastHeard[.codex] == AgentProvider.Heard(date: start.addingTimeInterval(5), cwd: "/git/api"))
+        #expect(monitor.lastHeard[.codex] == AgentProvider.Heard(date: start.addingTimeInterval(40), cwd: "/git/api"))
         // A session's end still says where it was.
-        monitor.receive(event("SessionEnd", "a", host: .codex, at: 8))
-        #expect(monitor.lastHeard[.codex] == AgentProvider.Heard(date: start.addingTimeInterval(8), cwd: "/git/api"))
+        monitor.receive(event("SessionEnd", "a", host: .codex, at: 80))
+        #expect(monitor.lastHeard[.codex] == AgentProvider.Heard(date: start.addingTimeInterval(80), cwd: "/git/api"))
         // Nor does a session Roga hasn't heard where it is, which isn't
         // where the last one was.
-        monitor.receive(event("PreToolUse", "b", host: .codex, in: "/private/tmp/build", at: 10))
-        #expect(monitor.lastHeard[.codex] == AgentProvider.Heard(date: start.addingTimeInterval(10), cwd: nil))
+        monitor.receive(event("PreToolUse", "b", host: .codex, in: "/private/tmp/build", at: 85))
+        #expect(monitor.lastHeard[.codex] == AgentProvider.Heard(date: start.addingTimeInterval(85), cwd: nil))
         #expect(monitor.lastHeard[.claude] == nil)
+    }
+
+    @Test func lastHeardChangesWithTheFolderOrOnceItsHalfAMinuteOld() {
+        let monitor = monitor()
+        monitor.receive(event("UserPromptSubmit", "a", in: "/git/api", at: 0))
+        // Each tool the agent runs in the same folder within half a minute
+        // leaves it alone, so Settings doesn't redraw for each one.
+        let changes = Mutex(0)
+        func watch() {
+            withObservationTracking { _ = monitor.lastHeard } onChange: { changes.withLock { $0 += 1 } }
+        }
+        watch()
+        for second in stride(from: 1.0, to: 29.0, by: 0.5) {
+            monitor.receive(event(second.truncatingRemainder(dividingBy: 1) == 0 ? "PreToolUse" : "PostToolUse", "a", in: "/git/api", at: second, tool: "Bash"))
+        }
+        #expect(changes.withLock { $0 } == 0)
+        #expect(monitor.lastHeard[.claude] == AgentProvider.Heard(date: start, cwd: "/git/api"))
+        // What it shows is behind, but a late event is still told apart from
+        // the latest one: this one from another folder, sent before the last
+        // tool, doesn't move it there.
+        monitor.receive(event("UserPromptSubmit", "late", in: "/git/api-login", at: 15))
+        #expect(changes.withLock { $0 } == 0)
+        #expect(monitor.lastHeard[.claude] == AgentProvider.Heard(date: start, cwd: "/git/api"))
+        // Half a minute after what it shows, the next event moves it.
+        monitor.receive(event("PreToolUse", "a", in: "/git/api", at: 30, tool: "Bash"))
+        #expect(changes.withLock { $0 } == 1)
+        #expect(monitor.lastHeard[.claude] == AgentProvider.Heard(date: start.addingTimeInterval(30), cwd: "/git/api"))
+        // Another folder moves it at once.
+        watch()
+        monitor.receive(event("UserPromptSubmit", "b", in: "/git/api-login", at: 31))
+        #expect(changes.withLock { $0 } == 2)
+        #expect(monitor.lastHeard[.claude] == AgentProvider.Heard(date: start.addingTimeInterval(31), cwd: "/git/api-login"))
     }
 
     // MARK: Asking Claude Code
@@ -442,6 +619,60 @@ struct AgentMonitorTests {
         #expect(monitor.summary(forWorktree: "/git/api", in: list)?.state == .waiting(.permission))
     }
 
+    /// What `claude agents --json` says about one session, "old", in
+    /// /git/api, whose process is the tests' own, so that it stays alive.
+    private func listing(_ status: String) -> String {
+        let me = ProcessInfo.processInfo.processIdentifier
+        return #"[{"pid":\#(me),"sessionId":"old","status":"\#(status)","cwd":"/git/api","kind":"interactive"}]"#
+    }
+
+    @Test func aWaitThatOnlyClaudeCodeShowedEndsWhenItSaysSo() async throws {
+        // The session was running before the hooks were installed, so it
+        // never loads them, and no hook event will end its wait.
+        let (provider, log, folder) = try provider(listing: listing("waiting"), hooks: .notInstalled)
+        let sessions = folder + "/sessions.json"
+        let monitor = listeningMonitor(in: folder, checkInterval: .milliseconds(50))
+        monitor.start(agents: provider)
+        defer { monitor.stop() }
+        // Install… in Settings: the hooks read installed, and Roga asks
+        // what's running.
+        provider.setStateForTests(hookStatus: [.claude: .installed])
+        #expect(await AgentTestSupport.eventually { monitor.summary(forWorktree: "/git/api", in: list)?.state == .waiting(.permission) })
+        // The person allows the tool, and the turn ends.
+        try listing("idle").write(toFile: sessions, atomically: true, encoding: .utf8)
+        #expect(await AgentTestSupport.eventually { monitor.summary(forWorktree: "/git/api", in: list) == nil })
+
+        // Busy when asked, and waiting once it has been quiet a while: the
+        // wait that the quiet check shows ends when Claude Code says busy.
+        try listing("busy").write(toFile: sessions, atomically: true, encoding: .utf8)
+        await monitor.askClaude(always: true)
+        #expect(monitor.summary(forWorktree: "/git/api", in: list)?.state == .working)
+        try listing("waiting").write(toFile: sessions, atomically: true, encoding: .utf8)
+        monitor.now = { [start] in start.addingTimeInterval(600 + 91) }
+        #expect(await AgentTestSupport.eventually { monitor.summary(forWorktree: "/git/api", in: list)?.state == .waiting(.permission) })
+        try listing("busy").write(toFile: sessions, atomically: true, encoding: .utf8)
+        #expect(await AgentTestSupport.eventually { monitor.summary(forWorktree: "/git/api", in: list)?.state == .working })
+
+        // Once Claude Code no longer lists it, nothing can keep it current.
+        try "[]".write(toFile: sessions, atomically: true, encoding: .utf8)
+        monitor.now = { [start] in start.addingTimeInterval(600 + 91 + 91) }
+        #expect(await AgentTestSupport.eventually { monitor.summary(forWorktree: "/git/api", in: list) == nil })
+        #expect(askedForSessions(log) > 4)
+    }
+
+    @Test func aWaitAHookShowedIsLeftToTheHooks() async throws {
+        let (provider, log, folder) = try provider(listing: listing("idle"))
+        let monitor = listeningMonitor(in: folder, checkInterval: .milliseconds(50))
+        monitor.start(agents: provider)
+        defer { monitor.stop() }
+        #expect(await AgentTestSupport.eventually { monitor.sessions[SessionKey(host: .claude, id: "old")] != nil })
+        // Its hooks speak for it, so they'll say when the wait is over.
+        monitor.receive(event("PermissionRequest", "old", in: "/git/api", at: 601))
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(askedForSessions(log) == 1)
+        #expect(monitor.summary(forWorktree: "/git/api", in: list)?.state == .waiting(.permission))
+    }
+
     @Test func nothingIsAskedWhileRogaCantHearTheHooks() async throws {
         let waiting = #"[{"sessionId":"b","status":"waiting","waitingFor":"permission","cwd":"/git/api"}]"#
         let (provider, log, folder) = try provider(listing: waiting)
@@ -493,10 +724,10 @@ struct AgentMonitorTests {
         #expect(askedForSessions(log) == 1)
 
         // Look Again, which looks for Claude Code and checks its hooks again,
-        // asks once more.
+        // asks once more, once the monitor has seen Claude Code go.
         let found = provider.lookups
         provider.setStateForTests(lookups: [:], hookStatus: [:])
-        try await Task.sleep(for: .milliseconds(100))
+        #expect(await AgentTestSupport.eventually { !monitor.couldSeed })
         provider.setStateForTests(lookups: found, hookStatus: [.claude: .installed])
         #expect(await AgentTestSupport.eventually { askedForSessions(log) == 2 })
         try await Task.sleep(for: .milliseconds(300))
@@ -551,5 +782,63 @@ struct AgentMonitorTests {
         other.start(agents: provider)
         #expect(other.listening == .anotherCopy)
         other.stop()
+    }
+
+    @Test func aStoppedMonitorLetsGoAndCanStartAgain() async throws {
+        let folder = try AgentTestSupport.folder()
+        let (defaults, _) = AgentTestSupport.defaults()
+        let provider = AgentTestSupport.provider(support: folder, defaults: defaults, codexHome: folder)
+        let support = URL(filePath: folder, directoryHint: .isDirectory)
+        let monitor = AgentMonitor(supportFolder: support, checkInterval: .seconds(600))
+        monitor.start(agents: provider)
+        #expect(monitor.listening == .listening)
+        #expect(monitor.isWatchingForTermination)
+
+        monitor.stop()
+        #expect(monitor.listening == .starting)
+        #expect(!monitor.isWatchingForTermination)
+        // Its socket is free for another copy of Roga. A process that other
+        // tests start can hold the lock's file for a moment as it starts, so
+        // each start tries again until it listens, as Try Again does.
+        let other = AgentMonitor(supportFolder: support, checkInterval: nil)
+        #expect(await AgentTestSupport.eventually {
+            other.start(agents: provider)
+            return other.listening == .listening
+        })
+        other.stop()
+
+        defer { monitor.stop() }
+        #expect(await AgentTestSupport.eventually {
+            monitor.start(agents: provider)
+            return monitor.listening == .listening
+        })
+        #expect(monitor.isWatchingForTermination)
+        let socket = HookSocket.path(supportFolder: support)
+        #expect(HookHelper.send(event("UserPromptSubmit", "a", in: "/git/api", at: 0), toSocketAt: socket))
+        #expect(await AgentTestSupport.eventually { monitor.sessions.count == 1 })
+    }
+
+    @Test func aMonitorThatNobodyHoldsGoesAwayBetweenChecks() async throws {
+        // Claude Code is found with its hooks, so the monitor asks what's
+        // running as it starts, and then waits to check quiet sessions.
+        let (provider, log, folder) = try provider(listing: "[]")
+        var monitor: AgentMonitor? = listeningMonitor(in: folder, checkInterval: .seconds(600))
+        monitor?.start(agents: provider)
+        weak var gone = monitor
+        #expect(await AgentTestSupport.eventually { askedForSessions(log) == 1 })
+        monitor = nil
+        #expect(await AgentTestSupport.eventually { gone == nil })
+
+        // It let go of its socket, so another monitor can listen there. The
+        // weak reference reads nil a moment before the monitor's deinit has
+        // run on the main actor, and a process that other tests start holds
+        // the lock's file for a moment as it starts, so the next monitor
+        // tries again, as Try Again in Settings does.
+        let next = listeningMonitor(in: folder)
+        defer { next.stop() }
+        #expect(await AgentTestSupport.eventually {
+            next.start(agents: provider)
+            return next.listening == .listening
+        })
     }
 }

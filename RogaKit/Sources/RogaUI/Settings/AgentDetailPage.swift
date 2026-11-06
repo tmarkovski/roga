@@ -16,7 +16,6 @@ struct AgentDetailPage: View {
     @Environment(AgentProvider.self) private var agents
     @Environment(AgentMonitor.self) private var monitor
     @Environment(RepositoryList.self) private var list
-    @Environment(HookAttempts.self) private var attempts: HookAttempts?
     @AppStorage private var isEnabled: Bool
     /// The program someone chose, or nil for the one Roga finds. Changing it
     /// makes the provider look for the agent again.
@@ -26,6 +25,7 @@ struct AgentDetailPage: View {
     @AppStorage(AgentPreferences.instructionsKey) private var instructions = CommitMessagePrompt.defaultStyle
     @State private var test = AgentTestRun()
     @State private var dialog: HooksDialog.Request?
+    @State private var places = HeardPlaces()
 
     init(kind: AgentKind) {
         self.kind = kind
@@ -44,7 +44,6 @@ struct AgentDetailPage: View {
         .sheet(item: $dialog) { request in
             HooksDialog(request: request)
                 .environment(agents)
-                .environment(attempts)
         }
         .onDisappear { test.stop() }
     }
@@ -188,10 +187,10 @@ struct AgentDetailPage: View {
             EmptyView()
         } content: {
             TimelineView(.everyMinute) { _ in
-                let line = AgentSummaries.hookLine(kind, agents: agents, attempted: attempts?.actions[kind], heard: heard, now: .now) {
-                    AgentSummaries.place(of: $0, in: list)
+                let line = AgentSummaries.hookLine(kind, agents: agents, heard: heard, now: .now) {
+                    places.place(of: $0, in: list)
                 }
-                SettingsRow(title: "Hooks", help: line.text, namesControl: false) {
+                SettingsRow(title: "Hooks", help: line.spoken, namesControl: false) {
                     HookLineText(line: line)
                 } control: {
                     if let button = line.button {
@@ -204,6 +203,7 @@ struct AgentDetailPage: View {
                         }
                         .buttonStyle(.settings(button.action == .install ? .primary : .secondary))
                         .disabled(!button.isEnabled)
+                        .accessibilityLabel(button.spokenTitle(kind))
                     }
                 }
             }
@@ -306,15 +306,17 @@ struct AgentDetailPage: View {
             [
                 ("-p", "Prints its answer and exits, rather than starting a conversation."),
                 ("--safe-mode", "Leaves out your hooks, plugins, skills, MCP servers and CLAUDE.md, so only Roga's instructions count."),
+                ("--setting-sources user", "Leaves out the worktree's own .claude settings, which it would otherwise use without asking whether you trust the folder."),
                 ("--tools=", "No tools, so it can't run commands, read other files or change anything."),
                 ("--no-session-persistence", "Leaves no session behind in Claude Code's history."),
             ]
         case .codex:
             [
                 ("exec", "Prints its answer and exits, rather than starting a conversation."),
-                ("--sandbox read-only", "It can read the worktree, but can't change files or reach the network."),
                 ("--ephemeral", "Leaves no session behind in Codex's history."),
+                ("--sandbox read-only", "It can read the worktree, but can't change files or reach the network."),
                 ("--disable hooks …", "And plugins, apps and its shell tool, so nothing of yours runs and it answers without running commands."),
+                ("-c mcp_servers.<name>.enabled=false", "Turns off each MCP server in your config.toml, since they would start with every run and act outside the sandbox."),
             ]
         }
     }
@@ -378,9 +380,12 @@ struct AgentTestResult: View {
     }
 }
 
-/// A small ring with a darker quarter that turns, while something runs.
+/// A small ring with a darker quarter that turns, while something runs. With
+/// Reduce Motion on, it stays still, as the commit box's does, and the words
+/// beside it say that something runs.
 struct SettingsSpinner: View {
     @State private var isTurning = false
+    @Environment(\.accessibilityReduceMotion) private var reducesMotion
 
     var body: some View {
         Circle()
@@ -394,6 +399,7 @@ struct SettingsSpinner: View {
             }
             .frame(width: 12, height: 12)
             .onAppear {
+                guard !reducesMotion else { return }
                 withAnimation(.linear(duration: 0.9).repeatForever(autoreverses: false)) { isTurning = true }
             }
             .accessibilityHidden(true)
@@ -414,8 +420,13 @@ final class AgentTestRun {
 
     private(set) var state = State.idle
     @ObservationIgnored private var task: Task<Void, Never>?
+    /// Watches for Roga quitting while the agent runs, as `MessageGenerators`
+    /// does for Generate, since the agent's process group would outlive Roga.
+    @ObservationIgnored private var termination: (any NSObjectProtocol)?
 
     var isRunning: Bool { state == .running }
+    /// Whether quitting Roga would stop the agent, for tests.
+    var isWatchingForQuit: Bool { termination != nil }
 
     /// Runs the agent once, stopping a run that's under way first.
     ///
@@ -428,10 +439,12 @@ final class AgentTestRun {
     ) {
         task?.cancel()
         state = .running
+        watchForQuit()
         task = Task {
             let outcome = await Self.test(agent, style: style, run: run)
             guard !Task.isCancelled else { return }
             state = outcome
+            stopWatchingForQuit()
         }
     }
 
@@ -439,7 +452,26 @@ final class AgentTestRun {
     func stop() {
         task?.cancel()
         task = nil
+        stopWatchingForQuit()
         if state == .running { state = .idle }
+    }
+
+    private func watchForQuit() {
+        guard termination == nil else { return }
+        termination = NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.stop()
+            }
+        }
+    }
+
+    private func stopWatchingForQuit() {
+        if let termination { NotificationCenter.default.removeObserver(termination) }
+        termination = nil
     }
 
     /// The test itself, away from the main actor: a folder of its own, which

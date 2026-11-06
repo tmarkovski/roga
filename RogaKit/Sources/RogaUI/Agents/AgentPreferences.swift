@@ -155,7 +155,9 @@ struct AgentSettings: Equatable {
     /// running anything: at spaces, tabs and new lines, with '…' taken as it
     /// is, and "…" and a backslash escaping what follows. Quotes join what's
     /// next to them, so `--x="a b"` is one argument, and `''` is an empty one.
-    /// A quote that isn't closed runs to the end.
+    /// A backslash at the end of a line joins it to the next, outside single
+    /// quotes, as a shell continues a line. A quote that isn't closed runs to
+    /// the end.
     static func splitArguments(_ text: String) -> [String] {
         var arguments: [String] = []
         var current = ""
@@ -174,8 +176,8 @@ struct AgentSettings: Equatable {
                     quote = .none
                 } else if character == "\\", let next = characters.next() {
                     // In double quotes a backslash only escapes what a shell
-                    // would treat specially there.
-                    if !"\"\\$`".contains(next) { current.append(character) }
+                    // would treat specially there. Before a new line, both go.
+                    if !"\"\\$`\n".contains(next) { current.append(character) }
                     if next != "\n" { current.append(next) }
                 } else {
                     current.append(character)
@@ -194,8 +196,11 @@ struct AgentSettings: Equatable {
                     quote = .double
                     isInArgument = true
                 } else if character == "\\" {
-                    isInArgument = true
-                    if let next = characters.next(), next != "\n" { current.append(next) }
+                    // A new line after it joins the lines, so the two are
+                    // nothing, and don't start an argument between others.
+                    let next = characters.next()
+                    if next != "\n" { isInArgument = true }
+                    if let next, next != "\n" { current.append(next) }
                 } else {
                     current.append(character)
                     isInArgument = true

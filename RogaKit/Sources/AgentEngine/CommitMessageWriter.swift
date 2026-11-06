@@ -30,6 +30,12 @@ public enum CommitMessageWriter {
         makeToken: @Sendable () -> String,
         run: @Sendable (ProgramCommand, [UInt8]) async throws -> ProgramResult
     ) async throws -> WrittenMessage {
+        // Codex's MCP servers as they are now, since naming one it no longer
+        // has stops it from starting.
+        var agent = agent
+        if agent.kind == .codex, let file = agent.codexConfigurationFile {
+            agent.mcpServers = CodexConfiguration.mcpServers(inFile: file) ?? []
+        }
         let command = CommitMessageCommand.command(
             for: agent,
             worktree: request.worktree,

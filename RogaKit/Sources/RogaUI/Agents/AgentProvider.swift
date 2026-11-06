@@ -14,12 +14,25 @@ import Observation
 /// Settings through UserDefaults.
 @MainActor @Observable
 public final class AgentProvider {
+    /// What the hooks' button offers for an agent, and what a failure was
+    /// trying to do.
+    enum HookAction: Hashable {
+        case install
+        case remove
+    }
+
     /// What Install or Remove is doing for an agent, while it does it, or how
-    /// it failed, in the agent's own words.
+    /// it failed.
     enum HookWork: Equatable {
         case installing
         case removing
-        case failed(String)
+        /// What failed, and how, in the agent's own words.
+        case failed(HookAction, String)
+
+        /// How it failed, in the agent's own words, when it did.
+        var failure: String? {
+            if case .failed(_, let words) = self { words } else { nil }
+        }
     }
 
     /// When an agent's hooks last reached Roga, and from which folder.
@@ -47,14 +60,30 @@ public final class AgentProvider {
     /// The model Codex uses by default, from the top of its `config.toml`,
     /// which pickers show as "Default · <model>". Roga only reads that file.
     private(set) var codexDefaultModel: String?
+    /// The MCP servers in Codex's `config.toml`, which Generate turns off,
+    /// as Roga last read them.
+    private(set) var codexMCPServers: [String] = []
     /// Whether each found agent runs Roga's hooks. An agent is absent while
     /// Roga checks, and while it isn't found.
     private(set) var hookStatus: [AgentKind: HookStatus] = [:]
     /// Install or Remove under way for an agent, or how it last failed.
+    ///
+    /// A failure belongs to the app rather than to the dialog or the Settings
+    /// sheet that ran the commands, so every window's Settings shows it under
+    /// the agent's hooks for as long as it applies. It goes once the agent's
+    /// status no longer offers the action that failed, as when someone put it
+    /// right in Terminal: a failed install once the hooks read installed, and
+    /// a failed remove once they read not installed. It goes too when Look
+    /// Again starts afresh. The status read right after the failure never
+    /// sends it away, so that it can be read whatever that status says.
     private(set) var hookWork: [AgentKind: HookWork] = [:]
-    /// Why the plugin's files couldn't be written at launch, when they
-    /// couldn't, which leaves Install with nothing to install.
+    /// Why the plugin's files couldn't be written when this copy of Roga
+    /// took the hooks' socket, if they couldn't, which leaves Install with
+    /// nothing to install.
     private(set) var pluginFilesError: String?
+    /// Whether this copy of Roga holds the hooks' socket, which makes it the
+    /// copy that writes the launcher.
+    @ObservationIgnored private var pointsTheHooksHere = false
     /// The agent chosen for Generate, as stored, whether or not it's usable.
     private var chosenGenerateAgent: AgentKind?
 
@@ -125,8 +154,9 @@ public final class AgentProvider {
     // MARK: Starting and looking
 
     /// Starts once git is ready: writes the plugin's files and the launcher
-    /// when there's a helper to point it at, finds both agents, then asks each
-    /// one found whether it runs Roga's hooks. Calling it again does nothing.
+    /// if this copy of Roga hears the hooks and there's a helper to point the
+    /// launcher at, finds both agents, then asks each one found whether it
+    /// runs Roga's hooks. Calling it again does nothing.
     func start(git: Git) {
         guard self.git == nil else { return }
         self.git = git
@@ -134,12 +164,33 @@ public final class AgentProvider {
         self.programs = programs
         let installer = HookInstaller(programs: programs, supportFolder: supportFolder, codexHome: codexHome)
         self.installer = installer
+        let writesFiles = pointsTheHooksHere
         let helperPath = helperPath
         Task {
-            if let helperPath {
+            if writesFiles, let helperPath {
                 pluginFilesError = await Self.writeFiles(installer, helperPath: helperPath)
             }
             look(for: AgentKind.allCases)
+        }
+    }
+
+    /// Points the launcher, and so the hooks, at this copy's helper, because
+    /// this copy of Roga holds the hooks' socket. The agent monitor calls it
+    /// each time it takes the socket: at launch, or when Try Again takes it
+    /// over from a copy that has quit.
+    ///
+    /// Every copy with the same bundle ID shares the support folder and its
+    /// launcher, as a build from Xcode does with the copy in Applications,
+    /// or a copy opened from a disk image. If each wrote the launcher as it
+    /// started, a copy that couldn't take the socket would point the hooks at
+    /// its own helper, and once that copy went away, the launcher would run
+    /// nothing, and the copy that listens would hear nothing more.
+    func pointTheHooksHere() {
+        pointsTheHooksHere = true
+        // Before git is ready, `start` writes them.
+        guard let installer, let helperPath else { return }
+        Task {
+            pluginFilesError = await Self.writeFiles(installer, helperPath: helperPath)
         }
     }
 
@@ -151,7 +202,11 @@ public final class AgentProvider {
 
     /// Looks for both agents again, and then checks their hooks again, as
     /// Look Again in Settings does after someone installs or updates one.
+    /// It starts afresh, so how Install or Remove last failed goes too.
     func lookAgain() {
+        for (kind, work) in hookWork where work.failure != nil {
+            hookWork[kind] = nil
+        }
         look(for: AgentKind.allCases)
     }
 
@@ -173,14 +228,18 @@ public final class AgentProvider {
             let program = settings[kind]?.program
             let searchPath = git.installation.searchPath
             let wellKnown = wellKnown.map { $0[kind] ?? [] }
-            let codexConfiguration = kind == .codex ? installer.map { $0.codexHome + "/config.toml" } : nil
+            let codexConfiguration = kind == .codex ? installer.map(Self.codexConfigurationFile) : nil
             Task {
                 let lookup = await AgentInstallation.locate(kind, configuredPath: program, searchPath: searchPath, programs: programs, wellKnown: wellKnown)
-                var model: String?
-                if let codexConfiguration { model = await Self.codexDefaultModel(inFile: codexConfiguration) }
+                var text: String?
+                if let codexConfiguration { text = await Self.read(codexConfiguration) }
                 guard lookGeneration[kind] == generation else { return }
                 lookups[kind] = lookup
-                if kind == .codex { codexDefaultModel = model }
+                if kind == .codex {
+                    codexDefaultModel = text.flatMap(Self.codexDefaultModel(inConfiguration:))
+                    let servers = text.map(CodexConfiguration.mcpServers(in:)) ?? []
+                    if servers != codexMCPServers { codexMCPServers = servers }
+                }
                 refreshHookStatus(kind)
             }
         }
@@ -219,7 +278,9 @@ public final class AgentProvider {
             model: settings.model.isEmpty ? nil : settings.model,
             effort: settings.effort.isEmpty ? nil : settings.effort,
             extraArguments: settings.extraArguments,
-            timeLimit: settings.timeLimit
+            timeLimit: settings.timeLimit,
+            mcpServers: kind == .codex ? codexMCPServers : [],
+            codexConfigurationFile: kind == .codex ? installer.map(Self.codexConfigurationFile) : nil
         )
     }
 
@@ -292,7 +353,7 @@ public final class AgentProvider {
     ///   `hookWork` failed, in the agent's own words.
     @discardableResult
     func installHooks(_ kinds: [AgentKind]) async -> Bool {
-        await work(.installing, on: kinds) { installer, kind, executable in
+        await work(.install, on: kinds) { installer, kind, executable in
             try await installer.install(kind, executable: executable)
         }
     }
@@ -300,13 +361,13 @@ public final class AgentProvider {
     /// Removes Roga's hooks from an agent, and then checks its hooks again.
     @discardableResult
     func removeHooks(_ kind: AgentKind) async -> Bool {
-        await work(.removing, on: [kind]) { installer, kind, executable in
+        await work(.remove, on: [kind]) { installer, kind, executable in
             try await installer.remove(kind, executable: executable)
         }
     }
 
     private func work(
-        _ work: HookWork,
+        _ action: HookAction,
         on kinds: [AgentKind],
         _ run: @Sendable (HookInstaller, AgentKind, String) async throws -> Void
     ) async -> Bool {
@@ -314,23 +375,26 @@ public final class AgentProvider {
         var succeeded = true
         for kind in kinds {
             guard let executable = installation(kind)?.executable else {
-                hookWork[kind] = .failed("Roga hasn't found \(kind.name).")
+                hookWork[kind] = .failed(action, "Roga hasn't found \(kind.name).")
                 succeeded = false
                 continue
             }
-            hookWork[kind] = work
+            hookWork[kind] = action == .install ? .installing : .removing
             do {
                 try await run(installer, kind, executable)
                 hookWork[kind] = nil
             } catch let error as HookInstallError {
-                hookWork[kind] = .failed(error.message)
+                hookWork[kind] = .failed(action, error.message)
                 succeeded = false
             } catch {
-                hookWork[kind] = .failed(work == .removing ? "Roga stopped removing its hooks." : "Roga stopped installing its hooks.")
+                hookWork[kind] = .failed(action, action == .remove ? "Roga stopped removing its hooks." : "Roga stopped installing its hooks.")
                 succeeded = false
             }
         }
-        for kind in kinds { refreshHookStatus(kind) }
+        // A part of the commands may have worked, so the status that comes
+        // next can read installed after an install failed. The failure stays
+        // all the same, until a later status shows it no longer applies.
+        for kind in kinds { refreshHookStatus(kind, keepingFailure: true) }
         return succeeded
     }
 
@@ -339,7 +403,10 @@ public final class AgentProvider {
         for kind in AgentKind.allCases { refreshHookStatus(kind) }
     }
 
-    private func refreshHookStatus(_ kind: AgentKind) {
+    /// - Parameter keepingFailure: Whether the status read keeps how Install
+    ///   or Remove failed even if it no longer offers that action, as it does
+    ///   right after the failure.
+    private func refreshHookStatus(_ kind: AgentKind, keepingFailure: Bool = false) {
         statusGeneration[kind, default: 0] += 1
         let generation = statusGeneration[kind] ?? 0
         guard let installer, let installation = installation(kind) else {
@@ -351,6 +418,21 @@ public final class AgentProvider {
             let status = await installer.status(kind, executable: installation.executable)
             guard statusGeneration[kind] == generation else { return }
             hookStatus[kind] = status
+            if !keepingFailure, case .failed(let action, _)? = hookWork[kind], Self.offeredAction(status, for: kind) != action {
+                hookWork[kind] = nil
+            }
+        }
+    }
+
+    /// What the hooks' button offers in an agent with this status: Install
+    /// where this copy's hooks aren't there, and Remove where they are, even
+    /// if they don't run. Claude Code takes over another copy's hooks when it
+    /// installs this one's, while Codex refuses until they're removed.
+    static func offeredAction(_ status: HookStatus, for kind: AgentKind) -> HookAction {
+        switch status {
+        case .notInstalled, .unknown: .install
+        case .installed, .needsTrust, .disabled: .remove
+        case .anotherCopy: kind == .claude ? .install : .remove
         }
     }
 
@@ -368,13 +450,20 @@ public final class AgentProvider {
         }
     }
 
+    /// Codex's `config.toml`, in the folder the installer uses for Codex.
+    private static func codexConfigurationFile(_ installer: HookInstaller) -> String {
+        installer.codexHome + "/config.toml"
+    }
+
+    /// A small text file's contents, read away from the main actor, or nil
+    /// when it can't be read.
+    @concurrent
+    private static func read(_ path: String) async -> String? {
+        try? String(contentsOfFile: path, encoding: .utf8)
+    }
+
     /// The model in a Codex `config.toml`: its top-level `model = "…"`, before
     /// the first table. Roga doesn't parse TOML any further than that.
-    @concurrent
-    static func codexDefaultModel(inFile path: String) async -> String? {
-        guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
-        return codexDefaultModel(inConfiguration: text)
-    }
 
     nonisolated static func codexDefaultModel(inConfiguration text: String) -> String? {
         for line in text.split(whereSeparator: \.isNewline) {
