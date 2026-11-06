@@ -54,6 +54,11 @@ public final class AgentMonitor {
     /// sessions do, since every tool an agent runs moves its `lastEvent`, and
     /// the sidebar's rows read only this, so that they don't redraw for each one.
     private var marks: [SessionKey: Mark] = [:]
+    /// What each session is doing, as a short line (decision 47). It's kept
+    /// apart from `marks` because it changes with nearly every tool an agent
+    /// starts, and only the rows that show a mark read it, so a new line
+    /// redraws those rows and leaves the rest of the sidebar alone.
+    private var activities: [SessionKey: String] = [:]
     /// When someone last looked at each worktree, by its folder as git lists it.
     /// It's kept in memory only: after a relaunch, what finished before is old
     /// news.
@@ -368,6 +373,8 @@ public final class AgentMonitor {
             self.marks = marks
             marksVersion &+= 1
         }
+        let activities = state.sessions.compactMapValues(\.activity)
+        if activities != self.activities { self.activities = activities }
     }
 
     // MARK: Processes
@@ -431,12 +438,14 @@ public final class AgentMonitor {
 
     /// What a mark needs of a session.
     private struct Mark: Equatable {
+        var key: SessionKey
         var host: AgentHost
         var cwd: String?
         var phase: AgentPhase
         var since: Date
 
         init(_ session: AgentSession) {
+            key = session.key
             host = session.key.host
             cwd = session.cwd
             phase = session.phase
@@ -475,7 +484,10 @@ public final class AgentMonitor {
                 if case .finished = mark.phase { seenAt.map { mark.since > $0 } ?? true } else { true }
             }
         }
-        return AgentSummary(shown.map { (host: $0.host, phase: $0.phase, since: $0.since) })
+        // Only a row with a mark reads what its sessions are doing, and idle
+        // sessions have none.
+        let activities = shown.contains { $0.phase != .idle } ? activities : [:]
+        return AgentSummary(shown.map { (host: $0.host, phase: $0.phase, since: $0.since, activity: activities[$0.key]) })
     }
 
     /// Someone looked at the worktree, so the sessions that finished in it
@@ -610,23 +622,28 @@ struct AgentSummary: Equatable {
     var hosts: [AgentHost]
     /// How many sessions are in that state.
     var sessions: Int
+    /// What the session is doing, as a short line such as "Run the test
+    /// suite", when only one session is in that state and its agent said
+    /// (decision 47). One line can't speak for several sessions.
+    var activity: String?
 
-    init(state: State, since: Date, hosts: [AgentHost], sessions: Int) {
+    init(state: State, since: Date, hosts: [AgentHost], sessions: Int, activity: String? = nil) {
         self.state = state
         self.since = since
         self.hosts = hosts
         self.sessions = sessions
+        self.activity = sessions == 1 ? activity : nil
     }
 
     /// The summary of some sessions, by their agents' phases, or nil when none
     /// of them needs a mark: waiting beats working, and working beats
     /// finished, because that's the order in which they need the person.
     /// Idle sessions have no mark.
-    init?(_ sessions: [(host: AgentHost, phase: AgentPhase, since: Date)]) {
+    init?(_ sessions: [(host: AgentHost, phase: AgentPhase, since: Date, activity: String?)]) {
         let waiting = sessions.filter { if case .waiting = $0.phase { true } else { false } }
         let working = sessions.filter { $0.phase == .working }
         let finished = sessions.filter { if case .finished = $0.phase { true } else { false } }
-        let chosen: [(host: AgentHost, phase: AgentPhase, since: Date)]
+        let chosen: [(host: AgentHost, phase: AgentPhase, since: Date, activity: String?)]
         if !waiting.isEmpty {
             chosen = waiting
         } else if !working.isEmpty {
@@ -648,12 +665,24 @@ struct AgentSummary: Equatable {
         let present = Set(chosen.map(\.host))
         hosts = AgentHost.allCases.filter(present.contains)
         self.sessions = chosen.count
+        activity = chosen.count == 1 ? longest.activity : nil
     }
 
     /// What the mark means, for its tooltip and for VoiceOver, such as
-    /// "Claude Code is working" or "2 agents are working".
+    /// "Claude Code is working" or "2 agents are working". With one session
+    /// whose agent said what it's doing, the line follows, as in "Claude Code
+    /// is working: Run the test suite", "Codex is waiting for you to allow:
+    /// git push" or "Claude Code finished: Added the line to the tooltip".
     var description: String {
         let agent = sessions == 1 ? hosts.first?.name ?? "An agent" : "\(sessions) agents"
+        if let activity {
+            switch state {
+            case .working: return "\(agent) is working: \(activity)"
+            case .waiting(.permission): return "\(agent) is waiting for you to allow: \(activity)"
+            case .waiting(.question): return "\(agent) is waiting for you: \(activity)"
+            case .finished: return "\(agent) finished: \(activity)"
+            }
+        }
         switch state {
         case .working:
             return sessions == 1 ? "\(agent) is working" : "\(agent) are working"
@@ -669,7 +698,8 @@ struct AgentSummary: Equatable {
     }
 
     /// The tooltip, which says for how long from a minute on, as in "Claude
-    /// Code is working, for 6 minutes".
+    /// Code is working, for 6 minutes" or "Claude Code is working: Run the
+    /// test suite, for 6 minutes".
     func help(now: Date) -> String {
         guard state != .finished else { return description }
         let minutes = Self.minutes(from: since, to: now)
@@ -677,20 +707,39 @@ struct AgentSummary: Equatable {
         return "\(description), for \(Self.longDuration(minutes: minutes))"
     }
 
-    /// The second line of the worktree menu's row, such as "Agent working · 6
-    /// min", "2 agents working · 6 min", "Agent waiting for you · 2 min" or
-    /// "Agent finished". It leaves the time out under a minute, and for
-    /// what's finished.
+    /// The second line of the worktree menu's row, such as "Claude Code
+    /// working · 6 min", "2 agents working · 6 min", "Codex waiting for you ·
+    /// 2 min" or "Claude Code finished". It leaves the time out under a
+    /// minute, and for what's finished.
+    ///
+    /// With one session whose agent said what it's doing, the line follows
+    /// the agent's name, as in "Claude Code: Run the test suite · 6 min",
+    /// "Codex needs your OK: git push · 2 min" or "Claude Code: Wants a plan
+    /// approved · 2 min". The name keeps a bare "git push" from reading as
+    /// something Roga is doing, next to its own lines such as "Rebasing main"
+    /// (decision 47). A finished session's reply stays in the tooltip, since
+    /// the menu's line is short and its folder comes after.
     func menuDetail(now: Date) -> String {
-        let agents = sessions == 1 ? "Agent" : "\(sessions) agents"
+        let parts = menuParts(now: now)
+        return [parts.words, parts.time].compactMap(\.self).joined(separator: " · ")
+    }
+
+    /// `menuDetail(now:)` in its two parts, the words and how long, as in
+    /// "Claude Code: Run the test suite" and "6 min", so that the menu can cut
+    /// the words short and keep the time whole.
+    func menuParts(now: Date) -> (words: String, time: String?) {
+        let agent = sessions == 1 ? hosts.first?.name ?? "Agent" : "\(sessions) agents"
         let words: String
-        switch state {
-        case .working: words = "\(agents) working"
-        case .waiting: words = "\(agents) waiting for you"
-        case .finished: return "\(agents) finished"
+        switch (state, activity) {
+        case (.working, let activity?): words = "\(agent): \(activity)"
+        case (.waiting(.permission), let activity?): words = "\(agent) needs your OK: \(activity)"
+        case (.waiting(.question), let activity?): words = "\(agent): \(activity)"
+        case (.working, nil): words = "\(agent) working"
+        case (.waiting, nil): words = "\(agent) waiting for you"
+        case (.finished, _): return ("\(agent) finished", nil)
         }
         let minutes = Self.minutes(from: since, to: now)
-        return minutes > 0 ? "\(words) · \(Self.shortDuration(minutes: minutes))" : words
+        return (words, minutes > 0 ? Self.shortDuration(minutes: minutes) : nil)
     }
 
     private static func minutes(from start: Date, to end: Date) -> Int {

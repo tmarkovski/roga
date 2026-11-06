@@ -11,8 +11,10 @@ public enum AgentHost: String, Codable, Sendable, Hashable, CaseIterable {
 /// the socket (decision 41).
 ///
 /// It carries only what Roga needs to know what a session is doing and
-/// where. Prompts, tool input and tool output never leave the helper, so a
-/// line stays small enough to fit in the socket's buffer at once.
+/// where. Prompts, tool input and tool output never leave the helper: what
+/// a tool is doing comes as a short line the helper makes from its input
+/// (decision 47), so a line stays small enough to fit in the socket's buffer
+/// at once.
 public struct HookEvent: Codable, Sendable, Hashable {
     /// Which version of this format the helper wrote. It's 1.
     public var version: Int
@@ -43,6 +45,12 @@ public struct HookEvent: Codable, Sendable, Hashable {
     public var backgroundTasks: Int?
     /// What kind of error ended a Claude turn, such as `rate_limit`.
     public var error: String?
+    /// A short line for people that says what the agent is doing, such as
+    /// "Run the test suite", "git push" or "Editing HookHelper.swift", made
+    /// from a tool's input when it starts or asks to be allowed, or the first
+    /// line of the agent's reply when it stops (decision 47). It's never
+    /// longer than `HookHelper.Activity.characterLimit` characters.
+    public var activity: String?
     /// When the helper ran, in seconds since 1970.
     public var time: Double
 
@@ -61,6 +69,7 @@ public struct HookEvent: Codable, Sendable, Hashable {
         subagent: String? = nil,
         backgroundTasks: Int? = nil,
         error: String? = nil,
+        activity: String? = nil,
         time: Double
     ) {
         self.version = version
@@ -77,6 +86,7 @@ public struct HookEvent: Codable, Sendable, Hashable {
         self.subagent = subagent
         self.backgroundTasks = backgroundTasks
         self.error = error
+        self.activity = activity
         self.time = time
     }
 }

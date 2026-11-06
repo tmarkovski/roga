@@ -189,8 +189,9 @@ public enum HookHelper {
 
     // MARK: - The payload
 
-    /// The fields of a hook's JSON that Roga uses. Prompts, tool input and
-    /// tool output are never read out of it.
+    /// The fields of a hook's JSON that Roga uses. Prompts and tool output
+    /// are never read out of it, and of a tool's input only the few fields
+    /// that its line is made from (decision 47).
     struct Payload: Hashable {
         var event: String?
         var session: String?
@@ -204,6 +205,10 @@ public enum HookHelper {
         var subagent: String?
         var error: String?
         var backgroundTasks: Int?
+        /// What the line for the tool is made from.
+        var toolInput: ToolInput?
+        /// The first line of the agent's last reply, for `Stop`.
+        var reply: String?
 
         /// The longest folder kept, in bytes. Longer fields are dropped
         /// rather than cut, since a cut value would be wrong, and so that
@@ -218,7 +223,8 @@ public enum HookHelper {
         init(
             event: String? = nil, session: String? = nil, cwd: String? = nil, newCwd: String? = nil,
             tool: String? = nil, notification: String? = nil, source: String? = nil, reason: String? = nil,
-            subagent: String? = nil, error: String? = nil, backgroundTasks: Int? = nil
+            subagent: String? = nil, error: String? = nil, backgroundTasks: Int? = nil,
+            toolInput: ToolInput? = nil, reply: String? = nil
         ) {
             self.event = event
             self.session = session
@@ -231,6 +237,8 @@ public enum HookHelper {
             self.subagent = subagent
             self.error = error
             self.backgroundTasks = backgroundTasks
+            self.toolInput = toolInput
+            self.reply = reply
         }
 
         /// Reads the payload as JSON. When it isn't, or it was too long to
@@ -261,10 +269,16 @@ public enum HookHelper {
                 reason: text("reason"),
                 subagent: text("agent_id"),
                 error: text("error"),
-                backgroundTasks: (object["background_tasks"] as? [Any])?.count ?? (object["background_tasks"] as? Int)
+                backgroundTasks: (object["background_tasks"] as? [Any])?.count ?? (object["background_tasks"] as? Int),
+                toolInput: (object["tool_input"] as? [String: Any]).map(ToolInput.init),
+                reply: (object["last_assistant_message"] as? String).flatMap(Activity.firstLine(ofReply:))
             )
         }
 
+        /// What can be found in the first part of a payload. A tool's line
+        /// can still be made when what it needs comes early, as the path of a
+        /// file being written, which comes before its contents. A reply that
+        /// doesn't end within that part gives no line.
         init(scanning bytes: ArraySlice<UInt8>) {
             func text(_ key: String, limit: Int = Payload.fieldLimit) -> String? {
                 Payload.usable(Payload.firstString(named: key, in: bytes), limit: limit)
@@ -274,7 +288,9 @@ public enum HookHelper {
                 session: text("session_id"),
                 cwd: text("cwd", limit: Self.folderLimit),
                 tool: text("tool_name"),
-                subagent: text("agent_id")
+                subagent: text("agent_id"),
+                toolInput: ToolInput(scanning: bytes),
+                reply: Payload.firstString(named: "last_assistant_message", in: bytes).flatMap(Activity.firstLine(ofReply:))
             )
         }
 
@@ -325,6 +341,10 @@ public enum HookHelper {
     /// The event to send. Fields that only some events have are taken only
     /// from those events: elsewhere, `error` and `reason` are the text of a
     /// tool's failure or a denial, which Roga has no use for.
+    ///
+    /// The line that says what the agent is doing comes with a tool that's
+    /// starting or asks to be allowed, and with `Stop`, from the main agent
+    /// only, since a subagent's tools don't change its parent's line.
     static func event(for invocation: Invocation, payload: Payload, process: ProcessEntry?, time: Double) -> HookEvent? {
         guard let name = payload.event ?? invocation.event else { return nil }
         var event = HookEvent(
@@ -342,7 +362,13 @@ public enum HookHelper {
         case "SessionStart": event.source = payload.source
         case "SessionEnd": event.reason = payload.reason
         case "Notification": event.notification = payload.notification
-        case "Stop": event.backgroundTasks = payload.backgroundTasks
+        case "Stop":
+            event.backgroundTasks = payload.backgroundTasks
+            event.activity = payload.subagent == nil ? payload.reply : nil
+        case "PreToolUse", "PermissionRequest":
+            if payload.subagent == nil, let tool = payload.tool {
+                event.activity = Activity.line(host: invocation.host, tool: tool, input: payload.toolInput ?? ToolInput())
+            }
         case "StopFailure": event.error = payload.error
         case "CwdChanged": event.cwd = payload.newCwd ?? payload.cwd
         default: break

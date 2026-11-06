@@ -108,6 +108,43 @@ struct RefMenuTests {
     @Test func aChoicesSecondLineReadsAsOnePieceOfText() {
         let choice = RefMenu.Choice(title: "agent/add-tests", details: [RefMenu.Detail("Rebasing main · 2 conflicts", color: .red), RefMenu.Detail("~/agents/add-tests")]) {}
         #expect(choice.detailText == "Rebasing main · 2 conflicts · ~/agents/add-tests")
+        #expect(choice.details.allSatisfy { !$0.canBeCutShort })
+    }
+
+    // MARK: Cutting the second line short
+
+    /// With parts as wide as they say, and separators 10 wide.
+    private func widths(_ parts: [(Double, Bool)], in room: Double) -> [Double]? {
+        RefMenu.detailWidths(of: parts.map { (width: $0.0, canBeCutShort: $0.1) }, separator: 10, in: room)
+    }
+
+    @Test func aLineThatFitsIsDrawnAsAlways() {
+        // The folder gets what's left, even when a part before it could be cut.
+        #expect(widths([(200, true), (30, false), (99, false)], in: 391) == nil)
+        // With nothing that can be cut, a line too long is drawn as always too.
+        #expect(widths([(400, false), (30, false), (99, false)], in: 391) == nil)
+        #expect(widths([(400, true)], in: 391) == nil)
+        #expect(widths([], in: 391) == nil)
+    }
+
+    @Test func onlyThePartsThatCanBeCutGetShorter() {
+        // What can't be cut takes 265 with its separators, the folder keeps 80,
+        // and the words get the 46 that's left.
+        #expect(widths([(700, true), (56, false), (152, false), (17, false), (300, false)], in: 391) == [46, 56, 152, 17, 80])
+        // Words that fit, but leave the folder less than its room, are cut too.
+        #expect(widths([(250, true), (30, false), (99, false)], in: 360) == [230, 30, 80])
+        // A short folder keeps only what it needs.
+        #expect(widths([(400, true), (40, false)], in: 300) == [250, 40])
+        // Several parts that can be cut share what's left by their widths.
+        #expect(widths([(300, true), (100, true), (99, false)], in: 300) == [150, 50, 80])
+    }
+
+    @Test func whatCantBeCutComesBeforeTheFolder() {
+        // The words keep a few characters, and the folder gets what's left.
+        #expect(widths([(300, true), (330, false), (99, false)], in: 391) == [24, 330, 17])
+        // When even that doesn't fit, the line is drawn as always.
+        #expect(widths([(300, true), (350, false), (99, false)], in: 391) == nil)
+        #expect(widths([(300, true), (400, false), (99, false)], in: 391) == nil)
     }
 
     // MARK: Return

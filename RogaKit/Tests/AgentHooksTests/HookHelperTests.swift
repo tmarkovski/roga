@@ -7,7 +7,7 @@ import Testing
 // the fields their documentation and generated schemas list.
 
 private let claudePreToolUse = #"""
-    {"session_id":"76027137-d5e5-4825-af08-3adb4f0fbc31","transcript_path":"/Users/me/.claude/projects/-Users-me-w/76027137.jsonl","cwd":"/Users/me/w","permission_mode":"default","hook_event_name":"PreToolUse","prompt_id":"p-1","effort":{"level":"high"},"tool_name":"Bash","tool_input":{"command":"cat secret.txt","description":"Show the secret"},"tool_use_id":"toolu_01"}
+    {"session_id":"76027137-d5e5-4825-af08-3adb4f0fbc31","transcript_path":"/Users/me/.claude/projects/-Users-me-w/76027137.jsonl","cwd":"/Users/me/w","permission_mode":"default","hook_event_name":"PreToolUse","prompt_id":"p-1","effort":{"level":"high"},"tool_name":"Bash","tool_input":{"command":"curl -H \"Authorization: Bearer sk-secret-token\" https://api.example.com/v1","description":"Call the example API"},"tool_use_id":"toolu_01"}
     """#
 
 private let claudePrompt = #"""
@@ -73,7 +73,7 @@ struct HookHelperTests {
         let me = try #require(ProcessEntry(pid: getpid()))
         let expected = HookEvent(
             host: .claude, event: "PreToolUse", session: "76027137-d5e5-4825-af08-3adb4f0fbc31", cwd: "/Users/me/w",
-            pid: getpid(), processStart: me.start, tool: "Bash", time: 1_800_000_000.25
+            pid: getpid(), processStart: me.start, tool: "Bash", activity: "Call the example API", time: 1_800_000_000.25
         )
         #expect(outcome == .sent(expected))
         #expect(await eventually { received.all == [expected] })
@@ -236,7 +236,9 @@ struct HookHelperTests {
 
     @Test func readsCodexsPayloads() throws {
         let request = try #require(try parsed(#"{"session_id":"019a5c3e-7f2d-7c11-9a4b-0c2b9e1f6d3a","turn_id":"t1","transcript_path":null,"cwd":"/w/app","hook_event_name":"PermissionRequest","model":"gpt-6-astra","permission_mode":"default","tool_name":"exec_command","tool_input":{"command":["cat","secret.txt"],"description":"Read the secret"}}"#, host: .codex))
-        #expect(request == HookEvent(host: .codex, event: "PermissionRequest", session: "019a5c3e-7f2d-7c11-9a4b-0c2b9e1f6d3a", cwd: "/w/app", tool: "exec_command", time: 1))
+        // Codex's description isn't promised for every tool, so its shell's
+        // line is always the program and the word after it.
+        #expect(request == HookEvent(host: .codex, event: "PermissionRequest", session: "019a5c3e-7f2d-7c11-9a4b-0c2b9e1f6d3a", cwd: "/w/app", tool: "exec_command", activity: "cat secret.txt", time: 1))
 
         let end = try #require(try parsed(#"{"session_id":"s2","transcript_path":null,"cwd":"/w","hook_event_name":"SessionEnd","reason":"other"}"#, host: .codex))
         #expect(end.reason == "other")
@@ -261,12 +263,23 @@ struct HookHelperTests {
     }
 
     @Test func neverSendsPromptsOrToolInput() throws {
-        for json in [claudePrompt, claudePreToolUse] {
-            let event = try #require(try parsed(json))
-            let line = String(decoding: try #require(HookHelper.line(for: event)), as: UTF8.self)
-            #expect(!line.contains("secret"))
-            #expect(!line.lowercased().contains("secret"))
+        let prompt = try #require(try parsed(claudePrompt))
+        let promptLine = String(decoding: try #require(HookHelper.line(for: prompt)), as: UTF8.self)
+        #expect(!promptLine.lowercased().contains("secret"))
+        #expect(prompt.activity == nil)
+
+        // Only the line Claude wrote for people goes, never the command.
+        let tool = try #require(try parsed(claudePreToolUse))
+        let toolLine = String(decoding: try #require(HookHelper.line(for: tool)), as: UTF8.self)
+        #expect(tool.activity == "Call the example API")
+        for part in ["secret", "Authorization", "Bearer", "example.com", "curl"] {
+            #expect(!toolLine.contains(part))
         }
+
+        // A finished tool sends no line, so its output is never looked at.
+        let output = try #require(try parsed(#"{"session_id":"s1","cwd":"/w","hook_event_name":"PostToolUse","tool_name":"Bash","tool_input":{"command":"cat .env","description":"Show the settings"},"tool_response":{"stdout":"TOKEN=secret"}}"#))
+        #expect(output.activity == nil)
+        #expect(!String(decoding: try #require(HookHelper.line(for: output)), as: UTF8.self).contains("secret"))
     }
 
     @Test func prefersTheEventNameInThePayload() throws {
@@ -304,10 +317,12 @@ struct HookHelperTests {
 
     @Test func writesOneLineOfJSONThatFitsTheSocketsBuffer() throws {
         let long = String(repeating: "é", count: 128)
+        // A line of characters that take many bytes each, as long as one gets.
+        let activity = try #require(HookHelper.Activity.shortened(String(repeating: "👩‍👩‍👧‍👦", count: 500)))
         let event = HookEvent(
             host: .codex, event: long, session: long, cwd: "/" + String(repeating: "d", count: 4095), pid: 123,
             processStart: 1_793_929_461.013, tool: long, notification: long, source: long, reason: long, subagent: long,
-            backgroundTasks: 3, error: "line\nbreak", time: 1_800_000_000.5
+            backgroundTasks: 3, error: "line\nbreak", activity: activity, time: 1_800_000_000.5
         )
         let line = try #require(HookHelper.line(for: event))
         #expect(line.last == UInt8(ascii: "\n"))
