@@ -24,6 +24,12 @@ struct RefsPanel: View {
     /// The sections that are collapsed, separated by commas. It's one setting
     /// for every repository, like the sizes of the panels.
     @AppStorage("collapsedRefSections") private var collapsedSections = ""
+    /// The folders of branches that are closed, by what the full names in them
+    /// start with, as in `refs/heads/tm/`, one to a line, since a branch's name
+    /// can have a comma but not a line break. Like the sections, it's one
+    /// setting for every repository, so a prefix someone uses everywhere stays
+    /// open or closed everywhere.
+    @AppStorage("collapsedRefFolders") private var collapsedFolders = ""
     @FocusState private var isListFocused: Bool
 
     private var refs: RefsModel { model.refs }
@@ -109,13 +115,13 @@ struct RefsPanel: View {
             RefsNote(message)
                 .textSelection(.enabled)
         case .loaded:
-            if let details = refs.shown(sort: sort) {
-                list(details)
+            if let details = refs.shown(sort: sort), let rows = refs.branchRows(sort: sort, collapsed: closedFolders) {
+                list(details, rows)
             }
         }
     }
 
-    private func list(_ details: RefDetails) -> some View {
+    private func list(_ details: RefDetails, _ rows: BranchRows) -> some View {
         ScrollViewReader { scroller in
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
@@ -128,8 +134,13 @@ struct RefsPanel: View {
                             .frame(maxWidth: .infinity)
                     }
                     section(.branches, count: details.branches.count) {
-                        ForEach(details.branches, id: \.name) { branch in
-                            branchRow(branch, isCurrent: branch.name == details.currentBranch)
+                        ForEach(rows.local) { row in
+                            switch row.content {
+                            case .folder(let ref, let name, let count, let isCollapsed):
+                                folderRow(ref: ref, name: name, count: count, isCollapsed: isCollapsed, depth: row.depth)
+                            case .branch(let branch, let title):
+                                branchRow(branch, title: title, depth: row.depth, isCurrent: branch.name == details.currentBranch)
+                            }
                         }
                     }
                     section(.remotes, count: details.remotes.count) {
@@ -139,8 +150,13 @@ struct RefsPanel: View {
                                 title: remote.name,
                                 subtitle: remote.address ?? "Not configured any more"
                             )
-                            ForEach(remote.branches, id: \.name) { branch in
-                                remoteBranchRow(branch)
+                            ForEach(rows.remotes[remote.name] ?? []) { row in
+                                switch row.content {
+                                case .folder(let ref, let name, let count, let isCollapsed):
+                                    folderRow(ref: ref, name: name, count: count, isCollapsed: isCollapsed, depth: row.depth, isOnRemote: true)
+                                case .branch(let branch, let title):
+                                    remoteBranchRow(branch, title: title, depth: row.depth)
+                                }
                             }
                         }
                     }
@@ -174,9 +190,11 @@ struct RefsPanel: View {
     @ViewBuilder private func section<Rows: View>(_ section: RefsModel.Section, count: Int, @ViewBuilder rows: () -> Rows) -> some View {
         if refs.filter.isEmpty || count > 0 {
             let isCollapsed = isCollapsed(section)
-            // Each section is a stack of its own, so that all but a repository's
-            // remotes have rows of one height, and the stack can tell how tall
-            // it is without having laid them all out.
+            // Each section is a stack of its own, so that tags, the section
+            // that can have thousands of rows, have rows of one height, and the
+            // stack can tell how tall it is without having laid them all out.
+            // A folder's row is shorter than a local branch's, but there are
+            // seldom many of either.
             LazyVStack(alignment: .leading, spacing: 0, pinnedViews: .sectionHeaders) {
                 Section {
                     if !isCollapsed {
@@ -192,15 +210,28 @@ struct RefsPanel: View {
         }
     }
 
-    private func branchRow(_ branch: BranchDetails, isCurrent: Bool) -> some View {
+    /// A folder of branches, which opens and closes.
+    private func folderRow(ref: String, name: String, count: Int, isCollapsed: Bool, depth: Int, isOnRemote: Bool = false) -> some View {
+        RefFolderRow(name: name, path: Ref.shortName(ref), count: count, isCollapsed: isCollapsed, indent: RefIndent.of(depth, isOnRemote: isOnRemote)) {
+            isListFocused = true
+            setCollapsed(!isCollapsed, folder: ref)
+        }
+        .background { RefFolderGuides(depth: depth, isOnRemote: isOnRemote) }
+        .id(ref)
+    }
+
+    /// - Parameter title: What's left of the branch's name after the folders
+    ///   it's in.
+    private func branchRow(_ branch: BranchDetails, title: String, depth: Int, isCurrent: Bool) -> some View {
         let otherWorktree = isCurrent ? nil : branch.worktree
         return RefRow(
             icon: .branch,
             imageColor: isCurrent ? Palette.current : .secondary,
-            title: branch.shortName,
+            title: title,
             subtitle: branch.subtitle(isCurrent: isCurrent),
             menu: branchMenu(branch, isCurrent: isCurrent, otherWorktree: otherWorktree),
             isSelected: isSelected(branch.name, branch.tip),
+            indent: RefIndent.of(depth),
             hasCommands: otherWorktree != nil,
             action: { select(branch.name, branch.tip) },
             // There's nothing to do for the current branch, as for its badge.
@@ -222,6 +253,7 @@ struct RefsPanel: View {
                     .accessibilityLabel("Show Worktree")
             }
         }
+        .background { RefFolderGuides(depth: depth) }
         .id(branch.name)
     }
 
@@ -248,10 +280,10 @@ struct RefsPanel: View {
         return entries
     }
 
-    private func remoteBranchRow(_ branch: RemoteBranchDetails) -> some View {
+    private func remoteBranchRow(_ branch: RemoteBranchDetails, title: String, depth: Int) -> some View {
         RefRow(
             icon: .branch,
-            title: branch.shortName,
+            title: title,
             menu: [
                 // Its full name, because the row's title leaves out the remote.
                 .header(Ref.shortName(branch.name)),
@@ -262,7 +294,7 @@ struct RefsPanel: View {
                 },
             ],
             isSelected: isSelected(branch.name, branch.tip),
-            isIndented: true,
+            indent: RefIndent.of(depth, isOnRemote: true),
             action: { select(branch.name, branch.tip) },
             doubleAction: { checkOut(branch.name) }
         ) {
@@ -273,6 +305,7 @@ struct RefsPanel: View {
             }
         } commands: {
         }
+        .background { RefFolderGuides(depth: depth, isOnRemote: true) }
         .id(branch.name)
     }
 
@@ -306,11 +339,11 @@ struct RefsPanel: View {
         model.checkOut(ref: name, showWorktree: showWorktree)
     }
 
-    /// Moves the selection through the rows that show, skipping stashes, which
-    /// have no commit in history.
+    /// Moves the selection through the rows that show, skipping folders,
+    /// remotes and stashes, which have no commit in history.
     private func step(by step: Int) {
-        guard let details = refs.shown(sort: sort) else { return }
-        let rows = selectableRows(details)
+        guard let details = refs.shown(sort: sort), let branchRows = refs.branchRows(sort: sort, collapsed: closedFolders) else { return }
+        let rows = selectableRows(details, branchRows)
         let selected = rows.firstIndex { isSelected($0.name, $0.commit) }
         let index = selected.map { $0 + step } ?? (step > 0 ? 0 : rows.count - 1)
         guard rows.indices.contains(index) else { return }
@@ -318,13 +351,17 @@ struct RefsPanel: View {
         model.select(commit: rows[index].commit)
     }
 
-    private func selectableRows(_ details: RefDetails) -> [(name: String, commit: ObjectID)] {
+    /// The rows that have a commit to select, which leaves out a closed
+    /// folder's branches along with the folder.
+    private func selectableRows(_ details: RefDetails, _ branchRows: BranchRows) -> [(name: String, commit: ObjectID)] {
         var rows: [(name: String, commit: ObjectID)] = []
         if !isCollapsed(.branches) {
-            rows += details.branches.map { ($0.name, $0.tip) }
+            rows += branchRows.local.compactMap(\.branch).map { ($0.name, $0.tip) }
         }
         if !isCollapsed(.remotes) {
-            rows += details.remotes.flatMap { $0.branches.map { ($0.name, $0.tip) } }
+            rows += details.remotes.flatMap { remote in
+                (branchRows.remotes[remote.name] ?? []).compactMap(\.branch).map { ($0.name, $0.tip) }
+            }
         }
         if !isCollapsed(.tags) {
             rows += details.tags.compactMap { tag in tag.commit.map { (tag.name, $0) } }
@@ -342,6 +379,18 @@ struct RefsPanel: View {
         var sections = Set(collapsedSections.split(separator: ",").map(String.init))
         if isCollapsed { sections.insert(section.rawValue) } else { sections.remove(section.rawValue) }
         collapsedSections = sections.sorted().joined(separator: ",")
+    }
+
+    /// The folders that are closed, though a filter opens the ones it has
+    /// matches in.
+    private var closedFolders: Set<String> {
+        Set(collapsedFolders.split(separator: "\n").map(String.init))
+    }
+
+    private func setCollapsed(_ isCollapsed: Bool, folder ref: String) {
+        var folders = closedFolders
+        if isCollapsed { folders.insert(ref) } else { folders.remove(ref) }
+        collapsedFolders = folders.sorted().joined(separator: "\n")
     }
 
     private var sortPicker: some View {
@@ -497,7 +546,8 @@ private struct RefRow<Trailing: View, Commands: View>: View {
     /// at its end, so that stays, and a sentence reads from its start.
     var titleTruncation = Text.TruncationMode.middle
     var isSelected = false
-    var isIndented = false
+    /// How much further in than a section's rows it starts (`RefIndent`).
+    var indent = 0.0
     var hasCommands = false
     var action: (() -> Void)?
     /// What double-clicking the row does, after its first click has done `action`.
@@ -540,7 +590,7 @@ private struct RefRow<Trailing: View, Commands: View>: View {
                 }
             }
         }
-        .padding(.leading, isIndented ? 30 : 8)
+        .padding(.leading, 8 + indent)
         .padding(.trailing, 8)
         .frame(height: subtitle == nil ? 28 : 40)
         .background {
@@ -577,6 +627,100 @@ extension RefRow where Trailing == EmptyView, Commands == EmptyView {
     init(icon: Icon, title: String, subtitle: String, titleTruncation: Text.TruncationMode = .middle) {
         self.init(icon: icon, title: title, subtitle: subtitle, titleTruncation: titleTruncation) {
         } commands: {
+        }
+    }
+}
+
+/// How much further in than a section's rows a row starts: a step for its
+/// remote, if it's a remote's branch, and one for each folder it's in. A step
+/// puts a row's icon just past the line under its folder's chevron.
+private enum RefIndent {
+    static let step = 22.0
+
+    static func of(_ depth: Int, isOnRemote: Bool = false) -> Double {
+        Double(depth + (isOnRemote ? 1 : 0)) * step
+    }
+}
+
+/// A folder of branches (decision 50): a chevron where a branch has its icon,
+/// so that the chevrons line up with the icons of the branches beside them as
+/// in a tree of files, the folder's name in gray, and how many branches are
+/// under it. Clicking it opens or closes it.
+private struct RefFolderRow: View {
+    let name: String
+    /// Its whole path, as in `origin/tm/`, for its tooltip.
+    let path: String
+    let count: Int
+    let isCollapsed: Bool
+    let indent: Double
+    let toggle: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Chevron(pointsDown: !isCollapsed)
+                .frame(width: 16)
+            Text(name)
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            Text(count, format: .number)
+                .font(.system(size: 11.5))
+                .foregroundStyle(.secondary)
+        }
+        .padding(.leading, 8 + indent)
+        .padding(.trailing, 8)
+        .frame(height: 28)
+        .background {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(isHovering ? Palette.hover : .clear)
+        }
+        .padding(.horizontal, 6)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: toggle)
+        .onHover { isHovering = $0 }
+        .help(path)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(path)
+        .accessibilityValue("\(count) \(count == 1 ? "branch" : "branches"), \(isCollapsed ? "Collapsed" : "Expanded")")
+        .accessibilityHint("Shows or hides its branches")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction(.default, toggle)
+    }
+}
+
+/// The thin lines that run down the rows in a folder, one under the chevron of
+/// each folder a row is in, as in a tree of files (decision 31). Each row draws
+/// its own, and rows have no gap between them, so they join into one line that
+/// ends where the folder does. They're under the row's fill, so that they
+/// still show on a selected row.
+private struct RefFolderGuides: View {
+    let depth: Int
+    var isOnRemote = false
+
+    var body: some View {
+        Lines(depth: depth, start: RefIndent.of(0, isOnRemote: isOnRemote), step: RefIndent.step)
+            .stroke(Color.primary.opacity(0.14), lineWidth: 1)
+            .allowsHitTesting(false)
+    }
+
+    private nonisolated struct Lines: Shape {
+        let depth: Int
+        let start: Double
+        let step: Double
+
+        func path(in rect: CGRect) -> Path {
+            var path = Path()
+            for folder in 0..<depth {
+                // The middle of the column that the folder's chevron is in: past
+                // the row's margin of 6 and its padding of 8, half of 16, and on
+                // a half point, so that a line one point wide stays sharp.
+                let x = 22.5 + start + Double(folder) * step
+                path.move(to: CGPoint(x: x, y: rect.minY))
+                path.addLine(to: CGPoint(x: x, y: rect.maxY))
+            }
+            return path
         }
     }
 }
