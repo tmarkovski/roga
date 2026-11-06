@@ -29,6 +29,9 @@ enum SidebarMenus {
         /// Shows the worktree and opens New Branch with In a new worktree
         /// ticked, starting from its branch.
         var newWorktree: () -> Void
+        /// Asks where a worktree whose folder is missing is now, and mends git's
+        /// links to it there.
+        var locate: () -> Void
         var delete: () -> Void
         var reveal: (String) -> Void
         var openInTerminal: (String) -> Void
@@ -65,19 +68,27 @@ enum SidebarMenus {
     /// A linked worktree's menu, with its one deleting row. With a branch that
     /// could go too, the dialog asks how far to go, which the ellipsis says.
     /// Without one, it may not ask at all.
+    ///
+    /// A worktree whose folder is missing has nothing to open, show or start a
+    /// branch from, so it offers to find the folder, or to delete the worktree
+    /// when the folder really is gone. `git worktree remove` clears what git
+    /// keeps for a folder that's gone, and only for that one, where
+    /// `git worktree prune` would clear every missing folder's, including one on
+    /// a disk that isn't mounted.
     static func entries(forWorktree worktree: Worktree, isDeleting: Bool, actions: WorktreeActions) -> [RefMenu.Entry] {
-        var entries: [RefMenu.Entry] = [.command("Open in New Window", action: actions.openInNewWindow), .divider]
-        // A worktree whose folder is missing has no files to start from.
-        if !worktree.isPrunable {
-            entries.append(.command("New Worktree…", isEnabled: !isDeleting, action: actions.newWorktree))
+        let delete = RefMenu.Entry.command(worktree.canDeleteBranch ? "Delete…" : "Delete Worktree", isDestructive: true, isEnabled: !isDeleting, action: actions.delete)
+        if worktree.isPrunable {
+            return [.command("Locate…", isEnabled: !isDeleting, action: actions.locate), .divider, delete]
         }
-        entries += [
+        return [
+            .command("Open in New Window", action: actions.openInNewWindow),
+            .divider,
+            .command("New Worktree…", isEnabled: !isDeleting, action: actions.newWorktree),
             .command("Show in Finder") { actions.reveal(worktree.path) },
             .command("Open in Terminal") { actions.openInTerminal(worktree.path) },
             .divider,
-            .command(worktree.canDeleteBranch ? "Delete…" : "Delete Worktree", isDestructive: true, isEnabled: !isDeleting, action: actions.delete),
+            delete,
         ]
-        return entries
     }
 }
 

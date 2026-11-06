@@ -36,6 +36,7 @@ struct Sidebar: View {
     @State private var isAddingRepositories = false
     @State private var adding = AddRepositoriesChoices()
     @State private var deletions = WorktreeDeletionModel()
+    @State private var repairs = WorktreeRepairModel()
     @FocusState private var isFocused: Bool
     @Environment(\.openWindow) private var openWindow
 
@@ -77,7 +78,7 @@ struct Sidebar: View {
             }
             .frame(maxWidth: .infinity)
         }
-        .dialog { deletions.dialog }
+        .dialog { deletions.dialog ?? repairs.dialog }
     }
 
     /// The button for adding repositories, with the popover it opens.
@@ -166,6 +167,8 @@ struct Sidebar: View {
                 openWindow(value: WorkspaceWindow(selection: row))
             } newWorktree: {
                 newWorktree(row)
+            } locate: {
+                repairs.locate(worktree, in: repository, list: list) { select($0) }
             } delete: {
                 deletions.askToDelete(worktree, in: repository, list: list)
             }
@@ -377,7 +380,13 @@ private struct ScopeHeader<Trailing: View>: View {
 /// gives way, as the counts stay in the title row.
 struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
     var isSelected = false
+    /// Whether it does anything. A row that doesn't is dimmed, and shows no
+    /// commands on hover.
     var isEnabled = true
+    /// Whether clicking it selects it. A row that can't be selected but is
+    /// enabled still fills and shows its commands on hover, as a worktree whose
+    /// folder is missing does, for its menu.
+    var canSelect = true
     /// What agents are doing in the row's worktrees, or nil for no mark.
     var agent: AgentSummary?
     let action: () -> Void
@@ -389,6 +398,7 @@ struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
     init(
         isSelected: Bool = false,
         isEnabled: Bool = true,
+        canSelect: Bool = true,
         agent: AgentSummary?,
         action: @escaping () -> Void,
         @ViewBuilder content: () -> Content,
@@ -397,6 +407,7 @@ struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
     ) {
         self.isSelected = isSelected
         self.isEnabled = isEnabled
+        self.canSelect = canSelect
         self.agent = agent
         self.action = action
         self.content = content()
@@ -437,7 +448,7 @@ struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
         .opacity(isEnabled ? 1 : 0.5)
         .contentShape(Rectangle())
         .onTapGesture {
-            if isEnabled { action() }
+            if isEnabled && canSelect { action() }
         }
         .onHover { isHovering = $0 }
     }
@@ -618,6 +629,10 @@ private struct RepositoryRow: View {
 
 /// A linked worktree's branch, under its repository with a line to it. Its
 /// tooltip has its folder.
+///
+/// One whose folder is missing can't be selected, and its branch is dimmed, as a
+/// missing repository's name is. On hover it shows its menu's button, which is
+/// where to find the folder or delete the worktree.
 private struct WorktreeRow: View {
     let worktree: Worktree
     let uncommittedFiles: Int
@@ -629,15 +644,17 @@ private struct WorktreeRow: View {
     let select: () -> Void
     let openInNewWindow: () -> Void
     let newWorktree: () -> Void
+    let locate: () -> Void
     let delete: () -> Void
 
     var body: some View {
         let agent = agents?.summary
-        SidebarRow(isSelected: isSelected, isEnabled: !worktree.isPrunable && !isDeleting, agent: agent, action: select) {
+        SidebarRow(isSelected: isSelected, isEnabled: !isDeleting, canSelect: canSelect, agent: agent, action: select) {
             Text(worktree.title)
                 .font(.system(size: 14))
                 .lineLimit(1)
                 .truncationMode(.middle)
+                .opacity(worktree.isPrunable ? 0.6 : 1)
                 .padding(.leading, WorktreeConnector.textIndent)
         } trailing: {
             if isDeleting {
@@ -664,16 +681,25 @@ private struct WorktreeRow: View {
         .accessibilityLabel(worktree.title)
         .accessibilityValue([subtitle, agent?.description, uncommittedFilesDescription(uncommittedFiles, hasConflicts: hasConflicts)].compactMap(\.self).joined(separator: ", "))
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
-        .accessibilityAction(.default, select)
+        .accessibilityAction(.default) {
+            if canSelect { select() }
+        }
         .accessibilityActions {
             refMenuActions(menu)
         }
     }
 
+    private var canSelect: Bool {
+        !worktree.isPrunable && !isDeleting
+    }
+
+    /// A missing folder has nothing to open in a window, so only the menu shows.
     @ViewBuilder private var commands: some View {
-        Button(action: openInNewWindow) { Icon.newWindow.image }
-            .help("Open in New Window")
-            .accessibilityLabel("Open in New Window")
+        if !worktree.isPrunable {
+            Button(action: openInNewWindow) { Icon.newWindow.image }
+                .help("Open in New Window")
+                .accessibilityLabel("Open in New Window")
+        }
         RowMenu(entries: menu)
     }
 
@@ -688,6 +714,7 @@ private struct WorktreeRow: View {
             actions: SidebarMenus.WorktreeActions(
                 openInNewWindow: openInNewWindow,
                 newWorktree: newWorktree,
+                locate: locate,
                 delete: delete,
                 reveal: reveal,
                 openInTerminal: openInTerminal

@@ -8,9 +8,10 @@ import GitRunner
 ///
 /// For now a session lists worktrees and refs, reads history, the text of
 /// commits, the files they changed and their patches, reads what's uncommitted
-/// in a worktree, checks out and deletes branches, goes to commits, deletes linked worktrees,
-/// fetches, pulls and pushes, and keeps the commit-graph files up to date. Watching
-/// for changes comes later, as ARCHITECTURE.md describes.
+/// in a worktree, checks out and deletes branches, goes to commits, deletes linked worktrees
+/// and mends them when their folders move, fetches, pulls and pushes, and keeps the
+/// commit-graph files up to date. Watching for changes comes later, as
+/// ARCHITECTURE.md describes.
 public actor RepositorySession {
     public nonisolated let location: RepositoryLocation
     public nonisolated let git: Git
@@ -104,6 +105,18 @@ public actor RepositorySession {
         } catch let error as ParseError {
             throw RepositoryError.unexpectedOutput(command, error.description)
         }
+    }
+
+    /// Mends the links between the repository and a linked worktree that moved to
+    /// `folder`, or without a folder, every linked worktree that's still where git
+    /// last saw it, after the main worktree moved (`WorktreeRepair`).
+    ///
+    /// - Throws: `GitError` when git can't, as when the folder isn't a linked
+    ///   worktree. A folder that's another of the repository's worktrees mends
+    ///   nothing and doesn't throw.
+    @concurrent
+    public nonisolated func repairWorktrees(movedTo folder: String? = nil) async throws {
+        _ = try await Self.run(WorktreeRepair.arguments(movedTo: folder), in: location.commonDirectory, git: git)
     }
 
     /// Who owns the repository, from its remotes' URLs, with `origin`'s owner

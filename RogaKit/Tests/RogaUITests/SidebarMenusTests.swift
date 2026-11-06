@@ -32,7 +32,7 @@ struct SidebarMenusTests {
     }
 
     private func worktreeActions(newWorktree: @escaping () -> Void = {}) -> SidebarMenus.WorktreeActions {
-        SidebarMenus.WorktreeActions(openInNewWindow: {}, newWorktree: newWorktree, delete: {}, reveal: { _ in }, openInTerminal: { _ in })
+        SidebarMenus.WorktreeActions(openInNewWindow: {}, newWorktree: newWorktree, locate: {}, delete: {}, reveal: { _ in }, openInTerminal: { _ in })
     }
 
     // MARK: A repository's row
@@ -85,10 +85,10 @@ struct SidebarMenusTests {
         #expect(titles(entries).last == "Delete Worktree")
     }
 
-    @Test func aWorktreeWhoseFolderIsMissingOffersNoNewWorktree() {
+    @Test func aWorktreeWhoseFolderIsMissingOffersToFindItOrDeleteIt() {
         var missing = linked
         missing.isPrunable = true
         let entries = SidebarMenus.entries(forWorktree: missing, isDeleting: false, actions: worktreeActions())
-        #expect(!titles(entries).contains("New Worktree…"))
+        #expect(titles(entries) == ["Locate…", "—", "Delete…"])
     }
 }
