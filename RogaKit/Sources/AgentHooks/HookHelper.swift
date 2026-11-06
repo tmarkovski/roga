@@ -191,7 +191,7 @@ public enum HookHelper {
 
     /// The fields of a hook's JSON that Roga uses. Prompts and tool output
     /// are never read out of it, and of a tool's input only the few fields
-    /// that its line is made from (decision 43).
+    /// that its line is made from (decision 47).
     struct Payload: Hashable {
         var event: String?
         var session: String?

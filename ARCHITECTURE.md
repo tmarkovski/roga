@@ -90,7 +90,7 @@ roga/
 │   │   │   └── Snapshots.swift
 │   │   ├── AgentHooks/                 system frameworks only, decision 41
 │   │   │   ├── HookHelper.swift        what the roga helper does with one hook
-│   │   │   ├── HookActivity.swift      the short line it makes of what the agent is doing, decision 43
+│   │   │   ├── HookActivity.swift      the short line it makes of what the agent is doing, decision 47
 │   │   │   ├── HookEvent.swift         the one line of JSON it sends
 │   │   │   ├── HookSocket.swift        where the socket is
 │   │   │   ├── HookListener.swift      the app's end of the socket

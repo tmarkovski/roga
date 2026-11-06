@@ -62,7 +62,7 @@ extension HookHelper {
         }
     }
 
-    /// The short line that says what an agent is doing (decision 43), made
+    /// The short line that says what an agent is doing (decision 47), made
     /// here so that a prompt, a tool's input or its output never leaves the
     /// helper: only the line does.
     enum Activity {

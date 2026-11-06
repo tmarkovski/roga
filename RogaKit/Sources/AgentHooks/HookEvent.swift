@@ -13,7 +13,7 @@ public enum AgentHost: String, Codable, Sendable, Hashable, CaseIterable {
 /// It carries only what Roga needs to know what a session is doing and
 /// where. Prompts, tool input and tool output never leave the helper: what
 /// a tool is doing comes as a short line the helper makes from its input
-/// (decision 43), so a line stays small enough to fit in the socket's buffer
+/// (decision 47), so a line stays small enough to fit in the socket's buffer
 /// at once.
 public struct HookEvent: Codable, Sendable, Hashable {
     /// Which version of this format the helper wrote. It's 1.
@@ -48,7 +48,7 @@ public struct HookEvent: Codable, Sendable, Hashable {
     /// A short line for people that says what the agent is doing, such as
     /// "Run the test suite", "git push" or "Editing HookHelper.swift", made
     /// from a tool's input when it starts or asks to be allowed, or the first
-    /// line of the agent's reply when it stops (decision 43). It's never
+    /// line of the agent's reply when it stops (decision 47). It's never
     /// longer than `HookHelper.Activity.characterLimit` characters.
     public var activity: String?
     /// When the helper ran, in seconds since 1970.

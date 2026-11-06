@@ -54,7 +54,7 @@ public final class AgentMonitor {
     /// sessions do, since every tool an agent runs moves its `lastEvent`, and
     /// the sidebar's rows read only this, so that they don't redraw for each one.
     private var marks: [SessionKey: Mark] = [:]
-    /// What each session is doing, as a short line (decision 43). It's kept
+    /// What each session is doing, as a short line (decision 47). It's kept
     /// apart from `marks` because it changes with nearly every tool an agent
     /// starts, and only the rows that show a mark read it, so a new line
     /// redraws those rows and leaves the rest of the sidebar alone.
@@ -624,7 +624,7 @@ struct AgentSummary: Equatable {
     var sessions: Int
     /// What the session is doing, as a short line such as "Run the test
     /// suite", when only one session is in that state and its agent said
-    /// (decision 43). One line can't speak for several sessions.
+    /// (decision 47). One line can't speak for several sessions.
     var activity: String?
 
     init(state: State, since: Date, hosts: [AgentHost], sessions: Int, activity: String? = nil) {
@@ -717,7 +717,7 @@ struct AgentSummary: Equatable {
     /// "Codex needs your OK: git push · 2 min" or "Claude Code: Wants a plan
     /// approved · 2 min". The name keeps a bare "git push" from reading as
     /// something Roga is doing, next to its own lines such as "Rebasing main"
-    /// (decision 43). A finished session's reply stays in the tooltip, since
+    /// (decision 47). A finished session's reply stays in the tooltip, since
     /// the menu's line is short and its folder comes after.
     func menuDetail(now: Date) -> String {
         let parts = menuParts(now: now)

@@ -56,7 +56,7 @@ public struct AgentSession: Sendable, Hashable {
     /// How many of the agent's subagents are running.
     public var subagents: Int
     /// What the agent is doing, as the helper's short line says it
-    /// (decision 43): the tool it started last or wants to be allowed, or
+    /// (decision 47): the tool it started last or wants to be allowed, or
     /// once it finished, the first line of its reply. It's nil when no line
     /// came since the turn began.
     public var activity: String?
@@ -414,7 +414,7 @@ public struct AgentSessions: Sendable, Hashable {
     }
 
     /// The line a session shows after an event from its main agent that says
-    /// what it's doing (decision 43). A tool that starts or asks to be
+    /// what it's doing (decision 47). A tool that starts or asks to be
     /// allowed brings its own line, and a tool that only keeps the agent's
     /// task list, which has none, leaves the one before. A tool that ends
     /// leaves its line until the next one starts, so the line doesn't come

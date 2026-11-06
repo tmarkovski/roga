@@ -1,4 +1,4 @@
-# 43. Say what an agent is doing, in a line the helper makes
+# 47. Say what an agent is doing, in a line the helper makes
 
 Accepted on 2026-11-06. Partly supersedes [decision 41](0041-agents-status-from-their-hooks-and-messages-from-their-clis.md): its helper "never forwards a prompt or a tool's input", and now it forwards a short line about what the agent is doing, made from a tool's input or from the agent's reply. The marks' tooltip and the worktree menu's line say it. The rest of decision 41 still holds. This is the first step that [issue 27](https://github.com/tmarkovski/yaga/issues/27) proposes.
 
