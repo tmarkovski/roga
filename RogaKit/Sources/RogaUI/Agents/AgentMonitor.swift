@@ -742,6 +742,30 @@ struct AgentSummary: Equatable {
         return (words, minutes > 0 ? Self.shortDuration(minutes: minutes) : nil)
     }
 
+    /// What a sidebar row's second line says (decision 48), in the same two
+    /// parts as `menuParts(now:)`. The mark starts that line and already says
+    /// an agent is speaking, so with one session the words are the agent's
+    /// own, as in "Run the test suite" and "6 min", "Needs your OK: git push"
+    /// or "Wants a plan approved". A finished session's are the first line of
+    /// its reply. With nothing said, or several sessions, the line names the
+    /// agents, as in "Claude Code is working" or "2 agents working".
+    func rowParts(now: Date) -> (words: String, time: String?) {
+        let agent = sessions == 1 ? hosts.first?.name ?? "An agent" : "\(sessions) agents"
+        let words: String
+        switch (state, activity) {
+        case (.working, let activity?), (.waiting(.question), let activity?): words = activity
+        case (.waiting(.permission), let activity?): words = "Needs your OK: \(activity)"
+        case (.finished, let activity?): return (activity, nil)
+        case (.working, nil): words = sessions == 1 ? "\(agent) is working" : "\(agent) working"
+        case (.waiting(.permission), nil) where sessions == 1: words = "\(agent) needs your OK"
+        case (.waiting(.question), nil) where sessions == 1: words = "\(agent) is waiting for you"
+        case (.waiting, nil): words = "\(agent) are waiting for you"
+        case (.finished, nil): return ("\(agent) finished", nil)
+        }
+        let minutes = Self.minutes(from: since, to: now)
+        return (words, minutes > 0 ? Self.shortDuration(minutes: minutes) : nil)
+    }
+
     private static func minutes(from start: Date, to end: Date) -> Int {
         max(0, Int(end.timeIntervalSince(start) / 60))
     }

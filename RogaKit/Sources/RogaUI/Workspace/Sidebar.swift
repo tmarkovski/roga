@@ -171,6 +171,7 @@ struct Sidebar: View {
                 worktree: worktree,
                 uncommittedFiles: repository.uncommittedFiles[worktree.path] ?? 0,
                 hasConflicts: repository.conflictedWorktrees.contains(worktree.path),
+                unfinished: repository.unfinishedWork[worktree.path],
                 isDeleting: repository.deletingWorktrees.contains(worktree.path),
                 isSelected: selection == row,
                 isLast: isLast,
@@ -385,13 +386,23 @@ private struct ScopeHeader<Trailing: View>: View {
 /// which gives way to the row's commands while the pointer is over it. The
 /// commands are 24-point buttons 4 points from the row's top and right edges.
 ///
-/// An agent's mark comes before the label, and stays before the commands on
-/// hover, so that what an agent is doing still shows while the pointer is
-/// there (decision 41). It's 6 points from what follows it. With nothing after
-/// it, those 6 points leave the mark where a count would end. Its box is the
-/// same size whatever it shows, so a mark changing never moves anything. In a
-/// narrow row, the mark and the label keep their width and the row's own text
-/// gives way, as the counts stay in the title row.
+/// While there's something to say, the row grows a second line under its own
+/// text, and is 48 points tall rather than 32 (decision 48). The first line
+/// stays where it is in a 32-point row, and the second starts 25 points down,
+/// so the two sit 7 points from the row's top and bottom. When the line is an
+/// agent's, the agent's mark starts it. The label and the commands stay at the
+/// top right, beside the first line, and the second runs under them to where a
+/// count ends, since it needs the room more than they do.
+///
+/// Otherwise an agent's mark comes before the label, and stays before the
+/// commands on hover, so that what an agent is doing still shows while the
+/// pointer is there (decision 41). That's where the mark of an agent at work
+/// goes while the line says that a rebase stopped. It's 6 points from what
+/// follows it. With nothing after it, those 6 points leave the mark where a
+/// count would end. Its box is the same size whatever it shows, so a mark
+/// changing never moves anything. In a narrow row, the mark and the label keep
+/// their width and the row's own text gives way, as the counts stay in the
+/// title row.
 struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
     var isSelected = false
     /// Whether it does anything. A row that doesn't is dimmed, and shows no
@@ -403,17 +414,28 @@ struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
     var canSelect = true
     /// What agents are doing in the row's worktrees, or nil for no mark.
     var agent: AgentSummary?
+    /// What the row's worktree stopped partway through, if it did.
+    var unfinished: UnfinishedWork?
+    /// How far the second line stands from the row's content, to start where
+    /// the row's own text does.
+    var lineIndent: CGFloat = 0
     let action: () -> Void
     @ViewBuilder var content: Content
     @ViewBuilder var trailing: Trailing
     @ViewBuilder var commands: Commands
     @State private var isHovering = false
 
+    /// How tall a row is with one line, and with two.
+    static var height: CGFloat { 32 }
+    static var twoLineHeight: CGFloat { 48 }
+
     init(
         isSelected: Bool = false,
         isEnabled: Bool = true,
         canSelect: Bool = true,
         agent: AgentSummary?,
+        unfinished: UnfinishedWork? = nil,
+        lineIndent: CGFloat = 0,
         action: @escaping () -> Void,
         @ViewBuilder content: () -> Content,
         @ViewBuilder trailing: () -> Trailing,
@@ -423,6 +445,8 @@ struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
         self.isEnabled = isEnabled
         self.canSelect = canSelect
         self.agent = agent
+        self.unfinished = unfinished
+        self.lineIndent = lineIndent
         self.action = action
         self.content = content()
         self.trailing = trailing()
@@ -430,31 +454,45 @@ struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 0) {
-            content
-                .frame(maxHeight: .infinity)
-            Spacer(minLength: 6)
-            HStack(spacing: 0) {
-                if let agent {
-                    SidebarMark(summary: agent)
-                        .padding(.trailing, 6)
+        let line = RowLine(agent: agent, unfinished: unfinished)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top, spacing: 0) {
+                content
+                    .frame(maxHeight: .infinity)
+                Spacer(minLength: 6)
+                HStack(spacing: 0) {
+                    if let agent, line?.isAgents != true {
+                        SidebarMark(summary: agent)
+                            .padding(.trailing, 6)
+                    }
+                    if isHovering && isEnabled {
+                        commands
+                    } else {
+                        trailing
+                    }
                 }
-                if isHovering && isEnabled {
-                    commands
-                } else {
-                    trailing
-                }
+                // The mark and what follows it keep their width, so that a
+                // narrow row cuts the branch's name short rather than a count
+                // or the words beside the mark.
+                .fixedSize(horizontal: true, vertical: false)
+                .frame(height: 24)
+                .padding(.top, 4)
             }
-            // The mark and what follows it keep their width, so that a
-            // narrow row cuts the branch's name short rather than a count or
-            // the words beside the mark.
-            .fixedSize(horizontal: true, vertical: false)
-            .frame(height: 24)
-            .padding(.top, 4)
+            .frame(height: Self.height)
+            if let line {
+                RowLineView(line: line)
+                    .frame(maxWidth: .infinity, maxHeight: 16, alignment: .leading)
+                    .padding(.leading, lineIndent)
+                    // It runs under the count, and ends where the count does.
+                    .padding(.trailing, 7)
+                    // The first line's text ends 7 points above the bottom of
+                    // its 32 points, and this one follows it.
+                    .padding(.top, -7)
+            }
         }
         .padding(.leading, 10)
         .padding(.trailing, 4)
-        .frame(height: 32)
+        .frame(height: line == nil ? Self.height : Self.twoLineHeight, alignment: .top)
         .background {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(isSelected ? Palette.selection : isHovering && isEnabled ? Palette.hover : .clear)
@@ -465,6 +503,91 @@ struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
             if isEnabled && canSelect { action() }
         }
         .onHover { isHovering = $0 }
+    }
+}
+
+/// What a sidebar row's second line is about, when it has one (decision 48).
+/// An agent that waits for you comes first, because it can't go on without
+/// you. Then a merge, rebase or revert that stopped partway, and last an agent
+/// at work or one that finished. A row with none of these has one line.
+enum RowLine: Equatable {
+    case agent(AgentSummary)
+    case unfinished(UnfinishedWork)
+
+    init?(agent: AgentSummary?, unfinished: UnfinishedWork?) {
+        if let agent, case .waiting = agent.state {
+            self = .agent(agent)
+        } else if let unfinished {
+            self = .unfinished(unfinished)
+        } else if let agent {
+            self = .agent(agent)
+        } else {
+            return nil
+        }
+    }
+
+    /// Whether it's an agent's, which its mark starts.
+    var isAgents: Bool {
+        if case .agent = self { true } else { false }
+    }
+}
+
+/// A row's second line, at 13 points. An agent's starts with its mark, 5
+/// points from the words, which are cut short at their end, while how long
+/// stays whole. It's amber while the agent waits for you, and its tooltip is
+/// the mark's. Unfinished work reads as the title row says it, as in
+/// "Rebasing main · 2 conflicts", in red while there are conflicts. Only
+/// what's underway is cut short, at its end, so that the conflicts stay in
+/// sight.
+private struct RowLineView: View {
+    let line: RowLine
+
+    var body: some View {
+        Group {
+            switch line {
+            case .agent(let summary):
+                TimelineView(WholeMinutes(of: [summary])) { context in
+                    let parts = summary.rowParts(now: context.date)
+                    HStack(spacing: 0) {
+                        AgentMark(state: summary.state)
+                            .padding(.trailing, 5)
+                        Text(parts.words)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                        if let time = parts.time {
+                            Text("· \(time)")
+                                .lineLimit(1)
+                                .fixedSize()
+                                .padding(.leading, 4)
+                        }
+                    }
+                    .foregroundStyle(Self.isWaiting(summary) ? AnyShapeStyle(AgentColors.warn) : AnyShapeStyle(.secondary))
+                    .help(summary.help(now: context.date))
+                }
+            case .unfinished(let unfinished):
+                HStack(spacing: 0) {
+                    if let verb = unfinished.verb {
+                        Text(verb)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                        Text("· \(unfinished.state)")
+                            .lineLimit(1)
+                            .fixedSize()
+                            .padding(.leading, 4)
+                    } else {
+                        Text(unfinished.state)
+                            .lineLimit(1)
+                    }
+                }
+                .foregroundStyle(unfinished.hasConflicts ? AnyShapeStyle(Palette.red) : AnyShapeStyle(.secondary))
+                .help(unfinished.help)
+            }
+        }
+        .font(.system(size: 13))
+    }
+
+    private static func isWaiting(_ summary: AgentSummary) -> Bool {
+        if case .waiting = summary.state { true } else { false }
     }
 }
 
@@ -499,8 +622,9 @@ private struct UpdateRow: View {
 
 /// The part of the line under a repository's row that a row under it draws:
 /// straight down past the row, or for the last one, around a corner toward the
-/// row's text. Each row also draws the gap above it, since a row drawn later
-/// would cover anything the one above drew over it.
+/// row's first line, which is the middle of a one-line row (decision 48). Each
+/// row also draws the gap above it, since a row drawn later would cover
+/// anything the one above drew over it.
 private struct WorktreeConnector: View {
     let isLast: Bool
     /// How far the row's text stands from the row's content, to clear the line.
@@ -522,7 +646,7 @@ private struct WorktreeConnector: View {
             var path = Path()
             path.move(to: CGPoint(x: x, y: rect.minY - rowSpacing))
             if isLast {
-                let middle = rect.midY.rounded(.down) + 0.5
+                let middle = (rect.minY + 16).rounded(.down) + 0.5
                 path.addArc(tangent1End: CGPoint(x: x, y: middle), tangent2End: CGPoint(x: x + 10, y: middle), radius: 6)
                 path.addLine(to: CGPoint(x: x + 10, y: middle))
             } else {
@@ -563,7 +687,7 @@ private struct RepositoryRow: View {
 
     var body: some View {
         let agent = agents?.summary
-        SidebarRow(isSelected: isSelected, agent: agent, action: select) {
+        SidebarRow(isSelected: isSelected, agent: agent, unfinished: unfinished, action: select) {
             HStack(spacing: 3) {
                 Text(title)
                     .font(.system(size: 14))
@@ -603,7 +727,7 @@ private struct RepositoryRow: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
         .accessibilityValue(
-            [detail, linkedWorktreesDescription, agent?.description, uncommittedFilesDescription(ownUncommittedFiles, hasConflicts: ownHasConflicts), linkedWorktrees > 0 ? (repository.isExpanded ? "Expanded" : "Collapsed") : nil, problem]
+            [detail, linkedWorktreesDescription, unfinished?.title, agent?.description, uncommittedFilesDescription(ownUncommittedFiles, hasConflicts: ownHasConflicts), linkedWorktrees > 0 ? (repository.isExpanded ? "Expanded" : "Collapsed") : nil, problem]
                 .compactMap(\.self)
                 .joined(separator: ", ")
         )
@@ -630,6 +754,11 @@ private struct RepositoryRow: View {
 
     private var ownHasConflicts: Bool {
         repository.worktrees.first.map { repository.conflictedWorktrees.contains($0.path) } ?? false
+    }
+
+    /// What the main worktree stopped partway through, if it did.
+    private var unfinished: UnfinishedWork? {
+        repository.worktrees.first.flatMap { repository.unfinishedWork[$0.path] }
     }
 
     private var linkedWorktreesDescription: String? {
@@ -680,6 +809,8 @@ private struct WorktreeRow: View {
     let worktree: Worktree
     let uncommittedFiles: Int
     let hasConflicts: Bool
+    /// What the worktree stopped partway through, if it did.
+    let unfinished: UnfinishedWork?
     let isDeleting: Bool
     let isSelected: Bool
     let isLast: Bool
@@ -692,7 +823,7 @@ private struct WorktreeRow: View {
 
     var body: some View {
         let agent = agents?.summary
-        SidebarRow(isSelected: isSelected, isEnabled: !isDeleting, canSelect: canSelect, agent: agent, action: select) {
+        SidebarRow(isSelected: isSelected, isEnabled: !isDeleting, canSelect: canSelect, agent: agent, unfinished: unfinished, lineIndent: WorktreeConnector.textIndent, action: select) {
             Text(worktree.title)
                 .font(.system(size: 14))
                 .lineLimit(1)
@@ -722,7 +853,7 @@ private struct WorktreeRow: View {
         .help(worktree.path)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(worktree.title)
-        .accessibilityValue([subtitle, agent?.description, uncommittedFilesDescription(uncommittedFiles, hasConflicts: hasConflicts)].compactMap(\.self).joined(separator: ", "))
+        .accessibilityValue([subtitle, unfinished?.title, agent?.description, uncommittedFilesDescription(uncommittedFiles, hasConflicts: hasConflicts)].compactMap(\.self).joined(separator: ", "))
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction(.default) {
             if canSelect { select() }
@@ -778,7 +909,7 @@ private struct HiddenWorktreesRow: View {
 
     var body: some View {
         let agent = agents?.summary
-        SidebarRow(agent: agent, action: show) {
+        SidebarRow(agent: agent, lineIndent: WorktreeConnector.textIndent, action: show) {
             Text(title)
                 .font(.system(size: 13))
                 .foregroundStyle(.secondary)
