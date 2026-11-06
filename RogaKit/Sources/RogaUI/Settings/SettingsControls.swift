@@ -30,6 +30,19 @@ enum SettingsColors {
     })
 }
 
+extension VerticalAlignment {
+    private enum SettingsFirstLine: AlignmentID {
+        static func defaultValue(in context: ViewDimensions) -> CGFloat {
+            context[VerticalAlignment.center]
+        }
+    }
+
+    /// The middle of a row's first line, which is its name, for the controls
+    /// at the row's top right. They stay beside the name however many lines
+    /// go under it, as a row's commands do elsewhere in Roga.
+    static let settingsFirstLine = VerticalAlignment(SettingsFirstLine.self)
+}
+
 /// A group of settings under a heading, with a thin line between its rows and
 /// no card around them.
 struct SettingsSection<Aside: View, Content: View>: View {
