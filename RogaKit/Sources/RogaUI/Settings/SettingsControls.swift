@@ -212,19 +212,33 @@ extension ToggleStyle where Self == SettingsSwitchStyle {
 }
 
 /// Buttons side by side on a gray strip, each as wide as the widest, with the
-/// one that's chosen raised in white.
+/// one that's chosen raised in white. An icon before a button's title is gray
+/// until it's chosen, as on the canvas.
 struct SettingsSegments<Value: Hashable>: View {
     @Binding var selection: Value
     let options: [(value: Value, title: String)]
+    var icon: (Value) -> Icon? = { _ in nil }
 
     var body: some View {
         EqualWidths(spacing: 2) {
             ForEach(options, id: \.value) { option in
-                Button(option.title) {
+                let isOn = selection == option.value
+                Button {
                     selection = option.value
+                } label: {
+                    if let icon = icon(option.value) {
+                        HStack(spacing: 6) {
+                            icon.image
+                                .font(.system(size: 13))
+                                .foregroundStyle(isOn ? Color.primary : SettingsColors.note)
+                            Text(option.title)
+                        }
+                    } else {
+                        Text(option.title)
+                    }
                 }
-                .buttonStyle(SegmentStyle(isOn: selection == option.value))
-                .accessibilityAddTraits(selection == option.value ? .isSelected : [])
+                .buttonStyle(SegmentStyle(isOn: isOn))
+                .accessibilityAddTraits(isOn ? .isSelected : [])
             }
         }
         .padding(2)

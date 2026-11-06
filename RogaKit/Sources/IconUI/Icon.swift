@@ -69,6 +69,11 @@ extension Icon {
     public static let agent = bot
     public static let organization = buildingComplex
 
+    // The themes in Settings › Appearance.
+    public static let systemTheme = monitor
+    public static let lightTheme = sun
+    public static let darkTheme = moon
+
     /// The chevron beside something that folds, drawn pointing down, which is how it
     /// looks while what it folds is showing.
     public static let disclosure = chevronDown
