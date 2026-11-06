@@ -116,6 +116,68 @@ struct BranchModelTests {
         #expect(model.branch.summary().hasPrefix("couldn't reach origin"))
     }
 
+    // MARK: The Fetch button
+
+    @Test func fetchingByItselfTurnsTheFetchButton() async throws {
+        let clones = try await clones()
+        let model = model(clones)
+        await model.appear()
+        #expect(model.branch.quietFetch != nil)
+        #expect(model.branch.isFetching)
+        await model.branch.quietFetch?.value
+        #expect(!model.branch.isFetching)
+    }
+
+    /// The button turns while it runs, and the counts say what it found, so
+    /// nothing takes their place (decision 45).
+    @Test func aFetchSomeoneAsksForSaysNothingInTheRow() async throws {
+        let clones = try await clones()
+        let model = model(clones)
+        await model.appear()
+        await model.branch.quietFetch?.value
+        try await pushFromOther(clones)
+
+        model.branch.fetch()
+        #expect(model.branch.action == .fetching)
+        #expect(model.branch.isFetching)
+        await model.branch.running?.value
+        #expect(!model.branch.isFetching)
+        #expect(model.branch.finished == nil)
+        await model.check?.value
+        #expect(model.branch.status?.behind == 1)
+    }
+
+    @Test func theFetchButtonSaysWhereWhenAndHow() async throws {
+        let clones = try await clones()
+        let model = model(clones)
+        await model.appear()
+        await model.branch.quietFetch?.value
+        let fetched = try #require(model.branch.fetchRecord.lastFetched)
+        #expect(model.branch.fetchHelp(now: fetched.addingTimeInterval(4 * 60)) == """
+            Fetch from origin
+            Last fetched 4 min ago
+            git fetch origin
+            """)
+    }
+
+    @Test func theFetchButtonSaysWhenItCouldntReachTheRemote() async throws {
+        let clones = try await clones()
+        try await git("remote", "set-url", "origin", clones.folder + "/gone.git", in: clones.work)
+        let model = model(clones)
+        await model.appear()
+        await model.branch.quietFetch?.value
+        #expect(model.branch.fetchHelp().hasPrefix("Fetch from origin\nCouldn't reach origin"))
+        #expect(model.branch.fetchHelp().hasSuffix("\ngit fetch origin"))
+    }
+
+    @Test func theFetchButtonSaysWhenThereIsNoRemote() async throws {
+        let clones = try await clones()
+        try await git("remote", "remove", "origin", in: clones.work)
+        let model = model(clones)
+        await model.appear()
+        #expect(model.branch.fetchHelp() == "No remote to fetch from")
+    }
+
     // MARK: Pulling
 
     @Test func pullsAndSaysSo() async throws {

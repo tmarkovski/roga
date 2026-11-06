@@ -35,6 +35,24 @@ public struct WorkspaceWindow: Codable, Hashable, Sendable {
     }
 }
 
+/// How wide the left part of the title row is, which only the number of commits
+/// at its other end reads. It changes on every frame while words open and close
+/// after the branch, and this way that redraws history's commands rather than
+/// the whole window.
+@MainActor @Observable final class TitleRowWidth {
+    /// How wide it is, once it's been laid out.
+    var shown: Double?
+    /// About how much space the toolbar keeps between two items.
+    static let toolbarSpacing = 12.0
+
+    /// Whether something this wide fits beside it, when it may take up to
+    /// `available`. Before the window has been laid out, everything fits.
+    func leavesRoom(for width: Double, available: Double?) -> Bool {
+        guard let available, let shown else { return true }
+        return available - shown >= width + Self.toolbarSpacing
+    }
+}
+
 private struct SidebarLine: View {
     let hover: SidebarLineHover
 
@@ -98,6 +116,7 @@ public struct WorkspaceView: View {
     @State private var columnWidth: Double?
     /// The width of the middle of the window, once it's been laid out.
     @State private var middleWidth: Double?
+    @State private var titleRowShown = TitleRowWidth()
     @State private var sidebarLine = SidebarLineHover()
     @State private var showsSettings = false
     /// Which window `openSettings` shows Settings on, which keeps it equal from
@@ -211,7 +230,11 @@ public struct WorkspaceView: View {
                 .sharedBackgroundVisibility(.hidden)
                 ToolbarSpacer(.flexible)
                 if let model = shownModel, case .ready = model.phase {
-                    HistoryCommands(model: model)
+                    CheckoutNote(model: model)
+                }
+                branchButtons
+                if let model = shownModel, case .ready = model.phase {
+                    HistoryCommands(model: model, titleRow: titleRowShown, titleRowRoom: titleRowRoom)
                 }
                 ToolbarItem {
                     RefsPanelToggle(visibility: refsPanelVisibility)
@@ -404,9 +427,10 @@ public struct WorkspaceView: View {
     }
 
     /// What the window shows, on one line like the title of a panel: the
-    /// repository, the worktree's branch and what can be done with it, and how many
-    /// commits it has once they've been read. When there's no room, the number of
-    /// commits goes first, then the branch's name truncates, and the counts stay.
+    /// repository, then the worktree's branch and how far it is from its upstream.
+    /// When there's no room, the number of commits at the other end of the row
+    /// goes first, then the branch's name truncates, down to a few letters, then
+    /// the repository's name does. The counts stay, and so do Fetch and New Branch.
     private var titleRow: some View {
         HStack(spacing: 6) {
             if let (repository, worktree) = shown, let worktree, let selected = window?.selection {
@@ -419,7 +443,9 @@ public struct WorkspaceView: View {
                     monitor: agentMonitor,
                     list: list
                 )
-                .fixedSize()
+                // Ahead of the branch, so that its name only truncates once
+                // the branch's is as short as it goes.
+                .layoutPriority(2)
             } else {
                 Text(title)
                     .font(.system(size: 13, weight: .medium))
@@ -449,22 +475,39 @@ public struct WorkspaceView: View {
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)
                 }
-                if let commits = shownModel?.commitCountDescription {
-                    ViewThatFits(in: .horizontal) {
-                        Text("· \(commits)")
-                            .font(.system(size: 13))
-                            .foregroundStyle(.secondary)
-                            .fixedSize()
-                        Color.clear.frame(width: 0, height: 0)
-                    }
-                }
             }
         }
         .lineLimit(1)
         // The chip's icon is in line with the titles of the panels below it,
         // and its hover fill reaches out past that.
         .padding(.leading, 1)
+        // Inside the frame, which can be wider than what's in it, so that it's
+        // how wide the row really is. The number of commits gets what's left.
+        .onGeometryChange(for: Double.self) { $0.size.width } action: { titleRowShown.shown = $0 }
         .frame(maxWidth: titleRowWidth, alignment: .leading)
+    }
+
+    /// Fetch and New Branch, at the right end of the title row before history's
+    /// commands, for a worktree with a branch to act on.
+    @ToolbarContentBuilder private var branchButtons: some ToolbarContent {
+        if let (_, worktree) = shown, let worktree, !worktree.isBare,
+           let selected = window?.selection, let model = shownModel {
+            ToolbarItem {
+                BranchButtons(branch: model.branch, worktree: worktree) { folder, commit in
+                    if case .open(let session) = shown?.0.state {
+                        showWorktree(of: selected, session: session)(folder, commit)
+                    }
+                }
+                // Apart from history's commands, which they don't act on.
+                .padding(.trailing, Self.branchButtonsGap)
+            }
+            .sharedBackgroundVisibility(.hidden)
+        }
+    }
+
+    /// The most the title row can take, once the window has been laid out.
+    private var titleRowRoom: Double? {
+        middleWidth == nil ? nil : titleRowWidth
     }
 
     /// What the menu of the shown repository's worktrees does, which the chip
@@ -482,13 +525,22 @@ public struct WorkspaceView: View {
         )
     }
 
+    /// The space between the branch's buttons and history's commands.
+    private static let branchButtonsGap = 8.0
+
     /// How wide the title can get, because the toolbar moves what doesn't fit
-    /// into a menu, starting with the commands after it.
+    /// into a menu, starting with the commands after it. The number of commits
+    /// doesn't count, because it goes first, when it doesn't fit what's left.
     private var titleRowWidth: Double {
         guard let middleWidth else { return .infinity }
         // History's order button, the button for the refs panel, and the space
         // the toolbar keeps around them.
         var taken = 125.0
+        // Fetch and New Branch, the gap after them, and the toolbar's space
+        // before them.
+        if let (_, worktree) = shown, let worktree, !worktree.isBare, shownModel != nil {
+            taken += 2 * 28 + 2 + Self.branchButtonsGap + TitleRowWidth.toolbarSpacing
+        }
         // The window's buttons and the button for the sidebar.
         if columns == .detailOnly { taken += 140 }
         // The note about the commit-graph file.

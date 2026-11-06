@@ -172,10 +172,16 @@ final class BranchModel {
     private(set) var status: BranchStatus?
     /// What became of the repository's latest fetch.
     private(set) var fetchRecord = FetchRecord()
-    /// Whether Roga is fetching by itself, which only the branch's menu mentions.
+    /// Whether Roga is fetching by itself, which the branch's menu says and the
+    /// Fetch button shows by turning.
     private(set) var isFetchingByItself = false
     /// What git is doing because someone asked it to.
     private(set) var action: Action?
+
+    /// Whether any fetch is running, whoever asked for it, which the Fetch button
+    /// shows by turning (decision 45).
+    var isFetching: Bool { action == .fetching || isFetchingByItself }
+
     /// What just happened, as in `Pulled`, for a moment.
     private(set) var finished: String?
     /// What takes back what just happened, as for a commit. It's set before `work`
@@ -289,12 +295,15 @@ final class BranchModel {
         }
     }
 
-    /// Fetches because someone asked to.
+    /// Fetches because someone asked to. Nothing opens in the title row, because
+    /// the Fetch button turns while it runs, and when it's done a count appears
+    /// or ticks up (decision 45). A fetch Roga started by itself stops, so that
+    /// this one can report what goes wrong.
     func fetch() {
         guard let remote = status?.remote else { return }
         run(.fetching, failure: "Can't fetch from \(remote)") { [session, worktree] in
             try await session.fetch(from: remote, in: worktree)
-            return "Fetched"
+            return nil
         }
     }
 
@@ -686,6 +695,21 @@ final class BranchModel {
             return "Push \(branchName) to \(remote) for the first time\n\(Self.command(push.arguments))"
         }
         return "\(Self.commits(status.ahead, "Push")) from \(branchName) to \(upstreamName ?? "")\n\(Self.command(push.arguments))"
+    }
+
+    /// The tooltip of the Fetch button: where it fetches from, when Roga last
+    /// did, and the command.
+    func fetchHelp(now: Date = Date()) -> String {
+        guard let remote = status?.remote else { return "No remote to fetch from" }
+        var lines = [isFetching ? "Fetching from \(remote)…" : "Fetch from \(remote)"]
+        let fetched = fetchRecord.lastFetched.map { "Last fetched " + Self.age(of: $0, now: now) }
+        if let failure = fetchRecord.failure, !failure.isEmpty, !isFetching {
+            lines.append(["Couldn't reach \(remote)", fetched].compactMap(\.self).joined(separator: ". "))
+        } else if let fetched, !isFetching {
+            lines.append(fetched)
+        }
+        lines.append(Self.command(RepositorySession.fetchArguments(from: remote)))
+        return lines.joined(separator: "\n")
     }
 
     private static func commits(_ count: Int, _ verb: String) -> String {

@@ -104,9 +104,8 @@ private struct LoadingHistory: View {
     }
 }
 
-/// The list of commits. It has no header, because what it would say is in the
-/// title row: how many commits there are after the branch, and its commands at
-/// the right end.
+/// The list of commits. It has no header, because what it would say is at the
+/// right end of the title row: how many commits there are, and its commands.
 struct HistoryPanel: View {
     let model: RepositoryModel
     let showWorktree: (String, ObjectID?) -> Void
@@ -128,11 +127,16 @@ struct HistoryPanel: View {
     }
 }
 
-/// History's part of the title row. The window declares it, because macOS puts
-/// the items of a view inside another after that view's, and the button for the
-/// refs panel has to come last.
-struct HistoryCommands: ToolbarContent {
-    @Bindable var model: RepositoryModel
+/// A checkout that's taking a while, which says so before the branch's buttons in
+/// the title row, so that its words opening moves nothing to their right.
+struct CheckoutNote: ToolbarContent {
+    let model: RepositoryModel
+
+    /// How wide it is, for leaving room for it.
+    static func width(for branch: String) -> Double {
+        let text = "Checking out \(branch)…" as NSString
+        return text.size(withAttributes: [.font: NSFont.systemFont(ofSize: 12)]).width.rounded(.up)
+    }
 
     var body: some ToolbarContent {
         if let branch = model.slowCheckout {
@@ -144,6 +148,34 @@ struct HistoryCommands: ToolbarContent {
             }
             .sharedBackgroundVisibility(.hidden)
         }
+    }
+}
+
+/// History's part of the title row: how many commits it shows, and its commands.
+/// The window declares it, because macOS puts the items of a view inside another
+/// after that view's, and the button for the refs panel has to come last.
+struct HistoryCommands: ToolbarContent {
+    @Bindable var model: RepositoryModel
+    /// How wide the left part of the title row is.
+    let titleRow: TitleRowWidth
+    /// The most the left part of the title row can take, or nil before the window
+    /// has been laid out.
+    let titleRowRoom: Double?
+
+    /// The font of the number of commits.
+    private static let commitCountFont = NSFont.systemFont(ofSize: 12)
+
+    /// Whether the number of commits has room. It's the first thing to go when the
+    /// row is short of room, before the branch's name truncates. The toolbar keeps
+    /// an item's room after what's in it has shrunk, so the item comes and goes,
+    /// by how wide its words are.
+    private func showsCommitCount(_ commits: String) -> Bool {
+        var width = (commits as NSString).size(withAttributes: [.font: Self.commitCountFont]).width.rounded(.up)
+        if let branch = model.slowCheckout { width += CheckoutNote.width(for: branch) + TitleRowWidth.toolbarSpacing }
+        return titleRow.leavesRoom(for: width, available: titleRowRoom)
+    }
+
+    var body: some ToolbarContent {
         if model.historyWasSlowToLoad, let explanation = model.slowHistoryExplanation {
             ToolbarItem {
                 Group {
@@ -158,6 +190,19 @@ struct HistoryCommands: ToolbarContent {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .help(explanation)
+            }
+            .sharedBackgroundVisibility(.hidden)
+        }
+        if let commits = model.commitCountDescription, showsCommitCount(commits) {
+            // Every commit history shows, from every branch, remote branch and
+            // tag, rather than the branch's, so it goes with history's commands.
+            ToolbarItem {
+                Text(commits)
+                    .font(Font(Self.commitCountFont))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .fixedSize()
+                    .help("History shows \(commits), from every branch, remote branch and tag")
             }
             .sharedBackgroundVisibility(.hidden)
         }
