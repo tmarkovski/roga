@@ -156,7 +156,7 @@ public struct WorkspaceView: View {
 
     public var body: some View {
         NavigationSplitView(columnVisibility: $columns) {
-            Sidebar(list: list, monitor: agentMonitor, selection: selection, scope: scope, place: place, showsRail: showsRail, showsSettings: $showsSettings, locate: locate)
+            Sidebar(list: list, monitor: agentMonitor, selection: selection, scope: scope, place: place, showsRail: showsRail, showsSettings: $showsSettings, locate: locate, newWorktree: startNewWorktree)
                 .overlay(alignment: .trailing) {
                     // A line between the sidebar and the worktree, from the
                     // top of the window to the bottom.
@@ -502,6 +502,17 @@ public struct WorkspaceView: View {
 
     private func locate(_ repository: ListedRepository) {
         locateRepository(repository, list: list) { selection.wrappedValue = $0 }
+    }
+
+    /// Shows a worktree and opens New Branch there with In a new worktree ticked,
+    /// as New Worktree… does in the title row, for the sidebar's menus. New Branch
+    /// hangs off the title row and starts from the branch of the worktree on screen,
+    /// so the worktree has to show first. Its model is the one the window goes on to
+    /// show, so the popover opens once the title row has its branch.
+    private func startNewWorktree(from target: WorktreeSelection) {
+        guard let repository = list.repository(at: target.repository), case .open(let session) = repository.state else { return }
+        selection.wrappedValue = target
+        model(for: target, session: session).branch.startNewWorktree()
     }
 }
 

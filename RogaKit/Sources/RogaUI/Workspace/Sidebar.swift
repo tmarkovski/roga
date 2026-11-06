@@ -28,6 +28,9 @@ struct Sidebar: View {
     /// rail opens.
     @Binding var showsSettings: Bool
     let locate: (ListedRepository) -> Void
+    /// Shows a worktree and opens New Branch there, with In a new worktree
+    /// ticked.
+    let newWorktree: (WorktreeSelection) -> Void
     /// Whether the rows show agents' marks, as the person chose in Settings.
     var marks = AgentMarksSetting()
     @State private var isAddingRepositories = false
@@ -143,6 +146,8 @@ struct Sidebar: View {
                 openWindow(value: WorkspaceWindow(selection: home))
             } locate: {
                 locate(repository)
+            } newWorktree: {
+                newWorktree(home)
             }
             .id(home)
         case .worktree(let repository, let worktree, let isLast):
@@ -159,6 +164,8 @@ struct Sidebar: View {
                 select(row)
             } openInNewWindow: {
                 openWindow(value: WorkspaceWindow(selection: row))
+            } newWorktree: {
+                newWorktree(row)
             } delete: {
                 deletions.askToDelete(worktree, in: repository, list: list)
             }
@@ -498,6 +505,7 @@ private struct RepositoryRow: View {
     let toggle: () -> Void
     let openInNewWindow: () -> Void
     let locate: () -> Void
+    let newWorktree: () -> Void
 
     var body: some View {
         let agent = agents?.summary
@@ -593,20 +601,18 @@ private struct RepositoryRow: View {
     }
 
     private var menu: [RefMenu.Entry] {
-        var entries: [RefMenu.Entry] = []
-        if let main {
-            entries += [
-                .command("Open in New Window", action: openInNewWindow),
-                .divider,
-                .command("Show in Finder") { reveal(main.path) },
-                .command("Open in Terminal") { openInTerminal(main.path) },
-                .divider,
-            ]
-        } else if problem != nil {
-            entries += [.command("Locate…", action: locate), .divider]
-        }
-        entries.append(.command("Remove from Sidebar") { list.remove(repository) })
-        return entries
+        SidebarMenus.entries(
+            forRepository: main,
+            cantOpen: problem != nil,
+            actions: SidebarMenus.RepositoryActions(
+                openInNewWindow: openInNewWindow,
+                newWorktree: newWorktree,
+                locate: locate,
+                remove: { [list, repository] in list.remove(repository) },
+                reveal: reveal,
+                openInTerminal: openInTerminal
+            )
+        )
     }
 }
 
@@ -622,6 +628,7 @@ private struct WorktreeRow: View {
     let agents: RowAgents?
     let select: () -> Void
     let openInNewWindow: () -> Void
+    let newWorktree: () -> Void
     let delete: () -> Void
 
     var body: some View {
@@ -674,28 +681,18 @@ private struct WorktreeRow: View {
         worktree.isPrunable ? "Its folder is missing" : (worktree.path as NSString).lastPathComponent
     }
 
-    /// Whether it has a branch that can go with it. A branch without commits yet
-    /// has nothing to delete.
-    private var hasBranch: Bool {
-        worktree.branch != nil && worktree.head != nil
-    }
-
-    /// Its one deleting row. With a branch that could go too, the dialog asks how far
-    /// to go, which the ellipsis says. Without one, it may not ask at all.
     private var menu: [RefMenu.Entry] {
-        placeEntries + [
-            .divider,
-            .command(hasBranch ? "Delete…" : "Delete Worktree", isDestructive: true, isEnabled: !isDeleting, action: delete),
-        ]
-    }
-
-    private var placeEntries: [RefMenu.Entry] {
-        [
-            .command("Open in New Window", action: openInNewWindow),
-            .divider,
-            .command("Show in Finder") { reveal(worktree.path) },
-            .command("Open in Terminal") { openInTerminal(worktree.path) },
-        ]
+        SidebarMenus.entries(
+            forWorktree: worktree,
+            isDeleting: isDeleting,
+            actions: SidebarMenus.WorktreeActions(
+                openInNewWindow: openInNewWindow,
+                newWorktree: newWorktree,
+                delete: delete,
+                reveal: reveal,
+                openInTerminal: openInTerminal
+            )
+        )
     }
 }
 
