@@ -149,15 +149,30 @@ enum SidebarItem: Identifiable {
     /// from the repository's row ends here.
     case worktree(ListedRepository, Worktree, isLast: Bool)
     /// The row that stands for the worktrees a collapsed repository hides, with
-    /// how many uncommitted files they have. Clicking it shows them.
-    case hiddenWorktrees(ListedRepository, title: String, uncommittedFiles: Int, hasConflicts: Bool)
+    /// their folders and how many uncommitted files they have. Clicking it
+    /// shows them.
+    case hiddenWorktrees(ListedRepository, title: String, worktrees: [String], uncommittedFiles: Int, hasConflicts: Bool)
 
     var id: String {
         switch self {
         case .label(let title): "label \(title)"
         case .repository(let repository, _, _): "repository \(repository.path)"
         case .worktree(_, let worktree, _): "worktree \(worktree.path)"
-        case .hiddenWorktrees(let repository, _, _, _): "hidden worktrees \(repository.path)"
+        case .hiddenWorktrees(let repository, _, _, _, _): "hidden worktrees \(repository.path)"
+        }
+    }
+
+    /// The folders of the worktrees whose agents the row's mark stands for
+    /// (decision 41). A repository's row is its main worktree, and the row for
+    /// hidden worktrees marks the most urgent of the ones it hides, as its
+    /// count adds up their files, so that an agent waiting in one shows
+    /// without expanding the repository.
+    var markedWorktrees: [String] {
+        switch self {
+        case .label: []
+        case .repository(let repository, _, _): repository.worktrees.first.map { [$0.path] } ?? []
+        case .worktree(_, let worktree, _): [worktree.path]
+        case .hiddenWorktrees(_, _, let worktrees, _, _): worktrees
         }
     }
 }
@@ -201,6 +216,7 @@ struct SidebarLayout {
         items.append(.hiddenWorktrees(
             repository,
             title: shown.isEmpty ? "\(hidden.count) \(noun)" : "\(hidden.count) more \(noun)",
+            worktrees: hidden.map(\.path),
             uncommittedFiles: hidden.reduce(0) { $0 + repository.uncommittedFiles[$1.path, default: 0] },
             hasConflicts: hidden.contains { repository.conflictedWorktrees.contains($0.path) }
         ))

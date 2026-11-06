@@ -18,7 +18,8 @@ enum DialogColors {
     /// goes darker.
     static let terminal = appearanceColor(light: 0x272822, dark: 0x1A1B17)
 
-    private static func appearanceColor(light: Int, dark: Int) -> Color {
+    /// A color that's one hex value in light mode and another in dark mode.
+    static func appearanceColor(light: Int, dark: Int) -> Color {
         func color(_ value: Int) -> NSColor {
             NSColor(
                 srgbRed: CGFloat(value >> 16 & 0xFF) / 255,

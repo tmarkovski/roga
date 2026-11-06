@@ -79,6 +79,26 @@ if ! codesign --display --verbose=2 "$app" 2>&1 | grep -q "flags=.*runtime"; the
     exit 1
 fi
 
+# Agents' hooks run the roga helper inside the app (decision 41), so a
+# release without it would never hear from them. Notarization rejects a
+# helper without the hardened runtime, and the export should have signed it
+# with the app's certificate, so check it here rather than after the upload.
+helper="$app/Contents/Helpers/roga"
+if [[ ! -f "$helper" || ! -x "$helper" ]]; then
+    echo "$helper is missing or isn't executable, so agents' hooks couldn't reach Roga." >&2
+    exit 1
+fi
+helper_signature="$(codesign --display --verbose=2 "$helper" 2>&1 || true)"
+if ! grep -q "flags=.*runtime" <<< "$helper_signature"; then
+    echo "$helper isn't signed with the hardened runtime, which notarization requires." >&2
+    exit 1
+fi
+helper_team="$(awk -F= '$1 == "TeamIdentifier" && $2 != "not set" { print $2 }' <<< "$helper_signature")"
+if [[ "$helper_team" != "$team" ]]; then
+    echo "$helper isn't signed by team $team like the app (its team: ${helper_team:-none})." >&2
+    exit 1
+fi
+
 echo "Notarizing"
 ditto -c -k --sequesterRsrc --keepParent "$app" "$work/notarize.zip"
 xcrun notarytool submit "$work/notarize.zip" --keychain-profile "$notary_profile" --wait

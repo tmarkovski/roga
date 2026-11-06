@@ -57,6 +57,14 @@ public final class RepositoryList {
         lastSelection = contents.lastSelection
     }
 
+    /// A list of repositories that it neither opens nor reads from a file, for
+    /// checking what depends on which worktrees are listed. What it saves goes
+    /// to a temporary file.
+    init(listing repositories: [ListedRepository]) {
+        store = RepositoryStore(file: FileManager.default.temporaryDirectory.appending(path: "roga-list-\(UUID().uuidString).json"))
+        self.repositories = repositories
+    }
+
     var isConnected: Bool { git != nil }
 
     /// The repositories grouped the way the rail picks them.
@@ -91,6 +99,68 @@ public final class RepositoryList {
 
     func repository(at path: String) -> ListedRepository? {
         repositories.first { $0.path == path }
+    }
+
+    /// The listed worktree that a folder is in: the worktree whose folder it
+    /// is, or else the deepest one that holds it, because Claude Code puts its
+    /// worktrees inside the main checkout. An agent says which folder it works
+    /// in, and this is how its session finds its row (decision 41).
+    ///
+    /// Paths are compared standardized and with symbolic links resolved, since
+    /// an agent and git can spell the same folder differently, and a worktree
+    /// holds only what's under its folder, so `/a/api` doesn't hold
+    /// `/a/api-old`. Bare repositories and worktrees whose folders are gone
+    /// hold nothing.
+    ///
+    /// It asks the file system about every worktree's folder, so it's for
+    /// one folder at a time. The agents' monitor, which places a mark for
+    /// each row as it draws, resolves folders away from the main actor and
+    /// compares them with `deepest(holding:in:)`.
+    func worktree(containing folder: String) -> WorktreeSelection? {
+        let places = repositories.flatMap { repository in
+            repository.worktrees.filter { !$0.isBare && !$0.isPrunable }.map { worktree in
+                (folder: Self.comparablePath(worktree.path), value: WorktreeSelection(repository: repository.path, worktree: worktree.path))
+            }
+        }
+        return Self.deepest(holding: Self.comparablePath(folder), in: places)
+    }
+
+    /// Of some folders, each with what it stands for, what stands for the
+    /// deepest one that holds `target`: `target` itself, or a folder it's
+    /// under. Both sides have to be comparable already, as
+    /// `comparablePath(_:)` makes them. A match ends at a `/`, so `/a/api`
+    /// doesn't hold `/a/api-old`.
+    nonisolated static func deepest<Value>(holding target: String, in places: [(folder: String, value: Value)]) -> Value? {
+        var found: (value: Value, length: Int)?
+        for (folder, value) in places {
+            guard folder.count > found?.length ?? -1,
+                  target == folder || target.hasPrefix(folder.hasSuffix("/") ? folder : folder + "/")
+            else { continue }
+            found = (value, folder.count)
+        }
+        return found?.value
+    }
+
+    /// A path without `.` and `..` or a trailing slash, worked out from its
+    /// text alone, without asking the file system.
+    nonisolated static func standardizedPath(_ path: String) -> String {
+        let standardized = URL(filePath: path).standardized.path(percentEncoded: false)
+        return standardized.count > 1 && standardized.hasSuffix("/") ? String(standardized.dropLast()) : standardized
+    }
+
+    /// A path without `.` and `..`, a trailing slash or symbolic links, so that
+    /// two spellings of a folder compare equal. When the folder doesn't exist,
+    /// as when an agent works in one that's been deleted, the part of the path
+    /// that does is resolved.
+    nonisolated static func comparablePath(_ path: String) -> String {
+        let trimmed = standardizedPath(path)
+        if let resolved = realpath(trimmed, nil) {
+            defer { free(resolved) }
+            return String(cString: resolved)
+        }
+        let parent = (trimmed as NSString).deletingLastPathComponent
+        guard !parent.isEmpty, parent != trimmed else { return trimmed }
+        return (comparablePath(parent) as NSString).appendingPathComponent((trimmed as NSString).lastPathComponent)
     }
 
     /// Adds the repository that `folder` is in, unless it's listed already,

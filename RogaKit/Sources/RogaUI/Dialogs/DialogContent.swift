@@ -129,6 +129,11 @@ struct DialogSwitch {
 enum TerminalLine: Equatable {
     /// A git command that a button will run, by its arguments after `git`.
     case command([String])
+    /// A program other than git that a button will run, such as an agent's
+    /// command-line tool (decision 41). It shows by its name, the way someone
+    /// with it in their `PATH` would type it, unless `showsPath`, for a copy
+    /// that the name wouldn't find. Copy copies it whole, with its full path.
+    case program(ProgramCommand, showsPath: Bool = false)
     /// A git command that already ran.
     case ran([String])
     /// What git said.

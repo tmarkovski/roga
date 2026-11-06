@@ -46,7 +46,17 @@ Until `SUPublicEDKey` is in the Info.plist, the app doesn't start Sparkle, and t
    ROGA_TEAM_ID=<team-id> ROGA_NOTARY_PROFILE=roga-notary Scripts/release.sh
    ```
 
-   It writes `build/updates/roga-0.2.0.zip` and updates `build/updates/appcast.xml`, signing the new entry with the key from the keychain.
+   It writes `build/updates/roga-0.2.0.zip` and updates `build/updates/appcast.xml`, signing the new entry with the key from the keychain. Before notarizing, it stops if `Contents/Helpers/roga`, the helper the agents' hooks run (decision 41), is missing, isn't executable, or isn't signed with the hardened runtime by the same team.
+
+   The first release with the helper is the first time it's signed with a Developer ID, so check it once the app is stapled:
+
+   ```bash
+   build/release/0.2.0/export/Roga.app/Contents/Helpers/roga --version
+   ```
+
+   ```bash
+   codesign --verify --strict --verbose=2 build/release/0.2.0/export/Roga.app/Contents/Helpers/roga
+   ```
 4. Create a GitHub release for the tag with the zip attached. The appcast expects the zip at `https://github.com/tmarkovski/yaga/releases/download/v0.2.0/roga-0.2.0.zip`.
 
    ```bash

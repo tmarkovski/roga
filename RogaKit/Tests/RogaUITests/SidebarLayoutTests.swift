@@ -1,9 +1,12 @@
 import Foundation
 import GitCore
+import SwiftUI
 import Testing
+@testable import AgentHooks
 @testable import RogaUI
 
 @MainActor
+@Suite(.removesTemporaryFolders)
 struct SidebarLayoutTests {
     /// A repository with a main worktree and linked ones with these names, at
     /// `/git/<name>`.
@@ -32,7 +35,7 @@ struct SidebarLayoutTests {
             case .label(let title): "<\(title)>"
             case .repository(_, let title, let detail): title + (detail.map { " (\($0))" } ?? "")
             case .worktree(_, let worktree, let isLast): (isLast ? "└ " : "│ ") + worktree.title
-            case .hiddenWorktrees(_, let title, let uncommittedFiles, _): "└ " + title + (uncommittedFiles > 0 ? " (\(uncommittedFiles))" : "")
+            case .hiddenWorktrees(_, let title, _, let uncommittedFiles, _): "└ " + title + (uncommittedFiles > 0 ? " (\(uncommittedFiles))" : "")
             }
         }
     }
@@ -168,7 +171,7 @@ struct SidebarLayoutTests {
         func hidesConflicts(in conflicted: Set<String>) throws -> Bool {
             let api = ListedRepository(path: "/git/api/.git", owners: ["acme"], worktrees: worktrees, conflictedWorktrees: conflicted)
             let items = SidebarLayout(groups: RepositoryGroups([api]), scope: .all, selection: nil, place: SidebarPlace()).items
-            guard case .hiddenWorktrees(_, _, _, let hasConflicts) = try #require(items.last) else {
+            guard case .hiddenWorktrees(_, _, _, _, let hasConflicts) = try #require(items.last) else {
                 Issue.record("There's no row for hidden worktrees.")
                 return false
             }
@@ -210,6 +213,131 @@ struct SidebarLayoutTests {
     @Test func anExpandedRepositoryShowsEveryWorktree() {
         let api = repository("api", owner: "acme", linked: ["a", "b", "c"], isExpanded: true, uncommitted: ["b": 3])
         #expect(rows([api, repository("web", owner: "acme")], scope: .organization("acme")) == ["api", "│ a", "│ b", "└ c", "web"])
+    }
+
+    // MARK: Agents' marks
+
+    @Test func eachRowMarksTheWorktreesItStandsFor() {
+        let api = repository("api", owner: "acme", linked: ["a", "b", "c"], kept: ["a"])
+        let items = SidebarLayout(groups: RepositoryGroups([api]), scope: .other, selection: select(api, "c"), place: SidebarPlace()).items
+        #expect(items.map(\.markedWorktrees) == [[], ["/git/api"], ["/git/a"], ["/git/c"], ["/git/b"]])
+    }
+
+    private func event(_ name: String, _ session: String, in cwd: String, at seconds: Double) -> HookEvent {
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        return HookEvent(host: .claude, event: name, session: session, cwd: cwd, pid: nil, processStart: nil, tool: nil, time: start.timeIntervalSince1970 + seconds)
+    }
+
+    /// A monitor that hears only the events a test gives it.
+    private func newMonitor() -> AgentMonitor {
+        AgentMonitor(supportFolder: URL(filePath: "/nonexistent"), checkInterval: nil)
+    }
+
+    /// What each row's mark shows, found the way the sidebar finds it for its
+    /// rows, with the marks setting kept in `defaults`.
+    private func marks(_ list: RepositoryList, selection: WorktreeSelection?, monitor: AgentMonitor, defaults: UserDefaults) -> [AgentSummary.State?] {
+        let sidebar = Sidebar(
+            list: list,
+            monitor: monitor,
+            selection: .constant(selection),
+            scope: .constant(.all),
+            place: .constant(SidebarPlace()),
+            showsRail: false,
+            showsSettings: .constant(false),
+            locate: { _ in },
+            marks: AgentMarksSetting(store: defaults)
+        )
+        return SidebarLayout(groups: list.groups, scope: .all, selection: selection, place: SidebarPlace()).items.map { item in
+            sidebar.agents(of: item)?.summary?.state
+        }
+    }
+
+    @Test func theRowForHiddenWorktreesShowsTheMostUrgentOfTheirAgents() throws {
+        let (defaults, name) = AgentTestSupport.defaults()
+        defer { AgentTestSupport.remove(defaults, named: name) }
+        let api = repository("api", owner: "acme", linked: ["a", "b", "c"])
+        let list = RepositoryList(listing: [api])
+        let monitor = newMonitor()
+        func marks() -> [AgentSummary.State?] {
+            self.marks(list, selection: select(api, "a"), monitor: monitor, defaults: defaults)
+        }
+        // The rows are api, a, and one for b and c.
+        monitor.receive(event("UserPromptSubmit", "main", in: "/git/api/docs", at: 0))
+        monitor.receive(event("UserPromptSubmit", "b", in: "/git/b", at: 0))
+        monitor.receive(event("Stop", "b", in: "/git/b", at: 10))
+        #expect(marks() == [.working, nil, .finished])
+        monitor.receive(event("UserPromptSubmit", "c", in: "/git/c", at: 20))
+        #expect(marks() == [.working, nil, .working])
+        monitor.receive(event("PermissionRequest", "c", in: "/git/c", at: 30))
+        #expect(marks() == [.working, nil, .waiting(.permission)])
+        // The selected worktree has a row of its own, so the hidden one doesn't count it.
+        monitor.receive(event("UserPromptSubmit", "a", in: "/git/a", at: 40))
+        #expect(marks() == [.working, .working, .waiting(.permission)])
+    }
+
+    @Test func noRowShowsAMarkWhileTheMarksAreTurnedOff() {
+        let (defaults, name) = AgentTestSupport.defaults()
+        defer { AgentTestSupport.remove(defaults, named: name) }
+        let api = repository("api", owner: "acme", linked: ["a", "b"])
+        let list = RepositoryList(listing: [api])
+        let monitor = newMonitor()
+        monitor.receive(event("UserPromptSubmit", "main", in: "/git/api", at: 0))
+        monitor.receive(event("UserPromptSubmit", "a", in: "/git/a", at: 0))
+        monitor.receive(event("UserPromptSubmit", "b", in: "/git/b", at: 0))
+        monitor.receive(event("PermissionRequest", "b", in: "/git/b", at: 10))
+        func marks() -> [AgentSummary.State?] {
+            self.marks(list, selection: select(api, "a"), monitor: monitor, defaults: defaults)
+        }
+
+        // The rows are api, a, and one for b. They show until the person turns
+        // them off in Settings, which shows its switch on while nothing's stored.
+        #expect(AgentPreferences.showsMarks(in: defaults))
+        #expect(marks() == [.working, .working, .waiting(.permission)])
+        defaults.set(false, forKey: AgentPreferences.showsMarksKey)
+        #expect(marks() == [nil, nil, nil])
+        defaults.set(true, forKey: AgentPreferences.showsMarksKey)
+        #expect(marks() == [.working, .working, .waiting(.permission)])
+    }
+
+    /// How wide a row draws its words on the right, "Deleting…", in a row
+    /// `width` points wide whose branch's name is long.
+    private func wordsWidth(inRow width: CGFloat, agent: AgentSummary?) throws -> CGFloat {
+        nonisolated final class Measured: @unchecked Sendable { var width: CGFloat = 0 }
+        let measured = Measured()
+        let row = SidebarRow(agent: agent, action: {}) {
+            Text("agent/a-branch-with-a-long-name")
+                .font(.system(size: 14))
+                .lineLimit(1)
+                .truncationMode(.middle)
+        } trailing: {
+            Text("Deleting…")
+                .font(.system(size: 13))
+                .padding(.trailing, 7)
+                .background {
+                    GeometryReader { proxy in
+                        let _ = (measured.width = proxy.size.width)
+                        Color.clear
+                    }
+                }
+        } commands: {
+            EmptyView()
+        }
+        let renderer = ImageRenderer(content: row.frame(width: width))
+        _ = try #require(renderer.cgImage)
+        return measured.width
+    }
+
+    @Test func aMarkTakesItsRoomFromTheBranchRatherThanTheWordsBesideIt() throws {
+        let working = AgentSummary(state: .working, since: .now, hosts: [.claude], sessions: 1)
+        let whole = try wordsWidth(inRow: 400, agent: nil)
+        #expect(whole > 50)
+        // A row in the sidebar at its narrowest, 256 points with the rail.
+        let narrow = try wordsWidth(inRow: 183, agent: nil)
+        let marked = try wordsWidth(inRow: 183, agent: working)
+        let wide = try wordsWidth(inRow: 400, agent: working)
+        #expect(narrow == whole)
+        #expect(marked == whole)
+        #expect(wide == whole)
     }
 
     // MARK: All

@@ -1,16 +1,19 @@
 import Foundation
 import Synchronization
 
-/// A record of the git commands Roga ran: their arguments, where they ran,
-/// how long they took and how they ended. It keeps the most recent commands,
-/// up to its capacity.
+/// A record of the commands Roga ran, git's and other programs': their
+/// arguments, where they ran, how long they took and how they ended. It keeps
+/// the most recent commands, up to its capacity.
 ///
 /// This is how Roga keeps the vision's promise to show what Git is doing. A
 /// view of the log comes later.
 public final class CommandLog: Sendable {
     public struct Entry: Sendable, Hashable, Identifiable {
         public let id: Int
-        /// The arguments git received, after `git`.
+        /// The program that ran: `git` for git's commands, or the absolute path
+        /// of any other program.
+        public let program: String
+        /// The arguments the program received, after its name.
         public let arguments: [String]
         public let directory: String?
         public let started: Date
@@ -46,6 +49,10 @@ public final class CommandLog: Sendable {
     }
 
     func begin(_ command: GitCommand) -> Int {
+        begin(program: "git", arguments: command.fullArguments, directory: command.directory)
+    }
+
+    func begin(program: String, arguments: [String], directory: String?) -> Int {
         let started = Date()
         let clock = ContinuousClock.now
         return state.withLock { state in
@@ -53,8 +60,9 @@ public final class CommandLog: Sendable {
             state.nextID += 1
             state.entries.append(Entry(
                 id: id,
-                arguments: command.fullArguments,
-                directory: command.directory,
+                program: program,
+                arguments: arguments,
+                directory: directory,
                 started: started,
                 duration: nil,
                 outcome: .running

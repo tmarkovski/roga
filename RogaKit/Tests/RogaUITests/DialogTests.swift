@@ -1,4 +1,6 @@
+import AgentEngine
 import CoreGraphics
+import Foundation
 import GitCore
 import GitRunner
 import Testing
@@ -53,6 +55,79 @@ import Testing
     @Test func copyingWhatHappenedKeepsItAsItReads() {
         let lines: [TerminalLine] = [.ran(["switch", "main"]), .output("error: no")]
         #expect(CommandBlock.copied(lines) == "$ git switch main\nerror: no")
+    }
+
+    // MARK: Programs other than git
+
+    private var claudeCommand: ProgramCommand {
+        let agent = CommitMessageAgent(kind: .claude, executable: NSHomeDirectory() + "/.local/bin/claude", model: "haiku", effort: "low")
+        return CommitMessageCommand.command(for: agent, worktree: "/work/api", style: CommitMessagePrompt.defaultStyle, hasDraft: false)
+    }
+
+    @Test func aProgramShowsByItsNameWithLongArgumentsShortened() {
+        let tokens = ShellCommand.tokens(claudeCommand)
+        #expect(tokens.map(\.text) == [
+            "claude", "-p", "--safe-mode", "--setting-sources", "user", "--model", "haiku", "--effort", "low", "--tools=",
+            "--no-session-persistence", "--output-format", "json", "--system-prompt", "'You write git commit messages. Reply wit…'",
+            "--", "'Write the commit message for the staged…'",
+        ])
+        #expect(tokens.map(\.kind) == [
+            .command, .option, .option, .option, .value, .option, .value, .option, .value, .option,
+            .option, .option, .value, .option, .text,
+            .option, .text,
+        ])
+    }
+
+    @Test func copyingAProgramCopiesItWholeWithItsPath() {
+        let command = claudeCommand
+        let lines: [TerminalLine] = [.comment("The staged changes go to its standard input"), .program(command)]
+        let copied = CommandBlock.copied(lines)
+        #expect(copied == command.description)
+        #expect(copied.hasPrefix(NSHomeDirectory() + "/.local/bin/claude -p --safe-mode"))
+        #expect(copied.contains(ShellQuoting.quoted(CommitMessagePrompt.instructions(style: CommitMessagePrompt.defaultStyle))))
+        #expect(copied.hasSuffix(ShellQuoting.quoted(CommitMessagePrompt.task(hasDraft: false))))
+        #expect(CommandBlock.copied([.command(["add", "a"]), .program(command)]) == "git add a\n" + command.description)
+        #expect(CommandBlock.copied([.program(command), .output("Done.")]) == command.description)
+    }
+
+    @Test func aProgramTheNameWouldntFindShowsItsPath() {
+        #expect(ShellCommand.tokens(claudeCommand, showsPath: true).first == .init(text: "~/.local/bin/claude", kind: .command))
+        let codex = ProgramCommand("/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex", ["exec"])
+        #expect(ShellCommand.text(codex, showsPath: true) == "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex exec")
+        #expect(ShellCommand.text(codex) == "codex exec")
+    }
+
+    @Test func subcommandsComeFirstAndPathsAreNeverShortened() {
+        let plugins = NSHomeDirectory() + "/Library/Application Support/sh.roga.app/plugins"
+        let add = ProgramCommand("/opt/homebrew/bin/codex", ["plugin", "marketplace", "add", plugins])
+        let tokens = ShellCommand.tokens(add)
+        #expect(tokens.map(\.text) == ["codex", "plugin", "marketplace", "add", "~/Library/Application\\ Support/sh.roga.app/plugins"])
+        #expect(tokens.map(\.kind) == [.command, .command, .command, .command, .value])
+        let remove = ShellCommand.tokens(ProgramCommand("/opt/homebrew/bin/claude", ["plugin", "marketplace", "remove", "roga"]))
+        #expect(remove.last == .init(text: "roga", kind: .value))
+        let install = ShellCommand.tokens(ProgramCommand("/opt/homebrew/bin/claude", ["plugin", "install", "roga-hooks@roga", "--scope", "user"]))
+        #expect(install.map(\.kind) == [.command, .command, .command, .value, .option, .value])
+    }
+
+    @Test func codexsCommandReadsTheSameWay() {
+        let agent = CommitMessageAgent(kind: .codex, executable: "/opt/homebrew/bin/codex", effort: "low")
+        let command = CommitMessageCommand.command(for: agent, worktree: "/work/api", style: "", hasDraft: false)
+        let tokens = ShellCommand.tokens(command)
+        #expect(Array(tokens.prefix(5)).map(\.text) == ["codex", "exec", "--ephemeral", "--sandbox", "read-only"])
+        #expect(Array(tokens.prefix(5)).map(\.kind) == [.command, .command, .option, .option, .value])
+        #expect(tokens.contains(.init(text: "'notify=[]'", kind: .value)))
+        #expect(tokens.contains(.init(text: "model_reasoning_effort=low", kind: .value)))
+        #expect(tokens.last?.kind == .text)
+        #expect(tokens.last?.text.hasSuffix("…'") == true)
+        #expect(tokens.last?.text.count == ShellCommand.shortenedArgument + 3)
+    }
+
+    @Test func wordsForTheAgentAreTextEvenWhenShort() {
+        let command = ProgramCommand("/usr/local/bin/claude", ["--append-system-prompt", "Use British spelling."])
+        #expect(ShellCommand.tokens(command).last == .init(text: "'Use British spelling.'", kind: .text))
+        // An argument of exactly the limit isn't shortened.
+        let limit = String(repeating: "a", count: ShellCommand.longArgument)
+        #expect(ShellCommand.text(ProgramCommand("/usr/local/bin/claude", [limit])) == "claude " + limit)
     }
 
     // MARK: Words

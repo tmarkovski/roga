@@ -1,3 +1,4 @@
+import AgentEngine
 import CommitGraph
 import GitCore
 import SwiftUI
@@ -5,6 +6,8 @@ import SwiftUI
 /// The menu commands for opening repositories and for their history.
 public struct RepositoryCommands: Commands {
     let list: RepositoryList
+    /// The agents that write commit messages, for Generate's commands.
+    let agents: AgentProvider
     @FocusedValue(\.selection) private var selection
     @FocusedValue(\.repository) private var repository
     @FocusedValue(\.sidebarVisibility) private var sidebarVisibility
@@ -12,6 +15,7 @@ public struct RepositoryCommands: Commands {
     @FocusedValue(\.sidebarScope) private var sidebarScope
     @FocusedValue(\.showsOrganizationRail) private var showsOrganizationRail
     @FocusedValue(\.refsPanelVisibility) private var refsPanelVisibility
+    @FocusedValue(\.openSettings) private var openSettings
     @AppStorage(RefsPanelSettings.sort) private var refsSort = RefsModel.Sort.name
     @AppStorage(FileListSettings.layout) private var fileLayout = FileLayout.list
     @Environment(\.openWindow) private var openWindow
@@ -53,6 +57,9 @@ public struct RepositoryCommands: Commands {
     static let stageAllShortcut = KeyboardShortcut("s", modifiers: [.option, .command])
     static let unstageAllShortcut = KeyboardShortcut("s", modifiers: [.shift, .option, .command])
     static let writeMessageShortcut = KeyboardShortcut("l")
+    /// Has an agent write the message (decision 41), which pairs with Write
+    /// Commit Message's Command-L. The Generate button's tooltip shows it too.
+    static let generateMessageShortcut = KeyboardShortcut("l", modifiers: [.option, .command])
     static let commitShortcut = KeyboardShortcut(.return, modifiers: .command)
     static let commitAndPushShortcut = KeyboardShortcut(.return, modifiers: [.shift, .command])
     static let amendShortcut = KeyboardShortcut(.return, modifiers: [.option, .command])
@@ -61,8 +68,9 @@ public struct RepositoryCommands: Commands {
     static let discardAllShortcut = KeyboardShortcut(.delete, modifiers: [.shift, .option, .command])
     static let undoDiscardShortcut = KeyboardShortcut("z", modifiers: [.shift, .option, .command])
 
-    public init(list: RepositoryList) {
+    public init(list: RepositoryList, agents: AgentProvider) {
         self.list = list
+        self.agents = agents
     }
 
     public var body: some Commands {
@@ -195,7 +203,7 @@ public struct RepositoryCommands: Commands {
             Divider()
         }
         CommandMenu("Changes") {
-            ChangesMenuItems(repository: repository)
+            ChangesMenuItems(repository: repository, agents: agents, openSettings: openSettings)
         }
         CommandMenu("Branch") {
             if let branch = repository?.branch {
@@ -224,10 +232,36 @@ public struct RepositoryCommands: Commands {
     }
 }
 
+extension RepositoryCommands {
+    /// An agent in the Changes menu's Generate With (decision 41).
+    struct GenerateWithItem: Equatable {
+        var kind: AgentKind
+        /// The agent and its model, as in "Claude Code · haiku". With the
+        /// agent's own default, that's Codex's model from its `config.toml`
+        /// when Roga could read it, and otherwise the agent alone.
+        var title: String
+        /// Whether it's the one Generate runs, which a checkmark shows.
+        var isCurrent: Bool
+    }
+
+    /// What Generate With lists: each agent Roga can run, in the order Settings
+    /// lists them.
+    static func generateWithItems(_ agents: AgentProvider) -> [GenerateWithItem] {
+        let current = agents.generateAgent
+        return agents.usableAgents.map { kind in
+            var model = agents.settings[kind]?.model ?? kind.recommendedModel
+            if model.isEmpty, kind == .codex, let known = agents.codexDefaultModel { model = known }
+            return GenerateWithItem(kind: kind, title: GenerationSetup.label(kind, model: model), isCurrent: kind == current)
+        }
+    }
+}
+
 /// What can be done with a worktree's uncommitted changes (decision 30). It reads
 /// the worktree's model in a view of its own, so that the menu follows it.
 private struct ChangesMenuItems: View {
     let repository: RepositoryModel?
+    let agents: AgentProvider
+    let openSettings: ShowSettingsAction?
 
     private var changes: SelectedChanges? { repository?.selectedChanges }
     private var composer: CommitComposer? { repository?.composer }
@@ -235,6 +269,12 @@ private struct ChangesMenuItems: View {
     /// The selected file's group, while uncommitted changes are showing.
     private var group: WorktreeChanges.Group? {
         changes?.isSelected == true ? changes?.selectedFile.group : nil
+    }
+
+    /// Whether an agent can write the message now, which needs the changes'
+    /// row to be showing, something to describe, and nothing else under way.
+    private var canGenerate: Bool {
+        changes?.isSelected == true && composer?.generator.readiness == .ready
     }
 
     private var discardFileTitle: String {
@@ -286,6 +326,29 @@ private struct ChangesMenuItems: View {
         }
         .keyboardShortcut(RepositoryCommands.writeMessageShortcut)
         .disabled(changes?.isSelected != true)
+        Button("Generate Message") {
+            composer?.generator.generate(with: agents.generation())
+        }
+        .keyboardShortcut(RepositoryCommands.generateMessageShortcut)
+        .disabled(!canGenerate || agents.generateAgent == nil)
+        Menu("Generate With") {
+            // Choosing an agent makes it the one Generate runs, and runs it.
+            ForEach(RepositoryCommands.generateWithItems(agents), id: \.kind) { item in
+                Toggle(item.title, isOn: Binding { item.isCurrent } set: { _ in
+                    agents.setGenerateAgent(item.kind)
+                    composer?.generator.generate(with: agents.generation(with: item.kind))
+                })
+                .disabled(!canGenerate)
+            }
+            Divider()
+            Button("Agent Settings…") {
+                openSettings?(.page(.commit))
+            }
+            .disabled(openSettings == nil)
+        }
+        // The message's items are a group of their own, apart from making the
+        // commit, as the canvas's Changes menu has them.
+        Divider()
         Button(composer?.action.title ?? "Commit") {
             composer?.commit()
         }
@@ -298,7 +361,7 @@ private struct ChangesMenuItems: View {
         .disabled(changes?.isSelected != true || composer?.action.isEnabled != true || composer?.stoppedWork != nil)
         Toggle("Amend", isOn: Binding { composer?.isAmending == true } set: { composer?.setAmending($0) })
             .keyboardShortcut(RepositoryCommands.amendShortcut)
-            .disabled(changes?.isSelected != true || composer?.canAmend != true)
+            .disabled(changes?.isSelected != true || composer?.canAmend != true || composer?.generator.isWriting == true)
         Divider()
         Button("Undo Commit") {
             composer?.undoLastCommit()

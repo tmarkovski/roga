@@ -44,12 +44,50 @@ private struct SidebarLine: View {
     }
 }
 
+/// Showing a worktree is looking at it, so this tells the agent monitor that
+/// what finished there has been seen: when it's selected, when an agent
+/// finishes in it while the window is in front, and when the window comes to
+/// the front.
+///
+/// It's a view of its own, which draws nothing, because watching for an agent
+/// finishing reads the marks: only this view updates each time a mark changes
+/// anywhere, rather than the whole window.
+private struct AgentMarksSeen: View {
+    let monitor: AgentMonitor
+    let list: RepositoryList
+    /// The folder of the worktree the window shows.
+    let worktree: String?
+    @Environment(\.appearsActive) private var appearsActive
+
+    var body: some View {
+        Color.clear
+            .accessibilityHidden(true)
+            .onChange(of: worktree, initial: true) { _, worktree in
+                monitor.selected(worktree: worktree)
+            }
+            .onChange(of: shownState) {
+                monitor.showing(worktree: worktree, appearsActive: appearsActive, in: list)
+            }
+            .onChange(of: appearsActive) {
+                monitor.showing(worktree: worktree, appearsActive: appearsActive, in: list)
+            }
+    }
+
+    /// What agents are doing in the worktree.
+    private var shownState: AgentSummary.State? {
+        guard let worktree else { return nil }
+        return monitor.summary(forWorktree: worktree, in: list)?.state
+    }
+}
+
 /// The contents of a Roga window: the sidebar, and the worktree selected in
 /// it.
 public struct WorkspaceView: View {
     @Binding var window: WorkspaceWindow?
     @Environment(GitProvider.self) private var gitProvider
     @Environment(RepositoryList.self) private var list
+    @Environment(AgentProvider.self) private var agents
+    @Environment(AgentMonitor.self) private var agentMonitor
     @State private var recent = RecentWorktrees()
     @State private var columns = NavigationSplitViewVisibility.all
     @SceneStorage("showsRefsPanel") private var wantsRefsPanel = true
@@ -62,6 +100,9 @@ public struct WorkspaceView: View {
     @State private var middleWidth: Double?
     @State private var sidebarLine = SidebarLineHover()
     @State private var showsSettings = false
+    /// Which window `openSettings` shows Settings on, which keeps it equal from
+    /// one update of the window to the next.
+    @State private var settingsWindow = UUID()
     /// Settings asked for with no Roga window in front, which a new window shows.
     @Environment(SettingsRequest.self) private var settingsRequest: SettingsRequest?
 
@@ -115,7 +156,7 @@ public struct WorkspaceView: View {
 
     public var body: some View {
         NavigationSplitView(columnVisibility: $columns) {
-            Sidebar(list: list, selection: selection, scope: scope, place: place, showsRail: showsRail, showsSettings: $showsSettings, locate: locate)
+            Sidebar(list: list, monitor: agentMonitor, selection: selection, scope: scope, place: place, showsRail: showsRail, showsSettings: $showsSettings, locate: locate)
                 .overlay(alignment: .trailing) {
                     // A line between the sidebar and the worktree, from the
                     // top of the window to the bottom.
@@ -187,7 +228,15 @@ public struct WorkspaceView: View {
         .navigationTitle(title)
         .frame(minWidth: 720, minHeight: 480)
         .task(id: gitProvider.git != nil) {
-            if let git = gitProvider.git { await list.connect(git: git) }
+            if let git = gitProvider.git {
+                // The agents run with git's environment, and the monitor asks
+                // Claude Code about its sessions once Roga has found it with
+                // its hooks installed. Both belong to the app, so starting
+                // them from another window does nothing.
+                agents.start(git: git)
+                agentMonitor.start(agents: agents)
+                await list.connect(git: git)
+            }
         }
         .onAppear {
             // A new window, or one macOS didn't restore, shows the worktree
@@ -205,6 +254,9 @@ public struct WorkspaceView: View {
             if let selected { list.lastSelection = selected }
             if let previous { list.keepShowing(previous) }
         }
+        .background {
+            AgentMarksSeen(monitor: agentMonitor, list: list, worktree: window?.selection?.worktree)
+        }
         .onChange(of: list.resolve(window?.selection)) { _, resolved in
             if resolved != window?.selection { selection.wrappedValue = resolved }
         }
@@ -217,6 +269,18 @@ public struct WorkspaceView: View {
         .focusedSceneValue(\.sidebarVisibility, $columns)
         .focusedSceneValue(\.refsPanelVisibility, refsPanelVisibility)
         .focusedSceneValue(\.showsSettings, $showsSettings)
+        .environment(\.openSettings, openSettings)
+        .focusedSceneValue(\.openSettings, openSettings)
+    }
+
+    /// Shows Settings on this window at a page or an agent's page. Storing the
+    /// destination first means a sheet that's already showing goes there too.
+    private var openSettings: ShowSettingsAction {
+        let showsSettings = $showsSettings
+        return ShowSettingsAction(window: settingsWindow) { destination in
+            destination.store()
+            showsSettings.wrappedValue = true
+        }
     }
 
     private var refsPanelVisibility: RefsPanelVisibility {
@@ -346,10 +410,14 @@ public struct WorkspaceView: View {
     private var titleRow: some View {
         HStack(spacing: 6) {
             if let (repository, worktree) = shown, let worktree, let selected = window?.selection {
-                RepositoryChip(
-                    name: repository.name,
-                    isMain: worktree.isMain,
-                    entries: worktreeMenu(of: repository, shown: worktree, selected: selected)
+                let model = shownModel
+                WorktreeChip(
+                    repository: repository,
+                    worktree: worktree,
+                    model: model,
+                    actions: worktreeMenuActions(shown: worktree, selected: selected, model: model),
+                    monitor: agentMonitor,
+                    list: list
                 )
                 .fixedSize()
             } else {
@@ -399,23 +467,18 @@ public struct WorkspaceView: View {
         .frame(maxWidth: titleRowWidth, alignment: .leading)
     }
 
-    /// The menu of the shown repository's worktrees, which the chip with its name
-    /// opens.
-    private func worktreeMenu(of repository: ListedRepository, shown worktree: Worktree, selected: WorktreeSelection) -> [RefMenu.Entry] {
-        let model = shownModel
-        return WorktreeMenu.entries(
-            for: WorktreeMenu.facts(of: repository, shown: worktree.path, model: model),
-            shown: worktree.path,
-            actions: WorktreeMenu.Actions(
-                show: { folder in
-                    selection.wrappedValue = WorktreeSelection(repository: selected.repository, worktree: folder)
-                },
-                newWorktree: model.flatMap { model in
-                    model.branch.isBusy || worktree.isBare ? nil : { model.branch.startNewWorktree() }
-                },
-                reveal: reveal,
-                openInTerminal: openInTerminal
-            )
+    /// What the menu of the shown repository's worktrees does, which the chip
+    /// with its name opens.
+    private func worktreeMenuActions(shown worktree: Worktree, selected: WorktreeSelection, model: RepositoryModel?) -> WorktreeMenu.Actions {
+        WorktreeMenu.Actions(
+            show: { folder in
+                selection.wrappedValue = WorktreeSelection(repository: selected.repository, worktree: folder)
+            },
+            newWorktree: model.flatMap { model in
+                model.branch.isBusy || worktree.isBare ? nil : { model.branch.startNewWorktree() }
+            },
+            reveal: reveal,
+            openInTerminal: openInTerminal
         )
     }
 

@@ -37,11 +37,14 @@
           ],
         },
       ],
-    }, {
+    },
+    { "kind": "folder", "path": "Helper", "target-membership": [ "RogaHelper" ] },
+    {
       "kind": "group",
       "name": "Products",
       "children": [
         { "path": "<PRODUCTS>/Roga.app", "id": "000000000000000000000120", "type": "wrapper.application", "index": false },
+        { "path": "<PRODUCTS>/roga", "id": "000000000000000000000121", "type": "compiled.mach-o.executable", "index": false, "target-membership": [ { "build-phase": "Roga/copy/Embed Helpers", "code-sign-on-copy": true } ] },
       ],
     },
   ],
@@ -51,10 +54,19 @@
       "id": "000000000000000100000000",
       "product": "Products/Roga.app",
       "product-type": "application",
+      "dependencies": [
+        "RogaHelper",
+      ],
       "build-phases": [
         "compile-sources",
         "frameworks",
         "resources",
+        {
+          "kind": "copy",
+          "name": "Embed Helpers",
+          "bundle-base-path": "root",
+          "relative-path": "Contents/Helpers",
+        },
       ],
       "package-product-members": [
         {
@@ -88,6 +100,40 @@
         "SWIFT_APPROACHABLE_CONCURRENCY": "YES",
         "SWIFT_DEFAULT_ACTOR_ISOLATION": "MainActor",
         "SWIFT_EMIT_LOC_STRINGS": "YES",
+        "SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY": "YES",
+        "SWIFT_VERSION": "6.0",
+      },
+    }, {
+      "name": "RogaHelper",
+      "id": "000000000000000200000000",
+      "product": "Products/roga",
+      "product-type": "tool",
+      "build-phases": [
+        "compile-sources",
+        "frameworks",
+      ],
+      "package-product-members": [
+        {
+          "package": "RogaKit",
+          "product-name": "AgentHooks",
+          "build-phase": { "build-phase": "frameworks" },
+        },
+      ],
+      "build-settings": {
+        "CODE_SIGN_IDENTITY": "-",
+        "CODE_SIGN_STYLE": "Automatic",
+        "CREATE_INFOPLIST_SECTION_IN_BINARY": "YES",
+        "ENABLE_HARDENED_RUNTIME": "YES",
+        "ENTITLEMENTS_REQUIRED": "NO",
+        "GENERATE_INFOPLIST_FILE": "YES",
+        "MACOSX_DEPLOYMENT_TARGET": "26.0",
+        "PRODUCT_BUNDLE_IDENTIFIER": "sh.roga.app.helper",
+        "PRODUCT_MODULE_NAME": "RogaHelper",
+        "PRODUCT_NAME": "roga",
+        "SDKROOT": "macosx",
+        "SKIP_INSTALL": "YES",
+        "SUPPORTED_PLATFORMS": "macosx",
+        "SWIFT_APPROACHABLE_CONCURRENCY": "YES",
         "SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY": "YES",
         "SWIFT_VERSION": "6.0",
       },
