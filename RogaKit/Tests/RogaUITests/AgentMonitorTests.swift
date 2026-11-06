@@ -34,8 +34,8 @@ struct AgentMonitorTests {
         return monitor
     }
 
-    private func event(_ name: String, _ session: String, host: AgentHost = .claude, in cwd: String? = nil, at seconds: Double, tool: String? = nil, pid: Int32? = nil, processStart: Double? = nil) -> HookEvent {
-        HookEvent(host: host, event: name, session: session, cwd: cwd, pid: pid, processStart: processStart, tool: tool, time: start.timeIntervalSince1970 + seconds)
+    private func event(_ name: String, _ session: String, host: AgentHost = .claude, in cwd: String? = nil, at seconds: Double, tool: String? = nil, pid: Int32? = nil, processStart: Double? = nil, activity: String? = nil) -> HookEvent {
+        HookEvent(host: host, event: name, session: session, cwd: cwd, pid: pid, processStart: processStart, tool: tool, activity: activity, time: start.timeIntervalSince1970 + seconds)
     }
 
     // MARK: Which state wins
@@ -360,6 +360,98 @@ struct AgentMonitorTests {
         #expect(finished.menuDetail(now: start.addingTimeInterval(3600)) == "Agent finished")
         #expect(finished.help(now: start.addingTimeInterval(3600)) == "Codex finished")
         #expect(AgentSummary(state: .finished, since: start, hosts: [.claude], sessions: 3).description == "3 agents finished")
+    }
+
+    @Test func oneSessionSaysWhatItsDoing() throws {
+        let monitor = monitor()
+        monitor.receive(event("UserPromptSubmit", "a", in: "/git/api", at: 0))
+        monitor.receive(event("PreToolUse", "a", in: "/git/api", at: 5, tool: "Bash", activity: "Run the test suite"))
+        let working = try #require(monitor.summary(forWorktree: "/git/api", in: list))
+        #expect(working == AgentSummary(state: .working, since: start, hosts: [.claude], sessions: 1, activity: "Run the test suite"))
+        #expect(working.description == "Claude Code is working: Run the test suite")
+        #expect(working.help(now: start.addingTimeInterval(30)) == "Claude Code is working: Run the test suite")
+        #expect(working.help(now: start.addingTimeInterval(6 * 60)) == "Claude Code is working: Run the test suite, for 6 minutes")
+        #expect(working.menuDetail(now: start.addingTimeInterval(6 * 60)) == "Run the test suite · 6 min")
+        #expect(working.menuDetail(now: start.addingTimeInterval(30)) == "Run the test suite")
+
+        // Codex's tool events don't say where the session is, so its prompt does.
+        monitor.receive(event("UserPromptSubmit", "b", host: .codex, in: "/git/api-login", at: 0))
+        monitor.receive(event("PermissionRequest", "b", host: .codex, in: "/git/api-login", at: 10, tool: "Bash", activity: "git push"))
+        let waiting = try #require(monitor.summary(forWorktree: "/git/api-login", in: list))
+        #expect(waiting.description == "Codex is waiting for you to allow: git push")
+        #expect(waiting.help(now: start.addingTimeInterval(130)) == "Codex is waiting for you to allow: git push, for 2 minutes")
+        #expect(waiting.menuDetail(now: start.addingTimeInterval(130)) == "Waiting to allow: git push · 2 min")
+
+        monitor.receive(event("PreToolUse", "a", in: "/git/api", at: 20, tool: "AskUserQuestion", activity: "Asked a question"))
+        let question = try #require(monitor.summary(forWorktree: "/git/api", in: list))
+        #expect(question.description == "Claude Code is waiting for you: Asked a question")
+        #expect(question.menuDetail(now: start.addingTimeInterval(140)) == "Asked a question · 2 min")
+
+        // The reply's first line shows in the tooltip, never with how long,
+        // and the menu keeps its short line.
+        monitor.receive(event("Stop", "a", in: "/git/api", at: 30, activity: "Added the activity line to the tooltip"))
+        let finished = try #require(monitor.summary(forWorktree: "/git/api", in: list))
+        #expect(finished.help(now: start.addingTimeInterval(3600)) == "Claude Code finished: Added the activity line to the tooltip")
+        #expect(finished.menuDetail(now: start.addingTimeInterval(3600)) == "Agent finished")
+    }
+
+    @Test func severalSessionsKeepTheirCount() throws {
+        let monitor = monitor()
+        monitor.receive(event("PreToolUse", "a", in: "/git/api", at: 0, tool: "Bash", activity: "Run the test suite"))
+        monitor.receive(event("UserPromptSubmit", "b", host: .codex, in: "/git/api", at: 0))
+        monitor.receive(event("PreToolUse", "b", host: .codex, in: "/git/api", at: 5, tool: "Bash", activity: "swift build"))
+        let both = try #require(monitor.summary(forWorktree: "/git/api", in: list))
+        #expect(both.activity == nil)
+        #expect(both.description == "2 agents are working")
+        #expect(both.menuDetail(now: start.addingTimeInterval(400)) == "2 agents working · 6 min")
+        // One of them waiting is the only session behind the mark, so its
+        // line shows.
+        monitor.receive(event("PermissionRequest", "b", host: .codex, in: "/git/api", at: 10, tool: "Bash", activity: "git push"))
+        #expect(monitor.summary(forWorktree: "/git/api", in: list)?.description == "Codex is waiting for you to allow: git push")
+        // The row for hidden worktrees counts across them in the same way.
+        monitor.receive(event("Stop", "c", in: "/git/api-login", at: 10, activity: "Done"))
+        monitor.receive(event("Stop", "d", in: "/git/api/.claude/worktrees/fix", at: 10, activity: "Also done"))
+        let hidden = try #require(monitor.summary(forWorktrees: ["/git/api-login", "/git/api/.claude/worktrees/fix"], in: list))
+        #expect(hidden.description == "2 agents finished")
+    }
+
+    @Test func aNewLineRedrawsOnlyTheRowsWithAMark() {
+        nonisolated final class Changes: @unchecked Sendable { var count = 0 }
+        let monitor = monitor()
+        monitor.receive(event("UserPromptSubmit", "a", in: "/git/api", at: 0))
+        monitor.receive(event("PreToolUse", "a", in: "/git/api", at: 1, tool: "Read", activity: "Reading a.swift"))
+        monitor.receive(event("SessionStart", "b", in: "/git/api-login", at: 1))
+        let unmarked = Changes()
+        withObservationTracking {
+            _ = monitor.summary(forWorktree: "/git/api-login", in: list)
+            _ = monitor.summary(forWorktree: "/git/api-old", in: list)
+        } onChange: {
+            unmarked.count += 1
+        }
+        let marked = Changes()
+        withObservationTracking {
+            _ = monitor.summary(forWorktree: "/git/api", in: list)
+        } onChange: {
+            marked.count += 1
+        }
+        monitor.receive(event("PostToolUse", "a", in: "/git/api", at: 2, tool: "Read"))
+        #expect(marked.count == 0)
+        monitor.receive(event("PreToolUse", "a", in: "/git/api", at: 3, tool: "Edit", activity: "Editing a.swift"))
+        #expect(marked.count == 1)
+        #expect(unmarked.count == 0)
+        #expect(monitor.summary(forWorktree: "/git/api", in: list)?.activity == "Editing a.swift")
+    }
+
+    @Test func aLineSpeaksOnlyForOneSession() {
+        #expect(AgentSummary(state: .working, since: start, hosts: [.claude], sessions: 2, activity: "Run the tests").activity == nil)
+        let summary = AgentSummary([
+            (host: .claude, phase: .working, since: start, activity: "Run the tests"),
+            (host: .codex, phase: .finished(failed: false), since: start, activity: "Done"),
+        ])
+        #expect(summary?.activity == "Run the tests")
+        let none = AgentSummary([(host: .codex, phase: .working, since: start, activity: nil)])
+        #expect(none?.description == "Codex is working")
+        #expect(none?.menuDetail(now: start) == "Agent working")
     }
 
     // MARK: Processes
