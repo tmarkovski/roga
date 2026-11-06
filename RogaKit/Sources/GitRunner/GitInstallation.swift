@@ -96,23 +96,17 @@ public struct GitInstallation: Sendable, Hashable {
             return GitInstallation(executable: configuredPath, version: version, searchPath: searchPath)
         }
 
-        let directories = searchPath.split(separator: ":").map(String.init) + wellKnownDirectories
-            + [(developerToolsGit as NSString).deletingLastPathComponent]
+        let wellKnown = (wellKnownDirectories + [(developerToolsGit as NSString).deletingLastPathComponent])
+            .map { ($0 as NSString).appendingPathComponent("git") }
         // Compare real paths, so that Apple's git is recognized however a
         // folder in the search path leads to it.
         let resolvedDeveloperToolsGit = realPath(developerToolsGit)
-        var seen: Set<String> = []
         var skipped: [SkippedGit] = []
         var developerToolsMissing = false
         var checkedDeveloperTools: Bool?
 
-        for directory in directories where directory.hasPrefix("/") {
-            let candidate = (directory as NSString).appendingPathComponent("git")
-            guard isExecutableFile(candidate) else { continue }
-            let resolved = realPath(candidate)
-            guard seen.insert(resolved).inserted else { continue }
-
-            if resolved == resolvedDeveloperToolsGit {
+        for candidate in ExecutableSearch.candidates(named: ["git"], searchPath: searchPath, wellKnown: wellKnown) {
+            if realPath(candidate) == resolvedDeveloperToolsGit {
                 if checkedDeveloperTools == nil {
                     checkedDeveloperTools = await developerToolsInstalled()
                 }
@@ -157,15 +151,11 @@ public struct GitInstallation: Sendable, Hashable {
     }
 
     static func isExecutableFile(_ path: String) -> Bool {
-        var info = stat()
-        guard stat(path, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG else { return false }
-        return access(path, X_OK) == 0
+        ExecutableSearch.isExecutableFile(path)
     }
 
     static func realPath(_ path: String) -> String {
-        guard let resolved = realpath(path, nil) else { return path }
-        defer { free(resolved) }
-        return String(cString: resolved)
+        ExecutableSearch.realPath(path)
     }
 }
 

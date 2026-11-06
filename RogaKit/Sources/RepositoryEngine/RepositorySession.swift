@@ -598,3 +598,34 @@ public enum PatchSource: Sendable, Hashable {
     /// the worktree's staged changes compare with, or nil when there's none yet.
     case worktree(path: String, group: WorktreeChanges.Group, head: ObjectID?)
 }
+
+// MARK: - Writing commit messages
+
+extension RepositorySession {
+    /// What's staged in a worktree, for an agent to write a commit message
+    /// about (decision 41). It compares the index with `HEAD`, or with
+    /// `HEAD`'s first parent when amending, so the message covers the whole
+    /// amended commit, or with the empty tree when there's no such commit.
+    ///
+    /// It runs `diff-index --cached -r -M --raw --numstat -z` for the list of
+    /// files and `diff-index --cached -r -M -p --no-color --no-ext-diff -U3
+    /// --submodule=short` for the patch, at normal priority, because someone
+    /// is waiting for the message. The patch is cut down to `budget` bytes, as
+    /// `StagedChanges` describes.
+    ///
+    /// - Parameter worktree: The worktree's folder.
+    @concurrent
+    public nonisolated func stagedChanges(in worktree: String, amending: Bool, budget: Int = 32_000) async throws -> StagedChanges {
+        try await StagedChanges.load(in: worktree, amending: amending, budget: budget, format: location.format, git: git)
+    }
+
+    /// The last `count` subjects on a worktree's `HEAD`, following first
+    /// parents and leaving out merges, so an agent can match the repository's
+    /// style. It's empty before the first commit.
+    ///
+    /// - Parameter worktree: The worktree's folder.
+    @concurrent
+    public nonisolated func recentSubjects(in worktree: String, count: Int = 20) async throws -> [String] {
+        try await StagedChanges.recentSubjects(in: worktree, count: count, git: git)
+    }
+}
