@@ -204,7 +204,7 @@ struct HouseAnimationTests {
         #expect(BranchModel.Action.pushing.houseAnimation == .push)
         #expect(BranchModel.Action.forcePushing.houseAnimation == .push)
         #expect(BranchModel.Action.pulling.houseAnimation == .heave)
-        #expect(BranchModel.Action.undoingPull.houseAnimation == .waddle)
+        #expect(BranchModel.Action.undoing.houseAnimation == .waddle)
         #expect(BranchModel.Action.aborting.houseAnimation == .waddle)
     }
 

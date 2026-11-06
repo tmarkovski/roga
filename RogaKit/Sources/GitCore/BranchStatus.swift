@@ -155,16 +155,21 @@ public struct NewBranch: Sendable, Hashable {
     }
 }
 
-/// A merge or a rebase that a worktree is partway through, and what undoes it.
+/// A merge, a rebase or a revert that a worktree is partway through, and what
+/// undoes it.
 public enum StoppedWork: Sendable, Hashable {
     case merge
     /// `branch` is the full name of the branch being rebased, when it's on one.
     case rebase(branch: String?)
+    /// `commit` is the one being reverted, from `REVERT_HEAD`, unless that file
+    /// doesn't hold a commit's ID.
+    case revert(commit: ObjectID?)
 
     public var abortArguments: [String] {
         switch self {
         case .merge: ["merge", "--abort"]
         case .rebase: ["rebase", "--abort"]
+        case .revert: ["revert", "--abort"]
         }
     }
 }

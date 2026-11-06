@@ -65,6 +65,7 @@ extension RepositoryModel {
     var dialog: RepositoryDialog? {
         if let checkoutFailure { return .message(dialog(for: checkoutFailure)) }
         if let pendingCommitSwitch { return .message(dialog(for: pendingCommitSwitch)) }
+        if let pendingRevert { return .message(dialog(for: pendingRevert)) }
         if let pendingDiscard = selectedChanges.pendingDiscard { return .message(selectedChanges.dialog(for: pendingDiscard)) }
         return branch.dialog
     }
@@ -134,6 +135,69 @@ extension RepositoryModel {
         }
     }
 
+    /// What reverting a commit does, and the choice between committing it straight
+    /// away and leaving the reversed changes staged (decision 44). It says up front
+    /// what git would otherwise refuse or do by surprise.
+    func dialog(for revert: CommitRevert) -> DialogContent {
+        let short = String(revert.commit.hex.prefix(8))
+        let cancel = { [weak self] in self?.pendingRevert = nil; return () }
+        let head: DialogText = "\(code: "HEAD")"
+        let onto: DialogText = history?.refs.currentBranch.map { "\(code: Ref.shortName($0))" } ?? head
+
+        var sentences: [DialogText] = ["This undoes what \(code: short) changed, on \(onto)."]
+        if revert.isMerge {
+            let first = String(revert.parents[0].hex.prefix(8))
+            let others = revert.parents.dropFirst().map { String($0.hex.prefix(8)) }
+            let merged: DialogText = others.count == 1 ? "\(code: others[0])" : "its other parents"
+            sentences.append("It's a merge, so this keeps the side of its first parent, \(code: first), and takes out what came from \(merged). git still counts those commits as merged, so merging them again won't bring them back.")
+        }
+        if !revert.headContains {
+            sentences.append("\(head) doesn't contain \(code: short), so git takes its changes out of whatever \(head) has. That only makes sense if they got there another way, such as a cherry-pick.")
+        }
+        if !revert.canCommit {
+            let staged = revert.stagedCount == 1 ? "1 file is staged" : "\(revert.stagedCount.formatted()) files are staged"
+            sentences.append("\(staged), and git only commits a revert when nothing is, so this adds the reversed changes to \(revert.stagedCount == 1 ? "it" : "them").")
+        }
+
+        var notes: [DialogText] = ["Leave it uncommitted stages the reversed changes, with git's message ready to commit."]
+        if revert.hasCommitHooks {
+            notes.append("git commits a revert without your pre-commit and commit-msg hooks, which run when you commit from the box.")
+        }
+
+        let way: CommitRevert.Way = revert.canCommit ? .committing : .leavingUncommitted
+        // A commit that isn't in `HEAD` is probably a slip, so neither button takes Return.
+        let takesReturn = revert.headContains
+        return DialogContent(
+            id: "revert",
+            title: "Revert \(short)?",
+            message: .sentences(sentences),
+            cards: [[.commit(hash: short, subject: revert.subject)]],
+            note: .sentences(notes),
+            terminal: [.command(revert.arguments(way))],
+            buttons: [
+                .cancel(cancel),
+                DialogButton(
+                    title: "Leave it uncommitted",
+                    kind: revert.canCommit ? .secondary : .primary,
+                    pressesWithReturn: takesReturn,
+                    terminal: [.command(revert.arguments(.leavingUncommitted))]
+                ) { [weak self] in
+                    self?.confirmRevert(.leavingUncommitted)
+                },
+                DialogButton(
+                    title: "Commit the revert",
+                    kind: revert.canCommit ? .primary : .secondary,
+                    isEnabled: revert.canCommit,
+                    pressesWithReturn: takesReturn,
+                    terminal: [.command(revert.arguments(.committing))]
+                ) { [weak self] in
+                    self?.confirmRevert(.committing)
+                },
+            ],
+            dismiss: cancel
+        )
+    }
+
     private func dialog(for failure: CheckoutFailure) -> DialogContent {
         .refusal(
             id: "checkout",
@@ -192,58 +256,73 @@ extension BranchModel {
         }
     }
 
-    /// Which files a pull stopped on, and what can be done about them.
+    /// Which files a pull or a revert stopped on, and what can be done about them.
     private func dialog(for conflict: Conflict) -> DialogContent {
         // A rebase that stopped has detached `HEAD`, so only it can name the branch.
-        let what: String
-        let name: String?
-        switch conflict.pull {
-        case .merge:
-            what = "merge"
-            name = status.map { Ref.shortName($0.branch) }
-        case .rebase(let branch):
-            what = "rebase"
-            name = branch.map(Ref.shortName) ?? status.map { Ref.shortName($0.branch) }
+        let name = switch conflict.work {
+        case .rebase(let branch): branch.map(Ref.shortName) ?? status.map { Ref.shortName($0.branch) }
+        case .merge, .revert: status.map { Ref.shortName($0.branch) }
         }
+        let what = conflict.work.noun
+        let started = conflict.startedByPull ? "pull" : what
         let subject: DialogText = name.map { "\(code: $0)" } ?? "The worktree"
         let files = conflict.files.count == 1 ? "1 file" : "\(conflict.files.count.formatted()) files"
         let inConflict: DialogText = conflict.files.isEmpty
             ? "is partway through a \(what)."
             : "is partway through a \(what), with \(files) in conflict."
+        var sentences = [subject, inConflict, "Roga can't resolve conflicts yet, so you can undo the \(started), or leave the worktree as it is and finish from the command line."]
+        if conflict.stagedBefore > 0 {
+            let staged = conflict.stagedBefore == 1 ? "the 1 file that was" : "the \(conflict.stagedBefore.formatted()) files that were"
+            sentences.append("Undoing it also takes back \(staged) staged before.")
+        }
         var rows = conflict.files.prefix(DialogContent.listLimit).map(DialogRow.name)
         if conflict.files.count > DialogContent.listLimit {
             rows.append(.more("and \((conflict.files.count - DialogContent.listLimit).formatted()) more"))
         }
         var terminal: [TerminalLine] = []
         if let ran = conflict.ran { terminal += [.ran(ran), .gap] }
-        terminal += [.comment("Undo the pull runs"), .command(conflict.pull.abortArguments)]
+        terminal += [.comment("Undo the \(started) runs"), .command(conflict.work.abortArguments)]
         let leave = { [weak self] in self?.conflict = nil; return () }
         return DialogContent(
             id: "conflict",
-            title: "The pull stopped on a conflict",
-            message: .sentences([subject, inConflict, "Roga can't resolve conflicts yet, so you can undo the pull, or leave the worktree as it is and finish from the command line."]),
+            title: "The \(started) stopped on a conflict",
+            message: .sentences(sentences),
             cards: rows.isEmpty ? [] : [rows],
             terminal: terminal,
             buttons: [
                 DialogButton(title: "Leave it", kind: .secondary, action: leave),
-                DialogButton(title: "Undo the pull", kind: .primary) { [weak self] in self?.undoPull() },
+                // Files that were staged before can't be brought back.
+                DialogButton(title: "Undo the \(started)", kind: conflict.stagedBefore > 0 ? .destructive : .primary) { [weak self] in
+                    self?.undoConflict()
+                },
             ],
             dismiss: leave
         )
     }
 
     /// What aborting loses, as the vision asks of destructive operations, and the
-    /// command.
+    /// command. git aborts a revert by taking everything staged back to `HEAD`,
+    /// which includes anything that was staged before the revert began.
     private func dialog(forAborting work: StoppedWork) -> DialogContent {
-        let what = switch work {
-        case .merge: "merge"
-        case .rebase: "rebase"
-        }
+        let what = work.noun
         let cancel = { [weak self] in self?.pendingAbort = nil; return () }
+        var message: DialogText = "This goes back to before the \(what), and any conflicts you've resolved are lost."
+        var cards: [[DialogRow]] = []
+        var note: DialogText?
+        if case .revert = work {
+            message = "This takes everything that's staged back to \(code: "HEAD"), in the index and in the files, including anything that was staged before the revert. Any conflicts you've resolved are lost too."
+            let staged = stagedFiles()
+            if staged > 0 {
+                cards = [[staged == 1 ? .fact("1 staged file", "goes back to HEAD") : .fact("\(staged.formatted()) staged files", "go back to HEAD")]]
+            }
+            note = "If a staged file has changed since it was staged, git refuses, and nothing changes."
+        }
         return DialogContent(
             id: "abort",
             title: "Abort the \(what)?",
-            message: "This goes back to before the \(what), and any conflicts you've resolved are lost.",
+            message: message,
+            cards: cards,
+            note: note,
             terminal: [.command(work.abortArguments)],
             buttons: [
                 .cancel(cancel),

@@ -259,6 +259,42 @@ public final class RepositoryList {
         return selection
     }
 
+    /// Mends the links to a repository's linked worktrees after its main worktree
+    /// moved, as it has when someone locates it, and lists them again. Each of
+    /// them still points into the folder it was in until this runs, so git fails
+    /// in all of them.
+    ///
+    /// - Throws: `GitError` when git can't.
+    func repairWorktrees(of repository: ListedRepository) async throws {
+        guard let git, let session = repository.session else { return }
+        try await session.repairWorktrees()
+        await refresh(repository, git: git)
+    }
+
+    /// Mends a linked worktree whose folder moved to `folder`, which is how a row
+    /// that says its folder is missing finds it again, and returns the worktree to
+    /// select there.
+    ///
+    /// - Throws: `GitError` when git refuses, as when the folder isn't a linked
+    ///   worktree, or `RepositoryListError.notTheWorktree` when git mended
+    ///   something else, because the folder is another worktree.
+    func repair(_ worktree: Worktree, in repository: ListedRepository, movedTo folder: String) async throws -> WorktreeSelection {
+        guard let git else { throw RepositoryListError.gitNotFound }
+        guard let session = repository.session else { throw RepositoryListError.notOpen }
+        try await session.repairWorktrees(movedTo: folder)
+        await refresh(repository, git: git)
+        let moved = Self.comparablePath(folder)
+        guard !repository.worktrees.contains(where: { $0.path == worktree.path }),
+              let repaired = repository.worktrees.first(where: { !$0.isPrunable && Self.comparablePath($0.path) == moved })
+        else { throw RepositoryListError.notTheWorktree }
+        // A collapsed repository goes on showing it where it is now.
+        if repository.keptWorktrees.remove(worktree.path) != nil {
+            repository.keptWorktrees.insert(repaired.path)
+            save()
+        }
+        return WorktreeSelection(repository: repository.path, worktree: repaired.path)
+    }
+
     /// Records whether a window found conflicts in the worktree it shows, which
     /// may be newer than what the list last found.
     func setHasConflicts(_ hasConflicts: Bool, in selection: WorktreeSelection) {
@@ -371,7 +407,8 @@ public final class RepositoryList {
             } catch {
                 guard !FileManager.default.fileExists(atPath: repository.path) else { return }
                 await session.close()
-                repository.state = .missing
+                // Its bookmark may know where it went.
+                await open(repository, git: git)
             }
         case .missing, .failed:
             await open(repository, git: git)
@@ -486,6 +523,12 @@ public final class RepositoryList {
         do {
             let location = try await RepositoryLocation.find(containing: path, git: git)
             let session = try await RepositorySession.start(location: Self.gitDirectoryLocation(location), git: git)
+            if location.commonDirectory != repository.path {
+                // It moved, which leaves each linked worktree pointing into the
+                // folder it was in. There's nothing to choose, and when this
+                // fails they're no worse off.
+                try? await session.repairWorktrees()
+            }
             let worktrees = try await session.worktrees()
             guard repositories.contains(where: { $0 === repository }) else {
                 await session.close()
@@ -644,10 +687,17 @@ public final class ListedRepository: Identifiable {
 
 enum RepositoryListError: Error, CustomStringConvertible {
     case gitNotFound
+    /// The repository isn't open, so git can't be run in it yet.
+    case notOpen
+    /// git mended nothing for the worktree, because the folder it was given is
+    /// another worktree.
+    case notTheWorktree
 
     var description: String {
         switch self {
         case .gitNotFound: "Roga hasn't found git yet."
+        case .notOpen: "Roga hasn't opened the repository yet."
+        case .notTheWorktree: "That folder is another worktree."
         }
     }
 }

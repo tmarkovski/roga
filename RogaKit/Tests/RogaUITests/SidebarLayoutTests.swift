@@ -245,6 +245,7 @@ struct SidebarLayoutTests {
             showsRail: false,
             showsSettings: .constant(false),
             locate: { _ in },
+            newWorktree: { _ in },
             marks: AgentMarksSetting(store: defaults)
         )
         return SidebarLayout(groups: list.groups, scope: .all, selection: selection, place: SidebarPlace()).items.map { item in

@@ -19,10 +19,9 @@ extension UserDefaults {
     }
 }
 
-/// The pages of Settings, in the order its sidebar lists them. The design
-/// canvas has a General page too, which waits until there's something to put
-/// on it (docs/design/settings).
+/// The pages of Settings, in the order its sidebar lists them.
 enum SettingsPage: String, CaseIterable, Identifiable {
+    case general
     case appearance
     case git
     case commit
@@ -33,6 +32,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .general: "General"
         case .appearance: "Appearance"
         case .git: "Git"
         case .commit: "Commit"
@@ -43,6 +43,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
 
     var icon: Icon {
         switch self {
+        case .general: .slidersHorizontal
         case .appearance: .palette
         case .git: .branch
         case .commit: .gitCommitHorizontal
@@ -52,11 +53,14 @@ enum SettingsPage: String, CaseIterable, Identifiable {
     }
 
     /// The sidebar's groups, with a line between each, as on the canvas.
-    static let groups: [[SettingsPage]] = [[.appearance], [.git, .commit], [.agents], [.advanced]]
+    static let groups: [[SettingsPage]] = [[.general, .appearance], [.git, .commit], [.agents], [.advanced]]
 }
 
 /// A heading on a page, and the settings under it.
 enum SettingsGroup: CaseIterable {
+    case openIn
+    case updates
+    case interface
     case motion
     case lists
     case fetching
@@ -67,6 +71,9 @@ enum SettingsGroup: CaseIterable {
 
     var title: String {
         switch self {
+        case .openIn: "Open in"
+        case .updates: "Updates"
+        case .interface: "Interface"
         case .motion: "Motion"
         case .lists: "Lists"
         case .fetching: "Fetching"
@@ -79,7 +86,8 @@ enum SettingsGroup: CaseIterable {
 
     var page: SettingsPage {
         switch self {
-        case .motion, .lists: .appearance
+        case .openIn, .updates: .general
+        case .interface, .motion, .lists: .appearance
         case .fetching: .git
         case .generate: .commit
         case .commandLineAgents, .workingStatus: .agents
@@ -90,6 +98,8 @@ enum SettingsGroup: CaseIterable {
     /// What the whole group is about, under its heading on its page.
     var description: String? {
         switch self {
+        case .openIn:
+            "Roga lists the terminals it finds on this Mac that can open a folder."
         case .commandLineAgents:
             "Roga looks for these in your login shell's PATH, the way it finds git. Generating a commit message runs one on this Mac with its tools off."
         case .workingStatus:
@@ -114,6 +124,10 @@ enum SettingsGroup: CaseIterable {
 /// them by their words. Some are blocks rather than rows, such as the list of
 /// agents, and search finds those by what they show.
 enum SettingsItem: CaseIterable {
+    case terminal
+    case checksForUpdates
+    case downloadsUpdates
+    case theme
     case animationSpeed
     case fileLayout
     case refsSort
@@ -134,6 +148,9 @@ enum SettingsItem: CaseIterable {
 
     var group: SettingsGroup {
         switch self {
+        case .terminal: .openIn
+        case .checksForUpdates, .downloadsUpdates: .updates
+        case .theme: .interface
         case .animationSpeed: .motion
         case .fileLayout, .refsSort, .foldsDescriptions: .lists
         case .fetchesByItself: .fetching
@@ -146,6 +163,10 @@ enum SettingsItem: CaseIterable {
 
     var title: String {
         switch self {
+        case .terminal: "Terminal"
+        case .checksForUpdates: "Check for updates automatically"
+        case .downloadsUpdates: "Download updates automatically"
+        case .theme: "Theme"
         case .animationSpeed: "Animation speed"
         case .fileLayout: "Show files as"
         case .refsSort: "Sort branches by"
@@ -168,6 +189,12 @@ enum SettingsItem: CaseIterable {
 
     var help: String {
         switch self {
+        case .terminal:
+            "For Open in Terminal on a repository or a worktree."
+        case .checksForUpdates:
+            "Roga looks at roga.sh once a day, and the sidebar says when there's a new version. Nothing installs until you say so."
+        case .downloadsUpdates:
+            "A new version downloads in the background and installs when Roga quits. Restart to Update installs it straight away."
         case .animationSpeed:
             "How fast the house moves while git runs."
         case .fileLayout:
@@ -190,7 +217,7 @@ enum SettingsItem: CaseIterable {
             "It runs in the worktree's folder with its tools, hooks, plugins and MCP servers off, and without the repository's own agent settings, so it can't change anything. Agents are set up on the Agents page."
         case .showsMarks:
             "Marks each worktree an agent is working in, waiting in, or has finished in."
-        case .generateEffort, .instructions, .agentList, .hooks, .marksLegend:
+        case .theme, .generateEffort, .instructions, .agentList, .hooks, .marksLegend:
             ""
         case .keepsCommitGraphCurrent:
             "Roga runs git commit-graph write in the background, so that large repositories open quickly. It writes to each repository's objects folder and never changes your git configuration."
@@ -200,6 +227,10 @@ enum SettingsItem: CaseIterable {
     /// More words that find it, for what a block shows besides its title.
     private var keywords: [String] {
         switch self {
+        case .terminal: ["Open in Terminal", "iTerm", "Ghostty", "Warp"]
+        case .checksForUpdates: ["Sparkle", "version"]
+        case .downloadsUpdates: ["install", "Restart to Update", "version"]
+        case .theme: AppTheme.allCases.map(\.title) + ["Dark mode", "Light mode"]
         case .instructions: ["Reset to Roga's", "prompt"]
         case .agentList: ["Look Again", "Use", "program", "PATH"]
         case .hooks: ["Install", "Remove", "roga-hooks", "plugin", "Claude Code", "Codex"]
@@ -220,8 +251,8 @@ struct SettingsSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AgentProvider.self) private var agents
     /// It opens on the page it was on last, because going back is usually to
-    /// change the same thing again.
-    @AppStorage(SettingsDestination.pageKey) private var page = SettingsPage.appearance
+    /// change the same thing again, and on General the first time.
+    @AppStorage(SettingsDestination.pageKey) private var page = SettingsPage.general
     /// The agent whose own page shows, under Agents, or nil for the page itself.
     @AppStorage(SettingsDestination.agentKey) private var agent: AgentKind?
     @State private var query = ""
@@ -230,6 +261,7 @@ struct SettingsSheet: View {
     /// after it, so it happens once a sheet rather than each time Agents shows.
     @State private var hasCheckedHooks = false
 
+    @AppStorage(AppTheme.key) private var theme = AppTheme.system
     @AppStorage(UserDefaults.houseAnimationSpeedKey) private var speed = 1.0
     @AppStorage(FileListSettings.layout) private var fileLayout = FileLayout.list
     @AppStorage(RefsPanelSettings.sort) private var refsSort = RefsModel.Sort.name
@@ -268,6 +300,9 @@ struct SettingsSheet: View {
         .background(SettingsColors.surface)
         .font(.system(size: 13))
         .presentationSizing(.fitted)
+        .onChange(of: theme) { _, theme in
+            theme.apply()
+        }
         .onChange(of: destination.page == .agents, initial: true) { _, showsAgents in
             guard showsAgents, !hasCheckedHooks else { return }
             hasCheckedHooks = true
@@ -379,16 +414,18 @@ struct SettingsSheet: View {
     }
 
     /// A group's section, on its page or among what search found. The
-    /// Commit and Agents pages draw their own groups.
+    /// General, Commit and Agents pages draw their own groups.
     @ViewBuilder private func section(_ group: SettingsGroup, items: [SettingsItem], namesPage: Bool) -> some View {
         switch group {
+        case .openIn, .updates:
+            GeneralSection(group: group, items: items, namesPage: namesPage)
         case .generate:
             CommitSection(items: items, namesPage: namesPage, show: show)
         case .commandLineAgents:
             AgentListSection(items: items, namesPage: namesPage, show: show)
         case .workingStatus:
             WorkingStatusSection(items: items, namesPage: namesPage)
-        case .motion, .lists, .fetching, .largeRepositories:
+        case .interface, .motion, .lists, .fetching, .largeRepositories:
             SettingsSection(title: group.title) {
                 if namesPage {
                     Text(group.page.title)
@@ -410,6 +447,8 @@ struct SettingsSheet: View {
     @ViewBuilder private func row(_ item: SettingsItem) -> some View {
         SettingsRow(title: item.title, help: item.help) {
             switch item {
+            case .theme:
+                SettingsSegments(selection: $theme, options: AppTheme.allCases.map { ($0, $0.title) }, icon: \.icon)
             case .animationSpeed:
                 SettingsSlider(value: $speed, range: HouseAnimationView.speeds, step: 0.25) { "\($0.formatted())×" }
             case .fileLayout:
@@ -425,9 +464,9 @@ struct SettingsSheet: View {
             case .keepsCommitGraphCurrent:
                 Toggle(item.title, isOn: $keepsCommitGraphCurrent)
                     .toggleStyle(.settings)
-            case .showsGenerateButton, .generateAgent, .generateModel, .generateEffort, .matchesStyle, .instructions,
-                 .generateCommand, .agentList, .hooks, .showsMarks, .marksLegend:
-                // The Commit and Agents pages draw their own.
+            case .terminal, .checksForUpdates, .downloadsUpdates, .showsGenerateButton, .generateAgent, .generateModel,
+                 .generateEffort, .matchesStyle, .instructions, .generateCommand, .agentList, .hooks, .showsMarks, .marksLegend:
+                // The General, Commit and Agents pages draw their own.
                 EmptyView()
             }
         }

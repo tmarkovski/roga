@@ -101,7 +101,7 @@ final class CommitComposer {
     @ObservationIgnored private let generators: MessageGenerators
     /// What was in the box before Amend replaced it with the commit's own message.
     @ObservationIgnored private var draftBeforeAmending: String?
-    /// The message git had ready for a merge, while it hasn't been changed.
+    /// The message git had ready for a merge or a revert, while it hasn't been changed.
     @ObservationIgnored private var mergeMessage: String?
     /// The message of the latest commit made here, for putting back.
     @ObservationIgnored private var lastMessage = ""
@@ -161,6 +161,9 @@ final class CommitComposer {
     }
 
     private var isMerging: Bool { stoppedWork == .merge }
+    private var isReverting: Bool {
+        if case .revert = stoppedWork { true } else { false }
+    }
     private var isRebasing: Bool {
         if case .rebase = stoppedWork { true } else { false }
     }
@@ -200,6 +203,8 @@ final class CommitComposer {
         switch stoppedWork {
         case .merge:
             return ("Commit merge", "")
+        case .revert:
+            return ("Commit revert", "")
         case .rebase(let name):
             return ("Rebasing", name.map(Ref.shortName) ?? "")
         case nil:
@@ -243,6 +248,7 @@ final class CommitComposer {
         if isRebasing { return "Continue Rebase" }
         if isAmending { return "Amend Commit" }
         if isMerging { return "Commit Merge" }
+        if isReverting { return "Commit Revert" }
         let staged = changes.loaded?.staged.count ?? 0
         if staged == 0 { return "Stage All and Commit" }
         return staged == 1 ? "Commit 1 File" : "Commit \(staged.formatted()) Files"
@@ -298,7 +304,8 @@ final class CommitComposer {
             generator.stop()
             setAmending(false)
         }
-        // A merge that was aborted takes its message along, unless someone changed it.
+        // A merge or a revert that was aborted takes its message along, unless
+        // someone changed it.
         if work == nil, let mergeMessage, message == mergeMessage { message = "" }
         mergeMessage = nil
         rebaseMessage = ""
@@ -306,7 +313,7 @@ final class CommitComposer {
         readingMessage = Task {
             let text = try? await session.message(for: work, in: worktree)
             guard work == stoppedWork, let text else { return }
-            if case .merge = work {
+            if work.leavesAMessage {
                 if hasMessage { return }
                 mergeMessage = text
                 message = text
