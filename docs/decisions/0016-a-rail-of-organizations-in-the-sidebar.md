@@ -1,6 +1,6 @@
 # 16. Pick repositories by organization with a rail in the sidebar
 
-Accepted on 2026-11-02. This changes the order that [decision 14](0014-the-sidebar-keeps-every-added-repository.md) gave the sidebar, and settles how repositories are reordered and what Command-1 to Command-9 do, which the [main window](../main-window.md) left open. [Decision 41](0041-agents-status-from-their-hooks-and-messages-from-their-clis.md) now hears from the agents' hooks and marks the rows, and the view of only the work in progress still waits.
+Accepted on 2026-11-02. This changes the order that [decision 14](0014-the-sidebar-keeps-every-added-repository.md) gave the sidebar, and settles how repositories are reordered and what Command-1 to Command-9 do, which the [main window](../main-window.md) left open. [Decision 41](0041-agents-status-from-their-hooks-and-messages-from-their-clis.md) now hears from the agents' hooks and marks the rows, and the view of only the work in progress still waits. [Decision 48](0048-a-second-line-under-a-sidebar-row-while-theres-something-to-say.md) gives a row a second line, 48 points tall, while there's something to say.
 
 ## Context
 

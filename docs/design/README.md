@@ -66,3 +66,7 @@ The SVG in that folder is a copy of the mark, so a change to the mark has to be 
 ## Settings — November 5, 2026
 
 Wireframes for a larger Settings window with pages, including the agents Roga can call to write commit messages and the hooks that tell it when an agent is working. [`settings/README.md`](settings/README.md) describes them, and [`settings/boards.py`](settings/boards.py) draws the boards on the design canvas.
+
+## A second line in the sidebar — November 6, 2026
+
+Boards for a second line under a sidebar row while an agent works, waits or has finished, or a worktree stopped partway. We chose to show it only while there's something to say ([decision 48](../decisions/0048-a-second-line-under-a-sidebar-row-while-theres-something-to-say.md)). [`second-line/README.md`](second-line/README.md) describes the boards, and [`second-line/boards.py`](second-line/boards.py) draws them on the design canvas.

@@ -54,8 +54,8 @@ struct UnfinishedWork: Equatable {
     }
 
     /// How far along it is. With no conflicts left, nothing is wrong, but it still
-    /// isn't finished.
-    private var state: String {
+    /// isn't finished. The sidebar shows it whole and cuts `verb` short.
+    var state: String {
         switch (conflicts, work) {
         case (1, _): "1 conflict"
         case (0, .merge), (0, .revert): "ready to commit"

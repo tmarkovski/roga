@@ -415,6 +415,56 @@ struct AgentMonitorTests {
         #expect(hidden.description == "2 agents finished")
     }
 
+    // MARK: The sidebar's second line
+
+    @Test func theSidebarsLineIsTheAgentsOwnWords() {
+        // The mark starts the line, so one session's line leaves out its name.
+        let working = AgentSummary(state: .working, since: start, hosts: [.claude], sessions: 1, activity: "Run the test suite")
+        #expect(working.rowParts(now: start.addingTimeInterval(30)) == ("Run the test suite", nil))
+        #expect(working.rowParts(now: start.addingTimeInterval(6 * 60 + 5)) == ("Run the test suite", "6 min"))
+        #expect(working.rowParts(now: start.addingTimeInterval(65 * 60)) == ("Run the test suite", "1 hr 5 min"))
+        let allow = AgentSummary(state: .waiting(.permission), since: start, hosts: [.codex], sessions: 1, activity: "git push")
+        #expect(allow.rowParts(now: start.addingTimeInterval(130)) == ("Needs your OK: git push", "2 min"))
+        let question = AgentSummary(state: .waiting(.question), since: start, hosts: [.claude], sessions: 1, activity: "Wants a plan approved")
+        #expect(question.rowParts(now: start.addingTimeInterval(130)) == ("Wants a plan approved", "2 min"))
+        // A finished session's reply, never with how long.
+        let finished = AgentSummary(state: .finished, since: start, hosts: [.claude], sessions: 1, activity: "Added retries to the webhook client")
+        #expect(finished.rowParts(now: start.addingTimeInterval(3600)) == ("Added retries to the webhook client", nil))
+    }
+
+    @Test func theSidebarsLineNamesAgentsThatHaventSaidAnything() {
+        let working = AgentSummary(state: .working, since: start, hosts: [.claude], sessions: 1)
+        #expect(working.rowParts(now: start.addingTimeInterval(120)) == ("Claude Code is working", "2 min"))
+        let allow = AgentSummary(state: .waiting(.permission), since: start, hosts: [.codex], sessions: 1)
+        #expect(allow.rowParts(now: start) == ("Codex needs your OK", nil))
+        let question = AgentSummary(state: .waiting(.question), since: start, hosts: [.codex], sessions: 1)
+        #expect(question.rowParts(now: start) == ("Codex is waiting for you", nil))
+        let finished = AgentSummary(state: .finished, since: start, hosts: [.codex], sessions: 1)
+        #expect(finished.rowParts(now: start.addingTimeInterval(3600)) == ("Codex finished", nil))
+        // Several sessions can't share one line, so they're counted.
+        let severalWorking = AgentSummary(state: .working, since: start, hosts: [.claude, .codex], sessions: 2, activity: "Ignored")
+        #expect(severalWorking.rowParts(now: start.addingTimeInterval(400)) == ("2 agents working", "6 min"))
+        let severalWaiting = AgentSummary(state: .waiting(.permission), since: start, hosts: [.claude, .codex], sessions: 2)
+        #expect(severalWaiting.rowParts(now: start) == ("2 agents are waiting for you", nil))
+        let severalFinished = AgentSummary(state: .finished, since: start, hosts: [.claude], sessions: 3)
+        #expect(severalFinished.rowParts(now: start) == ("3 agents finished", nil))
+    }
+
+    @Test func aWaitingAgentComesBeforeARebaseAndARebaseBeforeAWorkingOne() throws {
+        let rebase = try #require(UnfinishedWork(work: .rebase(branch: "refs/heads/main"), conflicts: 2))
+        let working = AgentSummary(state: .working, since: start, hosts: [.claude], sessions: 1)
+        let finished = AgentSummary(state: .finished, since: start, hosts: [.claude], sessions: 1)
+        let waiting = AgentSummary(state: .waiting(.permission), since: start, hosts: [.codex], sessions: 1)
+        #expect(RowLine(agent: nil, unfinished: nil) == nil)
+        #expect(RowLine(agent: working, unfinished: nil) == .agent(working))
+        #expect(RowLine(agent: nil, unfinished: rebase) == .unfinished(rebase))
+        #expect(RowLine(agent: working, unfinished: rebase) == .unfinished(rebase))
+        #expect(RowLine(agent: finished, unfinished: rebase) == .unfinished(rebase))
+        #expect(RowLine(agent: waiting, unfinished: rebase) == .agent(waiting))
+        #expect(RowLine(agent: waiting, unfinished: rebase)?.isAgents == true)
+        #expect(RowLine(agent: working, unfinished: rebase)?.isAgents == false)
+    }
+
     @Test func aNewLineRedrawsOnlyTheRowsWithAMark() {
         nonisolated final class Changes: @unchecked Sendable { var count = 0 }
         let monitor = monitor()
