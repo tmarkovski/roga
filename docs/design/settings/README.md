@@ -63,9 +63,11 @@ Each hook runs `roga-hook hook --host <agent> --event <name>`, a launcher in Rog
 
 - **The marks go on the right of a sidebar row, before the count of uncommitted files,** and stay while the pointer is over the row. The waiting mark is an amber `circle-alert` rather than the boards' triangle, because a red triangle already means conflicts ([decision 28](../../decisions/0028-show-a-worktree-thats-stuck-partway.md)). Decided on November 5, 2026.
 
+- **The working ring turns,** clockwise, once a second, where the boards draw it still, because a quarter that never moves reads as progress stuck partway. The legends on the Agents page and each agent's page turn too, so that the key looks like the sidebar. Core Animation turns it, and it stops while its window can't be seen and for someone who asked for less motion ([decision 46](../../decisions/0046-turn-the-ring-of-an-agent-at-work.md)). Decided on November 6, 2026.
+
 ## Still to decide
 
 - **Which proposals to keep.** Open in Editor and Open in Terminal, text size and date formats would each need work outside Settings first.
 - **Answering permission requests in Roga.** GitKraken offers it. It makes a hook wait for Roga, so the boards draw it off, and Roga leaves it out for now.
 - **More agents.** Cursor Agent, Gemini CLI, Copilot CLI and a custom command are on the boards. Each needs its own way to install hooks and to run without tools.
-- **Whether the boards should catch up.** They still draw the triangle, the shorter commands and the old help under the command block.
+- **Whether the boards should catch up.** They still draw the triangle, the still ring, the shorter commands and the old help under the command block.

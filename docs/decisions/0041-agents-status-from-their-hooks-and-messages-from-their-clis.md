@@ -1,6 +1,6 @@
 # 41. Show what agents are doing from their hooks, and write commit messages with their CLIs
 
-Accepted on 2026-11-06. This adds the agent's line that [decision 40](0040-the-repositorys-name-opens-a-menu-of-its-worktrees.md) left a place for in the worktree menu, and the marks that [decision 16](0016-a-rail-of-organizations-in-the-sidebar.md) said would wait for hooks. It adds a second program to the bundle that [decision 11](0011-thin-xcode-project-and-a-local-package.md) describes, a shortcut to the table in [decision 30](0030-stage-and-commit-beside-history.md), and a third kind of command to the blocks of [decision 29](0029-dialogs-that-say-what-happens-and-show-the-command.md).
+Accepted on 2026-11-06. Partly superseded by [decision 46](0046-turn-the-ring-of-an-agent-at-work.md), which turns the ring that marks an agent at work. The rest of this decision still holds. This adds the agent's line that [decision 40](0040-the-repositorys-name-opens-a-menu-of-its-worktrees.md) left a place for in the worktree menu, and the marks that [decision 16](0016-a-rail-of-organizations-in-the-sidebar.md) said would wait for hooks. It adds a second program to the bundle that [decision 11](0011-thin-xcode-project-and-a-local-package.md) describes, a shortcut to the table in [decision 30](0030-stage-and-commit-beside-history.md), and a third kind of command to the blocks of [decision 29](0029-dialogs-that-say-what-happens-and-show-the-command.md).
 
 ## Context
 
