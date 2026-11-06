@@ -115,7 +115,7 @@ public struct WorkspaceView: View {
 
     public var body: some View {
         NavigationSplitView(columnVisibility: $columns) {
-            Sidebar(list: list, selection: selection, scope: scope, place: place, showsRail: showsRail, locate: locate)
+            Sidebar(list: list, selection: selection, scope: scope, place: place, showsRail: showsRail, showsSettings: $showsSettings, locate: locate)
                 .overlay(alignment: .trailing) {
                     // A line between the sidebar and the worktree, from the
                     // top of the window to the bottom.
