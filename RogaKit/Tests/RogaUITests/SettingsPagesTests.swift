@@ -623,6 +623,43 @@ struct SettingsPagesTests {
         #expect(GenerateChoices.shownAgent(off) == .claude)
     }
 
+    /// The Instructions box shows every line. In the Settings sheet the text
+    /// view reported its height from before its text was laid out, so the
+    /// box stopped at four lines and cut the fourth in half.
+    @Test func theInstructionsBoxIsAsTallAsItsLines() {
+        let width: CGFloat = 560
+        func laidOut(_ text: String) -> CGFloat {
+            // What AppKit's own text view makes of the same text.
+            let view = NSTextView(frame: CGRect(x: 0, y: 0, width: width, height: 10))
+            view.textContainer?.lineFragmentPadding = SettingsTextArea.linePadding
+            view.textContainer?.containerSize = CGSize(width: width, height: .greatestFiniteMagnitude)
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.lineSpacing = SettingsTextArea.lineSpacing
+            view.textStorage?.setAttributedString(NSAttributedString(string: text, attributes: [
+                .font: NSFont.systemFont(ofSize: SettingsTextArea.fontSize), .paragraphStyle: paragraph,
+            ]))
+            view.layoutManager?.ensureLayout(for: view.textContainer!)
+            return view.layoutManager?.usedRect(for: view.textContainer!).height ?? 0
+        }
+        let roga = CommitMessagePrompt.defaultStyle
+        let one = SettingsTextArea.textHeight("Write short subjects.", width: width)
+        let two = SettingsTextArea.textHeight("Write short subjects.\nNo prefixes.", width: width)
+        for text in ["Write short subjects.", "Write short subjects.\nNo prefixes.", roga] {
+            let measured = SettingsTextArea.textHeight(text, width: width)
+            let actual = laidOut(text)
+            #expect(measured >= actual, "\(measured) is shorter than the text view's \(actual)")
+            #expect(measured <= actual + SettingsTextArea.lineSpacing + 1, "\(measured) is much taller than the text view's \(actual)")
+        }
+        #expect(two > one + SettingsTextArea.fontSize)
+        // A new line at the end makes room for the line being started.
+        #expect(SettingsTextArea.textHeight("Write short subjects.\n", width: width) == two)
+        // Roga's own instructions take more than the four lines the box starts with.
+        #expect(SettingsTextArea.textHeight(roga, width: width) > 4 * one)
+        #expect(SettingsTextArea.textHeight(roga, width: 300) > SettingsTextArea.textHeight(roga, width: width))
+        // Before the box knows its width, it's one line.
+        #expect(SettingsTextArea.textHeight(roga, width: 0) == one)
+    }
+
     @Test func returnStartsANewLineInTheInstructions() async throws {
         let typed = Typed("First line")
         let area = SettingsTextArea(text: Binding { typed.text } set: { typed.text = $0 }, label: "Instructions")

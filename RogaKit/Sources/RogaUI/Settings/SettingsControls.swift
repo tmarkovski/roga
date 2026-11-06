@@ -550,26 +550,61 @@ struct SettingsTextField: View {
 ///
 /// It's a text editor rather than a field, so that Return starts a new line,
 /// as in the canvas's textarea: in a field, Return would end the editing and
-/// type nothing.
+/// type nothing. It shows every line rather than scroll, and it works out
+/// their height itself, because in the Settings sheet the text view reports
+/// the height it had before its text was laid out, and the box would cut the
+/// fourth line in half with no way to scroll to the rest.
 struct SettingsTextArea: View {
     @Binding var text: String
     let label: String
 
+    @State private var width: CGFloat = 0
+
+    static let fontSize: CGFloat = 13
+    /// The canvas's lines are 1.45 times the font apart.
+    static let lineSpacing: CGFloat = 3.3
+    /// The room the text view keeps beside each line.
+    static let linePadding: CGFloat = 5
+
     var body: some View {
         TextEditor(text: $text)
-            .font(.system(size: 13))
-            // The canvas's lines are 1.45 times the font apart.
-            .lineSpacing(3.3)
+            .font(.system(size: Self.fontSize))
+            .lineSpacing(Self.lineSpacing)
             .scrollContentBackground(.hidden)
             .scrollDisabled(true)
+            .frame(height: Self.textHeight(text, width: width))
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
             .accessibilityLabel(label)
-            .padding(EdgeInsets(top: 9, leading: 11, bottom: 9, trailing: 11))
+            // The text view keeps 5 points beside each line, so the text
+            // starts 12 points in, as on the canvas.
+            .padding(EdgeInsets(top: 9, leading: 7, bottom: 9, trailing: 7))
             .frame(maxWidth: .infinity, minHeight: 84, alignment: .topLeading)
             .background(SettingsColors.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .strokeBorder(SettingsColors.line, lineWidth: 1)
             }
+    }
+
+    /// How tall `text` is in a text view `width` points wide, with a line
+    /// for the empty one after a final new line, where the insertion point
+    /// goes. Before the box knows its width, it's one line.
+    static func textHeight(_ text: String, width: CGFloat) -> CGFloat {
+        let font = NSFont.systemFont(ofSize: fontSize)
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineSpacing = lineSpacing
+        let attributes: [NSAttributedString.Key: Any] = [.font: font, .paragraphStyle: paragraph]
+        let lineWidth = width - 2 * linePadding
+        guard lineWidth > fontSize else {
+            return ceil(NSAttributedString(string: " ", attributes: attributes).size().height + lineSpacing)
+        }
+        let measured = text.isEmpty || text.hasSuffix("\n") ? text + " " : text
+        let bounds = NSAttributedString(string: measured, attributes: attributes).boundingRect(
+            with: CGSize(width: lineWidth, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading]
+        )
+        // The last line's spacing too, so its descenders are never cut.
+        return ceil(bounds.height + lineSpacing)
     }
 }
 
