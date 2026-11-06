@@ -98,6 +98,29 @@ private struct AgentMarksSeen: View {
     }
 }
 
+/// Hands on to the model of the worktree a window shows what changed on disk,
+/// which the list of repositories hears from the repository's session. It's a
+/// view of its own, so that a change to another of the repository's worktrees
+/// updates nothing else in the window. A model that isn't showing hears
+/// nothing, and looks for itself when it shows again.
+private struct DiskChangesSeen: View {
+    let repository: ListedRepository
+    /// The folder of the worktree the window shows.
+    let worktree: String
+    let model: RepositoryModel
+
+    var body: some View {
+        Color.clear
+            .accessibilityHidden(true)
+            .onChange(of: repository.refsChange) { _, change in
+                model.refsChangedOnDisk(asNewAs: change)
+            }
+            .onChange(of: repository.fileChanges[worktree]) { _, change in
+                if let change { model.filesChangedOnDisk(asNewAs: change) }
+            }
+    }
+}
+
 /// The contents of a Roga window: the sidebar, and the worktree selected in
 /// it.
 public struct WorkspaceView: View {
@@ -285,6 +308,12 @@ public struct WorkspaceView: View {
         }
         .onChange(of: shown?.0.deletionCount) {
             shownModel?.refsChanged()
+        }
+        .background {
+            if let selected = window?.selection, let (repository, worktree) = shown, worktree != nil, let model = shownModel {
+                DiskChangesSeen(repository: repository, worktree: selected.worktree, model: model)
+                    .id(selected)
+            }
         }
         .focusedSceneValue(\.selection, selection)
         .focusedSceneValue(\.sidebarScope, scope)

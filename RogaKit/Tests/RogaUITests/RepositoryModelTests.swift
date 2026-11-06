@@ -324,6 +324,77 @@ struct RepositoryModelTests {
         return document.storage.string.split(separator: "\n").map(String.init)
     }
 
+    // MARK: Changes on disk
+
+    @Test func looksAgainWhenItsFilesChangeOnDisk() async throws {
+        let (model, repository) = try await modelOfACopy()
+        await model.appear()
+        #expect(model.uncommittedFiles == 0)
+        try write("new\n", to: "new.txt", in: repository)
+        model.filesChangedOnDisk(asNewAs: 1)
+        await model.diskLook?.value
+        #expect(model.uncommittedFiles == 1)
+        #expect(model.hasWorkingTreeRow)
+    }
+
+    @Test func loadsHistoryAgainWhenRefsMoveOnDisk() async throws {
+        let (model, repository) = try await modelOfACopy()
+        await model.appear()
+        // A quiet fetch that brings something looks again by itself.
+        await model.branch.quietFetch?.value
+        await model.check?.value
+        let reloads = model.reloads
+        let refsChecks = model.refsChecks
+        try await runGit("-c", "user.name=T", "-c", "user.email=t@example.com", "commit", "--quiet", "--allow-empty", "-m", "Elsewhere", in: repository)
+        model.refsChangedOnDisk(asNewAs: 1)
+        await model.diskLook?.value
+        #expect(model.reloads == reloads + 1)
+        #expect(model.refsChecks > refsChecks)
+
+        // Nothing moved since, so nothing loads again.
+        await model.load()
+        model.refsChangedOnDisk(asNewAs: 2)
+        await model.diskLook?.value
+        #expect(model.reloads == reloads + 1)
+    }
+
+    @Test func changesThatArriveTogetherAreLookedAtOnce() async throws {
+        let log = CommandLog()
+        let repository = try makeTemporaryFolder() + "/basic"
+        _ = try await TestGit.make().run(GitCommand("clone", "--quiet", "--no-local", try await Fixture.repository("basic"), repository))
+        let session = try await RepositorySession.open(containing: repository, git: try await TestGit.make(log: log))
+        let model = RepositoryModel(session: session, worktree: repository)
+        for change in 1...3 { model.filesChangedOnDisk(asNewAs: change) }
+        await model.diskLook?.value
+        #expect(log.entries.count { $0.arguments.contains("status") } == 1)
+    }
+
+    @Test func aChangeRightAfterALookWaitsForIt() async throws {
+        let (model, repository) = try await modelOfACopy()
+        let clock = ContinuousClock()
+        let start = clock.now
+        model.filesChangedOnDisk(asNewAs: 1)
+        await model.diskLook?.value
+        // The first look has finished, so this one starts a task of its own,
+        // and still waits.
+        try write("new\n", to: "new.txt", in: repository)
+        model.filesChangedOnDisk(asNewAs: 2)
+        await model.diskLook?.value
+        #expect(clock.now - start >= ChangePacing.shortestGap)
+        #expect(model.uncommittedFiles == 1)
+    }
+
+    @Test func aWatchedRepositoryDoesntLookAgainWhenRogaBecomesActive() async throws {
+        let (model, _) = try await modelOfACopy()
+        await model.appear()
+        await model.session.watch(try await model.session.worktrees())
+        #expect(model.session.isWatching)
+        model.becameActive()
+        #expect(model.check == nil)
+        await model.branch.quietFetch?.value
+        await model.session.close()
+    }
+
     @Test func aCleanWorktreeHasNoRowForChanges() async throws {
         let (model, repository) = try await modelOfACopy()
         #expect(FileManager.default.fileExists(atPath: repository))
