@@ -216,7 +216,6 @@ struct RefsPanel: View {
             isListFocused = true
             setCollapsed(!isCollapsed, folder: ref)
         }
-        .background { RefFolderGuides(depth: depth, isOnRemote: isOnRemote) }
         .id(ref)
     }
 
@@ -253,7 +252,6 @@ struct RefsPanel: View {
                     .accessibilityLabel("Show Worktree")
             }
         }
-        .background { RefFolderGuides(depth: depth) }
         .id(branch.name)
     }
 
@@ -305,7 +303,6 @@ struct RefsPanel: View {
             }
         } commands: {
         }
-        .background { RefFolderGuides(depth: depth, isOnRemote: true) }
         .id(branch.name)
     }
 
@@ -633,7 +630,7 @@ extension RefRow where Trailing == EmptyView, Commands == EmptyView {
 
 /// How much further in than a section's rows a row starts: a step for its
 /// remote, if it's a remote's branch, and one for each folder it's in. A step
-/// puts a row's icon just past the line under its folder's chevron.
+/// puts a row's icon under the start of the name above it.
 private enum RefIndent {
     static let step = 22.0
 
@@ -642,10 +639,11 @@ private enum RefIndent {
     }
 }
 
-/// A folder of branches (decision 50): a chevron where a branch has its icon,
-/// so that the chevrons line up with the icons of the branches beside them as
-/// in a tree of files, the folder's name in gray, and how many branches are
-/// under it. Clicking it opens or closes it.
+/// A folder of branches (decision 50): a folder where a branch has its icon,
+/// then the folder's name in gray with a chevron after it, as a section's
+/// header and a repository in the sidebar have. Clicking it opens or closes it.
+/// How many branches are under it is in its tooltip rather than on the row,
+/// where it would line up with the dates and the counts of the branches.
 private struct RefFolderRow: View {
     let name: String
     /// Its whole path, as in `origin/tm/`, for its tooltip.
@@ -658,16 +656,19 @@ private struct RefFolderRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Chevron(pointsDown: !isCollapsed)
-                .frame(width: 16)
-            Text(name)
+            Icon.folder.image
                 .font(.system(size: 13))
                 .foregroundStyle(.secondary)
-                .lineLimit(1)
+                .frame(width: 16)
+                .accessibilityHidden(true)
+            HStack(spacing: 4) {
+                Text(name)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Chevron(pointsDown: !isCollapsed)
+            }
             Spacer(minLength: 8)
-            Text(count, format: .number)
-                .font(.system(size: 11.5))
-                .foregroundStyle(.secondary)
         }
         .padding(.leading, 8 + indent)
         .padding(.trailing, 8)
@@ -680,48 +681,17 @@ private struct RefFolderRow: View {
         .contentShape(Rectangle())
         .onTapGesture(perform: toggle)
         .onHover { isHovering = $0 }
-        .help(path)
+        .help("\(path) · \(branches)")
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(path)
-        .accessibilityValue("\(count) \(count == 1 ? "branch" : "branches"), \(isCollapsed ? "Collapsed" : "Expanded")")
+        .accessibilityValue("\(branches), \(isCollapsed ? "Collapsed" : "Expanded")")
         .accessibilityHint("Shows or hides its branches")
         .accessibilityAddTraits(.isButton)
         .accessibilityAction(.default, toggle)
     }
-}
 
-/// The thin lines that run down the rows in a folder, one under the chevron of
-/// each folder a row is in, as in a tree of files (decision 31). Each row draws
-/// its own, and rows have no gap between them, so they join into one line that
-/// ends where the folder does. They're under the row's fill, so that they
-/// still show on a selected row.
-private struct RefFolderGuides: View {
-    let depth: Int
-    var isOnRemote = false
-
-    var body: some View {
-        Lines(depth: depth, start: RefIndent.of(0, isOnRemote: isOnRemote), step: RefIndent.step)
-            .stroke(Color.primary.opacity(0.14), lineWidth: 1)
-            .allowsHitTesting(false)
-    }
-
-    private nonisolated struct Lines: Shape {
-        let depth: Int
-        let start: Double
-        let step: Double
-
-        func path(in rect: CGRect) -> Path {
-            var path = Path()
-            for folder in 0..<depth {
-                // The middle of the column that the folder's chevron is in: past
-                // the row's margin of 6 and its padding of 8, half of 16, and on
-                // a half point, so that a line one point wide stays sharp.
-                let x = 22.5 + start + Double(folder) * step
-                path.move(to: CGPoint(x: x, y: rect.minY))
-                path.addLine(to: CGPoint(x: x, y: rect.maxY))
-            }
-            return path
-        }
+    private var branches: String {
+        "\(count.formatted()) \(count == 1 ? "branch" : "branches")"
     }
 }
 
