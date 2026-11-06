@@ -1,4 +1,5 @@
 import AppKit
+import IconUI
 import SwiftUI
 
 /// The colors of the Settings sheet, from the design canvas's Settings boards,
@@ -9,6 +10,10 @@ enum SettingsColors {
     /// The gray of help under a setting, and of icons that aren't selected.
     static let note = DialogColors.note
     static let ink = DialogColors.ink
+    /// Behind a button that isn't the main one, as in a dialog.
+    static let secondaryButton = DialogColors.secondaryButton
+    /// What failed, in the agent's own words.
+    static let danger = DialogColors.danger
     /// The border of the search field, and a switch that's off.
     static let line = Palette.gray(light: 0.839, dark: 0.29)
     /// The lines between rows, and around the sidebar and the header.
@@ -29,6 +34,8 @@ enum SettingsColors {
 /// no card around them.
 struct SettingsSection<Aside: View, Content: View>: View {
     let title: String
+    /// Gray words under the heading that say what the whole group is about.
+    var description: AttributedString?
     @ViewBuilder var aside: Aside
     @ViewBuilder var content: Content
 
@@ -42,6 +49,14 @@ struct SettingsSection<Aside: View, Content: View>: View {
             }
             .frame(minHeight: 26, alignment: .leading)
             .padding(.bottom, 4)
+            if let description {
+                Text(description)
+                    .font(.system(size: 12.5))
+                    .lineSpacing(3)
+                    .foregroundStyle(SettingsColors.note)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.bottom, 8)
+            }
             Group(subviews: content) { rows in
                 ForEach(rows) { row in
                     if row.id != rows.first?.id {
@@ -64,17 +79,37 @@ extension SettingsSection where Aside == EmptyView {
 }
 
 /// One setting: its name and gray help on the left, and its control on the
-/// right.
-struct SettingsRow<Control: View>: View {
+/// right. Help that's more than words, such as a program's path in the code
+/// font, goes in `detail`, and `help` is then what VoiceOver reads.
+///
+/// VoiceOver calls the control by the setting's name, unless `namesControl`
+/// is off, for buttons that say what they do, such as Choose….
+struct SettingsRow<Detail: View, Control: View>: View {
     let title: String
     var help: String?
+    let detail: Detail?
+    var namesControl = true
     @ViewBuilder var control: Control
+
+    init(title: String, help: String?, namesControl: Bool = true, @ViewBuilder detail: () -> Detail, @ViewBuilder control: () -> Control) {
+        self.title = title
+        self.help = help
+        self.namesControl = namesControl
+        self.detail = detail()
+        self.control = control()
+    }
 
     var body: some View {
         HStack(spacing: 16) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                if let help {
+                if let detail {
+                    detail
+                        .font(.system(size: 12.5))
+                        .lineSpacing(3)
+                        .foregroundStyle(SettingsColors.note)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else if let help, !help.isEmpty {
                     Text(help)
                         .font(.system(size: 12.5))
                         .lineSpacing(3)
@@ -83,13 +118,32 @@ struct SettingsRow<Control: View>: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            control
-                .fixedSize()
-                .accessibilityLabel(title)
-                .accessibilityHint(help ?? "")
+            if namesControl {
+                control
+                    .fixedSize()
+                    .accessibilityLabel(title)
+                    .accessibilityHint(help ?? "")
+            } else {
+                control
+                    .fixedSize()
+            }
         }
         .padding(.vertical, 10)
-        .frame(minHeight: help == nil ? 46 : 56)
+        .frame(minHeight: hasHelp ? 56 : 46)
+    }
+
+    private var hasHelp: Bool {
+        detail != nil || help?.isEmpty == false
+    }
+}
+
+extension SettingsRow where Detail == EmptyView {
+    init(title: String, help: String?, namesControl: Bool = true, @ViewBuilder control: () -> Control) {
+        self.title = title
+        self.help = help
+        self.namesControl = namesControl
+        self.detail = nil
+        self.control = control()
     }
 }
 
@@ -263,5 +317,366 @@ struct SettingsSlider: View {
         let snapped = (raw / step).rounded() * step
         let clamped = min(max(snapped, range.lowerBound), range.upperBound)
         if clamped != value { value = clamped }
+    }
+}
+
+// MARK: Buttons
+
+/// The canvas's buttons in Settings: soft gray, or solid ink for the one
+/// that matters most on its row, such as Install…. The small ones sit inside
+/// lists, beside an agent's name.
+struct SettingsButtonStyle: ButtonStyle {
+    enum Kind {
+        case secondary
+        case primary
+    }
+
+    var kind = Kind.secondary
+    var isSmall = false
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        let shape = RoundedRectangle(cornerRadius: isSmall ? 7 : 9, style: .continuous)
+        configuration.label
+            .font(.system(size: isSmall ? 12 : 13, weight: .medium))
+            .lineLimit(1)
+            .padding(.horizontal, isSmall ? 9 : 12)
+            .frame(height: isSmall ? 24 : 28)
+            .foregroundStyle(kind == .primary ? DialogColors.onInk : .primary)
+            .background(kind == .primary ? SettingsColors.ink : SettingsColors.secondaryButton, in: shape)
+            .opacity(!isEnabled ? 0.45 : configuration.isPressed ? 0.75 : 1)
+            .contentShape(shape)
+    }
+}
+
+extension ButtonStyle where Self == SettingsButtonStyle {
+    static func settings(_ kind: SettingsButtonStyle.Kind = .secondary, small: Bool = false) -> SettingsButtonStyle {
+        SettingsButtonStyle(kind: kind, isSmall: small)
+    }
+}
+
+/// Words in gray that do something, such as Reset to Roga's, without a button
+/// around them.
+struct SettingsLinkStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(SettingsColors.note)
+            .opacity(!isEnabled ? 0.45 : configuration.isPressed ? 0.6 : 1)
+            .contentShape(Rectangle())
+    }
+}
+
+// MARK: Choosing and typing
+
+/// The chosen value and a chevron, which open a menu of the choices with a
+/// check beside the chosen one, as the canvas's popups do. It has no border,
+/// so it reads as part of its row.
+struct SettingsPopup<Value: Hashable>: View {
+    @Binding var selection: Value
+    let options: [(value: Value, title: String)]
+    /// Gray words after a value's title, as in "Default · gpt-6-astra", where
+    /// Default means something only the agent knows.
+    var detail: (Value) -> String? = { _ in nil }
+    /// A command after the choices, for a value that isn't one of them, such
+    /// as a model's name to type.
+    var more: (title: String, action: () -> Void)?
+    @State private var isHovering = false
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        Menu {
+            SettingsChoices(selection: $selection, options: options, detail: detail)
+            if let more {
+                Divider()
+                Button(more.title, action: more.action)
+            }
+        } label: {
+            HStack(spacing: 6) {
+                label
+                SettingsChevron()
+            }
+            .lineLimit(1)
+            .padding(.leading, 10)
+            .padding(.trailing, 6)
+            .frame(height: 28)
+            .background(isHovering ? SettingsColors.hover : .clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .onHover { isHovering = $0 && isEnabled }
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .opacity(isEnabled ? 1 : 0.45)
+        .accessibilityValue(title(of: selection))
+    }
+
+    private var label: Text {
+        let title = Text(title(of: selection))
+        guard let detail = detail(selection) else { return title }
+        return Text("\(title) \(Text("· \(detail)").foregroundStyle(SettingsColors.note))")
+    }
+
+    private func title(of value: Value) -> String {
+        options.first { $0.value == value }?.title ?? ""
+    }
+}
+
+/// The canvas's select: a box with a line around it, as wide as it's asked to
+/// be, with the chosen value at its start and the chevron at its end, for a
+/// choice that matters more than a popup's.
+struct SettingsSelect<Value: Hashable>: View {
+    @Binding var selection: Value
+    let options: [(value: Value, title: String)]
+    /// What it says when there's nothing to choose.
+    var emptyTitle = ""
+    var width: CGFloat = 200
+    @Environment(\.isEnabled) private var isEnabled
+
+    /// What it shows: the chosen value's title, or `emptyTitle`. VoiceOver
+    /// reads it as the value too, because the row names the select by its
+    /// setting, which hides the menu's own label.
+    var shownTitle: String {
+        options.first { $0.value == selection }?.title ?? emptyTitle
+    }
+
+    var body: some View {
+        Menu {
+            SettingsChoices(selection: $selection, options: options)
+        } label: {
+            HStack(spacing: 8) {
+                Text(shownTitle)
+                    .foregroundStyle(options.isEmpty ? SettingsColors.note : .primary)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                SettingsChevron()
+            }
+            .padding(.leading, 12)
+            .padding(.trailing, 10)
+            .frame(width: width, height: 32)
+            .background(SettingsColors.surface, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .strokeBorder(SettingsColors.line, lineWidth: 1)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .disabled(options.isEmpty)
+        .accessibilityValue(shownTitle)
+    }
+}
+
+/// The items of a popup's menu, with a check beside the chosen one.
+private struct SettingsChoices<Value: Hashable>: View {
+    @Binding var selection: Value
+    let options: [(value: Value, title: String)]
+    var detail: (Value) -> String? = { _ in nil }
+
+    var body: some View {
+        Picker("", selection: $selection) {
+            ForEach(options, id: \.value) { option in
+                Text(detail(option.value).map { "\(option.title) · \($0)" } ?? option.title)
+                    .tag(option.value)
+            }
+        }
+        .pickerStyle(.inline)
+        .labelsHidden()
+    }
+}
+
+/// The small chevron at the end of a popup or a select.
+private struct SettingsChevron: View {
+    var body: some View {
+        Icon.dropdown.image
+            .font(.system(size: 11))
+            .foregroundStyle(SettingsColors.note)
+            .accessibilityHidden(true)
+    }
+}
+
+/// A one-line box to type in, with a line around it, in the code font for
+/// what's typed as arguments.
+struct SettingsTextField: View {
+    @Binding var text: String
+    var placeholder = ""
+    var width: CGFloat = 240
+    var isMonospaced = false
+
+    var body: some View {
+        TextField("", text: $text, prompt: Text(placeholder).foregroundStyle(SettingsColors.note))
+            .textFieldStyle(.plain)
+            .font(isMonospaced ? .system(size: 12, design: .monospaced) : .system(size: 13))
+            .autocorrectionDisabled()
+            .padding(.horizontal, 11)
+            .frame(width: width, height: 32)
+            .background(SettingsColors.surface, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .strokeBorder(SettingsColors.line, lineWidth: 1)
+            }
+    }
+}
+
+/// A box for a paragraph, as wide as its row, that grows with what's typed in
+/// it from the height of four lines.
+struct SettingsTextArea: View {
+    @Binding var text: String
+    let label: String
+
+    var body: some View {
+        TextField("", text: $text, axis: .vertical)
+            .textFieldStyle(.plain)
+            .font(.system(size: 13))
+            // The canvas's lines are 1.45 times the font apart.
+            .lineSpacing(3.3)
+            .accessibilityLabel(label)
+            .padding(EdgeInsets(top: 9, leading: 11, bottom: 9, trailing: 11))
+            .frame(maxWidth: .infinity, minHeight: 84, alignment: .topLeading)
+            .background(SettingsColors.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(SettingsColors.line, lineWidth: 1)
+            }
+    }
+}
+
+// MARK: Cards and lists
+
+/// The exact command something on the page runs (decision 29), in the
+/// dialogs' dark block, with the rounded corners the canvas gives it in
+/// Settings, where it sits among the rows rather than along an edge.
+struct SettingsCommand: View {
+    let lines: [TerminalLine]
+
+    var body: some View {
+        CommandBlock(lines: lines)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+}
+
+/// A gray card of facts, each a name in the code font and what it means,
+/// such as the flags Roga always gives an agent.
+struct SettingsCard<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            content
+        }
+        .padding(EdgeInsets(top: 10, leading: 14, bottom: 10, trailing: 14))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(SettingsColors.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
+/// A fact on a `SettingsCard`: its name in the code font in a column of its
+/// own, and what it means in gray beside it.
+struct SettingsCardRow<Value: View>: View {
+    let name: String
+    var nameWidth: CGFloat = 200
+    /// Whether the two sit on one line's middle rather than on its baseline,
+    /// for a value that starts with a mark.
+    var centersValue = false
+    @ViewBuilder var value: Value
+
+    var body: some View {
+        HStack(alignment: centersValue ? .center : .firstTextBaseline, spacing: 12) {
+            Text(verbatim: name)
+                .font(.system(size: 11.5, design: .monospaced))
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(width: nameWidth, alignment: .leading)
+            value
+                .font(.system(size: 12.5))
+                .foregroundStyle(SettingsColors.note)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        // The canvas's lines are 1.4 times the font apart.
+        .lineSpacing(2.5)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+extension SettingsCardRow where Value == Text {
+    init(_ name: String, nameWidth: CGFloat = 200, _ value: String) {
+        self.init(name: name, nameWidth: nameWidth) { Text(value) }
+    }
+}
+
+/// Rows with a thin line around them and between them, such as the agents
+/// Roga found.
+struct SettingsList<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Group(subviews: content) { rows in
+                ForEach(rows) { row in
+                    if row.id != rows.first?.id {
+                        Rectangle()
+                            .fill(SettingsColors.hairline)
+                            .frame(height: 1)
+                    }
+                    row
+                }
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(SettingsColors.hairline, lineWidth: 1)
+        }
+    }
+}
+
+/// Something worth knowing about a page, on a gray card with an icon, such as
+/// why the sidebar can't show marks.
+struct SettingsNotice<Actions: View>: View {
+    let text: String
+    @ViewBuilder var actions: Actions
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Icon.info.image
+                .font(.system(size: 11.5))
+                .foregroundStyle(SettingsColors.note)
+                .padding(.top, 2)
+            Text(text)
+                .font(.system(size: 12.5))
+                .lineSpacing(3)
+                .foregroundStyle(SettingsColors.note)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            actions
+        }
+        .padding(EdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 12))
+        .background(SettingsColors.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
+extension AttributedString {
+    /// Words with short commands in them, each set as the canvas sets a key:
+    /// in the code font on a gray ground, as in "Each hook runs `roga hook`".
+    static func settingsWords(_ parts: [(text: String, isCode: Bool)]) -> AttributedString {
+        var words = AttributedString()
+        for part in parts {
+            guard part.isCode else {
+                words += AttributedString(part.text)
+                continue
+            }
+            // A word joiner after each hyphen, so that a line doesn't break
+            // inside an option and look like two words.
+            var code = AttributedString("\u{2009}" + part.text.replacingOccurrences(of: "-", with: "-\u{2060}") + "\u{2009}")
+            code.font = .system(size: 11.5, design: .monospaced)
+            code.backgroundColor = SettingsColors.card
+            words += code
+        }
+        return words
     }
 }
