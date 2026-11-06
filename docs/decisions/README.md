@@ -57,3 +57,4 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [47](0047-say-what-an-agent-is-doing-in-a-line-the-helper-makes.md) | Say what an agent is doing, in a line the helper makes | Accepted |
 | [48](0048-a-second-line-under-a-sidebar-row-while-theres-something-to-say.md) | A second line under a sidebar row while there's something to say | Accepted |
 | [49](0049-look-again-at-what-changes-on-disk.md) | Look again at what changes on disk | Accepted |
+| [50](0050-branches-in-folders-at-each-slash-of-their-names.md) | Branches in folders, at each slash of their names | Accepted |

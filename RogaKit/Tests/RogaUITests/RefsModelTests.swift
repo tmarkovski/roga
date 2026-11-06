@@ -78,6 +78,135 @@ struct RefsModelTests {
         #expect(RefsModel.filtered(details, by: "") == details)
     }
 
+    /// Branch rows as text: a folder as its name with a slash, how many
+    /// branches are under it and whether it's closed, and a branch as its
+    /// title, each indented by how many folders it's in.
+    func outline<Branch>(_ rows: [BranchRow<Branch>]) -> [String] {
+        rows.map { row in
+            let indent = String(repeating: "  ", count: row.depth)
+            switch row.content {
+            case .folder(_, let name, let count, let isCollapsed):
+                return indent + name + "/ \(count)" + (isCollapsed ? " closed" : "")
+            case .branch(_, let title):
+                return indent + title
+            }
+        }
+    }
+
+    func rows(_ branches: [BranchDetails], current: String? = nil, sort: RefsModel.Sort = .name, collapsed: Set<String> = []) -> [BranchRow<BranchDetails>] {
+        RefsModel.rows(of: branches, under: Ref.branchPrefix, current: current, sort: sort, collapsed: collapsed)
+    }
+
+    @Test func eachPartOfANameBeforeASlashIsAFolder() {
+        let rows = rows([branch("tm/sidebar-second-line"), branch("tm/commit-experience"), branch("main"), branch("a/b/c"), branch("fix/login")])
+        // By name, folders come before the other branches.
+        #expect(outline(rows) == [
+            "a/ 1",
+            "  b/ 1",
+            "    c",
+            "fix/ 1",
+            "  login",
+            "tm/ 2",
+            "  commit-experience",
+            "  sidebar-second-line",
+            "main",
+        ])
+        // A folder goes by what the full names in it start with, which no
+        // branch's name can be.
+        #expect(rows.map(\.id) == [
+            "refs/heads/a/",
+            "refs/heads/a/b/",
+            "refs/heads/a/b/c",
+            "refs/heads/fix/",
+            "refs/heads/fix/login",
+            "refs/heads/tm/",
+            "refs/heads/tm/commit-experience",
+            "refs/heads/tm/sidebar-second-line",
+            "refs/heads/main",
+        ])
+    }
+
+    @Test func theCurrentBranchComesFirstBesideItsNeighbors() {
+        let branches = [branch("tm/a"), branch("tm/b"), branch("main"), branch("develop")]
+        #expect(outline(rows(branches, current: "refs/heads/tm/b")) == ["tm/ 2", "  b", "  a", "develop", "main"])
+        #expect(outline(rows(branches, current: "refs/heads/main")) == ["main", "tm/ 2", "  a", "  b", "develop"])
+        #expect(outline(rows(branches, current: "refs/heads/main", sort: .date)) == ["main", "develop", "tm/ 2", "  a", "  b"])
+    }
+
+    @Test func byDateAFolderGoesAtTheDateOfItsLatestBranch() {
+        let branches = [
+            branch("tm/old", date: 1),
+            branch("tm/new", date: 5),
+            branch("develop", date: 3),
+            branch("fix/login", date: 2),
+            branch("undated"),
+            branch("wip/undated"),
+        ]
+        #expect(outline(rows(branches, sort: .date)) == [
+            "tm/ 2",
+            "  new",
+            "  old",
+            "develop",
+            "fix/ 1",
+            "  login",
+            "undated",
+            "wip/ 1",
+            "  undated",
+        ])
+    }
+
+    @Test func aClosedFolderHidesWhatsInIt() {
+        let rows = rows(
+            [branch("a/b/c"), branch("a/d"), branch("tm/x"), branch("main")],
+            collapsed: ["refs/heads/a/b/", "refs/heads/tm/"]
+        )
+        #expect(outline(rows) == ["a/ 2", "  b/ 1 closed", "  d", "tm/ 1 closed", "main"])
+        // So the arrow keys go past what's in it, as they go past the folders.
+        #expect(rows.compactMap(\.branch).map(\.shortName) == ["a/d", "main"])
+    }
+
+    @Test func aRemotesBranchesGoInFoldersOfTheirOwn() {
+        let details = RefDetails(
+            currentBranch: "refs/heads/main",
+            branches: [branch("main"), branch("tm/x")],
+            remotes: [RemoteDetails(name: "origin", branches: [remoteBranch("main"), remoteBranch("tm/x"), remoteBranch("tm/y")])]
+        )
+        // Closing the remote's folder leaves the local one of the same name open.
+        let rows = RefsModel.branchRows(details, sort: .name, collapsed: ["refs/remotes/origin/tm/"])
+        #expect(outline(rows.local) == ["main", "tm/ 1", "  x"])
+        #expect(outline(rows.remotes["origin"] ?? []) == ["tm/ 2 closed", "main"])
+        #expect(rows.remotes["origin"]?.first?.id == "refs/remotes/origin/tm/")
+    }
+
+    @Test func aFilterOpensTheFoldersThatHaveMatchesAndShowsOnlyThose() async throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "roga-tests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let path = try #require(realpath(folder.path(percentEncoded: false), nil))
+        let repository = String(cString: path) + "/work"
+        free(path)
+        let git = try await TestGit.make()
+        _ = try await git.run(GitCommand("clone", "--quiet", try await Fixture.repository("basic"), repository, in: folder.path(percentEncoded: false)))
+        for name in ["tm/fix-login", "tm/sidebar", "ab/login-page"] {
+            _ = try await git.run(GitCommand("branch", name, in: repository))
+        }
+        let session = try await RepositorySession.open(containing: repository, git: git)
+        let model = RepositoryModel(session: session, worktree: repository, keepsCommitGraphCurrent: { false })
+        await model.refs.load()
+        let closed: Set = ["refs/heads/ab/", "refs/heads/tm/"]
+
+        #expect(outline(try #require(model.refs.branchRows(sort: .name, collapsed: closed)).local) == ["main", "ab/ 1 closed", "tm/ 2 closed"])
+        model.refs.filter = "LOGIN"
+        #expect(outline(try #require(model.refs.branchRows(sort: .name, collapsed: closed)).local) == ["ab/ 1", "  login-page", "tm/ 1", "  fix-login"])
+        // A folder's name matches too, and brings everything in it.
+        model.refs.filter = "tm/"
+        #expect(outline(try #require(model.refs.branchRows(sort: .name, collapsed: closed)).local) == ["tm/ 2", "  fix-login", "  sidebar"])
+        model.refs.closeFilter()
+        #expect(outline(try #require(model.refs.branchRows(sort: .name, collapsed: closed)).local) == ["main", "ab/ 1 closed", "tm/ 2 closed"])
+        #expect(outline(try #require(model.refs.branchRows(sort: .name, collapsed: [])).local) == [
+            "main", "ab/ 1", "  login-page", "tm/ 2", "  fix-login", "  sidebar",
+        ])
+    }
+
     @Test func aBranchSaysWhereItIsAndHowFarItIs() {
         var row = branch("agent/fix-login", date: 1_000)
         let now = Date(timeIntervalSince1970: 1_000 + 7_200)
