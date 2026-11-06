@@ -6,8 +6,9 @@ import AppKit
 /// theme, so light mode has a deeper version of each. They're fixed rather than
 /// system colors, so they don't follow the accent color.
 public enum GitColors {
-    /// Each column of the graph, in turn. Monokai's orange isn't among them,
-    /// because orange means a click would run something (decision 19).
+    /// The colors the graph's lanes take turns with, one for each of
+    /// `LaneLayout.colors`. Monokai's orange isn't among them, because orange
+    /// means a click would run something (decision 19).
     public static let lanes: [NSColor] = [
         color(light: 0xDB1C61, dark: 0xFF3478), // Pink
         color(light: 0x10819E, dark: 0x66D9EF), // Sky

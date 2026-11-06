@@ -1,6 +1,6 @@
 # 27. Give the graph and the branches Monokai's colors
 
-Accepted on 2026-11-04.
+Accepted on 2026-11-04. Partly superseded by [decision 42](0042-run-each-line-down-to-its-parent-in-its-lanes-color.md), which gives each lane of the graph a color rather than each column. The rest of this decision still holds.
 
 ## Context
 

@@ -4,7 +4,8 @@
 /// It's drawn over a `LaneLayout` rather than laid out with it, because the
 /// worktree can go from clean to changed at any moment, and laying out all of
 /// Linux again takes seconds. It runs straight down in the first column free of
-/// every row it crosses, and curves into `HEAD`'s dot. A commit above `HEAD`
+/// every row it crosses, and curves into `HEAD`'s dot, in the color of the
+/// column it starts in. A commit above `HEAD`
 /// is usually on another branch, so `HEAD` is often not the first row.
 ///
 /// Like the layout's own lines, it's cut when it's longer than
@@ -30,41 +31,44 @@ public struct WorkingTreeLine: Sendable {
         func column(clearOf rows: Range<Int>) -> Int {
             rows.reduce(0) { max($0, layout.row($1).width) }
         }
-        func straight(_ column: Int) -> Line {
-            Line(top: .column(column), bottom: .column(column))
+        func straight(_ column: Int, color: Int) -> Line {
+            Line(top: .column(column), bottom: .column(column), color: color)
         }
 
         let headRow = layout.rows.firstIndex(of: head)
         if let headRow, headRow <= LaneLayout.longestLine {
             let column = headRow == 0 ? layout.row(0).column : column(clearOf: 0..<headRow)
-            row = Row(column: column, lines: [Line(top: .commit, bottom: .column(column))])
+            let color = column % LaneLayout.colors
+            row = Row(column: column, color: color, lines: [Line(top: .commit, bottom: .column(column), color: color)])
             for index in 0..<headRow {
-                lines[index] = straight(column)
+                lines[index] = straight(column, color: color)
             }
-            lines[headRow] = Line(top: .column(column), bottom: .commit)
+            lines[headRow] = Line(top: .column(column), bottom: .commit, color: color)
             return
         }
 
         let start = 0..<min(LaneLayout.cutLength, layout.count)
         let startColumn = column(clearOf: start)
+        // Both ends of a cut line are one line, so they share a color.
+        let color = startColumn % LaneLayout.colors
         if let last = start.last {
-            row = Row(column: startColumn, lines: [Line(top: .commit, bottom: .column(startColumn))])
+            row = Row(column: startColumn, color: color, lines: [Line(top: .commit, bottom: .column(startColumn), color: color)])
             for index in start.dropLast() {
-                lines[index] = straight(startColumn)
+                lines[index] = straight(startColumn, color: color)
             }
-            lines[last] = Line(top: .column(startColumn), bottom: .cut(startColumn))
+            lines[last] = Line(top: .column(startColumn), bottom: .cut(startColumn), color: color)
         } else {
-            row = Row(column: startColumn, lines: [Line(top: .commit, bottom: .cut(startColumn))])
+            row = Row(column: startColumn, color: color, lines: [Line(top: .commit, bottom: .cut(startColumn), color: color)])
         }
 
         if let headRow {
             let end = headRow - LaneLayout.cutLength..<headRow
             let endColumn = column(clearOf: end)
             for index in end {
-                lines[index] = straight(endColumn)
+                lines[index] = straight(endColumn, color: color)
             }
-            lines[end.lowerBound] = Line(top: .cut(endColumn), bottom: .column(endColumn))
-            lines[headRow] = Line(top: .column(endColumn), bottom: .commit)
+            lines[end.lowerBound] = Line(top: .cut(endColumn), bottom: .column(endColumn), color: color)
+            lines[headRow] = Line(top: .column(endColumn), bottom: .commit, color: color)
         }
     }
 

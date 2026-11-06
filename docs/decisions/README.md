@@ -34,7 +34,7 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [24](0024-icons-as-custom-symbols-from-lucide.md) | Draw the app's icons as custom symbols, from Lucide | What folds changed to a chevron by [31](0031-chevrons-for-what-folds-and-lines-down-a-tree.md) |
 | [25](0025-the-house-zooms-and-the-words-move-the-way-the-commits-go.md) | Zoom the house in and out, and move the words the way the commits go | A fetch's house removed by [26](0026-a-fetch-shows-only-its-words.md) |
 | [26](0026-a-fetch-shows-only-its-words.md) | A fetch shows only its words | Accepted |
-| [27](0027-give-the-graph-and-branches-monokais-colors.md) | Give the graph and the branches Monokai's colors | Accepted |
+| [27](0027-give-the-graph-and-branches-monokais-colors.md) | Give the graph and the branches Monokai's colors | Colors given to lanes rather than columns by [42](0042-run-each-line-down-to-its-parent-in-its-lanes-color.md) |
 | [28](0028-show-a-worktree-thats-stuck-partway.md) | Show a worktree that's stuck partway through | Accepted |
 | [29](0029-dialogs-that-say-what-happens-and-show-the-command.md) | Dialogs that say what happens and show the command | Partly superseded by [33](0033-one-row-in-a-menu-and-the-choice-in-the-dialog.md) and [38](0038-one-delete-on-a-commit-with-its-branches-in-the-dialog.md) |
 | [30](0030-stage-and-commit-beside-history.md) | Stage and commit in the panels under history | When a heading's buttons show changed by [39](0039-discard-with-undo-and-ask-only-for-many.md) |
@@ -49,3 +49,4 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [39](0039-discard-with-undo-and-ask-only-for-many.md) | Discard changes, with Undo, and ask only for more than one file | Accepted |
 | [40](0040-the-repositorys-name-opens-a-menu-of-its-worktrees.md) | The repository's name opens a menu of its worktrees | Accepted |
 | [41](0041-agents-status-from-their-hooks-and-messages-from-their-clis.md) | Show what agents are doing from their hooks, and write commit messages with their CLIs | Accepted |
+| [42](0042-run-each-line-down-to-its-parent-in-its-lanes-color.md) | Run each line down to its parent, in its lane's color | Accepted |

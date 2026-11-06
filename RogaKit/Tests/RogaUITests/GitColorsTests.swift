@@ -68,7 +68,7 @@ struct GitColorsTests {
     @Test func neighboringColumnsDiffer() throws {
         for look in Self.looks {
             let lanes = try GitColors.lanes.map { try components($0, in: look) }
-            #expect(lanes.count == 8)
+            #expect(lanes.count == LaneLayout.colors)
             for (index, lane) in lanes.enumerated() {
                 #expect(lane != lanes[(index + 1) % lanes.count])
             }
@@ -76,7 +76,7 @@ struct GitColorsTests {
     }
 
     /// The ring is the color of the current branch's badge, and the dot inside it
-    /// keeps its column's color.
+    /// keeps its lane's color.
     @Test func theRingHasTheCurrentBranchsColorInLight() throws {
         try checkTheRing(in: Self.looks[0])
     }
@@ -111,8 +111,42 @@ struct GitColorsTests {
                 + abs(pixel.greenComponent - target.greenComponent)
                 + abs(pixel.blueComponent - target.blueComponent)
         }
-        let lane = GitColors.lanes[CurrentCommitRowTests.straightDown.column]
+        let lane = GitColors.lanes[CurrentCommitRowTests.straightDown.color]
         #expect(try distance(ring, to: GitColors.current) < distance(ring, to: lane))
         #expect(try distance(dot, to: lane) < distance(dot, to: GitColors.current))
+    }
+
+    /// A line is drawn in its lane's color, whichever column it moves into,
+    /// and a dot in its own lane's color rather than its column's.
+    @Test func linesAndDotsHaveTheirLanesColors() throws {
+        let look = Self.looks[1]
+        let row = LaneLayout.Row(column: 0, color: 3, lines: [
+            LaneLayout.Line(top: .column(4), bottom: .column(1), color: 2),
+        ])
+        var drawing: CurrentCommitRowTests.Drawing?
+        NSAppearance(named: look.name)?.performAsCurrentDrawingAppearance {
+            drawing = try? CurrentCommitRowTests.Drawing(row, isCurrent: false)
+        }
+        let drawn = try #require(drawing)
+
+        // The lane whose color is nearest what was drawn at a point.
+        func lane(x: CGFloat, y: CGFloat) throws -> Int {
+            let pixel = try #require(drawn.color(x: x, y: y)?.usingColorSpace(.deviceRGB))
+            let distances = try GitColors.lanes.map { color in
+                var resolved: NSColor?
+                NSAppearance(named: look.name)?.performAsCurrentDrawingAppearance {
+                    resolved = color.usingColorSpace(.deviceRGB)
+                }
+                let target = try #require(resolved)
+                return abs(pixel.redComponent - target.redComponent)
+                    + abs(pixel.greenComponent - target.greenComponent)
+                    + abs(pixel.blueComponent - target.blueComponent)
+            }
+            return try #require(distances.indices.min { distances[$0] < distances[$1] })
+        }
+        // Where the line reaches the second column, at the bottom of the row.
+        let bottom = CGFloat(CurrentCommitRowTests.Drawing.height) - 1
+        #expect(try lane(x: CurrentCommitRowTests.x(ofColumn: 1), y: bottom) == 2)
+        #expect(try lane(x: CurrentCommitRowTests.dotX, y: CurrentCommitRowTests.middle) == 3)
     }
 }
