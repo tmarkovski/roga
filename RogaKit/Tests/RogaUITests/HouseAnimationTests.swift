@@ -226,7 +226,13 @@ struct HouseAnimationTests {
     }
 
     @Test func theSpeedIsNormalUntilSomeoneSetsIt() throws {
-        let name = "HouseAnimationTests-\(UUID().uuidString)"
+        // A suite named by an absolute path is a file at that path, so these
+        // defaults live in a temporary folder rather than in the Preferences
+        // folder, where emptying the suite would still leave its file.
+        let folder = FileManager.default.temporaryDirectory.appending(path: "HouseAnimationTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let name = folder.appending(path: "defaults").path(percentEncoded: false)
         let defaults = try #require(UserDefaults(suiteName: name))
         defer { defaults.removePersistentDomain(forName: name) }
         #expect(defaults.houseAnimationSpeed == 1)
