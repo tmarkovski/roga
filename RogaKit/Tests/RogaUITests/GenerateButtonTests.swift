@@ -144,7 +144,10 @@ struct GenerateButtonTests {
         let provider = provider()
         // A model of its own and extra arguments make it longer still.
         defaults.set("gpt-6-astra-mini", forKey: AgentPreferences.modelKey(.codex))
-        defaults.set("-c model_verbosity=low", forKey: AgentPreferences.extraArgumentsKey(.codex))
+        defaults.set(
+            "-c model_verbosity=low -c model_reasoning_summary=none -c hide_agent_reasoning=true",
+            forKey: AgentPreferences.extraArgumentsKey(.codex)
+        )
         provider.reloadSettings()
         for kind in AgentKind.allCases {
             let setup = try #require(provider.generation(with: kind))
