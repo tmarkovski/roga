@@ -132,7 +132,10 @@ struct Sidebar: View {
         let items = layout.items
         return ScrollViewReader { scroller in
             ScrollView {
-                VStack(alignment: .leading, spacing: 2) {
+                // Lazy, so that a change of the sidebar's width, on every frame
+                // while its line is dragged, lays out the rows in view rather
+                // than every row in the list.
+                LazyVStack(alignment: .leading, spacing: 2) {
                     ForEach(items) { item in
                         row(item)
                     }

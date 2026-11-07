@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import GitCore
 import GitRunner
@@ -32,21 +33,78 @@ public struct WorkspaceWindow: Codable, Hashable, Sendable {
     }
 }
 
-/// How wide the left part of the title row is, which only the number of commits
-/// at its other end reads. It changes on every frame while words open and close
-/// after the branch, and this way that redraws history's commands rather than
-/// the whole window.
+/// How wide the left part of the title row is, and the middle of the window it
+/// sits over, which only the number of commits at the row's other end reads.
+/// Both change on every frame, the first while words open and close after the
+/// branch, the second while a line beside the middle is dragged, and this way
+/// that redraws history's commands rather than the whole window.
 @MainActor @Observable final class TitleRowWidth {
     /// How wide it is, once it's been laid out.
     var shown: Double?
+    /// How wide the middle of the window is, once it's been laid out.
+    var middle: Double?
     /// About how much space the toolbar keeps between two items.
     static let toolbarSpacing = 12.0
 
-    /// Whether something this wide fits beside it, when it may take up to
-    /// `available`. Before the window has been laid out, everything fits.
-    func leavesRoom(for width: Double, available: Double?) -> Bool {
-        guard let available, let shown else { return true }
+    /// The most the left part can take, given how much of the middle's width
+    /// the rest of the row takes, or nil before the window has been laid out.
+    func room(besides taken: Double) -> Double? {
+        middle.map { max(0, $0 - taken) }
+    }
+
+    /// Whether something this wide fits beside it, given how much of the
+    /// middle's width the rest of the row takes. Before the window has been laid
+    /// out, everything fits.
+    func leavesRoom(for width: Double, besides taken: Double) -> Bool {
+        guard let available = room(besides: taken), let shown else { return true }
         return available - shown >= width + Self.toolbarSpacing
+    }
+}
+
+/// Says how far the pointer is from the leading edge of the window, or nil once
+/// it has left. It's an AppKit tracking area behind the window's views rather
+/// than SwiftUI's hover, which hit-tests the views under the pointer again
+/// whenever they move, as they all do on every frame while the sidebar's line
+/// is dragged.
+private struct PointerTracker: NSViewRepresentable {
+    let moved: (Double?) -> Void
+
+    func makeNSView(context: Context) -> TrackingView {
+        let view = TrackingView()
+        view.moved = moved
+        return view
+    }
+
+    func updateNSView(_ view: TrackingView, context: Context) {
+        view.moved = moved
+    }
+
+    final class TrackingView: NSView {
+        var moved: (Double?) -> Void = { _ in }
+
+        override init(frame: NSRect) {
+            super.init(frame: frame)
+            addTrackingArea(NSTrackingArea(
+                rect: .zero,
+                options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                owner: self
+            ))
+        }
+
+        required init?(coder: NSCoder) {
+            fatalError("The tracker is made in code.")
+        }
+
+        /// Lets every click through to the views in front.
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        override func mouseEntered(with event: NSEvent) { report(event) }
+        override func mouseMoved(with event: NSEvent) { report(event) }
+        override func mouseExited(with event: NSEvent) { moved(nil) }
+
+        private func report(_ event: NSEvent) {
+            moved(convert(event.locationInWindow, from: nil).x)
+        }
     }
 }
 
@@ -132,12 +190,15 @@ public struct WorkspaceView: View {
     /// How much room the panels under history take in this window.
     @SceneStorage("lowerPanelSize") private var lowerPanelSize = LowerPanelSize.regular
     @AppStorage("refsPanelWidth") private var refsPanelWidth = RefsPanelVisibility.defaultWidth
-    /// The width of the column that holds the worktree and the refs panel, once
-    /// it's been laid out.
-    @State private var columnWidth: Double?
-    /// The width of the middle of the window, once it's been laid out.
-    @State private var middleWidth: Double?
+    /// Whether the refs panel fits in the column that holds the worktree and the
+    /// panel. It's kept rather than the column's width, which changes on every
+    /// frame of a drag and would update the whole window each time.
+    @State private var refsPanelFits = true
     @State private var titleRowShown = TitleRowWidth()
+    /// The most the left part of the title row can take, once the window has
+    /// been laid out. It's kept apart from the middle's width, and changes only
+    /// when that changes what the row shows (`updateTitleRowRoom`).
+    @State private var titleRowRoom: Double?
     @State private var sidebarLine = SidebarLineHover()
     @State private var showsSettings = false
     /// Which window `openSettings` shows Settings on, which keeps it equal from
@@ -192,7 +253,10 @@ public struct WorkspaceView: View {
             ) {
                 detail
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .onGeometryChange(for: Double.self) { $0.size.width } action: { middleWidth = $0 }
+                    .onGeometryChange(for: Double.self) { $0.size.width } action: {
+                        titleRowShown.middle = $0
+                        updateTitleRowRoom()
+                    }
             } side: { width in
                 refsPanel(width: width)
             }
@@ -207,7 +271,7 @@ public struct WorkspaceView: View {
                     .allowsHitTesting(false)
             }
             .background(Palette.surface)
-            .onGeometryChange(for: Double.self) { $0.size.width } action: { columnWidth = $0 }
+            .onGeometryChange(for: Bool.self) { RefsPanelVisibility.fits(column: $0.size.width) } action: { refsPanelFits = $0 }
             .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
             .toolbar(removing: .title)
             .toolbar {
@@ -221,7 +285,7 @@ public struct WorkspaceView: View {
                 }
                 branchButtons
                 if let model = shownModel, case .ready = model.phase {
-                    HistoryCommands(model: model, titleRow: titleRowShown, titleRowRoom: titleRowRoom)
+                    HistoryCommands(model: model, titleRow: titleRowShown, titleRowTaken: titleRowTaken)
                 }
                 ToolbarItem {
                     RefsPanelToggle(visibility: refsPanelVisibility)
@@ -229,11 +293,9 @@ public struct WorkspaceView: View {
                 .sharedBackgroundVisibility(.hidden)
             }
         }
-        .onContinuousHover { phase in
-            switch phase {
-            case .active(let location): sidebarLine.pointerMoved(toX: location.x)
-            case .ended: sidebarLine.pointerMoved(toX: nil)
-            }
+        .background {
+            PointerTracker { sidebarLine.pointerMoved(toX: $0) }
+                .ignoresSafeArea()
         }
         .navigationTitle(title)
         .frame(minWidth: 720, minHeight: 480)
@@ -270,6 +332,9 @@ public struct WorkspaceView: View {
         .onChange(of: list.resolve(window?.selection)) { _, resolved in
             if resolved != window?.selection { selection.wrappedValue = resolved }
         }
+        .onChange(of: titleRowTaken) {
+            updateTitleRowRoom()
+        }
         .onChange(of: shown?.0.deletionCount) {
             shownModel?.refsChanged()
         }
@@ -298,7 +363,7 @@ public struct WorkspaceView: View {
     }
 
     private var refsPanelVisibility: RefsPanelVisibility {
-        RefsPanelVisibility(isWanted: refsPanelWanted, fits: columnWidth.map(RefsPanelVisibility.fits) ?? true)
+        RefsPanelVisibility(isWanted: refsPanelWanted, fits: refsPanelFits)
     }
 
     /// Whether the panels under history are maximized over the room the refs
@@ -495,9 +560,30 @@ public struct WorkspaceView: View {
         .padding(.leading, 1)
         // Inside the frame, which can be wider than what's in it, so that it's
         // how wide the row really is. The number of commits gets what's left.
-        .onGeometryChange(for: Double.self) { $0.size.width } action: { titleRowShown.shown = $0 }
-        .frame(maxWidth: titleRowWidth, alignment: .leading)
+        .onGeometryChange(for: Double.self) { $0.size.width } action: {
+            titleRowShown.shown = $0
+            updateTitleRowRoom()
+        }
+        .frame(maxWidth: titleRowRoom ?? .infinity, alignment: .leading)
     }
+
+    /// Gives the title row the room it has now, when that changes what it shows.
+    /// While the row has room to spare, before and after, its frame doesn't hold
+    /// it in, so a new room changes nothing, and leaving it alone keeps a drag
+    /// beside the middle from updating the whole window on every frame. Once the
+    /// row is near its room or cut short, the room changes the row, and the whole
+    /// toolbar has to update for macOS to measure the row again, or it keeps the
+    /// row's old width and moves the commands at the other end into a menu.
+    private func updateTitleRowRoom() {
+        guard let room = titleRowShown.room(besides: titleRowTaken) else { return }
+        let toSpare = (titleRowShown.shown ?? 0) + Self.titleRowRoomToSpare
+        if let current = titleRowRoom, current >= toSpare, room >= toSpare { return }
+        if room != titleRowRoom { titleRowRoom = room }
+    }
+
+    /// How much more room than it takes the title row has to have before a
+    /// change of room is left alone.
+    private static let titleRowRoomToSpare = 24.0
 
     /// Fetch and New Branch, at the right end of the title row before history's
     /// commands, for a worktree with a branch to act on.
@@ -515,11 +601,6 @@ public struct WorkspaceView: View {
             }
             .sharedBackgroundVisibility(.hidden)
         }
-    }
-
-    /// The most the title row can take, once the window has been laid out.
-    private var titleRowRoom: Double? {
-        middleWidth == nil ? nil : titleRowWidth
     }
 
     /// What the menu of the shown repository's worktrees does, which the chip
@@ -540,11 +621,12 @@ public struct WorkspaceView: View {
     /// The space between the branch's buttons and history's commands.
     private static let branchButtonsGap = 8.0
 
-    /// How wide the title can get, because the toolbar moves what doesn't fit
-    /// into a menu, starting with the commands after it. The number of commits
-    /// doesn't count, because it goes first, when it doesn't fit what's left.
-    private var titleRowWidth: Double {
-        guard let middleWidth else { return .infinity }
+    /// How much of the middle's width the rest of the title row takes, which
+    /// leaves the most the title can get, because the toolbar moves what doesn't
+    /// fit into a menu, starting with the commands after it. The number of
+    /// commits doesn't count, because it goes first, when it doesn't fit what's
+    /// left.
+    private var titleRowTaken: Double {
         // History's order button, the button for the refs panel, and the space
         // the toolbar keeps around them.
         var taken = 125.0
@@ -557,7 +639,7 @@ public struct WorkspaceView: View {
         if columns == .detailOnly { taken += 140 }
         // The note about the commit-graph file.
         if shownModel?.historyWasSlowToLoad == true { taken += 180 }
-        return max(0, middleWidth - taken)
+        return taken
     }
 
     private func open() {
