@@ -11,16 +11,26 @@ struct DiffPanel: View {
     /// The worktree's uncommitted changes, while they're what's showing, which
     /// gives the header a button for staging the file.
     var changes: SelectedChanges?
+    /// How much room the panels under history take, which the buttons at the
+    /// right of the header change.
+    @Binding var size: LowerPanelSize
     /// Whether the header has room for the file's path beside the search box.
     @State private var hasRoomForTitle = true
+    /// Whether the panel is wide enough for the buttons that go through the
+    /// matches, beside the search box and the buttons for the panels' size.
+    @State private var hasRoomForMatchButtons = true
 
     /// The widest the search box gets, so that it doesn't reach across a wide
     /// screen.
-    private static let findBoxWidth = 320.0
+    nonisolated private static let findBoxWidth = 320.0
     /// How much room the path needs to be worth showing beside the box.
-    private static let titleWidthBesideFindBox = 120.0
+    nonisolated private static let titleWidthBesideFindBox = 120.0
     /// The space after the path.
-    private static let titleSpacing = 12.0
+    nonisolated private static let titleSpacing = 12.0
+    /// How wide the panel has to be for the buttons that go through the
+    /// matches. In a narrower one, they give way so that the box keeps room
+    /// for what's typed, since Return, Shift-Return and Command-G do the same.
+    nonisolated private static let widthForMatchButtons = 240.0
 
     var body: some View {
         @Bindable var selection = selection
@@ -69,7 +79,7 @@ struct DiffPanel: View {
                     .help("\(group.stageTitle) (\(RepositoryCommands.stageShortcut.symbols))")
                     .fixedSize()
             }
-            if selection.isFindShown {
+            if selection.isFindShown, hasRoomForMatchButtons {
                 Button("Previous Match", icon: .chevronUp, action: selection.findPrevious)
                     .labelStyle(.iconOnly)
                     .buttonStyle(.icon)
@@ -86,6 +96,7 @@ struct DiffPanel: View {
                 .buttonStyle(.icon(isOn: selection.isFindShown))
                 .disabled(!selection.canFind && !selection.isFindShown)
                 .help(selection.isFindShown ? "Close Find" : "Find in Diff (\(RepositoryCommands.findShortcut.symbols))")
+            LowerPanelSizeButtons(size: $size)
         } content: {
             ZStack {
                 switch selection.shown?.content {
@@ -112,6 +123,11 @@ struct DiffPanel: View {
                         .controlSize(.small)
                 }
             }
+        }
+        .onGeometryChange(for: Bool.self) { geometry in
+            geometry.size.width >= Self.widthForMatchButtons
+        } action: { hasRoom in
+            hasRoomForMatchButtons = hasRoom
         }
     }
 

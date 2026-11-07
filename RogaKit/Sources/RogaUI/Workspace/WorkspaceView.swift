@@ -187,6 +187,8 @@ public struct WorkspaceView: View {
     @State private var recent = RecentWorktrees()
     @State private var columns = NavigationSplitViewVisibility.all
     @SceneStorage("showsRefsPanel") private var wantsRefsPanel = true
+    /// How much room the panels under history take in this window.
+    @SceneStorage("lowerPanelSize") private var lowerPanelSize = LowerPanelSize.regular
     @AppStorage("refsPanelWidth") private var refsPanelWidth = RefsPanelVisibility.defaultWidth
     /// Whether the refs panel fits in the column that holds the worktree and the
     /// panel. It's kept rather than the column's width, which changes on every
@@ -361,7 +363,28 @@ public struct WorkspaceView: View {
     }
 
     private var refsPanelVisibility: RefsPanelVisibility {
-        RefsPanelVisibility(isWanted: $wantsRefsPanel, fits: refsPanelFits)
+        RefsPanelVisibility(isWanted: refsPanelWanted, fits: refsPanelFits)
+    }
+
+    /// Whether the panels under history are maximized over the room the refs
+    /// panel would take.
+    private var coversRefsPanel: Bool {
+        lowerPanelSize == .maximized && shownModel?.phase.isReady == true
+    }
+
+    /// Whether the refs panel is wanted. It isn't while the panels under history
+    /// cover its room, and asking for it then puts them back, so that Show Refs
+    /// and switching branches still show it.
+    private var refsPanelWanted: Binding<Bool> {
+        let isCovered = coversRefsPanel
+        let wantsRefsPanel = $wantsRefsPanel
+        let lowerPanelSize = $lowerPanelSize
+        return Binding {
+            wantsRefsPanel.wrappedValue && !isCovered
+        } set: { wanted in
+            if wanted, isCovered { lowerPanelSize.wrappedValue = .regular }
+            wantsRefsPanel.wrappedValue = wanted
+        }
     }
 
     /// The refs of the repository whose worktree the window shows.
@@ -455,7 +478,7 @@ public struct WorkspaceView: View {
             }
         case .open(let session):
             if repository.worktrees.contains(where: { $0.path == selected.worktree }) {
-                RepositoryView(model: model(for: selected, session: session), showWorktree: showWorktree(of: selected, session: session))
+                RepositoryView(model: model(for: selected, session: session), showWorktree: showWorktree(of: selected, session: session), lowerPanelSize: $lowerPanelSize)
                     .id(selected)
             } else {
                 // The worktree is gone, and resolving the selection moves the

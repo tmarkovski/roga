@@ -12,6 +12,8 @@ struct RepositoryView: View {
     /// Shows one of the repository's worktrees in the window, by its folder,
     /// with a commit selected in it.
     let showWorktree: (String, ObjectID?) -> Void
+    /// How much room the panels under history take, which the window keeps.
+    @Binding var lowerPanelSize: LowerPanelSize
     @AppStorage("commitPanelHeight") private var commitPanelHeight = 340.0
     /// The same for the row for uncommitted changes, where the diff needs the room
     /// for staging and the message needs it for writing (decision 30). It's 0 until
@@ -25,7 +27,7 @@ struct RepositoryView: View {
         // to one wouldn't update this view. A worktree that's loading gets other
         // updates that cover for that. One that has already loaded may get none,
         // and a drag would change the saved size and leave the line where it was.
-        let _ = (commitPanelHeight, changesPanelHeight, commitPanelWidth)
+        let _ = (commitPanelHeight, changesPanelHeight, commitPanelWidth, lowerPanelSize)
         content
             .task(id: model.loadRequest) {
                 model.updateCommitGraph()
@@ -38,6 +40,7 @@ struct RepositoryView: View {
                 model.fileList.layout = fileLayout
             }
             .focusedSceneValue(\.repository, model)
+            .focusedSceneValue(\.lowerPanelSize, model.phase.isReady ? $lowerPanelSize : nil)
             .modifier(RepositoryDialogs(model: model))
     }
 
@@ -61,6 +64,7 @@ struct RepositoryView: View {
             let showsChanges = model.selectedChanges.isSelected
             PanelSplit(
                 lowerHeight: showsChanges ? $changesPanelHeight : $commitPanelHeight,
+                lowerSize: $lowerPanelSize,
                 upperHeightUntilDragged: Self.historyHeightWithChanges
             ) {
                 HistoryPanel(model: model, showWorktree: showWorktree)
@@ -72,7 +76,7 @@ struct RepositoryView: View {
                         CommitPanel(model: model)
                     }
                 } trailing: {
-                    DiffPanel(selection: model.selectedFile, changes: showsChanges ? model.selectedChanges : nil)
+                    DiffPanel(selection: model.selectedFile, changes: showsChanges ? model.selectedChanges : nil, size: $lowerPanelSize)
                 }
             }
         }

@@ -73,6 +73,9 @@ final class RefMenuAreaView: NSView {
         case let .choice(choice):
             Button(choice.title, action: choice.action)
                 .disabled(!choice.isEnabled || choice.isCurrent)
+        case let .option(title, isChecked, action):
+            Button(title, action: action)
+                .disabled(isChecked)
         case .header, .divider:
             EmptyView()
         }

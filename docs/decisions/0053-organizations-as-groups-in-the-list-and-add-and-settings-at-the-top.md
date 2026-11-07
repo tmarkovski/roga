@@ -1,4 +1,4 @@
-# 52. Organizations as groups in the list, and Add Repositories and Settings at the top
+# 53. Organizations as groups in the list, and Add Repositories and Settings at the top
 
 Accepted on 2026-11-07. This supersedes the rail of [decision 16](0016-a-rail-of-organizations-in-the-sidebar.md): picking one organization at a time, Command-1 to Command-9, View > Hide Organizations, and each window remembering its organization and the worktree it last showed there. It supersedes [decision 36](0036-a-solid-ink-tile-for-whats-selected-on-the-rail.md), whose ink tile only the rail had, and moves the new version that [decision 43](0043-show-a-new-version-in-the-sidebar-rather-than-sparkles-window.md) put above the rail's gear. It changes [decision 18](0018-every-remote-counts-toward-a-repositorys-organization.md) so that a repository with remotes in two organizations is listed once. Repositories' rows and their worktrees stay as decisions 16, 17, 48 and 51 have them.
 
@@ -12,7 +12,7 @@ The user pointed to Conductor's sidebar, which puts a few actions in rows at the
 
 **Adding repositories and Settings are rows at the top of the sidebar.** Each has an icon in gray and its title, is 32 points tall like the list's rows, and fills with gray on hover. Add Repositories keeps the darker gray while its popover is open, and Settings while its sheet is, because neither is a selection. A new version of Roga is a third row under them, in orange, reading Update to 1.4 or Restart to Update. A line across the sidebar separates these rows from the list.
 
-**The list has a header,** Repositories in bold with how many there are in gray, and at its right a button with sliders that opens a menu of two choices:
+**The list has a header,** Repositories in bold with how many there are in gray, and at its right a button with sliders that opens a menu of two choices. It's one of Roga's own menus, like a row's, with a checkmark at the right of the option that's chosen rather than the system's at the left:
 
 - **Group By** Organization, the default, or None.
 - **Sort By** Name, the default, or Uncommitted Changes.
