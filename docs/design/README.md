@@ -43,6 +43,8 @@ The legs aren't artwork. The app draws each one from joints, which are a hip, a 
 
 To add an animation, write a `HouseMotion` in `RogaKit/Sources/RogaUI/House/` that returns a pose for any moment, and add a case for it to `HouseAnimation`. It then appears in Settings and in Window > House Animations with the others, and the tests check that it loops without jumping and fits inside the frame. That window shows each animation large, with its joints, at its real sizes, and with its own pause, speed and frame slider.
 
+The house that drops through the Fetch button while a fetch runs ([decision 57](../decisions/0057-the-house-drops-through-the-fetch-button.md)) is a single pose built from the same joints: the body tipped back so that it hangs from a thread tied to its chimney, and the legs spread straight down and apart. `HangingHouse.swift` holds it. It slides as a whole rather than moving its joints, so it isn't one of the animations in Settings.
+
 ## Icons — November 3, 2026
 
 The app's icons start as SVGs in [`icons/`](icons/). They're drawn with strokes on a 24-by-24 grid. `icons/lucide/` holds unchanged copies from [Lucide](https://lucide.dev), and each file's first line says which release it came from. `icons/roga/` holds our own, drawn to match. `Scripts/generate-icons.swift` turns all of them into custom symbols and names them in code ([decision 24](../decisions/0024-icons-as-custom-symbols-from-lucide.md)).
