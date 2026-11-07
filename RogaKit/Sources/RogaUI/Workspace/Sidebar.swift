@@ -333,7 +333,8 @@ private struct ListHeader<Trailing: View>: View {
 /// starts. A chevron after it shows while the pointer is over it, and clicking
 /// it collapses or expands the group. A collapsed group's label has the mark of
 /// the most urgent agent among the worktrees it hides, in the column of the
-/// rows' marks, so that one waiting for you still shows.
+/// rows' marks, so that one waiting for you still shows. It has no commands, so
+/// the mark stays on hover.
 private struct GroupLabel: View {
     let title: String
     let isCollapsed: Bool
@@ -341,8 +342,7 @@ private struct GroupLabel: View {
     let toggle: () -> Void
     @State private var isHovering = false
 
-    /// How wide a row's mark is, and the least its label takes beside it
-    /// (`SidebarRow.markWidth`).
+    /// How wide a row's mark is (`SidebarRow.markWidth`).
     private static let markWidth: CGFloat = 24
 
     var body: some View {
@@ -354,12 +354,8 @@ private struct GroupLabel: View {
                 .opacity(isHovering ? 1 : 0)
             Spacer(minLength: 6)
             if let agent {
-                HStack(spacing: 0) {
-                    SidebarMark(summary: agent)
-                        .frame(width: Self.markWidth)
-                    Color.clear
-                        .frame(width: Self.markWidth, height: 1)
-                }
+                SidebarMark(summary: agent)
+                    .frame(width: Self.markWidth)
             }
         }
         .foregroundStyle(.secondary)
@@ -380,25 +376,22 @@ private struct GroupLabel: View {
 
 /// A row in the sidebar, as tall as in the Claude app's sidebar, which the
 /// wireframe follows. It fills with gray while the pointer is over it, and a
-/// little darker while it's selected. Its top right corner shows a label,
-/// which gives way to the row's commands while the pointer is over it. The
-/// commands are 24-point buttons 4 points from the row's top and right edges.
+/// little darker while it's selected. The commands show while the pointer is
+/// over it: 24-point buttons 4 points from the row's top and right edges.
 ///
-/// An agent's mark sits right before the label, in a box as wide as a
-/// command's button, and stays there on hover, so that what an agent is doing
-/// still shows while the pointer is there (decisions 41 and 51). The label's
-/// place is at least that wide while there's a mark, and keeps the width of the
-/// wider of the label and the commands, so the mark doesn't move when one gives
-/// way to the other, or when the label goes. In a narrow row, the mark and the
-/// label keep their width and the row's own text gives way, as the counts stay
-/// in the title row.
+/// An agent's mark sits at the right edge, in a box as wide as a command's
+/// button, and the menu's button covers it on hover (decisions 41 and 57). The
+/// row's second line still says what the agent is doing. The label, such as
+/// the count, sits just before that box, which every row keeps whether or not
+/// it has a mark, so that the counts line up and the pointer never hides one.
+/// In a narrow row, the label and the mark's box keep their width and the
+/// row's own text gives way, as the counts stay in the title row.
 ///
 /// While there's something to say, the row grows a second line under its own
 /// text, and is 52 points tall rather than 32 (decisions 48 and 51). The first
 /// line stays where it is in a 32-point row, and the second starts 28 points
 /// down, where its own text does. Its words run toward the right edge and fade
-/// out before how long, which ends where a count does, under the mark and the
-/// label.
+/// out before how long, which ends under the mark.
 struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
     var isSelected = false
     /// Whether it does anything. A row that doesn't is dimmed, and shows no
@@ -426,8 +419,8 @@ struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
     static var twoLineHeight: CGFloat { 52 }
     /// How far down the second line starts.
     static var secondLineTop: CGFloat { 28 }
-    /// How wide an agent's mark is, with the room around it, and the least the
-    /// label takes beside it: the width of a command's button.
+    /// How wide an agent's mark is, with the room around it: the width of a
+    /// command's button, which takes its place on hover.
     static var markWidth: CGFloat { 24 }
 
     init(
@@ -456,28 +449,30 @@ struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
 
     var body: some View {
         let line = RowLine(agent: agent, unfinished: unfinished)
-        let showsCommands = isHovering && isEnabled
+        // A row without commands, such as the one for hidden worktrees, keeps
+        // its mark on hover.
+        let showsCommands = isHovering && isEnabled && Commands.self != EmptyView.self
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 0) {
                 content
                     .frame(maxHeight: .infinity)
                 Spacer(minLength: 6)
                 HStack(spacing: 0) {
-                    if let agent {
-                        SidebarMark(summary: agent)
-                            .frame(width: Self.markWidth)
-                    }
+                    HStack(spacing: 0) { trailing }
                     ZStack(alignment: .trailing) {
                         Color.clear
-                            .frame(width: agent == nil ? 0 : Self.markWidth, height: 0)
-                        HStack(spacing: 0) { trailing }
-                            .opacity(showsCommands ? 0 : 1)
+                            .frame(width: Self.markWidth, height: 0)
+                        if let agent {
+                            SidebarMark(summary: agent)
+                                .frame(width: Self.markWidth)
+                                .opacity(showsCommands ? 0 : 1)
+                        }
                         if showsCommands {
                             HStack(spacing: 0) { commands }
                         }
                     }
                 }
-                // The mark and what follows it keep their width, so that a
+                // The label and the mark's place keep their width, so that a
                 // narrow row cuts the branch's name short rather than a count.
                 .fixedSize(horizontal: true, vertical: false)
                 .frame(height: 24)
@@ -488,7 +483,7 @@ struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
                 RowLineView(line: line)
                     .frame(maxWidth: .infinity, maxHeight: 16, alignment: .leading)
                     .padding(.leading, lineIndent)
-                    // How long ends where a count does.
+                    // How long ends under the mark.
                     .padding(.trailing, 7)
                     .padding(.top, Self.secondLineTop - Self.height)
             }
@@ -836,8 +831,8 @@ private struct WorktreeRow: View {
 }
 
 /// The row under a collapsed repository that stands for the worktrees it
-/// hides, and shows them. Its count stays on hover, since it has no commands.
-/// Its mark is the most urgent of theirs.
+/// hides, and shows them. Its mark is the most urgent of theirs, and stays on
+/// hover, since the row has no commands.
 private struct HiddenWorktreesRow: View {
     let title: String
     let uncommittedFiles: Int
@@ -853,9 +848,11 @@ private struct HiddenWorktreesRow: View {
                 .foregroundStyle(.secondary)
                 .padding(.leading, WorktreeConnector.textIndent)
         } trailing: {
-            count
+            if uncommittedFiles > 0 {
+                UncommittedCount(count: uncommittedFiles, hasConflicts: hasConflicts)
+            }
         } commands: {
-            count
+            EmptyView()
         }
         .overlay { WorktreeConnector(isLast: true) }
         .accessibilityElement(children: .ignore)
@@ -863,12 +860,6 @@ private struct HiddenWorktreesRow: View {
         .accessibilityValue([agent?.description, uncommittedFilesDescription(uncommittedFiles, hasConflicts: hasConflicts)].compactMap(\.self).joined(separator: ", "))
         .accessibilityAddTraits(.isButton)
         .accessibilityAction(.default, show)
-    }
-
-    @ViewBuilder private var count: some View {
-        if uncommittedFiles > 0 {
-            UncommittedCount(count: uncommittedFiles, hasConflicts: hasConflicts)
-        }
     }
 }
 
