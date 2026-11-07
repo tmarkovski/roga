@@ -97,7 +97,7 @@ final class RepositoryModel {
     /// The message of the next commit, and making it.
     let composer: CommitComposer
     /// The selected rows: usually one, and several when commits are picked
-    /// together or a branch is reviewed (decision 54). It's empty while the
+    /// together or a branch is reviewed (decision 55). It's empty while the
     /// history being loaded hasn't reached the selected commit yet, and the commit
     /// stays selected, and while a stash shows.
     private(set) var selectedRows = IndexSet()
@@ -825,7 +825,7 @@ final class RepositoryModel {
 
     /// Selects the rows someone picked in history. Several commits show as one
     /// diff when they're a run on one line, or compared when there are two
-    /// (decision 54). The row for uncommitted changes isn't one of several.
+    /// (decision 55). The row for uncommitted changes isn't one of several.
     func selectRows(_ rows: IndexSet) {
         var rows = rows
         if hasWorkingTreeRow, rows.count > 1 { rows.remove(0) }
@@ -901,7 +901,7 @@ final class RepositoryModel {
     }
 
     /// Shows what a stash holds in the panels, with no row selected and the commit
-    /// it was made on marked in history (decision 54).
+    /// it was made on marked in history (decision 55).
     func select(stash: StashDetails) {
         refs.select(ref: stash.name)
         guard selectedCommit.stash != stash else { return }
@@ -932,7 +932,7 @@ final class RepositoryModel {
     }
 
     /// Selects a branch's commits since it left the main branch, marks where it
-    /// left, and shows them as one diff (decision 54).
+    /// left, and shows them as one diff (decision 55).
     func review(branch name: String) {
         guard let base = reviewBase(for: name) else { return }
         refs.select(ref: name)

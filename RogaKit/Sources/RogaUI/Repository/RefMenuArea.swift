@@ -67,7 +67,7 @@ final class RefMenuAreaView: NSView {
 @ViewBuilder func refMenuActions(_ entries: [RefMenu.Entry]) -> some View {
     ForEach(entries.indices, id: \.self) { index in
         switch entries[index] {
-        case let .command(title, _, isEnabled, action):
+        case let .command(title, _, isEnabled, _, action):
             Button(title, action: action)
                 .disabled(!isEnabled)
         case let .choice(choice):

@@ -8,12 +8,14 @@ import IconUI
 /// are, and it fills with the accent color rather than the panels' soft gray. It's
 /// still an `NSMenu`, so macOS handles the arrow keys, typing to select and closing
 /// it. macOS ignores Return while a row that draws itself is highlighted, so the
-/// rows hear it themselves (https://github.com/tmarkovski/yaga/issues/12).
+/// rows hear it themselves (https://github.com/tmarkovski/roga/issues/12).
 public enum RefMenu {
     public enum Entry {
         /// A dim line that names what the commands under it act on.
         case header(String)
-        case command(String, isDestructive: Bool = false, isEnabled: Bool = true, action: () -> Void)
+        /// A command, with the shortcut that does the same with the menu
+        /// closed, if it has one, at its right.
+        case command(String, isDestructive: Bool = false, isEnabled: Bool = true, shortcut: Shortcut? = nil, action: () -> Void)
         /// One of a set of ways to do something, such as how a list is sorted,
         /// with a checkmark at the right of the one that's chosen.
         case option(String, isChecked: Bool, action: () -> Void)
@@ -21,6 +23,41 @@ public enum RefMenu {
         /// there on a second line.
         case choice(Choice)
         case divider
+    }
+
+    /// The key that does what a row does with the menu closed, because a
+    /// command in the menu bar has it, which the row shows at its right, as
+    /// macOS's menus do. Only menus that open from a button show one, since
+    /// a context menu is already the short way to its commands.
+    public struct Shortcut: Equatable {
+        /// The key, as `NSMenuItem.keyEquivalent` has it, such as `r` or `1`.
+        public var key: String
+        public var modifiers: NSEvent.ModifierFlags
+
+        public init(_ key: String, modifiers: NSEvent.ModifierFlags = .command) {
+            self.key = key
+            self.modifiers = modifiers
+        }
+
+        /// The modifiers' symbols, in the order macOS's menus show them, as
+        /// in `⌥⌘`.
+        public var modifierSymbols: String {
+            [(NSEvent.ModifierFlags.control, "⌃"), (.option, "⌥"), (.shift, "⇧"), (.command, "⌘")]
+                .filter { modifiers.contains($0.0) }
+                .map(\.1)
+                .joined()
+        }
+
+        /// The key's symbol, as in `R`, `↩` or `⌫`.
+        public var keySymbol: String {
+            switch key {
+            case "\r": "↩"
+            case "\u{8}", "\u{7F}": "⌫"
+            case String(UnicodeScalar(NSUpArrowFunctionKey)!): "↑"
+            case String(UnicodeScalar(NSDownArrowFunctionKey)!): "↓"
+            default: key.uppercased()
+            }
+        }
     }
 
     /// A row on two lines: an icon and a title, the details under the title, and a
@@ -32,6 +69,8 @@ public enum RefMenu {
         public var details: [Detail]
         /// A number at the end of the row, such as how many files have changed.
         public var count: Count?
+        /// The key that chooses it with the menu closed, after the count.
+        public var shortcut: Shortcut?
         /// Whether it's where you are already, which a checkmark says.
         public var isCurrent: Bool
         public var isEnabled: Bool
@@ -44,6 +83,7 @@ public enum RefMenu {
             icon: NSImage? = nil,
             details: [Detail] = [],
             count: Count? = nil,
+            shortcut: Shortcut? = nil,
             isCurrent: Bool = false,
             isEnabled: Bool = true,
             help: String? = nil,
@@ -53,6 +93,7 @@ public enum RefMenu {
             self.icon = icon
             self.details = details
             self.count = count
+            self.shortcut = shortcut
             self.isCurrent = isCurrent
             self.isEnabled = isEnabled
             self.help = help
@@ -101,7 +142,8 @@ public enum RefMenu {
         // In a menu of choices, every title starts where the choices' titles do.
         let hasChoices = entries.contains { if case .choice = $0 { true } else { false } }
         let inset = hasChoices ? Metrics.choiceTextInset : Metrics.textInset
-        let width = Metrics.width(fitting: entries, inset: inset)
+        let shortcuts = ShortcutColumn(entries)
+        let width = Metrics.width(fitting: entries, inset: inset, shortcuts: shortcuts)
         let commandSize = NSSize(width: width, height: Metrics.commandHeight)
         for entry in entries {
             switch entry {
@@ -115,27 +157,28 @@ public enum RefMenu {
                     size: NSSize(width: width, height: Metrics.headerHeight)
                 )
                 menu.addItem(item)
-            case let .command(title, isDestructive, isEnabled, action):
-                let item = item(title: title, isEnabled: isEnabled, action: action)
+            case let .command(title, isDestructive, isEnabled, shortcut, action):
+                let item = item(title: title, isEnabled: isEnabled, shortcut: shortcut, action: action)
                 item.view = RowView(
                     title: title,
                     font: Metrics.commandFont,
                     color: Colors.row(isDestructive: isDestructive, isEnabled: isEnabled),
                     inset: inset,
-                    size: commandSize
+                    size: commandSize,
+                    shortcut: shortcut.map { ($0, shortcuts) }
                 )
                 menu.addItem(item)
             case let .option(title, isChecked, action):
-                let item = item(title: title, isEnabled: true, action: action)
+                let item = item(title: title, isEnabled: true, shortcut: nil, action: action)
                 // Drawn by the row, and read by VoiceOver from the item.
                 item.state = isChecked ? .on : .off
                 item.view = RowView(title: title, font: Metrics.commandFont, color: Colors.command, inset: inset, size: commandSize, isChecked: isChecked)
                 menu.addItem(item)
             case let .choice(choice):
-                let item = item(title: choice.title, isEnabled: choice.isEnabled, action: choice.action)
+                let item = item(title: choice.title, isEnabled: choice.isEnabled, shortcut: choice.shortcut, action: choice.action)
                 // Drawn by the row, and read by VoiceOver from the item.
                 item.state = choice.isCurrent ? .on : .off
-                item.view = ChoiceView(choice: choice, size: NSSize(width: width, height: Metrics.choiceHeight))
+                item.view = ChoiceView(choice: choice, shortcuts: shortcuts, size: NSSize(width: width, height: Metrics.choiceHeight))
                 menu.addItem(item)
             case .divider:
                 menu.addItem(.separator())
@@ -144,9 +187,12 @@ public enum RefMenu {
         return menu
     }
 
-    private static func item(title: String, isEnabled: Bool, action: @escaping () -> Void) -> NSMenuItem {
+    /// An item with its shortcut, which VoiceOver reads, and which chooses it
+    /// while the menu is open, as in macOS's own menus.
+    private static func item(title: String, isEnabled: Bool, shortcut: Shortcut?, action: @escaping () -> Void) -> NSMenuItem {
         let command = Command(action)
-        let item = NSMenuItem(title: title, action: #selector(Command.run), keyEquivalent: "")
+        let item = NSMenuItem(title: title, action: #selector(Command.run), keyEquivalent: shortcut?.key ?? "")
+        if let shortcut { item.keyEquivalentModifierMask = shortcut.modifiers }
         item.target = command
         // A menu item doesn't keep its target alive.
         item.representedObject = command
@@ -181,10 +227,9 @@ private enum Metrics {
     /// From the menu's edge to the fill under a highlighted row.
     static let highlightInset = 6.0
     static let highlightRadius = 9.0
-    static let minimumWidth = 264.0
-    /// A menu of options only, such as how to sort a list, has short titles,
-    /// so it can be narrower.
-    static let minimumOptionsWidth = 180.0
+    /// A menu is as wide as its rows need, as macOS's own are, and at least
+    /// this, so that one of a word or two isn't a sliver.
+    static let minimumWidth = 120.0
     /// From the menu's right edge to the middle of an option's checkmark,
     /// which ends where text would, and what an option takes for it after its
     /// title.
@@ -196,28 +241,28 @@ private enum Metrics {
     /// before it are cut short: about 14 characters, cut in their middle, so
     /// that a folder still shows the start of its path and the end of its name.
     static let foldersRoom = 80.0
+    static let shortcutFont = NSFont.systemFont(ofSize: 13)
+    /// The least room between a row's text, or a choice's count, and the
+    /// column of shortcuts.
+    static let shortcutGap = 24.0
     /// The least a part that's cut short keeps, which is a few characters and
     /// the ellipsis.
     static let leastOfACutPart = 24.0
 
     /// All the rows are one width, because a menu is as wide as its widest view.
-    static func width(fitting entries: [RefMenu.Entry], inset: Double) -> Double {
+    /// A choice keeps room for the shortcuts' column whether or not it has one,
+    /// so that the counts line up.
+    static func width(fitting entries: [RefMenu.Entry], inset: Double, shortcuts: ShortcutColumn) -> Double {
         let widest = entries.map { entry -> Double in
             switch entry {
             case let .header(title): inset + textWidth(title, font: headerFont)
-            case let .command(title, _, _, _): inset + textWidth(title, font: commandFont)
+            case let .command(title, _, _, shortcut, _): inset + textWidth(title, font: commandFont) + (shortcut == nil ? 0 : shortcuts.room)
             case let .option(title, _, _): inset + textWidth(title, font: commandFont) + optionCheckRoom
-            case let .choice(choice): choiceTextInset + choiceWidth(choice)
+            case let .choice(choice): choiceTextInset + choiceWidth(choice) + shortcuts.room
             case .divider: 0
             }
         }.max() ?? 0
-        let onlyOptions = entries.allSatisfy { entry in
-            switch entry {
-            case .option, .header, .divider: true
-            case .command, .choice: false
-            }
-        }
-        return min(max(widest.rounded(.up) + textInset, onlyOptions ? minimumOptionsWidth : minimumWidth), maximumWidth)
+        return min(max(widest.rounded(.up) + textInset, minimumWidth), maximumWidth)
     }
 
     /// How wide a choice's text and count are.
@@ -239,6 +284,32 @@ private enum Metrics {
     static func lineHeight(_ font: NSFont) -> Double {
         ceil(font.ascender - font.descender + font.leading)
     }
+}
+
+/// Where a menu's shortcuts go, at its right edge, lined up as macOS lines up
+/// its own: each key at the start of the column's last part, which is as wide
+/// as the widest key, and its modifiers right before it.
+struct ShortcutColumn {
+    var modifiers = 0.0
+    var key = 0.0
+
+    init(_ entries: [RefMenu.Entry]) {
+        let shortcuts = entries.compactMap { entry -> RefMenu.Shortcut? in
+            switch entry {
+            case let .command(_, _, _, shortcut, _): shortcut
+            case let .choice(choice): choice.shortcut
+            case .header, .option, .divider: nil
+            }
+        }
+        modifiers = ceil(shortcuts.map { Metrics.textWidth($0.modifierSymbols, font: Metrics.shortcutFont) }.max() ?? 0)
+        key = ceil(shortcuts.map { Metrics.textWidth($0.keySymbol, font: Metrics.shortcutFont) }.max() ?? 0)
+    }
+
+    var width: Double { modifiers + key }
+
+    /// What a row with the column takes for it after its text, or nothing in
+    /// a menu without shortcuts.
+    var room: Double { width > 0 ? width + Metrics.shortcutGap : 0 }
 }
 
 /// Named colors rather than the system's label colors, because a menu's material
@@ -273,10 +344,11 @@ extension RefMenu {
     }
 
     /// How wide a choice's two lines can be, in a row `width` wide: past its
-    /// checkmark and icon, and before its count.
-    static func textRoom(inRow width: Double, count: Count?) -> Double {
+    /// checkmark and icon, and before its count and the shortcuts' column,
+    /// which takes `shortcutRoom`.
+    static func textRoom(inRow width: Double, count: Count?, shortcutRoom: Double = 0) -> Double {
         let count = count.map { Metrics.countWidth($0) + Metrics.countGap } ?? 0
-        return max(0, width - Metrics.textInset - count - Metrics.choiceTextInset)
+        return max(0, width - Metrics.textInset - shortcutRoom - count - Metrics.choiceTextInset)
     }
 
     /// How wide a part of a choice's second line is, whole.
@@ -413,6 +485,20 @@ private class MenuRowView: NSView {
 
     static let checkmark = Icon.check.nsImage ?? NSImage()
 
+    /// A shortcut in its column at the right edge, in the dim color macOS
+    /// gives them.
+    func drawShortcut(_ shortcut: RefMenu.Shortcut, in column: ShortcutColumn, isEnabled: Bool) {
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: Metrics.shortcutFont,
+            .foregroundColor: isEnabled ? Colors.header : Colors.disabled,
+        ]
+        let keyX = bounds.width - Metrics.textInset - column.key
+        for (text, x) in [(shortcut.modifierSymbols, keyX - Metrics.textWidth(shortcut.modifierSymbols, font: Metrics.shortcutFont)), (shortcut.keySymbol, keyX)] {
+            let height = (text as NSString).size(withAttributes: attributes).height
+            (text as NSString).draw(at: NSPoint(x: x, y: ((bounds.height - height) / 2).rounded()), withAttributes: attributes)
+        }
+    }
+
     // A view in a menu gets the clicks that its item would have handled, including
     // the release of a right-click that was dragged here.
     override func mouseUp(with event: NSEvent) {
@@ -433,17 +519,20 @@ private class MenuRowView: NSView {
 }
 
 /// A row's text, and the fill under it while it's highlighted. An option that's
-/// chosen has a checkmark at the right, where its text would end.
+/// chosen has a checkmark at the right, where its text would end, and a command
+/// with a shortcut has it there.
 private final class RowView: MenuRowView {
     private let title: String
     private let inset: Double
     private let isChecked: Bool
+    private let shortcut: (RefMenu.Shortcut, ShortcutColumn)?
     private let attributes: [NSAttributedString.Key: Any]
 
-    init(title: String, font: NSFont, color: NSColor, inset: Double, size: NSSize, isChecked: Bool = false) {
+    init(title: String, font: NSFont, color: NSColor, inset: Double, size: NSSize, isChecked: Bool = false, shortcut: (RefMenu.Shortcut, ShortcutColumn)? = nil) {
         self.title = title
         self.inset = inset
         self.isChecked = isChecked
+        self.shortcut = shortcut
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineBreakMode = .byTruncatingMiddle
         attributes = [.font: font, .foregroundColor: color, .paragraphStyle: paragraph]
@@ -461,11 +550,14 @@ private final class RowView: MenuRowView {
             in: NSRect(
                 x: inset,
                 y: (bounds.height - height) / 2,
-                width: bounds.width - inset - Metrics.textInset - (isChecked ? Metrics.optionCheckRoom : 0),
+                width: bounds.width - inset - Metrics.textInset - (isChecked ? Metrics.optionCheckRoom : 0) - (shortcut?.1.room ?? 0),
                 height: height
             ),
             withAttributes: attributes
         )
+        if let (shortcut, column) = shortcut {
+            drawShortcut(shortcut, in: column, isEnabled: enclosingMenuItem?.isEnabled ?? true)
+        }
         if isChecked {
             drawSymbol(Self.checkmark, size: 15, weight: .regular, color: Colors.command, centeredAt: NSPoint(x: bounds.width - Metrics.optionCheckCenter, y: bounds.midY))
         }
@@ -476,9 +568,11 @@ private final class RowView: MenuRowView {
 /// and its count.
 private final class ChoiceView: MenuRowView {
     private let choice: RefMenu.Choice
+    private let shortcuts: ShortcutColumn
 
-    init(choice: RefMenu.Choice, size: NSSize) {
+    init(choice: RefMenu.Choice, shortcuts: ShortcutColumn, size: NSSize) {
         self.choice = choice
+        self.shortcuts = shortcuts
         super.init(size: size)
         toolTip = choice.help
     }
@@ -502,13 +596,16 @@ private final class ChoiceView: MenuRowView {
 
         if let count = choice.count {
             let width = Metrics.countWidth(count)
-            drawCount(count, in: NSRect(x: bounds.width - Metrics.textInset - width, y: 0, width: width, height: bounds.height))
+            drawCount(count, in: NSRect(x: bounds.width - Metrics.textInset - shortcuts.room - width, y: 0, width: width, height: bounds.height))
+        }
+        if let shortcut = choice.shortcut {
+            drawShortcut(shortcut, in: shortcuts, isEnabled: choice.isEnabled)
         }
 
         let titleHeight = Metrics.lineHeight(Metrics.titleFont)
         let detailHeight = Metrics.lineHeight(Metrics.detailFont)
         let top = ((bounds.height - titleHeight - Metrics.lineGap - detailHeight) / 2).rounded()
-        let width = RefMenu.textRoom(inRow: bounds.width, count: choice.count)
+        let width = RefMenu.textRoom(inRow: bounds.width, count: choice.count, shortcutRoom: shortcuts.room)
         (choice.title as NSString).draw(
             in: NSRect(x: Metrics.choiceTextInset, y: top, width: width, height: titleHeight),
             withAttributes: Self.attributes(font: Metrics.titleFont, color: choice.isEnabled ? Colors.command : Colors.disabled)

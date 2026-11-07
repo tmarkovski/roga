@@ -61,4 +61,5 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [51](0051-marks-at-the-right-of-a-sidebar-row-and-names-that-fade.md) | Marks at the right of a sidebar row, and names that fade | Accepted |
 | [52](0052-maximize-or-minimize-the-panels-under-history.md) | Maximize or minimize the panels under history | Accepted |
 | [53](0053-organizations-as-groups-in-the-list-and-add-and-settings-at-the-top.md) | Organizations as groups in the list, and Add Repositories and Settings at the top | Accepted |
-| [54](0054-the-panels-show-a-run-of-commits-two-commits-a-branch-or-a-stash.md) | The panels show a run of commits, two commits, a branch or a stash | Accepted |
+| [54](0054-menus-as-wide-as-their-rows-and-shortcuts-for-the-worktree-on-screen.md) | Menus as wide as their rows, and shortcuts for the worktree on screen | Accepted |
+| [55](0055-the-panels-show-a-run-of-commits-two-commits-a-branch-or-a-stash.md) | The panels show a run of commits, two commits, a branch or a stash | Accepted |

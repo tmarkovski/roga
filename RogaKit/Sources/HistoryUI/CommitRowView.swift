@@ -29,7 +29,7 @@ final class CommitRowView: NSTableRowView {
     }
 
     /// Selected rows next to each other make one block, with rounded corners only
-    /// at its ends (decision 54).
+    /// at its ends (decision 55).
     override func drawSelection(in dirtyRect: NSRect) {
         Self.selectionColor.setFill()
         let frame = Self.selectionFrame(inRow: bounds)

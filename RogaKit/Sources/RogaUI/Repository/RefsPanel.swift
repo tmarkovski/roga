@@ -336,7 +336,7 @@ struct RefsPanel: View {
         .id(tag.name)
     }
 
-    /// A stash, which shows what it holds in the panels (decision 54).
+    /// A stash, which shows what it holds in the panels (decision 55).
     private func stashRow(_ stash: StashDetails) -> some View {
         RefRow(
             icon: .stash,

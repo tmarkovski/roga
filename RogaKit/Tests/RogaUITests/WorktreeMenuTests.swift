@@ -19,7 +19,7 @@ struct WorktreeMenuTests {
     }
 
     private func commands(_ entries: [RefMenu.Entry]) -> [(title: String, isEnabled: Bool, action: () -> Void)] {
-        entries.compactMap { if case let .command(title, _, isEnabled, action) = $0 { (title, isEnabled, action) } else { nil } }
+        entries.compactMap { if case let .command(title, _, isEnabled, _, action) = $0 { (title, isEnabled, action) } else { nil } }
     }
 
     private func actions(shown: @escaping (String) -> Void = { _ in }, newWorktree: (() -> Void)? = {}) -> WorktreeMenu.Actions {
@@ -53,6 +53,42 @@ struct WorktreeMenuTests {
         let bare = Worktree(path: home + "/code/agents-demo.git", isMain: true, isBare: true)
         let entries = WorktreeMenu.entries(for: [WorktreeFacts(worktree: bare), WorktreeFacts(worktree: fixLogin)], shown: fixLogin.path, actions: actions())
         #expect(choices(entries).map(\.title) == ["agent/fix-login"])
+    }
+
+    @Test func theFirstNineWorktreesHaveCommandOneToNine() {
+        let linked = (1...10).map { WorktreeFacts(worktree: Worktree(path: home + "/agents/\($0)", branch: "refs/heads/agent/\($0)")) }
+        let entries = WorktreeMenu.entries(for: [WorktreeFacts(worktree: main)] + linked, shown: main.path, actions: actions())
+        let keys = choices(entries).map { $0.shortcut.map { $0.modifierSymbols + $0.keySymbol } }
+        #expect(keys == (1...9).map { "⌘\($0)" } + [nil, nil])
+    }
+
+    @Test func itsCommandsShowTheMenuBarsShortcuts() {
+        let entries = WorktreeMenu.entries(for: [WorktreeFacts(worktree: main)], shown: main.path, actions: actions())
+        let keys = entries.compactMap { entry -> String? in
+            guard case let .command(_, _, _, shortcut, _) = entry else { return nil }
+            return shortcut.map { $0.modifierSymbols + $0.keySymbol }
+        }
+        #expect(keys == ["⌥⇧⌘B", "⌥⌘R", "⌃`"])
+    }
+
+    @Test func theMenuBarListsTheSameWorktreesForTheSameKeys() {
+        let bare = Worktree(path: home + "/code/agents-demo.git", isMain: true, isBare: true)
+        let missing = Worktree(path: home + "/agents/gone", branch: "refs/heads/agent/gone", isPrunable: true)
+        let deleting = Worktree(path: home + "/agents/old", branch: "refs/heads/agent/old")
+        let repository = ListedRepository(path: bare.path, worktrees: [bare, fixLogin, missing, deleting], deletingWorktrees: [deleting.path])
+        var shown: [String] = []
+        let commands = WorktreeMenu.commands(of: repository, shown: fixLogin, actions: actions(shown: { shown.append($0) }))
+        #expect(commands.worktrees.map(\.title) == ["agent/fix-login", "agent/gone", "agent/old"])
+        #expect(commands.worktrees.map(\.isCurrent) == [true, false, false])
+        #expect(commands.worktrees.map(\.isEnabled) == [true, false, false])
+        for worktree in commands.worktrees { worktree.show() }
+        #expect(shown == [missing.path, deleting.path])
+        #expect(commands.reveal != nil && commands.openInTerminal != nil && commands.newWorktree != nil)
+
+        // A folder that's missing has nothing to show in Finder or open in a
+        // terminal.
+        let gone = WorktreeMenu.commands(of: repository, shown: missing, actions: actions(newWorktree: nil))
+        #expect(gone.reveal == nil && gone.openInTerminal == nil && gone.newWorktree == nil)
     }
 
     @Test func newWorktreeWaitsUntilItCanStart() {

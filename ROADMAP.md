@@ -37,9 +37,9 @@ The work happens in this order:
    - The window follows the [main window](docs/main-window.md) wireframe. A sidebar on the left lists repositories grouped by organization (decisions 16 and 53), with their worktrees, a panel on the right shows branches, remotes, tags and stashes, and panels below the history show the selected commit and its diff.
 2. **Diffs.** Roga shows unified diffs with changed words highlighted, for a single commit or between any two commits. It shows the list of changed files first and loads each file's patch when it's needed, into a TextKit 1 text view (decision 9). Rename detection is on.
 3. **Worktrees and uncommitted changes.** Roga lists every worktree with its branch, its path, and whether it has uncommitted changes, and lets the user switch between them. For any worktree, it shows the staged, unstaged and untracked changes, without changing them.
-4. **Branch review.** Roga shows everything a branch changed since it left its base, the way a pull request does. That means the branch's commits and one combined diff against the merge base. The panels under history show it, and two commits or a run of them, as they show one commit (decision 54).
+4. **Branch review.** Roga shows everything a branch changed since it left its base, the way a pull request does. That means the branch's commits and one combined diff against the merge base. The panels under history show it, and two commits or a run of them, as they show one commit (decision 55).
 5. **Live refresh.** Roga watches every worktree and the repository with FSEvents. It updates history, branches and changes as the user or their agents write. Background git commands run with `--no-optional-locks`, so Roga never holds the index lock while someone else is running git.
-6. **File history and stashes.** Roga shows the commits that changed a file or folder, following renames. It also lists the stashes and shows what each one contains. Clicking a stash shows it in the panels under history (decision 54).
+6. **File history and stashes.** Roga shows the commits that changed a file or folder, following renames. It also lists the stashes and shows what each one contains. Clicking a stash shows it in the panels under history (decision 55).
 
 Release 1 can ship without the next two items. They're built last, and if they aren't ready they follow in release 1.1.
 

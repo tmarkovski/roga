@@ -9,7 +9,7 @@ import Testing
 @testable import RogaUI
 
 /// Several commits, a branch's review and a stash in the panels under history
-/// (decision 54). The `basic` repository has three commits on main, and a branch
+/// (decision 55). The `basic` repository has three commits on main, and a branch
 /// called feature with one commit, which left main after its second.
 @Suite(.timeLimit(.minutes(1)))
 struct ReviewSelectionTests {
