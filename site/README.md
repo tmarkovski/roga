@@ -26,11 +26,11 @@ This only needs doing once.
 2. Add the token and your account ID to the repository. Each command asks for its value, so it stays out of your shell history:
 
    ```bash
-   gh secret set CLOUDFLARE_API_TOKEN --repo tmarkovski/yaga
+   gh secret set CLOUDFLARE_API_TOKEN --repo tmarkovski/roga
    ```
 
    ```bash
-   gh secret set CLOUDFLARE_ACCOUNT_ID --repo tmarkovski/yaga
+   gh secret set CLOUDFLARE_ACCOUNT_ID --repo tmarkovski/roga
    ```
 
 3. Merge the site to `main`. The first deploy creates the Worker and attaches `roga.sh` to it. Cloudflare won't make a preview for a Worker that doesn't exist yet, so the **Preview** job on that first pull request fails. Later pull requests get their previews.
