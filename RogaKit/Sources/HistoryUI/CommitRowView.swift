@@ -270,10 +270,10 @@ final class CommitCellView: NSView {
             lineHeight = ceil(font.ascender - font.descender)
         }
 
-        static let subject = Style(font: .systemFont(ofSize: 12.5), color: .labelColor)
-        static let currentSubject = Style(font: .systemFont(ofSize: 12.5, weight: .semibold), color: .labelColor)
-        static let warningSubject = Style(font: .systemFont(ofSize: 12.5, weight: .semibold), color: GitColors.red)
-        static let detail = Style(font: .systemFont(ofSize: 12.5), color: .secondaryLabelColor)
+        static let subject = Style(font: .systemFont(ofSize: 13), color: .labelColor)
+        static let currentSubject = Style(font: .systemFont(ofSize: 13, weight: .semibold), color: .labelColor)
+        static let warningSubject = Style(font: .systemFont(ofSize: 13, weight: .semibold), color: GitColors.red)
+        static let detail = Style(font: .systemFont(ofSize: 13), color: .secondaryLabelColor)
         static let shortID = Style(font: .monospacedSystemFont(ofSize: 11.5, weight: .regular), color: .tertiaryLabelColor)
 
     }
@@ -376,7 +376,7 @@ struct CommitRowLayout {
         let subjectRoom = Self.textX(afterGraphColumns: LaneRenderer.maxColumns) + Self.minimumSubjectWidth
         let columns: [(text: String?, width: CGFloat, style: CommitCellView.Style)] = [
             (content.shortID, 72, CommitCellView.Style.shortID),
-            (content.date, 112, CommitCellView.Style.detail),
+            (content.date, 120, CommitCellView.Style.detail),
             (content.author, 130, CommitCellView.Style.detail),
         ]
         // A row for uncommitted changes has nothing to put in them, and what it

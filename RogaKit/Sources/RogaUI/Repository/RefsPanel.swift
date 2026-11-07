@@ -495,7 +495,7 @@ private struct RefSectionHeader: View {
     var body: some View {
         HStack(spacing: 4) {
             Text(section.title)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: 12, weight: .medium))
             if count > 0 {
                 Chevron(pointsDown: !isCollapsed)
             }

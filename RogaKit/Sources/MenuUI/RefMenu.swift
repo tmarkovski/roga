@@ -159,9 +159,9 @@ private enum Metrics {
     static let commandHeight = 28.0
     static let headerHeight = 24.0
     static let choiceHeight = 44.0
-    static let commandFont = NSFont.systemFont(ofSize: 14)
-    static let headerFont = NSFont.systemFont(ofSize: 13)
-    static let titleFont = NSFont.systemFont(ofSize: 14)
+    static let commandFont = NSFont.systemFont(ofSize: 13)
+    static let headerFont = NSFont.systemFont(ofSize: 12, weight: .medium)
+    static let titleFont = NSFont.systemFont(ofSize: 13)
     static let detailFont = NSFont.systemFont(ofSize: 12)
     static let countFont = NSFont.systemFont(ofSize: 13)
     /// Between a choice's title and its details.
@@ -244,7 +244,7 @@ private enum Metrics {
 /// Named colors rather than the system's label colors, because a menu's material
 /// turns those dimmer than the panels' text.
 private enum Colors {
-    static let header = adaptive(dark: NSColor(white: 0.65, alpha: 1), light: NSColor(white: 0.45, alpha: 1))
+    static let header = NSColor.secondaryLabelColor
     static let command = adaptive(dark: NSColor(white: 0.94, alpha: 1), light: NSColor(white: 0.1, alpha: 1))
     static let disabled = adaptive(dark: NSColor(white: 0.45, alpha: 1), light: NSColor(white: 0.65, alpha: 1))
     static let destructive = adaptive(
