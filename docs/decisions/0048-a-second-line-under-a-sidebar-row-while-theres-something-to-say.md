@@ -1,6 +1,8 @@
 # 48. A second line under a sidebar row while there's something to say
 
-Accepted on 2026-11-06. Partly supersedes [decision 16](0016-a-rail-of-organizations-in-the-sidebar.md), whose rows are always one line 32 points tall, and [decision 41](0041-agents-status-from-their-hooks-and-messages-from-their-clis.md), which puts an agent's mark before a row's count. A row now grows a second line while an agent is at work, waits for you or has finished, or while its worktree stopped partway through a merge, a rebase or a revert, and an agent's mark starts that line. The line is the one [decision 47](0047-say-what-an-agent-is-doing-in-a-line-the-helper-makes.md) has the helper make, and stopped work is said as [decision 28](0028-show-a-worktree-thats-stuck-partway.md) says it in the title row.
+Accepted on 2026-11-06. Partly superseded by [decision 51](0051-marks-at-the-right-of-a-sidebar-row-and-names-that-fade.md), which moves the agent's mark from the start of the line to the right of the row's first line, puts how long at the line's right end, fades the words out before it, and makes a row with a second line 52 points tall. The rest of this decision still holds.
+
+It partly supersedes [decision 16](0016-a-rail-of-organizations-in-the-sidebar.md), whose rows are always one line 32 points tall, and [decision 41](0041-agents-status-from-their-hooks-and-messages-from-their-clis.md), which puts an agent's mark before a row's count. A row now grows a second line while an agent is at work, waits for you or has finished, or while its worktree stopped partway through a merge, a rebase or a revert, and an agent's mark starts that line. The line is the one [decision 47](0047-say-what-an-agent-is-doing-in-a-line-the-helper-makes.md) has the helper make, and stopped work is said as [decision 28](0028-show-a-worktree-thats-stuck-partway.md) says it in the title row.
 
 ## Context
 

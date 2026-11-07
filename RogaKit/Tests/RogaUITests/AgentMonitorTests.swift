@@ -461,8 +461,16 @@ struct AgentMonitorTests {
         #expect(RowLine(agent: working, unfinished: rebase) == .unfinished(rebase))
         #expect(RowLine(agent: finished, unfinished: rebase) == .unfinished(rebase))
         #expect(RowLine(agent: waiting, unfinished: rebase) == .agent(waiting))
-        #expect(RowLine(agent: waiting, unfinished: rebase)?.isAgents == true)
-        #expect(RowLine(agent: working, unfinished: rebase)?.isAgents == false)
+    }
+
+    @Test func stoppedWorkKeepsHowFarAlongItIsAtTheLinesEnd() throws {
+        let rebase = try #require(UnfinishedWork(work: .rebase(branch: "refs/heads/release/2.3"), conflicts: 2))
+        #expect(rebase.rowParts == ("Rebasing release/2.3", "2 conflicts"))
+        let merge = try #require(UnfinishedWork(work: .merge, conflicts: 0))
+        #expect(merge.rowParts == ("Merging", "ready to commit"))
+        // A stash that popped with conflicts has nothing underway to name.
+        let conflicts = try #require(UnfinishedWork(work: nil, conflicts: 1))
+        #expect(conflicts.rowParts == ("1 conflict", nil))
     }
 
     @Test func aNewLineRedrawsOnlyTheRowsWithAMark() {

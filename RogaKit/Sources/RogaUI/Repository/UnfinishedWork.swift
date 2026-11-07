@@ -53,8 +53,17 @@ struct UnfinishedWork: Equatable {
         [verb, state].compactMap(\.self).joined(separator: " · ")
     }
 
+    /// What a sidebar row's second line says (decision 51): what's underway,
+    /// which fades out where it doesn't fit, and how far along it is, whole at
+    /// the line's right end. Conflicts from something else, with nothing
+    /// underway, have only how far along it is, from the line's start.
+    var rowParts: (words: String, end: String?) {
+        guard let verb else { return (state, nil) }
+        return (verb, state)
+    }
+
     /// How far along it is. With no conflicts left, nothing is wrong, but it still
-    /// isn't finished. The sidebar shows it whole and cuts `verb` short.
+    /// isn't finished.
     var state: String {
         switch (conflicts, work) {
         case (1, _): "1 conflict"

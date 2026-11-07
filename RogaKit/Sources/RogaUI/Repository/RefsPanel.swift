@@ -163,7 +163,7 @@ struct RefsPanel: View {
                     }
                     section(.stashes, count: details.stashes.count) {
                         ForEach(details.stashes, id: \.position) { stash in
-                            RefRow(icon: .stash, title: stash.message, subtitle: stash.subtitle(), titleTruncation: .tail)
+                            RefRow(icon: .stash, title: stash.message, subtitle: stash.subtitle())
                         }
                     }
                 }
@@ -535,9 +535,6 @@ private struct RefRow<Trailing: View, Commands: View>: View {
     /// What right-clicking the row offers. Its header names the ref, so that it's
     /// clear what the menu acts on. A row with nothing to offer has no menu.
     var menu: [RefMenu.Entry] = []
-    /// Where a title that doesn't fit gives way. A ref's name usually differs
-    /// at its end, so that stays, and a sentence reads from its start.
-    var titleTruncation = Text.TruncationMode.middle
     var isSelected = false
     /// How much further in than a section's rows it starts (`RefIndent`).
     var indent = 0.0
@@ -558,10 +555,10 @@ private struct RefRow<Trailing: View, Commands: View>: View {
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
-                    Text(title)
+                    // A title that doesn't fit fades out at its end
+                    // (decision 51), and its tooltip has all of it.
+                    FadingText(title)
                         .font(.system(size: 13))
-                        .lineLimit(1)
-                        .truncationMode(titleTruncation)
                     Spacer(minLength: 0)
                     // As tall as the line, so that a command's button doesn't
                     // move the text.
@@ -617,8 +614,8 @@ private struct RefRow<Trailing: View, Commands: View>: View {
 
 extension RefRow where Trailing == EmptyView, Commands == EmptyView {
     /// A row with nothing but its text, such as a stash's.
-    init(icon: Icon, title: String, subtitle: String, titleTruncation: Text.TruncationMode = .middle) {
-        self.init(icon: icon, title: title, subtitle: subtitle, titleTruncation: titleTruncation) {
+    init(icon: Icon, title: String, subtitle: String) {
+        self.init(icon: icon, title: title, subtitle: subtitle) {
         } commands: {
         }
     }
@@ -654,9 +651,8 @@ private struct RefRemoteRow: View {
                 .frame(width: 16)
                 .accessibilityHidden(true)
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(name)
+                FadingText(name)
                     .font(.system(size: 13))
-                    .lineLimit(1)
                     .layoutPriority(1)
                 Text(detail)
                     .font(.system(size: 11.5))
@@ -699,10 +695,9 @@ private struct RefFolderRow: View {
                 .frame(width: 16)
                 .accessibilityHidden(true)
             HStack(spacing: 4) {
-                Text(name)
+                FadingText(name)
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
                 Chevron(pointsDown: !isCollapsed)
             }
             Spacer(minLength: 8)
