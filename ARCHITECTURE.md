@@ -43,6 +43,7 @@ roga/
 │   │   │   ├── WorktreeChanges.swift   what's uncommitted in a worktree, in groups
 │   │   │   ├── DiffFile.swift          a file a diff changes, and the lines added and removed
 │   │   │   ├── FilePatch.swift         what a patch changes in a file, line by line
+│   │   │   ├── ConflictedFile.swift    a file's conflict markers, and the file with some of them resolved, decision 60
 │   │   │   └── Parsing/                one parser per git output format
 │   │   │       ├── ParseError.swift
 │   │   │       ├── CommitParser.swift      commit objects from cat-file
@@ -82,6 +83,7 @@ roga/
 │   │   │   ├── CommitSwitch.swift      going to a commit, and what that would lose
 │   │   │   ├── CommitRevert.swift      reverting a commit, and what to say before it
 │   │   │   ├── ChangesAside.swift      setting aside changes in the way of a pull or a reset, decision 59
+│   │   │   ├── ConflictCommands.swift  reading a file's conflicts, writing what resolves them, and keeping a side, decision 60
 │   │   │   ├── BranchDeletion.swift    what deleting a branch would lose, and deleting it
 │   │   │   ├── WorktreeDeletion.swift  what deleting a linked worktree would lose
 │   │   │   ├── DiffLoader.swift        the files a commit changed or two commits differ in, and their patches
@@ -128,6 +130,8 @@ roga/
 │   │   │   ├── DiffLayoutManager.swift full-width line backgrounds, changed words and matches
 │   │   │   ├── LineNumberGutter.swift  line numbers and the bars beside changed lines
 │   │   │   ├── DiffTextBuilder.swift   attributed text, laid out ahead of time
+│   │   │   ├── ConflictDocument.swift  a conflicted file's rows: each conflict's band, its sides named, and what was kept
+│   │   │   ├── ConflictBar.swift       the buttons on a conflict's band, and the box for writing what resolves it
 │   │   │   └── ChangedWords.swift      which words of changed lines differ
 │   │   ├── RogaUI/                     SwiftUI
 │   │   │   ├── Agents/                 finding agents, the marks, and what each worktree's agents are doing

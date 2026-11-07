@@ -628,6 +628,55 @@ public actor RepositorySession {
         try await IndexCommands.unstage(files.flatMap { [$0.path, $0.oldPath].compactMap(\.self) }, in: worktree, git: git)
     }
 
+    /// Reads a conflicted file in a worktree and finds its conflicts (decision 60).
+    /// It's nil when the path isn't a regular file, or is too big to read.
+    ///
+    /// - Throws: A file error when it can't be read.
+    @concurrent
+    public nonisolated func conflictedFile(_ path: String, in worktree: String) async throws -> ConflictedFile? {
+        try ConflictCommands.read(path, in: worktree)
+    }
+
+    /// Writes what resolves some of a file's conflicts, as long as the file still
+    /// has exactly what was read.
+    ///
+    /// - Throws: `ConflictedFileChanged` when it doesn't, which writes nothing, or
+    ///   a file error.
+    @concurrent
+    public nonisolated func write(_ bytes: [UInt8], replacing expected: [UInt8], at path: String, in worktree: String) async throws {
+        try ConflictCommands.write(bytes, replacing: expected, at: path, in: worktree)
+    }
+
+    /// Takes one side's whole version of a conflicted file and marks it resolved.
+    ///
+    /// - Throws: `GitError` when git refuses, such as for a side that deleted the file.
+    @concurrent
+    public nonisolated func keep(_ side: ConflictSide, of path: String, in worktree: String) async throws {
+        try await ConflictCommands.keep(side, of: [path], in: worktree, git: git)
+    }
+
+    /// Writes a file's conflicts back as git first wrote them.
+    ///
+    /// - Throws: `GitError` when git refuses, such as after the file was marked resolved.
+    @concurrent
+    public nonisolated func putConflictsBack(in path: String, in worktree: String) async throws {
+        try await ConflictCommands.putBack([path], in: worktree, git: git)
+    }
+
+    /// What git would write after the markers on the side coming in, for a file
+    /// that has none to read it from.
+    @concurrent
+    public nonisolated func incomingConflictLabel(in worktree: String) async throws -> String {
+        try await ConflictCommands.incomingLabel(in: worktree, git: git)
+    }
+
+    /// The commit a rebase that stopped is putting commits onto, or nil when no
+    /// rebase is underway.
+    @concurrent
+    public nonisolated func rebaseOnto(in worktree: String) async throws -> ObjectID? {
+        try await ConflictCommands.rebaseOnto(in: worktree, git: git)
+    }
+
     /// Takes one hunk out of a file in a worktree, and says how to bring it back.
     ///
     /// - Throws: `GitError` when the hunk's lines have changed since, which changes

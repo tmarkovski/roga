@@ -436,7 +436,7 @@ struct BranchModelTests {
             .command(["rebase", "--abort"]),
         ])
         #expect(CommandBlock.copied(dialog.terminal) == "git rebase --abort")
-        #expect(dialog.buttons.map(\.title) == ["Leave it", "Undo the pull"])
+        #expect(dialog.buttons.map(\.title) == ["Undo the pull", "Resolve"])
         #expect(dialog.buttons.map(\.kind) == [.secondary, .primary])
         dialog.dismiss()
         #expect(model.branch.conflict == nil)
@@ -921,10 +921,10 @@ struct BranchModelTests {
         #expect(model.branch.putBackConflict?.files == ["notes.txt"])
         let dialog = try dialogContent(model)
         #expect(dialog.title == "Putting your changes back stopped on a conflict")
-        #expect(dialog.message?.plain == "Roga pulled into main and put your uncommitted changes back, but in 1 file they conflict with what came in. Roga can't resolve conflicts yet, so you can undo the pull, or leave the conflicts to resolve in your editor.")
+        #expect(dialog.message?.plain == "Roga pulled into main and put your uncommitted changes back, but in 1 file they conflict with what came in. You can resolve them here, or undo the pull.")
         #expect(dialog.cards == [[.name("notes.txt")]])
-        #expect(dialog.buttons.map(\.title) == ["Leave it", "Undo the pull"])
-        #expect(dialog.buttons[1].kind == .primary)
+        #expect(dialog.buttons.map(\.title) == ["Undo the pull", "Resolve"])
+        #expect(dialog.buttons.map(\.kind) == [.secondary, .primary])
         #expect(dialog.terminal == [
             .ran(["stash", "push", "--message", "Roga: before pulling main"]),
             .ran(["pull", "--ff-only"]),
@@ -935,7 +935,7 @@ struct BranchModelTests {
             .command(["stash", "pop", "--index"]),
         ])
 
-        dialog.buttons[1].action()
+        dialog.buttons[0].action()
         await model.branch.running?.value
         #expect(model.branch.putBackConflict == nil)
         #expect(model.branch.failure == nil)
@@ -945,14 +945,15 @@ struct BranchModelTests {
         #expect(try await git("stash", "list", in: clones.work).isEmpty)
     }
 
-    @Test func leavingChangesThatConflictLeavesTheConflictInTheTitleRow() async throws {
+    @Test func resolvingChangesThatConflictLeavesTheConflictInTheTitleRow() async throws {
         let clones = try await clonesWithChangesInTheWay("mine\n2\n3\n4\n5\n")
         let model = model(clones, fetches: false)
         await model.appear()
 
         model.branch.pull()
         await model.branch.running?.value
-        try dialogContent(model).buttons[0].action()
+        // Resolve leaves the conflicts where they are, to resolve in the panels.
+        try dialogContent(model).buttons[1].action()
         #expect(model.dialog == nil)
         await look(model)
         #expect(model.branch.unfinished?.title == "1 conflict")
@@ -1110,7 +1111,7 @@ struct BranchModelTests {
         #expect(model.branch.pendingAbort == nil)
     }
 
-    @Test func showingConflictsSelectsTheRowForUncommittedChanges() async throws {
+    @Test func resolvingConflictsSelectsTheRowForUncommittedChanges() async throws {
         let (clones, _) = try await clonesAboutToConflict()
         let model = model(clones)
         await model.appear()
@@ -1118,7 +1119,7 @@ struct BranchModelTests {
         await look(model)
         #expect(model.selectedRow != 0)
 
-        model.branch.showChanges()
+        model.branch.showConflicts()
         #expect(model.selectedRow == 0)
     }
 

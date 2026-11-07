@@ -1,3 +1,4 @@
+import DiffUI
 import Foundation
 import GitCore
 import Observation
@@ -64,6 +65,12 @@ final class SelectedChanges {
     /// The load in progress, which a newer one cancels.
     @ObservationIgnored private(set) var loading: Task<Void, Never>?
     @ObservationIgnored private var patience: Task<Void, any Error>?
+    /// What's been resolved in each conflicted file, which the diff panel shows
+    /// (decision 60).
+    @ObservationIgnored let conflicts = ConflictResolution()
+    /// The conflict being written to its file, which the next one waits for, so
+    /// that each starts from what the last one wrote.
+    @ObservationIgnored private(set) var resolving: Task<Void, Never>?
     @ObservationIgnored private let session: RepositorySession
     @ObservationIgnored private let worktree: String
 
@@ -72,6 +79,7 @@ final class SelectedChanges {
         self.worktree = worktree
         self.selectedFile = selectedFile
         self.fileList = fileList
+        selectedFile.conflictResolution = conflicts
     }
 
     /// Selects the row, and selects the first file once they're listed.
@@ -142,6 +150,7 @@ final class SelectedChanges {
     /// Stages a file, or takes it back out if it's a staged one. Staging a conflict
     /// says it's resolved.
     func toggle(_ file: DiffFile, in group: WorktreeChanges.Group) {
+        if group == .conflicted { conflicts.forget(file.path) }
         apply(group == .staged ? .unstage([file]) : .stage([file]), from: group)
     }
 
@@ -165,6 +174,58 @@ final class SelectedChanges {
         let files = loaded[group].filter { $0.path.hasPrefix(path + "/") }
         guard !files.isEmpty else { return }
         apply(group == .staged ? .unstage(files) : .stage(files), from: group)
+    }
+
+    // MARK: Resolving conflicts
+
+    /// Resolves one of the selected file's conflicts, or puts one back, when it's
+    /// showing its conflicts (decision 60).
+    var conflictResolve: ((ConflictRequest) -> Void)? {
+        guard selectedFile.shown?.conflicts?.total ?? 0 > 0, case .worktree(_, .conflicted, _) = selectedFile.shown?.source else { return nil }
+        return { [weak self] request in self?.resolve(request) }
+    }
+
+    /// Writes what resolves a conflict into the selected file, or puts the conflict
+    /// back as it was, and shows the file again.
+    func resolve(_ request: ConflictRequest) {
+        guard let file = selectedFile.file, selectedFile.group == .conflicted, let changes = loaded else { return }
+        let previous = resolving
+        resolving = Task {
+            await previous?.value
+            defer { resolving = nil }
+            guard var progress = conflicts.progress(of: file.path) else { return }
+            let before = progress.current
+            switch request {
+            case .choose(let conflict, let choice): progress.choices[conflict] = choice
+            case .undo(let conflict): progress.choices[conflict] = nil
+            }
+            do {
+                try await session.write(progress.current, replacing: before, at: file.path, in: worktree)
+                conflicts.remember(progress, for: file.path)
+            } catch {
+                onFailure?("Can't resolve the conflict in \(file.name)", error)
+            }
+            guard selectedFile.file?.path == file.path else { return }
+            selectedFile.refresh(file, from: source(.conflicted, changes))
+            await selectedFile.loading?.value
+        }
+    }
+
+    /// Takes one side's whole version of a conflicted file, and marks it resolved.
+    func keep(_ side: ConflictSide, of file: DiffFile) {
+        conflicts.forget(file.path)
+        let previous = resolving
+        resolving = Task {
+            await previous?.value
+            defer { resolving = nil }
+            do {
+                try await session.keep(side, of: file.path, in: worktree)
+            } catch {
+                onFailure?("Can't keep a version of \(file.name)", error)
+            }
+            refresh()
+            lookAgain()
+        }
     }
 
     // MARK: Discarding

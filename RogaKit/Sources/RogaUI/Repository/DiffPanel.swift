@@ -66,14 +66,26 @@ struct DiffPanel: View {
             }
         } trailing: {
             if let changes, let file = selection.file, let group = selection.group {
+                if group == .conflicted, let conflicts = selection.shown?.conflicts, selection.shown?.file.path == file.path {
+                    ConflictFileMenu(file: file, sides: conflicts.sides, worktree: worktree, keep: { changes.keep($0, of: file) })
+                }
+                // Once a conflicted file has no markers left, marking it resolved
+                // is what's next, so it's orange, as a button that runs now is.
+                let isNext = group == .conflicted && selection.shown?.conflicts?.left == 0 && selection.shown?.file.path == file.path
                 Button(group.stageTitle) { changes.toggle(file, in: group) }
                     .buttonStyle(.plain)
-                    .font(.system(size: 12))
+                    .font(.system(size: 12, weight: isNext ? .medium : .regular))
+                    .foregroundStyle(isNext ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
                     .padding(.horizontal, 8)
                     .frame(height: 24)
                     .background {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .strokeBorder(Palette.separator)
+                        if isNext {
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(Palette.actionFill)
+                        } else {
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .strokeBorder(Palette.separator)
+                        }
                     }
                     .contentShape(Rectangle())
                     .help("\(group.stageTitle) (\(RepositoryCommands.stageShortcut.symbols))")
@@ -107,7 +119,8 @@ struct DiffPanel: View {
                         matches: selection.matches,
                         matchSteps: selection.matchSteps,
                         findCloses: selection.findCloses,
-                        discardHunk: changes?.hunkDiscard
+                        discardHunk: changes?.hunkDiscard,
+                        resolveConflict: changes?.conflictResolve
                     )
                 case .note(let text):
                     note(text)
@@ -131,9 +144,14 @@ struct DiffPanel: View {
         }
     }
 
+    /// The worktree the uncommitted changes are in, for opening a file there.
+    private var worktree: String? {
+        if case .worktree(let path, _, _) = selection.source { path } else { nil }
+    }
+
     @ViewBuilder private var title: some View {
         if let shown = selection.shown {
-            FileTitle(file: shown.file, source: shown.source)
+            FileTitle(file: shown.file, source: shown.source, conflicts: shown.conflicts)
         } else {
             Text("Diff")
                 .font(.system(size: 13, weight: .medium))
@@ -157,6 +175,7 @@ struct DiffPanel: View {
 private struct FileTitle: View {
     let file: DiffFile
     let source: PatchSource
+    var conflicts: ConflictSummary?
 
     var body: some View {
         HStack(spacing: 8) {
@@ -185,6 +204,9 @@ private struct FileTitle: View {
     private var details: String {
         var details: [String] = []
         if let group = source.group { details.append(group.title) }
+        if let conflicts, conflicts.total > 0 {
+            details.append(conflicts.left == 0 ? "none left" : "\(conflicts.left) of \(conflicts.total) left")
+        }
         if let oldPath = file.oldPath { details.append("from " + oldPath) }
         if file.oldMode != file.newMode, file.oldMode != 0, file.newMode != 0 {
             details.append("mode \(String(file.oldMode, radix: 8)) → \(String(file.newMode, radix: 8))")
@@ -202,6 +224,7 @@ private struct DiffText: NSViewRepresentable {
     let matchSteps: Int
     let findCloses: Int
     let discardHunk: ((Int) -> Void)?
+    let resolveConflict: ((ConflictRequest) -> Void)?
 
     func makeCoordinator() -> Coordinator {
         Coordinator(matchSteps: matchSteps, findCloses: findCloses)
@@ -215,6 +238,7 @@ private struct DiffText: NSViewRepresentable {
         let controller = context.coordinator.controller
         controller.show(document, keepingPosition: isUpdate)
         controller.discardHunk = discardHunk
+        controller.resolveConflict = resolveConflict
         // Before the marks go away, since closing selects the current one.
         context.coordinator.update(findCloses: findCloses)
         // What's marked can be from the document before this one, until the
@@ -245,5 +269,46 @@ private struct DiffText: NSViewRepresentable {
             self.findCloses = findCloses
             controller.endFind()
         }
+    }
+}
+
+/// The menu for a conflicted file in the diff panel's header: one side's whole
+/// version, for a file such as a lockfile where one side is right, and opening the
+/// file in the app that opens it, for resolving it there (decision 60).
+private struct ConflictFileMenu: View {
+    let file: DiffFile
+    let sides: ConflictSides
+    let worktree: String?
+    let keep: (ConflictSide) -> Void
+
+    var body: some View {
+        Menu {
+            Button("\(sides.ours.keepTitle) Version") { keep(.ours) }
+            Button("\(sides.theirs.keepTitle) Version") { keep(.theirs) }
+            if let url {
+                Divider()
+                Button("Open in \(Self.appName(opening: url) ?? "Default App")") {
+                    NSWorkspace.shared.open(url)
+                }
+            }
+        } label: {
+            Icon.ellipsis.image
+        }
+        .menuStyle(.button)
+        .buttonStyle(.icon)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Keep a Version or Open the File")
+        .accessibilityLabel("Keep a Version or Open the File")
+    }
+
+    private var url: URL? {
+        worktree.map { URL(filePath: $0).appending(path: file.path) }
+    }
+
+    /// The name of the app that opening a file opens it in, such as Xcode.
+    private static func appName(opening url: URL) -> String? {
+        guard let app = NSWorkspace.shared.urlForApplication(toOpen: url) else { return nil }
+        return FileManager.default.displayName(atPath: app.path(percentEncoded: false)).replacing(/\.app$/, with: "")
     }
 }

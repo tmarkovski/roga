@@ -13,8 +13,8 @@ nonisolated final class DiffLayoutManager: NSLayoutManager, @unchecked Sendable 
     override func drawBackground(forGlyphRange glyphs: NSRange, at origin: NSPoint) {
         if let document, let context = NSGraphicsContext.current?.cgContext {
             enumerateLineFragments(forGlyphRange: glyphs) { rect, _, _, glyphs, _ in
-                let line = document.lines[document.lineIndex(atCharacter: self.characterIndexForGlyph(at: glyphs.location))]
-                guard let color = DiffStyle.background(line.kind) else { return }
+                let row = document.lineIndex(atCharacter: self.characterIndexForGlyph(at: glyphs.location))
+                guard let color = document.background(ofRow: row) else { return }
                 // A fragment is as wide as the text container, which is much
                 // wider than the view, and drawing stops at the view's edge.
                 context.setFillColor(color.cgColor)

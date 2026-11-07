@@ -1,4 +1,5 @@
 import CommitGraph
+import DiffUI
 import Foundation
 import GitCore
 import GitRunner
@@ -234,11 +235,18 @@ final class RepositoryModel {
         composer.showChanges = { [weak self] in self?.selectChangesOnceTheyShow() }
         branch.isCheckingOut = { [weak self] in self?.checkout != nil }
         branch.lookAgain = { [weak self] in self?.lookAgain() }
-        branch.showChanges = { [weak self] in
+        branch.showConflicts = { [weak self] in
             guard let self, hasWorkingTreeRow else { return }
             selectRow(0)
+            // When the row was selected already, another file may be showing.
+            // Otherwise this waits for the files, and the first one is a conflict.
+            selectedChanges.selectFirstFile()
         }
         branch.showPreview = { [weak self] commits in self?.preview(commits) }
+        selectedCommit.selectedFile.nameConflicts = { [weak self] labels in
+            guard let self else { return ConflictNaming().sides(oursLabel: labels?.ours ?? "HEAD", theirsLabel: labels?.theirs ?? "") }
+            return await nameConflicts(labels)
+        }
         branch.stagedFiles = { [weak self] in self?.stagedFiles ?? 0 }
     }
 
@@ -281,6 +289,29 @@ final class RepositoryModel {
     var commitCountDescription: String? {
         guard let history, history.isComplete else { return nil }
         return history.rows.count == 1 ? "1 commit" : "\(history.rows.count.formatted()) commits"
+    }
+
+    /// Names the sides of a conflicted file by where they came from, from the labels
+    /// after its first conflict's markers, or from what the worktree is partway
+    /// through when it has no markers (decision 60).
+    private func nameConflicts(_ labels: (ours: String, theirs: String)?) async -> ConflictSides {
+        let work = branch.unfinished?.work
+        let oursLabel = labels?.ours ?? "HEAD"
+        var theirsLabel = labels?.theirs ?? "Stashed changes"
+        if labels == nil, let label = try? await session.incomingConflictLabel(in: worktree) { theirsLabel = label }
+        var naming = ConflictNaming(
+            branch: history?.refs.currentBranch.map(Ref.shortName),
+            head: history?.refs.head,
+            work: work,
+            refs: history?.refs.refs ?? [],
+            upstream: branch.status?.upstream
+        )
+        if case .rebase = work { naming.onto = try? await session.rebaseOnto(in: worktree) }
+        let ids = naming.commitsToDescribe(oursLabel: oursLabel, theirsLabel: theirsLabel)
+        if let commits = try? await session.commits(ids) {
+            for commit in commits.compactMap(\.self) { naming.subjects[commit.id] = commit.subject }
+        }
+        return naming.sides(oursLabel: oursLabel, theirsLabel: theirsLabel)
     }
 
     /// Goes to the row for uncommitted changes, if there is one.
