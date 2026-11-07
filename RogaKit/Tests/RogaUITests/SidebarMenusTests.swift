@@ -12,7 +12,7 @@ struct SidebarMenusTests {
     private func titles(_ entries: [RefMenu.Entry]) -> [String] {
         entries.map { entry in
             switch entry {
-            case .command(let title, _, _, _): title
+            case .command(let title, _, _, _, _): title
             case .divider: "—"
             case .header(let title): "# " + title
             case .choice(let choice): "> " + choice.title
@@ -22,7 +22,7 @@ struct SidebarMenusTests {
     }
 
     private func command(_ title: String, in entries: [RefMenu.Entry]) -> (isEnabled: Bool, action: () -> Void)? {
-        for case let .command(found, _, isEnabled, action) in entries where found == title {
+        for case let .command(found, _, isEnabled, _, action) in entries where found == title {
             return (isEnabled, action)
         }
         return nil

@@ -12,6 +12,7 @@ public struct RepositoryCommands: Commands {
     @FocusedValue(\.repository) private var repository
     @FocusedValue(\.sidebarVisibility) private var sidebarVisibility
     @FocusedValue(\.deleteSelectedWorktree) private var deleteSelectedWorktree
+    @FocusedValue(\.worktreeCommands) private var worktreeCommands
     @FocusedValue(\.refsPanelVisibility) private var refsPanelVisibility
     @FocusedValue(\.lowerPanelSize) private var lowerPanelSize
     @FocusedValue(\.openSettings) private var openSettings
@@ -53,6 +54,20 @@ public struct RepositoryCommands: Commands {
     static let fetchShortcut = KeyboardShortcut("e", modifiers: [.shift, .command])
     static let newBranchShortcut = KeyboardShortcut("b", modifiers: [.shift, .command])
 
+    /// The shortcuts for the worktree on screen, which the menu of its
+    /// repository's worktrees in the title row shows too. New Worktree… pairs
+    /// with New Branch's Shift-Command-B, Show in Finder is VS Code's key for
+    /// it, and Open in Terminal is GitHub Desktop's.
+    static let newWorktreeShortcut = KeyboardShortcut("b", modifiers: [.shift, .option, .command])
+    static let showInFinderShortcut = KeyboardShortcut("r", modifiers: [.option, .command])
+    static let openInTerminalShortcut = KeyboardShortcut("`", modifiers: .control)
+
+    /// Command-1 to Command-9 show the repository's first nine worktrees, in
+    /// the order the title row's menu of them lists them.
+    static func worktreeShortcut(_ index: Int) -> KeyboardShortcut? {
+        (0..<9).contains(index) ? KeyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command) : nil
+    }
+
     /// The shortcuts for a worktree's uncommitted changes (decision 30).
     static let goToChangesShortcut = KeyboardShortcut("u", modifiers: [.shift, .command])
     static let stageShortcut = KeyboardShortcut("s")
@@ -91,6 +106,17 @@ public struct RepositoryCommands: Commands {
             }
             .keyboardShortcut(Self.openShortcut)
             .disabled(!list.isConnected)
+            Divider()
+            Button("Show in Finder") {
+                worktreeCommands?.reveal?()
+            }
+            .keyboardShortcut(Self.showInFinderShortcut)
+            .disabled(worktreeCommands?.reveal == nil)
+            Button("Open in Terminal") {
+                worktreeCommands?.openInTerminal?()
+            }
+            .keyboardShortcut(Self.openInTerminalShortcut)
+            .disabled(worktreeCommands?.openInTerminal == nil)
             Divider()
             Button("Delete Worktree…") {
                 deleteSelectedWorktree?()
@@ -168,6 +194,18 @@ public struct RepositoryCommands: Commands {
             Divider()
         }
         CommandGroup(before: .toolbar) {
+            // The worktrees of the window's repository, as the title row's menu
+            // lists them, with a checkmark on the one on screen.
+            Menu("Show Worktree") {
+                let worktrees = worktreeCommands?.worktrees ?? []
+                ForEach(Array(worktrees.enumerated()), id: \.element.path) { index, worktree in
+                    Toggle(worktree.title, isOn: Binding { worktree.isCurrent } set: { _ in worktree.show() })
+                        .keyboardShortcut(Self.worktreeShortcut(index))
+                        .disabled(!worktree.isEnabled)
+                }
+            }
+            .disabled(worktreeCommands?.worktrees.isEmpty != false)
+            // The inline picker brings its own line above it.
             Picker("Order", selection: Binding(
                 get: { repository?.sort ?? .topological },
                 set: { repository?.sort = $0 }
@@ -213,10 +251,15 @@ public struct RepositoryCommands: Commands {
         }
         CommandMenu("Branch") {
             if let branch = repository?.branch {
-                BranchMenuItems(branch: branch, switchBranch: refsPanelVisibility?.fits == true ? {
-                    refsPanelVisibility?.isWanted.wrappedValue = true
-                    repository?.refs.showFilter()
-                } : nil)
+                BranchMenuItems(
+                    branch: branch,
+                    switchBranch: refsPanelVisibility?.fits == true ? {
+                        refsPanelVisibility?.isWanted.wrappedValue = true
+                        repository?.refs.showFilter()
+                    } : nil,
+                    listsNewWorktree: true,
+                    newWorktree: worktreeCommands?.newWorktree
+                )
             } else {
                 Button("Pull") {}
                     .keyboardShortcut(Self.pullShortcut)
@@ -230,6 +273,9 @@ public struct RepositoryCommands: Commands {
                 Divider()
                 Button("New Branch…") {}
                     .keyboardShortcut(Self.newBranchShortcut)
+                    .disabled(true)
+                Button("New Worktree…") {}
+                    .keyboardShortcut(Self.newWorktreeShortcut)
                     .disabled(true)
                 Button("Switch Branch…") {}
                     .disabled(true)

@@ -43,15 +43,27 @@ struct RefMenuTests {
         #expect(!RefMenu.make([.command("Copy Name") {}]).showsStateColumn)
     }
 
-    @Test func aMenuHasARoomyWidthEvenWithShortTitles() {
-        #expect(widths(RefMenu.make([.header("main"), .command("Copy Name") {}])) == [264])
+    private func textWidth(_ text: String) -> Double {
+        (text as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 13)]).width
+    }
+
+    @Test func aMenuIsAsWideAsItsRowsNeed() throws {
+        let menu = RefMenu.make([.command("Open in New Window") {}, .command("Show in Finder") {}])
+        let width = try #require(widths(menu).first)
+        #expect(widths(menu).count == 1)
+        #expect(Double(width) == (16 + textWidth("Open in New Window")).rounded(.up) + 16)
+    }
+
+    @Test func aMenuOfAWordOrTwoIsntASliver() {
+        #expect(widths(RefMenu.make([.command("Revert…") {}, .command("Delete…") {}])) == [120])
+        #expect(widths(RefMenu.make([.header("v1"), .command("Copy Name") {}])) == [120])
     }
 
     @Test func aLongNameWidensEveryRowUpToALimit() throws {
         let medium = RefMenu.make([.header(String(repeating: "m", count: 30)), .command("Copy Name") {}])
         let width = try #require(widths(medium).first)
         #expect(widths(medium).count == 1)
-        #expect(width > 264 && width < 480)
+        #expect(width > 120 && width < 480)
 
         let long = RefMenu.make([.header(String(repeating: "m", count: 200)), .command("Copy Name") {}])
         #expect(widths(long) == [480])
@@ -108,11 +120,12 @@ struct RefMenuTests {
         #expect(chosen == ["Uncommitted Changes"])
     }
 
-    @Test func aMenuOfOptionsIsNarrowerThanOneOfCommands() {
+    @Test func anOptionLeavesRoomForItsCheckmark() throws {
         let options = RefMenu.make([.option("Name", isChecked: true) {}, .option("None", isChecked: false) {}])
-        #expect(widths(options) == [180])
-        let mixed = RefMenu.make([.option("Name", isChecked: true) {}, .command("Copy Name") {}])
-        #expect(widths(mixed) == [264])
+        #expect(widths(options) == [120])
+        let command = try #require(widths(RefMenu.make([.command("Uncommitted Changes") {}])).first)
+        let option = try #require(widths(RefMenu.make([.option("Uncommitted Changes", isChecked: true) {}])).first)
+        #expect(option == command + 30)
         // A long option still leaves room for its checkmark after it.
         let long = RefMenu.make([.option(String(repeating: "Uncommitted Changes ", count: 8), isChecked: true) {}])
         #expect(widths(long) == [480])
@@ -120,11 +133,11 @@ struct RefMenuTests {
 
     @Test func aChoiceIsAsWideAsItsSecondLineUpToTheLimit() throws {
         let short = RefMenu.make([choice("main")])
-        #expect(widths(short) == [264])
+        #expect(widths(short) == [120])
         let folder = "~/" + String(repeating: "m", count: 24)
         let medium = RefMenu.make([choice("main", details: [RefMenu.Detail(folder)])])
         let width = try #require(widths(medium).first)
-        #expect(width > 264 && width < 480)
+        #expect(width > 120 && width < 480)
         let long = RefMenu.make([choice("main", details: [RefMenu.Detail(String(repeating: "m", count: 200))])])
         #expect(widths(long) == [480])
     }
@@ -133,6 +146,56 @@ struct RefMenuTests {
         let choice = RefMenu.Choice(title: "agent/add-tests", details: [RefMenu.Detail("Rebasing main · 2 conflicts", color: .red), RefMenu.Detail("~/agents/add-tests")]) {}
         #expect(choice.detailText == "Rebasing main · 2 conflicts · ~/agents/add-tests")
         #expect(choice.details.allSatisfy { !$0.canBeCutShort })
+    }
+
+    // MARK: Shortcuts
+
+    private let showInFinder = RefMenu.Shortcut("r", modifiers: [.option, .command])
+
+    @Test func aShortcutReadsTheWayMacOSShowsIt() {
+        #expect(showInFinder.modifierSymbols + showInFinder.keySymbol == "⌥⌘R")
+        let newWorktree = RefMenu.Shortcut("b", modifiers: [.command, .shift, .option])
+        #expect(newWorktree.modifierSymbols + newWorktree.keySymbol == "⌥⇧⌘B")
+        let terminal = RefMenu.Shortcut("`", modifiers: .control)
+        #expect(terminal.modifierSymbols + terminal.keySymbol == "⌃`")
+        #expect(RefMenu.Shortcut("1").modifierSymbols + RefMenu.Shortcut("1").keySymbol == "⌘1")
+        #expect(RefMenu.Shortcut("\u{8}").keySymbol == "⌫")
+        #expect(RefMenu.Shortcut("\r").keySymbol == "↩")
+    }
+
+    @Test func aShortcutTakesRoomAtTheRightOfItsRow() throws {
+        let plain = try #require(widths(RefMenu.make([.command("Show in Finder") {}])).first)
+        let withShortcut = try #require(widths(RefMenu.make([.command("Show in Finder", shortcut: showInFinder) {}])).first)
+        #expect(withShortcut > plain + 24 + textWidth("⌥⌘R") - 1)
+    }
+
+    @Test func anItemKeepsItsShortcutForVoiceOverAndTheKeyboard() throws {
+        var runs = 0
+        let menu = RefMenu.make([
+            .command("Show in Finder") {},
+            .command("Copy Name") {},
+            .choice(RefMenu.Choice(title: "main", shortcut: RefMenu.Shortcut("1")) { runs += 1 }),
+        ])
+        #expect(rows(menu).map(\.keyEquivalent) == ["", "", "1"])
+        #expect(rows(menu)[2].keyEquivalentModifierMask == .command)
+        // Pressing it while the menu is open chooses the row.
+        _ = NSApplication.shared
+        let event = try #require(NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: .command, timestamp: 0, windowNumber: 0, context: nil,
+            characters: "1", charactersIgnoringModifiers: "1", isARepeat: false, keyCode: 18
+        ))
+        #expect(menu.performKeyEquivalent(with: event))
+        #expect(runs == 1)
+    }
+
+    @Test func aChoiceWithoutAShortcutKeepsRoomForTheColumnSoTheCountsLineUp() throws {
+        let count = RefMenu.Count("12", color: .orange)
+        let without = RefMenu.Choice(title: "agent/fix-login", count: count) {}
+        let with = RefMenu.Choice(title: "agent/fix-login", count: count, shortcut: RefMenu.Shortcut("9")) {}
+        let alone = try #require(widths(RefMenu.make([.choice(without)])).first)
+        let beside = try #require(widths(RefMenu.make([.choice(without), .choice(with)])).first)
+        #expect(beside > alone + 24 + textWidth("⌘9") - 1)
+        #expect(RefMenu.textRoom(inRow: 300, count: count, shortcutRoom: 40) == RefMenu.textRoom(inRow: 300, count: count) - 40)
     }
 
     // MARK: Cutting the second line short

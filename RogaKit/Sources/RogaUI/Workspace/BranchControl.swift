@@ -175,6 +175,12 @@ private struct NewBranchButton: View {
 struct BranchMenuItems: View {
     let branch: BranchModel
     let switchBranch: (() -> Void)?
+    /// Whether New Worktree… follows New Branch…, which only the menu bar's
+    /// Branch menu has, since the branch's own menu leaves worktrees to the
+    /// menu of the repository's worktrees.
+    var listsNewWorktree = false
+    /// What New Worktree… does, or nil while it can't start.
+    var newWorktree: (() -> Void)?
 
     var body: some View {
         if let status = branch.status {
@@ -200,6 +206,11 @@ struct BranchMenuItems: View {
         item("New Branch…", icon: .newBranch) { branch.isCreatingBranch = true }
             .keyboardShortcut(RepositoryCommands.newBranchShortcut)
             .disabled(branch.isBusy)
+        if listsNewWorktree {
+            item("New Worktree…", icon: .worktree) { newWorktree?() }
+                .keyboardShortcut(RepositoryCommands.newWorktreeShortcut)
+                .disabled(newWorktree == nil)
+        }
         item("Switch Branch…", icon: nil) { switchBranch?() }
             .disabled(switchBranch == nil)
     }

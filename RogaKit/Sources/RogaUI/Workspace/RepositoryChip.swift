@@ -101,6 +101,43 @@ struct WorktreeFacts: Equatable {
     var agent: AgentSummary?
 }
 
+/// What the menu bar does with the worktree a window shows, and the other
+/// worktrees in its repository it can switch to, as the menu of them in the
+/// title row does.
+struct WorktreeCommands {
+    struct Worktree {
+        var path: String
+        var title: String
+        var isCurrent: Bool
+        var isEnabled: Bool
+        /// Shows it in the window, which does nothing for the one on screen.
+        var show: () -> Void
+    }
+
+    var worktrees: [Worktree]
+    /// Starts a new branch in a new worktree, or nil when that can't start yet.
+    var newWorktree: (() -> Void)?
+    /// Each nil while the worktree's folder is missing.
+    var reveal: (() -> Void)?
+    var openInTerminal: (() -> Void)?
+}
+
+extension FocusedValues {
+    /// The commands for the worktree in the focused window.
+    @Entry var worktreeCommands: WorktreeCommands?
+}
+
+extension RefMenu.Shortcut {
+    /// The key of a command in the menu bar, for a row that does what it does.
+    init(_ shortcut: KeyboardShortcut) {
+        let modifiers: [(EventModifiers, NSEvent.ModifierFlags)] = [(.control, .control), (.option, .option), (.shift, .shift), (.command, .command)]
+        self.init(
+            String(shortcut.key.character),
+            modifiers: NSEvent.ModifierFlags(modifiers.filter { shortcut.modifiers.contains($0.0) }.map(\.1))
+        )
+    }
+}
+
 /// The menu that the repository's name in the title row opens. It lists each of
 /// the repository's worktrees on two lines, the main worktree first, with
 /// commands for the one the window shows after them.
@@ -115,16 +152,44 @@ enum WorktreeMenu {
         var openInTerminal: (String) -> Void
     }
 
+    /// Each row has the shortcut of its command in the menu bar, which does the
+    /// same with the menu closed: Command-1 to Command-9 for the first nine
+    /// worktrees, in the order they're listed.
+    ///
     /// - Parameter now: The time to say how long agents have been at it from.
     static func entries(for facts: [WorktreeFacts], shown: String, now: Date = .now, actions: Actions) -> [RefMenu.Entry] {
-        var entries: [RefMenu.Entry] = facts.filter { !$0.worktree.isBare }.map { facts in
-            .choice(choice(for: facts, isCurrent: facts.worktree.path == shown, now: now) { actions.show(facts.worktree.path) })
+        var entries: [RefMenu.Entry] = facts.filter { !$0.worktree.isBare }.enumerated().map { index, facts in
+            var choice = choice(for: facts, isCurrent: facts.worktree.path == shown, now: now) { actions.show(facts.worktree.path) }
+            choice.shortcut = RepositoryCommands.worktreeShortcut(index).map(RefMenu.Shortcut.init)
+            return .choice(choice)
         }
         entries.append(.divider)
-        entries.append(.command("New Worktree…", isEnabled: actions.newWorktree != nil) { actions.newWorktree?() })
-        entries.append(.command("Show in Finder") { actions.reveal(shown) })
-        entries.append(.command("Open in Terminal") { actions.openInTerminal(shown) })
+        entries.append(.command("New Worktree…", isEnabled: actions.newWorktree != nil, shortcut: RefMenu.Shortcut(RepositoryCommands.newWorktreeShortcut)) { actions.newWorktree?() })
+        entries.append(.command("Show in Finder", shortcut: RefMenu.Shortcut(RepositoryCommands.showInFinderShortcut)) { actions.reveal(shown) })
+        entries.append(.command("Open in Terminal", shortcut: RefMenu.Shortcut(RepositoryCommands.openInTerminalShortcut)) { actions.openInTerminal(shown) })
         return entries
+    }
+
+    /// What the menu bar does with the worktree on screen and the others in
+    /// its repository, which this menu does too, in the same order.
+    static func commands(of repository: ListedRepository, shown: Worktree, actions: Actions) -> WorktreeCommands {
+        let worktrees = repository.worktrees.filter { !$0.isBare }.map { worktree in
+            let isCurrent = worktree.path == shown.path
+            return WorktreeCommands.Worktree(
+                path: worktree.path,
+                title: worktree.title,
+                isCurrent: isCurrent,
+                isEnabled: !worktree.isPrunable && !repository.deletingWorktrees.contains(worktree.path),
+                show: isCurrent ? {} : { actions.show(worktree.path) }
+            )
+        }
+        let canOpen = !shown.isPrunable
+        return WorktreeCommands(
+            worktrees: worktrees,
+            newWorktree: actions.newWorktree,
+            reveal: canOpen ? { actions.reveal(shown.path) } : nil,
+            openInTerminal: canOpen ? { actions.openInTerminal(shown.path) } : nil
+        )
     }
 
     /// A worktree's row, named for its branch as the sidebar names it.

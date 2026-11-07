@@ -345,6 +345,7 @@ public struct WorkspaceView: View {
             }
         }
         .focusedSceneValue(\.selection, selection)
+        .focusedSceneValue(\.worktreeCommands, worktreeCommands)
         .focusedSceneValue(\.sidebarVisibility, $columns)
         .focusedSceneValue(\.refsPanelVisibility, refsPanelVisibility)
         .focusedSceneValue(\.showsSettings, $showsSettings)
@@ -616,6 +617,13 @@ public struct WorkspaceView: View {
             reveal: reveal,
             openInTerminal: openInTerminal
         )
+    }
+
+    /// What the menu bar does with the worktree on screen, as the menu of its
+    /// repository's worktrees does.
+    private var worktreeCommands: WorktreeCommands? {
+        guard let selected = window?.selection, let (repository, worktree) = shown, let worktree else { return nil }
+        return WorktreeMenu.commands(of: repository, shown: worktree, actions: worktreeMenuActions(shown: worktree, selected: selected, model: shownModel))
     }
 
     /// The space between the branch's buttons and history's commands.
