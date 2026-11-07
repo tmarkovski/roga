@@ -173,13 +173,13 @@ final class BranchModel {
     /// What became of the repository's latest fetch.
     private(set) var fetchRecord = FetchRecord()
     /// Whether Roga is fetching by itself, which the branch's menu says and the
-    /// Fetch button shows by turning.
+    /// Fetch button shows by dropping the house through it.
     private(set) var isFetchingByItself = false
     /// What git is doing because someone asked it to.
     private(set) var action: Action?
 
     /// Whether any fetch is running, whoever asked for it, which the Fetch button
-    /// shows by turning (decision 45).
+    /// shows by dropping the house through it (decisions 45 and 55).
     var isFetching: Bool { action == .fetching || isFetchingByItself }
 
     /// What just happened, as in `Pulled`, for a moment.
@@ -296,8 +296,8 @@ final class BranchModel {
     }
 
     /// Fetches because someone asked to. Nothing opens in the title row, because
-    /// the Fetch button turns while it runs, and when it's done a count appears
-    /// or ticks up (decision 45). A fetch Roga started by itself stops, so that
+    /// the house drops through the Fetch button while it runs, and when it's done
+    /// a count appears or ticks up (decisions 45 and 55). A fetch Roga started by itself stops, so that
     /// this one can report what goes wrong.
     func fetch() {
         guard let remote = status?.remote else { return }

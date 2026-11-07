@@ -101,20 +101,18 @@ struct BranchButtons: View {
     }
 }
 
-/// Fetches from the branch's remote. Its icon turns while any fetch runs, the
-/// one Roga starts by itself included, so that nothing opens in the title row
-/// for a fetch. Clicking it during one Roga started stops that and fetches
-/// again, so that anything that goes wrong is reported.
+/// Fetches from the branch's remote. The house drops through it while any fetch
+/// runs, the one Roga starts by itself included, so that nothing opens in the
+/// title row for a fetch. Clicking it during one Roga started stops that and
+/// fetches again, so that anything that goes wrong is reported.
 private struct FetchButton: View {
     let branch: BranchModel
-    @Environment(\.accessibilityReduceMotion) private var reducesMotion
 
     var body: some View {
         // Often enough to keep "Last fetched 4 min ago" right in the tooltip.
         TimelineView(.periodic(from: .now, by: 30)) { context in
             Button(action: branch.fetch) {
-                Icon.fetch.image
-                    .modifier(Turning(isTurning: branch.isFetching, reducesMotion: reducesMotion))
+                FetchDrop(isFetching: branch.isFetching)
             }
             .buttonStyle(.icon)
             .disabled(branch.status?.remote == nil)
@@ -122,21 +120,6 @@ private struct FetchButton: View {
             .accessibilityLabel("Fetch")
             .accessibilityValue(branch.isFetching ? "Fetching" : "")
         }
-    }
-}
-
-/// Turns an icon round, once a second, for as long as something runs. It
-/// finishes the turn it's on rather than snapping back, so even a quick fetch
-/// shows a whole turn. Someone who asked for less motion sees it fade in and out
-/// instead.
-private struct Turning: ViewModifier {
-    let isTurning: Bool
-    let reducesMotion: Bool
-
-    func body(content: Content) -> some View {
-        content
-            .symbolEffect(.rotate.clockwise.wholeSymbol, options: .repeat(.continuous).speed(2), isActive: isTurning && !reducesMotion)
-            .symbolEffect(.pulse.wholeSymbol, options: .repeat(.continuous), isActive: isTurning && reducesMotion)
     }
 }
 
@@ -232,7 +215,8 @@ struct BranchMenuItems: View {
 /// right along. When git is done the words change to what happened and the house
 /// zooms out, and when those words have had their moment, they close up again.
 /// A commit has no house, so only its words come and go. A fetch shows nothing
-/// here, because the Fetch button turns instead (decision 45).
+/// here, because the house drops through the Fetch button instead (decisions 45
+/// and 55).
 private struct BranchCounts: View {
     /// How the title row moves from one step to the next.
     private enum Motion {
