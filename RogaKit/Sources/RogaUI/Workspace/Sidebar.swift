@@ -5,8 +5,10 @@ import MenuUI
 import RepositoryEngine
 import SwiftUI
 
-/// The window's sidebar: the rail that picks an organization, and the list of
-/// its repositories with their worktrees (docs/main-window.md).
+/// The window's sidebar: rows for adding repositories and for Settings at the
+/// top, and under them the list of repositories with their worktrees, in a
+/// group for each organization unless the person turned that off
+/// (docs/main-window.md, decision 53).
 ///
 /// It draws its own rows rather than using a `List`, because its rows fill
 /// with gray on hover and when selected, and swap a label for commands on
@@ -20,12 +22,7 @@ struct Sidebar: View {
     /// What agents are doing, which the rows read for their marks.
     let monitor: AgentMonitor
     @Binding var selection: WorktreeSelection?
-    /// What the rail has selected. Setting it picks a scope.
-    @Binding var scope: SidebarScope
-    @Binding var place: SidebarPlace
-    let showsRail: Bool
-    /// Whether the window shows Settings, which the gear at the bottom of the
-    /// rail opens.
+    /// Whether the window shows Settings, which the row at the top opens.
     @Binding var showsSettings: Bool
     let locate: (ListedRepository) -> Void
     /// Shows a worktree and opens New Branch there, with In a new worktree
@@ -33,75 +30,88 @@ struct Sidebar: View {
     let newWorktree: (WorktreeSelection) -> Void
     /// Whether the rows show agents' marks, as the person chose in Settings.
     var marks = AgentMarksSetting()
+    @AppStorage(SidebarSettings.groupsByOrganization) private var groupsByOrganization = true
+    @AppStorage(SidebarSettings.sort) private var sort = SidebarSort.name
+    /// The groups that are collapsed, one to a line. Like how the list is
+    /// grouped and sorted, it's one setting for every window.
+    @AppStorage(SidebarSettings.collapsedGroups) private var collapsedGroups = ""
     @State private var isAddingRepositories = false
+    /// Opens the menu that groups and sorts the list for VoiceOver's press.
+    @State private var arrangementOpener = RefMenuOpener()
     @State private var adding = AddRepositoriesChoices()
     @State private var deletions = WorktreeDeletionModel()
     @State private var repairs = WorktreeRepairModel()
     @FocusState private var isFocused: Bool
     @Environment(\.openWindow) private var openWindow
-    /// A new version of Roga, which the rail shows above the gear, or the list
-    /// at its bottom while the rail is hidden.
+    /// A new version of Roga, which shows as a row under Settings.
     @Environment(Updates.self) private var updates: Updates?
 
     var body: some View {
         let groups = list.groups
-        HStack(spacing: 0) {
-            if showsRail {
-                OrganizationRail(groups: groups, scope: $scope) {
-                    addButton(edge: .trailing) { isPresented in
-                        RailButton(title: "Add Repositories", isOpen: isPresented, action: { isAddingRepositories = true }) {
-                            Icon.plus.image
-                                .font(.system(size: 15, weight: .light))
-                        }
-                    }
-                    if let updates, let pending = updates.pending {
-                        RailButton(title: pending.title, action: updates.open) {
-                            Icon.circleArrowUp.image
-                                .font(.system(size: 15))
-                                .foregroundStyle(Palette.action)
-                        }
-                    }
-                    // Settings isn't something the list can show, so it keeps
-                    // the gray of an open popover while the sheet is up rather
-                    // than the ink of what's selected.
-                    RailButton(title: "Settings", isOpen: showsSettings, action: { showsSettings = true }) {
-                        Icon.settings.image
-                            .font(.system(size: 15, weight: .light))
-                    }
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 2) {
+                SidebarCommandRow(title: "Add Repositories", icon: .plus, isOpen: isAddingRepositories, isEnabled: list.isConnected) {
+                    isAddingRepositories = true
                 }
-                Rectangle()
-                    .fill(Palette.separator)
-                    .frame(width: 1)
-            }
-            VStack(alignment: .leading, spacing: 0) {
-                ScopeHeader(title: scope == .all ? "All repositories" : groups.title(of: scope), count: groups.repositories(in: scope).count) {
-                    if !showsRail {
-                        addButton(edge: .bottom) { _ in
-                            Button("Add Repositories", icon: .plus) { isAddingRepositories = true }
-                                .labelStyle(.iconOnly)
-                                .buttonStyle(.icon(size: 24))
-                                .help("Add Repositories")
-                        }
-                    }
+                .popover(isPresented: $isAddingRepositories, arrowEdge: .trailing) {
+                    AddRepositories(list: list, choices: $adding, lookInAnotherFolder: lookInAnotherFolder) { selection = $0 }
                 }
-                rows(groups: groups)
-                if !showsRail, let updates, let pending = updates.pending {
-                    UpdateRow(pending: pending, action: updates.open)
-                        .padding(EdgeInsets(top: 0, leading: 8, bottom: 8, trailing: 8))
+                // Settings isn't something the list can show, so it keeps the
+                // gray of an open popover while the sheet is up.
+                SidebarCommandRow(title: "Settings", icon: .settings, isOpen: showsSettings) {
+                    showsSettings = true
+                }
+                if let updates, let pending = updates.pending {
+                    SidebarCommandRow(title: pending.title, icon: .circleArrowUp, tint: Palette.action, action: updates.open)
                 }
             }
-            .frame(maxWidth: .infinity)
+            .padding(EdgeInsets(top: 2, leading: 8, bottom: 8, trailing: 8))
+            Rectangle()
+                .fill(Palette.separator)
+                .frame(height: 1)
+            ListHeader(title: "Repositories", count: groups.all.count) {
+                arrangementMenu
+            }
+            .padding(.top, 6)
+            rows(groups: groups)
         }
         .dialog { deletions.dialog ?? repairs.dialog }
     }
 
-    /// The button for adding repositories, with the popover it opens.
-    private func addButton<Label: View>(edge: Edge, @ViewBuilder label: (Bool) -> Label) -> some View {
-        label(isAddingRepositories)
-            .disabled(!list.isConnected)
-            .popover(isPresented: $isAddingRepositories, arrowEdge: edge) {
-                AddRepositories(list: list, scope: scope, choices: $adding, lookInAnotherFolder: lookInAnotherFolder) { selection = $0 }
-            }
+    /// How the list is grouped and sorted, and which groups are collapsed.
+    private var arrangement: SidebarArrangement {
+        SidebarArrangement(groupsByOrganization: groupsByOrganization, sort: sort, collapsed: SidebarArrangement.collapsed(from: collapsedGroups))
+    }
+
+    private func setCollapsed(_ isCollapsed: Bool, _ group: SidebarGroup) {
+        var collapsed = SidebarArrangement.collapsed(from: collapsedGroups)
+        if isCollapsed { collapsed.insert(group) } else { collapsed.remove(group) }
+        collapsedGroups = SidebarArrangement.saved(collapsed)
+    }
+
+    /// The button at the right of the list's header, with a menu that groups
+    /// and sorts the list, as the View menu does. It's one of Roga's own menus,
+    /// which puts the checkmark at the right of the option that's chosen.
+    private var arrangementMenu: some View {
+        let entries = arrangementEntries
+        return HoverIcon(size: 24) { Icon.slidersHorizontal.image }
+            .overlay { RefMenuArea(entries: entries, opensOnClick: true, opener: arrangementOpener) }
+            .help("Group and Sort")
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Group and Sort")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { arrangementOpener.open() }
+            .accessibilityActions { refMenuActions(entries) }
+    }
+
+    private var arrangementEntries: [RefMenu.Entry] {
+        let grouping: [RefMenu.Entry] = [(true, "Organization"), (false, "None")].map { value, title in
+            .option(title, isChecked: groupsByOrganization == value) { groupsByOrganization = value }
+        }
+        let order: [RefMenu.Entry] = SidebarSort.allCases.map { option in
+            .option(option.title, isChecked: sort == option) { sort = option }
+        }
+        return [.header("Group By")] + grouping + [.divider, .header("Sort By")] + order
     }
 
     /// Closes the popover while the open panel is up, because a popover can
@@ -117,7 +127,8 @@ struct Sidebar: View {
     }
 
     private func rows(groups: RepositoryGroups) -> some View {
-        let layout = SidebarLayout(groups: groups, scope: scope, selection: selection, place: place)
+        let arrangement = arrangement
+        let layout = SidebarLayout(groups: groups, arrangement: arrangement, selection: selection)
         let items = layout.items
         return ScrollViewReader { scroller in
             ScrollView {
@@ -136,7 +147,7 @@ struct Sidebar: View {
                 handle(press.key, items: items, scroller)
             }
             .focusedValue(\.deleteSelectedWorktree, deleteSelectedWorktree(items: items))
-            .onChange(of: scope) {
+            .onChange(of: arrangement) {
                 if let selection { scroller.scrollTo(selection) }
             }
         }
@@ -144,12 +155,11 @@ struct Sidebar: View {
 
     @ViewBuilder private func row(_ item: SidebarItem) -> some View {
         switch item {
-        case .label(let title):
-            Text(title)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.secondary)
-                .padding(EdgeInsets(top: 10, leading: 10, bottom: 4, trailing: 8))
-                .accessibilityAddTraits(.isHeader)
+        case .group(let group, let title, let isCollapsed, _):
+            GroupLabel(title: title, isCollapsed: isCollapsed, agents: agents(of: item)) {
+                isFocused = true
+                setCollapsed(!isCollapsed, group)
+            }
         case .repository(let repository, let title, let detail):
             let home = repository.home
             RepositoryRow(repository: repository, list: list, title: title, detail: detail, isSelected: selection == home, agents: agents(of: item)) {
@@ -207,9 +217,6 @@ struct Sidebar: View {
         selection = row
     }
 
-    /// The up and down arrows move between the worktrees showing. The right and
-    /// left arrows show and hide the linked worktrees of the selected one's
-    /// repository.
     /// What asks to delete the selected row's worktree, as its menu does, for the menu
     /// bar's command. A main worktree has no such row, because git won't remove it.
     private func deleteSelectedWorktree(items: [SidebarItem]) -> (() -> Void)? {
@@ -221,6 +228,9 @@ struct Sidebar: View {
         return nil
     }
 
+    /// The up and down arrows move between the worktrees showing. The right and
+    /// left arrows show and hide the linked worktrees of the selected one's
+    /// repository.
     private func handle(_ key: KeyEquivalent, items: [SidebarItem], _ scroller: ScrollViewProxy) -> KeyPress.Result {
         switch key {
         case .upArrow, .downArrow:
@@ -250,114 +260,50 @@ struct Sidebar: View {
     }
 }
 
-/// The column that picks which repositories the list shows: All, each
-/// organization and Other, with buttons for adding repositories and for
-/// Settings at the bottom.
-private struct OrganizationRail<Bottom: View>: View {
-    let groups: RepositoryGroups
-    @Binding var scope: SidebarScope
-    @ViewBuilder var bottom: Bottom
-
-    var body: some View {
-        VStack(spacing: 0) {
-            ScrollView {
-                VStack(spacing: 8) {
-                    RailButton(title: groups.title(of: .all), isSelected: scope == .all) { scope = .all } label: {
-                        Icon.inbox.image
-                            .font(.system(size: 15, weight: .light))
-                    }
-                    ForEach(groups.organizations) { organization in
-                        RailButton(title: organization.name, isSelected: scope == organization.scope) { scope = organization.scope } label: {
-                            Monogram(letters: organization.monogram, isSelected: scope == organization.scope)
-                        }
-                    }
-                    if groups.hasOthers {
-                        RailButton(title: groups.title(of: .other), isSelected: scope == .other) { scope = .other } label: {
-                            Icon.ellipsis.image
-                                .font(.system(size: 14))
-                        }
-                    }
-                }
-                .padding(.top, 2)
-                .frame(maxWidth: .infinity)
-            }
-            .scrollIndicators(.never)
-            VStack(spacing: 8) {
-                bottom
-            }
-            .padding(.vertical, 10)
-        }
-        .frame(width: 55)
-    }
-}
-
-/// The tile that an organization's letters sit on, and that anything selected on
-/// the rail sits on in ink (decision 36).
-private enum RailTile {
-    static let size: CGFloat = 28
-    static let cornerRadius = size * 0.26
-}
-
-/// An item on the rail. It fills with gray under the pointer, and the selected
-/// one is a solid ink tile instead.
-private struct RailButton<Label: View>: View {
+/// A row at the top of the sidebar for something other than a repository:
+/// adding repositories, Settings, or a new version of Roga. It's as tall as the
+/// list's rows and fills the same way, with an icon before its title. It keeps
+/// the darker gray while what it opened is up, which isn't a selection but
+/// says where the popover or sheet came from.
+private struct SidebarCommandRow: View {
     let title: String
-    var isSelected = false
-    /// Whether this button's popover is open, which keeps its gray without
-    /// looking like the organization that's selected.
+    let icon: Icon
     var isOpen = false
+    var isEnabled = true
+    /// The color of a row that stands out, as a new version does in the
+    /// brand's orange.
+    var tint: Color?
     let action: () -> Void
-    @ViewBuilder var label: Label
-    @State private var isHovering = false
 
     var body: some View {
-        Button(action: action) {
-            label
-                .foregroundStyle(isSelected ? AnyShapeStyle(Palette.onInk) : AnyShapeStyle(isOpen || isHovering ? .primary : .secondary))
-                .frame(width: 38, height: 38)
-                .background {
-                    if isSelected {
-                        RoundedRectangle(cornerRadius: RailTile.cornerRadius, style: .continuous)
-                            .fill(Palette.ink)
-                            .frame(width: RailTile.size, height: RailTile.size)
-                    } else {
-                        RoundedRectangle(cornerRadius: 9, style: .continuous)
-                            .fill(isOpen ? Palette.selection : isHovering ? Palette.hover : .clear)
-                    }
-                }
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { isHovering = $0 }
-        .help(title)
-        .accessibilityLabel(title)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-    }
-}
-
-/// Two letters that stand for an organization, on a gray tile until it's
-/// selected, when `RailButton` puts them on ink.
-private struct Monogram: View {
-    let letters: String
-    var isSelected = false
-
-    var body: some View {
-        Text(letters)
-            .font(.system(size: RailTile.size * 0.4, weight: .bold))
-            .lineLimit(1)
-            .foregroundStyle(isSelected ? AnyShapeStyle(Palette.onInk) : AnyShapeStyle(.secondary))
-            .frame(width: RailTile.size, height: RailTile.size)
-            .background {
-                if !isSelected {
-                    RoundedRectangle(cornerRadius: RailTile.cornerRadius, style: .continuous)
-                        .fill(Palette.selection)
-                }
+        SidebarRow(isSelected: isOpen, isEnabled: isEnabled, agent: nil, action: action) {
+            HStack(spacing: 8) {
+                icon.image
+                    .font(.system(size: 14))
+                    .foregroundStyle(tint.map(AnyShapeStyle.init) ?? AnyShapeStyle(.secondary))
+                    .frame(width: 16)
+                Text(title)
+                    .font(.system(size: 14))
+                    .lineLimit(1)
+                    .foregroundStyle(tint.map(AnyShapeStyle.init) ?? AnyShapeStyle(.primary))
             }
+        } trailing: {
+            EmptyView()
+        } commands: {
+            EmptyView()
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction(.default) {
+            if isEnabled { action() }
+        }
     }
 }
 
-/// The top of the list: what the rail picked, and how many repositories it has.
-private struct ScopeHeader<Trailing: View>: View {
+/// The top of the list: how many repositories it has, and the menu that groups
+/// and sorts them, whose button lines up with the rows' commands.
+private struct ListHeader<Trailing: View>: View {
     let title: String
     let count: Int
     @ViewBuilder var trailing: Trailing
@@ -377,6 +323,55 @@ private struct ScopeHeader<Trailing: View>: View {
         .padding(.leading, 18)
         .padding(.trailing, 12)
         .frame(height: 32)
+    }
+}
+
+/// A group's label, small and gray, where the text of the rows under it
+/// starts. A chevron after it shows while the pointer is over it, and clicking
+/// it collapses or expands the group. A collapsed group's label has the mark of
+/// the most urgent agent among the worktrees it hides, in the column of the
+/// rows' marks, so that one waiting for you still shows.
+private struct GroupLabel: View {
+    let title: String
+    let isCollapsed: Bool
+    let agents: RowAgents?
+    let toggle: () -> Void
+    @State private var isHovering = false
+
+    /// How wide a row's mark is, and the least its label takes beside it
+    /// (`SidebarRow.markWidth`).
+    private static let markWidth: CGFloat = 24
+
+    var body: some View {
+        let agent = agents?.summary
+        HStack(spacing: 4) {
+            FadingText(title)
+                .font(.system(size: 12, weight: .medium))
+            Chevron(pointsDown: !isCollapsed)
+                .opacity(isHovering ? 1 : 0)
+            Spacer(minLength: 6)
+            if let agent {
+                HStack(spacing: 0) {
+                    SidebarMark(summary: agent)
+                        .frame(width: Self.markWidth)
+                    Color.clear
+                        .frame(width: Self.markWidth, height: 1)
+                }
+            }
+        }
+        .foregroundStyle(.secondary)
+        .padding(.leading, 10)
+        .padding(.trailing, 4)
+        .frame(height: 24)
+        .padding(.top, 8)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: toggle)
+        .onHover { isHovering = $0 }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityValue([isCollapsed ? "Collapsed" : "Expanded", agent?.description].compactMap(\.self).joined(separator: ", "))
+        .accessibilityAddTraits([.isHeader, .isButton])
+        .accessibilityAction(.default, toggle)
     }
 }
 
@@ -573,35 +568,6 @@ private struct RowLineView: View {
 
     private static func isWaiting(_ summary: AgentSummary) -> Bool {
         if case .waiting = summary.state { true } else { false }
-    }
-}
-
-/// A new version of Roga, at the bottom of the list while the rail and its
-/// gear are hidden, in the brand's orange.
-private struct UpdateRow: View {
-    let pending: Updates.Pending
-    let action: () -> Void
-
-    var body: some View {
-        SidebarRow(agent: nil, action: action) {
-            HStack(spacing: 8) {
-                Icon.circleArrowUp.image
-                    .font(.system(size: 14))
-                Text(pending.title)
-                    .font(.system(size: 13, weight: .medium))
-                    .lineLimit(1)
-            }
-            .foregroundStyle(Palette.action)
-        } trailing: {
-            EmptyView()
-        } commands: {
-            EmptyView()
-        }
-        .help(pending.title)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(pending.title)
-        .accessibilityAddTraits(.isButton)
-        .accessibilityAction(.default, action)
     }
 }
 

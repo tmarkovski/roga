@@ -20,7 +20,7 @@ Rows tagged **In the app** on the boards are what today's settings window or men
 
 | Page | What's on it | In the app today |
 | --- | --- | --- |
-| General | Reopening windows, the rail of organizations, the editor and terminal for Open in…, updates | The terminal for Open in Terminal, checking for updates and downloading them, and the rail from the View menu |
+| General | Reopening windows, the rail of organizations, the editor and terminal for Open in…, updates | The terminal for Open in Terminal, checking for updates and downloading them, and grouping and sorting the sidebar from the View menu |
 | Appearance | Theme, text size, the house's animations, the code font and diff options, how lists are shown | The theme, the animation speed, and the file layout, branch sort and folded descriptions from menus |
 | Git | Which git runs and why one was passed over, name and email, fetching, pulling and pushing | Fetching when Roga becomes active |
 | Commit | The long first line, generating messages with an agent, the Commit button, signing, discarding | The Generate section, and the 72-character mark and asking before discarding many files as fixed behavior |
@@ -73,9 +73,11 @@ Each hook runs `roga-hook hook --host <agent> --event <name>`, a launcher in Rog
 
 - **A theme of Roga's own.** Appearance starts with an Interface section and its Theme: System, which is the default, Light and Dark, with Lucide's `monitor`, `sun` and `moon`. Roga sets the application's appearance, so every window, sheet and menu changes at once, and it applies the stored theme as it starts, before its first window, so a dark theme never shows a light window first. Each choice has its word beside its icon, on the board too, because a monitor alone doesn't say "follow the system". The graph's lanes, the badges, the diff, the house (still or moving) and the menus all follow while they're on screen. A menu that's open while the theme changes keeps the look it opened with, as any macOS menu does, and the next one opens in the new theme. Built on November 6, 2026.
 
+- **Settings is a row at the top of the sidebar,** under Add Repositories, now that organizations are groups in the list and the rail and its gear are gone ([decision 53](../../decisions/0053-organizations-as-groups-in-the-list-and-add-and-settings-at-the-top.md)). It keeps the darker gray while the sheet is open, as the gear did, and a new version shows as an orange row under it. Decided on November 7, 2026.
+
 ## Still to decide
 
-- **Which proposals to keep.** Open in Editor, reopening windows at launch, text size and date formats would each need work outside Settings first. A switch for the rail would have to become app-wide or say which window it means.
+- **Which proposals to keep.** Open in Editor, reopening windows at launch, text size and date formats would each need work outside Settings first. Grouping and sorting the sidebar are app-wide already, so they could move here as they are.
 - **Answering permission requests in Roga.** GitKraken offers it. It makes a hook wait for Roga, so the boards draw it off, and Roga leaves it out for now.
 - **More agents.** Cursor Agent, Gemini CLI, Copilot CLI and a custom command are on the boards. Each needs its own way to install hooks and to run without tools.
 - **Whether the boards should catch up.** They still draw the triangle, the still ring, the shorter commands and the old help under the command block, and General's Windows section, its Editor row and its help for updates.

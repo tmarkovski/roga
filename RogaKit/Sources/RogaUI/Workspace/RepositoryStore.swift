@@ -29,7 +29,7 @@ struct RepositoryStore {
         /// their folders.
         var keptWorktrees: [String]?
         /// Who owns the repository, from its remotes' URLs, with `origin`'s
-        /// owner first. It's saved so that the rail is in its usual order at
+        /// owner first. It's saved so that the groups are in their usual order at
         /// launch, and so that a repository on a disk that isn't mounted stays
         /// in its organization.
         var owner: String?

@@ -12,12 +12,12 @@ public struct RepositoryCommands: Commands {
     @FocusedValue(\.repository) private var repository
     @FocusedValue(\.sidebarVisibility) private var sidebarVisibility
     @FocusedValue(\.deleteSelectedWorktree) private var deleteSelectedWorktree
-    @FocusedValue(\.sidebarScope) private var sidebarScope
-    @FocusedValue(\.showsOrganizationRail) private var showsOrganizationRail
     @FocusedValue(\.refsPanelVisibility) private var refsPanelVisibility
     @FocusedValue(\.lowerPanelSize) private var lowerPanelSize
     @FocusedValue(\.openSettings) private var openSettings
     @AppStorage(RefsPanelSettings.sort) private var refsSort = RefsModel.Sort.name
+    @AppStorage(SidebarSettings.groupsByOrganization) private var groupsByOrganization = true
+    @AppStorage(SidebarSettings.sort) private var sidebarSort = SidebarSort.name
     @AppStorage(FileListSettings.layout) private var fileLayout = FileLayout.list
     @Environment(\.openWindow) private var openWindow
 
@@ -35,8 +35,9 @@ public struct RepositoryCommands: Commands {
     /// shows too.
     static let findNextShortcut = KeyboardShortcut("g")
     static let findPreviousShortcut = KeyboardShortcut("g", modifiers: [.shift, .command])
-    /// The shortcut for hiding the rail of organizations.
-    static let organizationRailShortcut = KeyboardShortcut("o", modifiers: [.control, .command])
+    /// The shortcut for grouping the sidebar's repositories by organization,
+    /// which hid the rail of organizations before the groups replaced it.
+    static let groupByOrganizationShortcut = KeyboardShortcut("o", modifiers: [.control, .command])
     /// The shortcut for hiding the refs panel, which is what macOS gives an
     /// inspector.
     static let refsPanelShortcut = KeyboardShortcut("i", modifiers: [.control, .command])
@@ -127,11 +128,13 @@ public struct RepositoryCommands: Commands {
             }
             .keyboardShortcut("s", modifiers: [.control, .command])
             .disabled(sidebarVisibility == nil)
-            Button(showsOrganizationRail?.wrappedValue == false ? "Show Organizations" : "Hide Organizations") {
-                showsOrganizationRail?.wrappedValue.toggle()
+            Toggle("Group Repositories by Organization", isOn: $groupsByOrganization)
+                .keyboardShortcut(Self.groupByOrganizationShortcut)
+            Picker("Sort Repositories", selection: $sidebarSort) {
+                ForEach(SidebarSort.allCases, id: \.self) { sort in
+                    Text(sort.title).tag(sort)
+                }
             }
-            .keyboardShortcut(Self.organizationRailShortcut)
-            .disabled(showsOrganizationRail == nil)
             Button(refsPanelVisibility?.commandTitle ?? "Hide Refs") {
                 refsPanelVisibility?.isWanted.wrappedValue.toggle()
             }
@@ -162,18 +165,6 @@ public struct RepositoryCommands: Commands {
             }
             .keyboardShortcut(LowerPanelSize.shorterShortcut)
             .disabled(lowerPanelSize == nil || size.shorter == nil)
-            Divider()
-            // Command-1 to Command-9 select what's on the rail.
-            let groups = list.groups
-            ForEach(Array(groups.scopes.prefix(9).enumerated()), id: \.element) { index, scope in
-                Toggle(groups.title(of: scope), isOn: Binding {
-                    sidebarScope?.wrappedValue == scope
-                } set: { _ in
-                    sidebarScope?.wrappedValue = scope
-                })
-                .keyboardShortcut(KeyEquivalent(Character(String(index + 1))))
-                .disabled(sidebarScope == nil)
-            }
             Divider()
         }
         CommandGroup(before: .toolbar) {

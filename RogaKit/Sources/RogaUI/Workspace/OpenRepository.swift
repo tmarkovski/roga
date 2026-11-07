@@ -102,8 +102,4 @@ extension FocusedValues {
     /// The worktree the focused window shows, so that a repository opened
     /// from the menu shows in that window.
     @Entry var selection: Binding<WorktreeSelection?>?
-    /// What the focused window's rail has selected, for the View menu.
-    @Entry var sidebarScope: Binding<SidebarScope>?
-    /// Whether the focused window shows its rail, for the View menu.
-    @Entry var showsOrganizationRail: Binding<Bool>?
 }

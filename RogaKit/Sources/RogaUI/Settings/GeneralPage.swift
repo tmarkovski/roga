@@ -2,8 +2,9 @@ import SwiftUI
 
 /// A section of Settings › General: the terminal for Open in Terminal, or
 /// updates. The boards also draw reopening windows at launch, the rail of
-/// organizations and an editor for Open in Editor, which wait until they can
-/// work: there's no Open in Editor yet, and each window keeps its own rail.
+/// organizations and an editor for Open in Editor. Reopening windows and the
+/// editor wait until they can work, since there's no Open in Editor yet, and
+/// groups in the sidebar's list replaced the rail (decision 53).
 ///
 /// Search shows it too, with only the settings it found.
 struct GeneralSection: View {

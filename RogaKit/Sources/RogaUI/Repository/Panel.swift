@@ -14,8 +14,8 @@ enum Palette {
     static let hover = Color.primary.opacity(0.075)
     /// The fill under a selected row.
     static let selection = Color.primary.opacity(0.11)
-    /// The strongest mark that isn't a color: the main button in a dialog, what's
-    /// selected on the rail (decision 36), and a line that's about to be dragged.
+    /// The strongest mark that isn't a color: the main button in a dialog, and a
+    /// line that's about to be dragged.
     static let ink = gray(light: 0.102, dark: 0.925)
     /// Words and icons on top of `ink`.
     static let onInk = gray(light: 1.0, dark: 0.086)
