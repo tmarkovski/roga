@@ -753,11 +753,11 @@ private struct AheadBehind: View {
 /// comes back when there's room for it again.
 struct RefsPanelVisibility {
     /// The panel's width until someone drags it wider, from the wireframe.
-    static let defaultWidth = 288.0
+    nonisolated static let defaultWidth = 288.0
     static let maximumWidth = 560.0
     /// How wide the middle of the window has to stay. The panels under history
     /// need 361 points of it.
-    static let minimumMiddleWidth = 400.0
+    nonisolated static let minimumMiddleWidth = 400.0
 
     var isWanted: Binding<Bool>
     var fits: Bool
@@ -776,8 +776,9 @@ struct RefsPanelVisibility {
     }
 
     /// Whether the panel fits in the column it shares with the middle of the
-    /// window, at its narrowest.
-    static func fits(column: Double) -> Bool {
+    /// window, at its narrowest. The window works it out as it's laid out, away
+    /// from the main actor.
+    nonisolated static func fits(column: Double) -> Bool {
         column - defaultWidth >= minimumMiddleWidth
     }
 }

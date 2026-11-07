@@ -156,11 +156,10 @@ struct CheckoutNote: ToolbarContent {
 /// after that view's, and the button for the refs panel has to come last.
 struct HistoryCommands: ToolbarContent {
     @Bindable var model: RepositoryModel
-    /// How wide the left part of the title row is.
+    /// How wide the left part of the title row is, and the middle of the window.
     let titleRow: TitleRowWidth
-    /// The most the left part of the title row can take, or nil before the window
-    /// has been laid out.
-    let titleRowRoom: Double?
+    /// How much of the middle's width the rest of the title row takes.
+    let titleRowTaken: Double
 
     /// The font of the number of commits.
     private static let commitCountFont = NSFont.systemFont(ofSize: 12)
@@ -172,7 +171,7 @@ struct HistoryCommands: ToolbarContent {
     private func showsCommitCount(_ commits: String) -> Bool {
         var width = (commits as NSString).size(withAttributes: [.font: Self.commitCountFont]).width.rounded(.up)
         if let branch = model.slowCheckout { width += CheckoutNote.width(for: branch) + TitleRowWidth.toolbarSpacing }
-        return titleRow.leavesRoom(for: width, available: titleRowRoom)
+        return titleRow.leavesRoom(for: width, besides: titleRowTaken)
     }
 
     var body: some ToolbarContent {

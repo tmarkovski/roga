@@ -161,11 +161,15 @@ struct SidePanelColumns<Main: View, Side: View>: View {
     @ViewBuilder var side: (Double) -> Side
     /// The panel's width when the current drag started.
     @State private var widthAtStart: Double?
+    /// The panel's width during a drag, which is saved once the drag ends. The
+    /// saved width is read by the window, so saving it on each step would update
+    /// the whole window on every frame.
+    @State private var draggedWidth: Double?
 
     var body: some View {
         GeometryReader { geometry in
             let widest = max(minimumWidth, min(maximumWidth, geometry.size.width - minimumMainWidth - 1))
-            let shownWidth = min(max(width, minimumWidth), widest)
+            let shownWidth = min(max(draggedWidth ?? width, minimumWidth), widest)
             HStack(spacing: 0) {
                 main
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -173,9 +177,11 @@ struct SidePanelColumns<Main: View, Side: View>: View {
                     PanelDivider(axis: .horizontal) { moved in
                         let start = widthAtStart ?? shownWidth
                         widthAtStart = start
-                        width = min(max(start - moved, minimumWidth), widest)
+                        draggedWidth = min(max(start - moved, minimumWidth), widest)
                     } ended: {
                         widthAtStart = nil
+                        if let draggedWidth { width = draggedWidth }
+                        draggedWidth = nil
                     }
                     // Like the line after the sidebar, it goes up to the top of
                     // the window.
@@ -195,6 +201,8 @@ private struct PanelDivider: View {
     let axis: Axis
     /// Says how far the line has moved during a drag.
     let moved: (Double) -> Void
+    /// Says that the drag ended, or was cancelled, such as by the window losing
+    /// the mouse, which `onEnded` isn't told about.
     let ended: () -> Void
     @State private var isHovering = false
     @GestureState private var isDragging = false
@@ -213,8 +221,12 @@ private struct PanelDivider: View {
                         DragGesture(minimumDistance: 0, coordinateSpace: .global)
                             .updating($isDragging) { _, isDragging, _ in isDragging = true }
                             .onChanged { moved(axis == .vertical ? $0.translation.height : $0.translation.width) }
-                            .onEnded { _ in ended() }
                     )
+            }
+            // Gesture state goes back to false when the drag ends and when it's
+            // cancelled.
+            .onChange(of: isDragging) { _, isDragging in
+                if !isDragging { ended() }
             }
             .zIndex(1)
     }
