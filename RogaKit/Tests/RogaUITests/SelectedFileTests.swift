@@ -31,10 +31,10 @@ struct SelectedFileTests {
     }
 
     func files(_ commit: SelectedCommit) throws -> [DiffFile] {
-        guard case .loaded(let files) = commit.files else {
+        guard case .loaded = commit.files else {
             throw TestError("Files aren't loaded: \(commit.files)")
         }
-        return files
+        return commit.files.all
     }
 
     func select(_ path: String, _ commit: SelectedCommit) async throws {

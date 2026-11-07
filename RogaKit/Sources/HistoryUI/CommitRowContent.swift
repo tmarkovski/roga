@@ -14,6 +14,9 @@ public struct CommitRowContent: Hashable {
             case branch
             case remoteBranch
             case tag
+            /// Not a ref, but what the panels say this commit is to what they
+            /// show, such as a branch's merge base (decision 56).
+            case mark
 
             /// Whether this is where `HEAD` is.
             var isCurrent: Bool {
@@ -52,7 +55,7 @@ public struct CommitRowContent: Hashable {
         public var canCheckOut: Bool {
             switch kind {
             case .branch, .remoteBranch: true
-            case .currentBranch, .detachedHead, .tag: false
+            case .currentBranch, .detachedHead, .tag, .mark: false
             }
         }
 
@@ -60,7 +63,7 @@ public struct CommitRowContent: Hashable {
         var isBranch: Bool {
             switch kind {
             case .currentBranch, .branch, .remoteBranch: true
-            case .detachedHead, .tag: false
+            case .detachedHead, .tag, .mark: false
             }
         }
 
@@ -79,7 +82,7 @@ public struct CommitRowContent: Hashable {
             switch kind {
             case .currentBranch: parts.append("current branch")
             case .detachedHead: parts.append("on no branch")
-            case .branch, .remoteBranch, .tag: break
+            case .branch, .remoteBranch, .tag, .mark: break
             }
             if let upstream {
                 let names = ([upstream] + otherRemoteBranches).map(Ref.shortName)

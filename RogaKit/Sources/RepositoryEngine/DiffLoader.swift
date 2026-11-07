@@ -49,6 +49,48 @@ enum DiffLoader {
         return try await readPatch(command, path: file.path, git: git, limit: limit)
     }
 
+    /// Lists the files that differ from one commit to another, as when comparing
+    /// two commits, a run of commits or a branch with where it left another.
+    ///
+    /// - Parameter from: The commit to compare from, or nil for nothing at all,
+    ///   which lists every file in `to` as added.
+    @concurrent
+    static func changedFiles(from: ObjectID?, to: ObjectID, format: ObjectFormat, git: Git, directory: String) async throws -> [DiffFile] {
+        let command = GitCommand(
+            ["diff-tree", "-r", "-M"] + RawDiffParser.arguments + [(from ?? format.emptyTree).hex, to.hex],
+            in: directory
+        )
+        do {
+            return try RawDiffParser.parse(try await git.run(command).output)
+        } catch let error as ParseError {
+            throw RepositoryError.unexpectedOutput(command, error.description)
+        }
+    }
+
+    /// Loads what changed in `file` from one commit to another, comparing as
+    /// `changedFiles(from:to:)` does.
+    ///
+    /// - Throws: `RepositoryError.patchTooLarge` when the patch has more than
+    ///   `limit` bytes, which stops git.
+    @concurrent
+    static func patch(
+        of file: DiffFile,
+        from: ObjectID?,
+        to: ObjectID,
+        format: ObjectFormat,
+        git: Git,
+        directory: String,
+        limit: Int = patchLimit
+    ) async throws -> FilePatch {
+        var command = GitCommand(
+            ["diff-tree", "-r", "-M"] + PatchParser.arguments
+                + [(from ?? format.emptyTree).hex, to.hex, "--"] + [file.oldPath, file.path].compactMap { $0 },
+            in: directory
+        )
+        command.environment["GIT_LITERAL_PATHSPECS"] = "1"
+        return try await readPatch(command, path: file.path, git: git, limit: limit)
+    }
+
     /// Runs a command that prints a file's patch, and stops it at `limit` bytes.
     static func readPatch(_ command: GitCommand, path: String, git: Git, limit: Int) async throws -> FilePatch {
         var output: [UInt8] = []

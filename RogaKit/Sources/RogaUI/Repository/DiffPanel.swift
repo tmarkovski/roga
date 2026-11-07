@@ -184,7 +184,7 @@ private struct FileTitle: View {
 
     private var details: String {
         var details: [String] = []
-        if case .worktree(_, let group, _) = source { details.append(group.title) }
+        if let group = source.group { details.append(group.title) }
         if let oldPath = file.oldPath { details.append("from " + oldPath) }
         if file.oldMode != file.newMode, file.oldMode != 0, file.newMode != 0 {
             details.append("mode \(String(file.oldMode, radix: 8)) → \(String(file.newMode, radix: 8))")
