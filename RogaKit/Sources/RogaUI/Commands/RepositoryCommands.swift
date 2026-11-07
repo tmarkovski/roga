@@ -53,7 +53,7 @@ public struct RepositoryCommands: Commands {
     static let pushShortcut = KeyboardShortcut("p", modifiers: [.shift, .command])
     static let fetchShortcut = KeyboardShortcut("e", modifiers: [.shift, .command])
     static let newBranchShortcut = KeyboardShortcut("b", modifiers: [.shift, .command])
-    /// Reviews the branch the worktree is on against the main branch (decision 55).
+    /// Reviews the branch the worktree is on against the main branch (decision 56).
     static let reviewShortcut = KeyboardShortcut("r", modifiers: [.shift, .command])
 
     /// The shortcuts for the worktree on screen, which the menu of its

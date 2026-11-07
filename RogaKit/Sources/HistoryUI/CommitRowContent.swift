@@ -15,7 +15,7 @@ public struct CommitRowContent: Hashable {
             case remoteBranch
             case tag
             /// Not a ref, but what the panels say this commit is to what they
-            /// show, such as a branch's merge base (decision 55).
+            /// show, such as a branch's merge base (decision 56).
             case mark
 
             /// Whether this is where `HEAD` is.

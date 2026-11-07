@@ -202,7 +202,7 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
     }
 
     /// The row for uncommitted changes can't be one of several selected rows
-    /// (decision 55). Command-clicking it selects it alone, and otherwise it's left
+    /// (decision 56). Command-clicking it selects it alone, and otherwise it's left
     /// out of what's selected with it.
     public func tableView(_ tableView: NSTableView, selectionIndexesForProposedSelection proposed: IndexSet) -> IndexSet {
         guard proposed.count > 1, source.count() > 0, source.content(0).isWorkingTree, proposed.contains(0) else { return proposed }

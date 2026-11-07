@@ -5,7 +5,7 @@ import RepositoryEngine
 
 /// What's selected in history or the refs panel, and what the commit panel shows
 /// about it: one commit, several commits as one diff, a branch since it left the
-/// main branch, or a stash (decision 55). It's commits rather than rows, so that
+/// main branch, or a stash (decision 56). It's commits rather than rows, so that
 /// it stays selected when history loads again in another order. The previous
 /// files stay until the new ones arrive, because a list that emptied on every
 /// step through history would flash.

@@ -1,7 +1,7 @@
 import GitCore
 import GitRunner
 
-/// What a stash holds, read from the commits git keeps for it (decision 55). The
+/// What a stash holds, read from the commits git keeps for it (decision 56). The
 /// stash's commit has the worktree's tracked files as they were, and its parents are
 /// the commit `HEAD` was on, a commit of the index, and a commit of the untracked
 /// files when the stash kept them. So each part is what changed from one of those
@@ -67,7 +67,7 @@ public struct StashContents: Sendable, Equatable {
     }
 }
 
-/// A branch's own commits, compared with the branches it'll go into (decision 55):
+/// A branch's own commits, compared with the branches it'll go into (decision 56):
 /// everything from where it left them to its tip, as one diff.
 public struct BranchReview: Sendable, Equatable {
     /// The branch's full name.

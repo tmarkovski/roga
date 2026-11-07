@@ -5,7 +5,7 @@ import TestSupport
 import Testing
 @testable import RepositoryEngine
 
-/// Comparing two commits, reading a stash and reviewing a branch (decision 55),
+/// Comparing two commits, reading a stash and reviewing a branch (decision 56),
 /// against real git.
 @Suite(.timeLimit(.minutes(1)))
 struct ReviewTests {

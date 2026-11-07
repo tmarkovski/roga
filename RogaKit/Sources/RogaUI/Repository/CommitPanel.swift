@@ -2,7 +2,7 @@ import GitCore
 import IconUI
 import SwiftUI
 
-/// Shows what's selected in history or the refs panel (decision 55): a commit, with
+/// Shows what's selected in history or the refs panel (decision 56): a commit, with
 /// its message, who wrote it and when, its parents and the files it changed;
 /// several commits as one diff; a branch since it left the main branch; or what a
 /// stash holds.
