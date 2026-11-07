@@ -9,18 +9,17 @@ import SwiftUI
 /// their row in history is selected, and the message of the next commit. A file
 /// with both staged and unstaged changes is listed twice, and each row selects its
 /// own diff. Staged files stay in view right above the message (decision 30).
+///
+/// The files still to stage, the staged files and the message split the panel's
+/// height 40, 40 and 20, so that staging a file doesn't move the line between the
+/// lists. A list with no files shrinks to its heading, and the other one takes
+/// its room (`ChangesSplit`).
 struct ChangesPanel: View {
     let selection: SelectedChanges
     let composer: CommitComposer
     @FocusState private var isFocused: Bool
-    /// How much room the lists have, which limits how much of it Staged takes.
-    @State private var listsHeight = 0.0
 
-    /// The most of the lists' room that staged files take, once they need it.
-    private static let stagedShare = 0.45
-    /// How tall a heading is with its padding, and a row, and the end of a list.
-    private static let headingHeight = 36.0
-    private static let rowHeight = 24.0
+    /// The room under the last row of a list.
     private static let listEnd = 6.0
 
     private var fileList: FileListModel { selection.fileList }
@@ -69,9 +68,8 @@ struct ChangesPanel: View {
                 if changes.fileCount == 0 {
                     note("There are no uncommitted changes.")
                 } else {
-                    VStack(spacing: 0) {
+                    BoxUnderLists {
                         list(changes)
-                            .onGeometryChange(for: Double.self) { $0.size.height } action: { listsHeight = $0 }
                         CommitBox(composer: composer) { isFocused = true }
                     }
                 }
@@ -81,36 +79,18 @@ struct ChangesPanel: View {
     }
 
     private func list(_ changes: WorktreeChanges) -> some View {
-        ScrollViewReader { scroller in
-            VStack(spacing: 0) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 0) {
-                        let groups = SelectedChanges.groups.filter { $0 != .staged && !fileList.rows(of: changes[$0], in: $0).isEmpty }
-                        if groups.isEmpty, fileList.rows(of: changes.staged, in: .staged).isEmpty {
-                            NoMatchingFiles(filter: fileList.filter)
-                        }
-                        ForEach(groups, id: \.self) { group in
-                            groupOfFiles(group, in: changes)
-                        }
+        let toStage = SelectedChanges.groups.filter { $0 != .staged }
+        let hasFilesToStage = toStage.contains { !changes[$0].isEmpty }
+        let hasStagedFiles = !changes.staged.isEmpty
+        return ScrollViewReader { scroller in
+            StagedUnderUnstaged(hasFilesToStage: hasFilesToStage, hasStagedFiles: hasStagedFiles) {
+                filesToStage(toStage, in: changes, isEmpty: !hasFilesToStage)
+                stagedFiles(changes, isEmpty: !hasStagedFiles)
+                    .overlay(alignment: .top) {
+                        Rectangle()
+                            .fill(Palette.separator)
+                            .frame(height: 1)
                     }
-                    .padding(.bottom, Self.listEnd)
-                    .id(FileRows.top)
-                }
-                .frame(maxHeight: .infinity)
-                let staged = fileList.rows(of: changes.staged, in: .staged)
-                if !staged.isEmpty {
-                    let needed = Self.headingHeight + Double(staged.count) * Self.rowHeight + Self.listEnd
-                    Rectangle()
-                        .fill(Palette.separator)
-                        .frame(height: 1)
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 0) {
-                            groupOfFiles(.staged, in: changes)
-                        }
-                        .padding(.bottom, Self.listEnd)
-                    }
-                    .frame(height: min(needed, max(listsHeight * Self.stagedShare, Self.headingHeight + 2 * Self.rowHeight)))
-                }
             }
             .focusable()
             .focused($isFocused)
@@ -137,6 +117,52 @@ struct ChangesPanel: View {
                 } else {
                     scroller.scrollOnceLaidOut(to: FileRows.top, anchor: .top)
                 }
+            }
+        }
+    }
+
+    /// Conflicts, Unstaged and Untracked, or only the Unstaged heading when
+    /// there's nothing left to stage.
+    @ViewBuilder
+    private func filesToStage(_ groups: [WorktreeChanges.Group], in changes: WorktreeChanges, isEmpty: Bool) -> some View {
+        if isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                groupOfFiles(.unstaged, in: changes)
+            }
+        } else {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    let matching = groups.filter { !fileList.rows(of: changes[$0], in: $0).isEmpty }
+                    if matching.isEmpty {
+                        NoMatchingFiles(filter: fileList.filter)
+                    }
+                    ForEach(matching, id: \.self) { group in
+                        groupOfFiles(group, in: changes)
+                    }
+                }
+                .padding(.bottom, Self.listEnd)
+                .id(FileRows.top)
+            }
+        }
+    }
+
+    /// The staged files, or only their heading when nothing is staged.
+    @ViewBuilder
+    private func stagedFiles(_ changes: WorktreeChanges, isEmpty: Bool) -> some View {
+        if isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                groupOfFiles(.staged, in: changes)
+            }
+        } else {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    if fileList.rows(of: changes.staged, in: .staged).isEmpty {
+                        NoMatchingFiles(filter: fileList.filter)
+                    } else {
+                        groupOfFiles(.staged, in: changes)
+                    }
+                }
+                .padding(.bottom, Self.listEnd)
             }
         }
     }
@@ -250,7 +276,9 @@ private struct GroupOfFiles: View {
                 }
             }
             Spacer(minLength: 0)
-            if group != .conflicted {
+            // A heading with no files, which stays to show where they'd go, has
+            // nothing for its buttons to act on.
+            if group != .conflicted, !matching.isEmpty {
                 buttons(stageTitle: stageTitle, discardTitle: discardTitle)
                     .layoutPriority(1)
             }
@@ -265,7 +293,7 @@ private struct GroupOfFiles: View {
         .accessibilityValue(spokenValue(count: matching.count, added: added, removed: removed))
         .accessibilityAddTraits(.isHeader)
         .accessibilityActions {
-            if group != .conflicted {
+            if group != .conflicted, !matching.isEmpty {
                 if let discardTitle {
                     Button(discardTitle, action: discardAll)
                 }
