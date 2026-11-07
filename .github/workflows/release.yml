@@ -1,0 +1,258 @@
+name: Release
+
+# Pushing a v* tag builds Roga, signs it with Developer ID, notarizes it,
+# checks it, and publishes it as a prerelease in tmarkovski/roga-releases.
+# Roga's code is private, so the downloads live in that public repository,
+# which holds nothing else. Installed copies don't see a prerelease: their
+# feed, roga.sh/appcast.xml, redirects to the feed in the latest release, and
+# GitHub never counts a prerelease as the latest.
+#
+# That leaves room to try the update on a real Mac before anyone else gets it.
+# Point a copy of Roga at the prerelease's own feed, check for updates, and
+# confirm it relaunches and agents' marks still come through:
+#
+#   defaults write sh.roga.app SUFeedURL https://github.com/tmarkovski/roga-releases/releases/download/vX.Y.Z/appcast.xml
+#
+# (and `defaults delete sh.roga.app SUFeedURL` afterwards). Then run the
+# Publish workflow, which makes the prerelease the latest release and updates
+# the Homebrew cask. From that moment every installed copy is offered the
+# update. Errol gates this step with a required reviewer on an environment,
+# which GitHub doesn't enforce for a private repository without Enterprise, so
+# here it's a workflow you start by hand.
+#
+# Run by hand from the Actions tab, this is a dry run: it builds with ad hoc
+# signing, needs no credentials, and keeps the app, ZIP, and DMG as workflow
+# artifacts instead of making a release.
+#
+# Scripts/release/release.py does the work in each step, so every step can also
+# be run on a Mac. docs/releasing.md has the whole process.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+# Actions are pinned to commits, since this workflow handles the signing
+# secrets. The comment beside each names the release it came from.
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  APP_NAME: Roga
+  RELEASES_REPO: tmarkovski/roga-releases
+  # Pinned deliberately: the runner image also carries betas, and a release
+  # shouldn't be built with one. The JSON project format needs Xcode 27.2
+  # (decision 11). Change it as a reviewed change.
+  DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
+
+jobs:
+  build:
+    name: Build, sign, notarize
+    runs-on: xcode-27
+    env:
+      RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    steps:
+      # fetch-depth: 0 is required, not cosmetic. The build number is the
+      # commit count, and a shallow checkout would make it 1 on every release,
+      # a CFBundleVersion that never advances and a feed that never offers an
+      # update.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+
+      - run: xcodebuild -version
+
+      # Tests run before anything is signed. A build that fails its own tests
+      # has no business being notarized.
+      - name: Run the tests
+        run: |
+          swift build --package-path RogaKit --build-tests
+          swift test --package-path RogaKit --skip-build
+
+      - name: Derive version numbers
+        id: version
+        run: |
+          set -euo pipefail
+          BUILD="$(git rev-list --count HEAD)"
+          if [[ "$BUILD" -le 1 ]]; then
+            echo "::error::Build number is $BUILD, so the checkout is shallow. fetch-depth: 0 is missing."
+            exit 1
+          fi
+
+          if [[ "$RELEASE" == "true" ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+            if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Tag $GITHUB_REF_NAME isn't a version like v1.2.3."
+              exit 1
+            fi
+            git fetch origin main
+            if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+              echo "::error::$GITHUB_REF_NAME isn't on main. Releases are cut from main."
+              exit 1
+            fi
+            if [[ ! -f "docs/release-notes/$VERSION.md" ]]; then
+              echo "::error::docs/release-notes/$VERSION.md is missing. The notes show in the update window and on the release."
+              exit 1
+            fi
+          else
+            VERSION="0.0.0"
+          fi
+
+          # Sparkle compares build numbers. A release that doesn't exceed the
+          # published one would never be offered to anyone.
+          LATEST="$(curl -fsSL https://roga.sh/appcast.xml 2>/dev/null \
+            | grep -oE '<sparkle:version>[0-9]+</sparkle:version>' \
+            | grep -oE '[0-9]+' | sort -n | tail -1 || true)"
+          if [[ -n "$LATEST" && "$BUILD" -le "$LATEST" ]]; then
+            echo "::error::Build $BUILD doesn't exceed the published build $LATEST."
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "build=$BUILD" >> "$GITHUB_OUTPUT"
+          echo "Building $VERSION (build $BUILD). The published build is ${LATEST:-none}."
+
+      - name: Import the Developer ID certificate
+        if: env.RELEASE == 'true'
+        env:
+          CERT_P12: ${{ secrets.DEVELOPER_ID_CERT_P12 }}
+          CERT_PASSWORD: ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/build.keychain"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 3600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          printf '%s' "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$CERT_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/security
+          rm -f "$RUNNER_TEMP/cert.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          security find-identity -v -p codesigning "$KEYCHAIN"
+
+      - name: Archive
+        run: |
+          uv run Scripts/release/release.py archive \
+            --version "${{ steps.version.outputs.version }}" \
+            --build "${{ steps.version.outputs.build }}" \
+            --signing "$([[ "$RELEASE" == "true" ]] && echo developer-id || echo adhoc)" \
+            --out "$RUNNER_TEMP/build"
+
+      # Order matters: notarize the app and staple its ticket, and only then
+      # pack the ZIP and the DMG around it, so both carry a stapled app.
+      - name: Notarize the app
+        if: env.RELEASE == 'true'
+        env:
+          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: uv run Scripts/release/release.py notarize "$RUNNER_TEMP/build/$APP_NAME.app"
+
+      - name: Package the ZIP and the DMG
+        run: |
+          set -euo pipefail
+          V="${{ steps.version.outputs.version }}"
+          uv run Scripts/release/release.py zip "$RUNNER_TEMP/build/$APP_NAME.app" "dist/$APP_NAME-$V.zip"
+          if [[ "$RELEASE" == "true" ]]; then
+            uv run Scripts/release/release.py dmg "$RUNNER_TEMP/build/$APP_NAME.app" "dist/$APP_NAME-$V.dmg" --sign
+          else
+            uv run Scripts/release/release.py dmg "$RUNNER_TEMP/build/$APP_NAME.app" "dist/$APP_NAME-$V.dmg"
+          fi
+
+      # The DMG is notarized in its own right too, so a downloaded image opens
+      # without a trip to Apple's servers.
+      - name: Notarize the DMG
+        if: env.RELEASE == 'true'
+        env:
+          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          V="${{ steps.version.outputs.version }}"
+          uv run Scripts/release/release.py notarize "dist/$APP_NAME-$V.dmg"
+          # A name without the version, so roga.sh/download can always point
+          # at releases/latest/download/Roga.dmg.
+          cp "dist/$APP_NAME-$V.dmg" "dist/$APP_NAME.dmg"
+
+      - name: Verify
+        if: env.RELEASE == 'true'
+        run: |
+          set -euo pipefail
+          V="${{ steps.version.outputs.version }}"
+          Scripts/verify-artifact.sh "$RUNNER_TEMP/build/$APP_NAME.app"
+          Scripts/verify-artifact.sh "dist/$APP_NAME-$V.dmg"
+
+      # The dSYMs stay in this private repository, since they'd show the
+      # code's structure to anyone who downloads them.
+      - name: Keep the dSYMs
+        run: |
+          mkdir -p private
+          ditto -c -k --sequesterRsrc --keepParent \
+            "$RUNNER_TEMP/build/$APP_NAME.xcarchive/dSYMs" \
+            "private/$APP_NAME-${{ steps.version.outputs.version }}-dSYMs.zip"
+
+      - name: Write the update feed
+        if: env.RELEASE == 'true'
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          set -euo pipefail
+          V="${{ steps.version.outputs.version }}"
+          # The key goes in on standard input, so it's never written to disk
+          # where a later step could pick it up.
+          printf '%s' "$SPARKLE_ED_PRIVATE_KEY" | uv run Scripts/release/release.py appcast \
+            "dist/$APP_NAME-$V.zip" --tag "v$V" --out dist --key-file - --notes "docs/release-notes/$V.md"
+          xmllint --noout dist/appcast.xml
+
+      - name: Publish the prerelease
+        if: env.RELEASE == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          set -euo pipefail
+          V="${{ steps.version.outputs.version }}"
+          gh release create "v$V" --repo "$RELEASES_REPO" --prerelease --title "Roga $V" \
+            --notes-file "docs/release-notes/$V.md" dist/*
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ### Roga $V is a prerelease
+
+          Before publishing it, update a real copy of Roga to it:
+
+          \`\`\`
+          defaults write sh.roga.app SUFeedURL https://github.com/$RELEASES_REPO/releases/download/v$V/appcast.xml
+          \`\`\`
+
+          Then choose Check for Updates, confirm Roga relaunches and agents' marks still come through, and run
+          \`defaults delete sh.roga.app SUFeedURL\`. Then run the Publish workflow with version $V.
+          EOF
+
+      - name: Keep the dSYMs with this repository's tag
+        if: env.RELEASE == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V="${{ steps.version.outputs.version }}"
+          gh release create "v$V" --repo "$GITHUB_REPOSITORY" --verify-tag --title "Roga $V" \
+            --notes "Debug symbols for Roga $V. The download is in https://github.com/$RELEASES_REPO/releases/tag/v$V." \
+            private/*
+
+      - name: Keep the dry run's builds
+        if: env.RELEASE != 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: roga-dry-run
+          path: |
+            dist/
+            private/

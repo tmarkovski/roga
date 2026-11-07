@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Roga: a Git client for the way code gets written now</title>
-<meta name="description" content="Roga is a fast, native Git client for the Mac, made for reviewing what your agents wrote. Free and open source. Coming soon.">
+<meta name="description" content="Roga is a fast, native Git client for the Mac, made for reviewing what your agents wrote. Free.">
 <link rel="canonical" href="https://roga.sh/">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
@@ -14,7 +14,7 @@
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://roga.sh/">
 <meta property="og:title" content="Roga: a Git client for the way code gets written now">
-<meta property="og:description" content="A fast, native Git client for the Mac, made for reviewing what your agents wrote. Coming soon.">
+<meta property="og:description" content="A fast, native Git client for the Mac, made for reviewing what your agents wrote. Free.">
 <meta property="og:image" content="https://roga.sh/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -160,11 +160,40 @@
     font-size: 0.9375rem;
   }
 
-  .soon {
+  main a {
+    color: inherit;
+    text-decoration-color: var(--accent);
+    text-underline-offset: 0.15em;
+  }
+
+  main a:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .brand .download {
     padding-bottom: 0.7rem;
     color: var(--accent);
     font-size: 0.9375rem;
     font-weight: 600;
+    text-decoration: none;
+  }
+
+  .brand .download:hover {
+    text-decoration: underline;
+  }
+
+  .install {
+    margin: 0 0 2.5rem;
+    color: var(--muted);
+    font-size: 0.9375rem;
+    text-wrap: pretty;
+  }
+
+  .install code {
+    color: var(--ink);
+    font: 0.8125rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+    white-space: nowrap;
   }
 
   h1 {
@@ -175,7 +204,7 @@
   }
 
   .lede {
-    margin: 0 0 2.5rem;
+    margin: 0 0 1rem;
     font-size: 1.1875rem;
     line-height: 1.5;
     text-wrap: pretty;
@@ -268,16 +297,18 @@
       </g>
     </svg>
     <span class="name">Rather Opinionated Git App</span>
-    <span class="soon">Coming soon to the Mac</span>
+    <a class="download" href="/download">Download for the Mac</a>
   </p>
   <h1>A Git client for the way code gets written now.</h1>
   <p class="lede">Other Git clients were built for people clicking through Git. Today you’re more likely to be watching agents work in parallel worktrees and reviewing what they did. Roga is a native Mac app built for that.</p>
+  <p class="install">For macOS 26 or later. <a href="/download">Download it</a>, or install it with Homebrew: <code>brew install --cask tmarkovski/roga/roga</code></p>
   <ul class="history">
     <li><strong>Made for reviewing agents’ work.</strong> Worktrees are first-class, agent branches are easy to find, and reviewing a big change feels like reviewing a pull request.</li>
     <li><strong>Fast on huge repositories.</strong> Opening the Linux kernel should feel like opening a small project.</li>
     <li><strong>A real Mac app.</strong> Written in Swift, with no web views and a keyboard shortcut for every action.</li>
     <li><strong>Git stays in charge.</strong> No hidden state, so you can drop to the command line at any moment.</li>
-    <li>Free and open source. On&nbsp;its&nbsp;way.</li>
+    <li><strong>Free.</strong> No account and no subscription.</li>
+    <li>Next: file history, search and&nbsp;blame.</li>
   </ul>
 </main>
 </body>

@@ -8,6 +8,16 @@ See [VISION.md](VISION.md) for what Roga is trying to be, [ROADMAP.md](ROADMAP.m
 
 The landing page is in [site](site/README.md).
 
+## Installing
+
+Roga needs macOS 26 or later. Download it from [roga.sh](https://roga.sh), or install it with Homebrew:
+
+```bash
+brew install --cask tmarkovski/roga/roga
+```
+
+It keeps itself up to date with Sparkle.
+
 ## Building
 
 Roga needs macOS 26 or later and Xcode 27.2, which is the first version to create projects in the JSON format that `Roga.xcodeproj` uses. Open `Roga.xcodeproj` and run the Roga scheme. Development builds are signed to run on your own Mac, so you don't need a developer account.
