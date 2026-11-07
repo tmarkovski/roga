@@ -7,6 +7,8 @@ public enum ConflictRequest: Sendable, Hashable {
     case choose(Int, ConflictedFile.Choice)
     /// Put back a conflict that was resolved here.
     case undo(Int)
+    /// Show a resolved conflict's sides under what it kept, or stop showing them.
+    case showSides(Int, Bool)
 }
 
 /// The buttons on a conflict's band, at the edge of the view: one for keeping each
@@ -18,11 +20,13 @@ final class ConflictBar: NSView {
         case keep(ConflictedFile.Choice)
         case edit
         case undo
+        case showSides(Bool)
     }
 
     /// The conflict it's for.
     private(set) var conflict = 0
     private(set) var isResolved = false
+    private(set) var showsSides = false
     /// Says which button was pressed, and the button.
     var onAction: ((ConflictBar, Action, NSButton) -> Void)?
 
@@ -48,9 +52,10 @@ final class ConflictBar: NSView {
 
     /// Sets which conflict it's for, and makes its buttons if they've changed.
     func show(_ band: ConflictBand, sides: ConflictSides, of count: Int) {
-        let changed = sides != self.sides || band.isResolved != isResolved || buttons.isEmpty
+        let changed = sides != self.sides || band.isResolved != isResolved || band.showsSides != showsSides || buttons.isEmpty
         conflict = band.conflict
         isResolved = band.isResolved
+        showsSides = band.showsSides
         self.sides = sides
         if changed { makeButtons(sides) }
         let which = "conflict \(band.conflict + 1) of \(count)"
@@ -60,7 +65,7 @@ final class ConflictBar: NSView {
     private func makeButtons(_ sides: ConflictSides) {
         buttons.forEach { $0.removeFromSuperview() }
         let made: [(String, NSColor, Action)] = isResolved
-            ? [("Undo", .controlAccentColor, .undo)]
+            ? [(showsSides ? "Hide Sides" : "Show Sides", .labelColor, .showSides(!showsSides)), ("Undo", .controlAccentColor, .undo)]
             : [
                 (sides.ours.keepTitle, .systemBlue, .keep(.ours)),
                 (sides.theirs.keepTitle, .systemPurple, .keep(.theirs)),

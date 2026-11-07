@@ -230,6 +230,7 @@ public final class DiffTextController: NSObject {
         switch action {
         case .keep(let choice): resolveConflict?(.choose(bar.conflict, choice))
         case .undo: resolveConflict?(.undo(bar.conflict))
+        case .showSides(let shows): resolveConflict?(.showSides(bar.conflict, shows))
         case .edit: edit(bar.conflict, from: button)
         }
     }

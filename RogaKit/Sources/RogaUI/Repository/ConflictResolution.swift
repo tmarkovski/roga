@@ -15,6 +15,10 @@ final class ConflictResolution {
         var original: ConflictedFile
         /// How each resolved conflict was resolved, by its index.
         var choices: [Int: ConflictedFile.Choice] = [:]
+        /// Who wrote the lines some conflicts kept, such as an agent, by index.
+        var writtenBy: [Int: String] = [:]
+        /// The resolved conflicts that show their sides under what they kept.
+        var shownSides: Set<Int> = []
 
         /// What the file has with these choices, which is what's on disk.
         var current: [UInt8] { original.resolving(choices) }

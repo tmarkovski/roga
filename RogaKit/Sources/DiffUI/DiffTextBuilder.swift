@@ -251,7 +251,7 @@ nonisolated public enum DiffTextBuilder {
                 let range = NSRange(location: lineStarts[index], length: end - lineStarts[index])
                 text.addAttribute(.foregroundColor, value: color, range: range)
                 switch row {
-                case .band(_, false), .label(.ours), .label(.theirs): text.addAttribute(.font, value: bold, range: range)
+                case .band(_, false, _), .label(.ours), .label(.theirs): text.addAttribute(.font, value: bold, range: range)
                 default: break
                 }
             }

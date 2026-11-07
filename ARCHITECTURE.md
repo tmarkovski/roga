@@ -110,7 +110,8 @@ roga/
 │   │   │   ├── HookInstaller.swift     installing and removing it with each agent's commands, and its status
 │   │   │   ├── ClaudeSessionList.swift reading claude agents --json
 │   │   │   ├── CodexConfiguration.swift what Roga reads in Codex's config.toml
-│   │   │   └── CommitMessage*.swift    the request, the prompt, the command, the reply and cleaning it up
+│   │   │   ├── CommitMessage*.swift    the request, the prompt, the command, the reply and cleaning it up
+│   │   │   └── ConflictResolutionAgent.swift asking an agent to resolve a file's conflicts, decision 60
 │   │   ├── IconUI/                     AppKit and SwiftUI, decision 24
 │   │   │   ├── Icon.swift              an icon as an image, and which icon stands for what in Roga
 │   │   │   ├── GeneratedIcons.swift    every icon's name, written by Scripts/generate-icons.swift

@@ -317,7 +317,13 @@ final class SelectedFile {
             finishLoading(Shown(file: file, source: source, content: shown.content, isUpdate: true, conflicts: summary), patch: nil, conflicts: progress)
             return true
         }
-        let document = await DiffTextBuilder.document(for: progress.original, choices: progress.choices, sides: sides)
+        let document = await DiffTextBuilder.document(
+            for: progress.original,
+            choices: progress.choices,
+            sides: sides,
+            writtenBy: progress.writtenBy,
+            shownSides: progress.shownSides
+        )
         try Task.checkCancellation()
         finishLoading(Shown(file: file, source: source, content: .patch(document), isUpdate: isRefresh, conflicts: summary), patch: nil, conflicts: progress)
         return true

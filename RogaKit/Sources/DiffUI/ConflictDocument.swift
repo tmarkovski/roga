@@ -46,7 +46,7 @@ nonisolated enum ConflictRow: Sendable, Hashable {
     }
 
     /// The band that starts a conflict, by its index, which has the buttons.
-    case band(Int, isResolved: Bool)
+    case band(Int, isResolved: Bool, showsSides: Bool = false)
     /// The row that names a side.
     case label(Part)
     /// One of a side's lines.
@@ -84,18 +84,37 @@ nonisolated struct ConflictBand: Sendable, Hashable {
     /// The conflict's index in the file.
     var conflict: Int
     var isResolved: Bool
+    /// Whether a resolved conflict shows its sides under what it kept.
+    var showsSides = false
 }
 
 /// How Roga shows a file with conflicts: its lines, and for each conflict a band
 /// that says which it is, then each side, named and in a color of its own. A
 /// resolved conflict shows what it kept instead.
 nonisolated extension DiffTextBuilder {
+    /// - Parameters:
+    ///   - writtenBy: Who wrote what some resolved conflicts kept, such as an
+    ///     agent, which their bands say.
+    ///   - shownSides: The resolved conflicts that show their sides under what
+    ///     they kept, for comparing.
     @concurrent
-    public static func document(for file: ConflictedFile, choices: [Int: ConflictedFile.Choice], sides: ConflictSides) async -> DiffDocument {
-        build(file, choices: choices, sides: sides)
+    public static func document(
+        for file: ConflictedFile,
+        choices: [Int: ConflictedFile.Choice],
+        sides: ConflictSides,
+        writtenBy: [Int: String] = [:],
+        shownSides: Set<Int> = []
+    ) async -> DiffDocument {
+        build(file, choices: choices, sides: sides, writtenBy: writtenBy, shownSides: shownSides)
     }
 
-    static func build(_ file: ConflictedFile, choices: [Int: ConflictedFile.Choice], sides: ConflictSides) -> DiffDocument {
+    static func build(
+        _ file: ConflictedFile,
+        choices: [Int: ConflictedFile.Choice],
+        sides: ConflictSides,
+        writtenBy: [Int: String] = [:],
+        shownSides: Set<Int> = []
+    ) -> DiffDocument {
         var bytes: [UInt8] = []
         var lines: [FilePatch.Line] = []
         var rows: [ConflictRow?] = []
@@ -122,13 +141,13 @@ nonisolated extension DiffTextBuilder {
             return number
         }
 
-        func addSide(_ part: ConflictRow.Part, _ label: String, _ text: ArraySlice<UInt8>, from number: Int) -> Int {
+        func addSide(_ part: ConflictRow.Part, _ label: String, _ text: ArraySlice<UInt8>, from number: Int, numbered: Bool = true) -> Int {
             add(Array(label.utf8), .label(part), number: nil)
             if text.isEmpty {
                 add(Array("No lines".utf8), .empty(part), number: nil)
                 return number
             }
-            return addLines(text, .line(part), from: number)
+            return addLines(text, .line(part), from: number, numbered: numbered)
         }
 
         let count = file.conflicts.count
@@ -143,14 +162,23 @@ nonisolated extension DiffTextBuilder {
                 case .ours: sides.ours.keptTitle
                 case .theirs: sides.theirs.keptTitle
                 case .both: "Kept both"
-                case .lines: "Kept what you wrote"
+                case .lines: writtenBy[index].map { "\($0) wrote this" } ?? "Kept what you wrote"
                 }
-                add(Array("\(which) · \(kept)".utf8), .band(index, isResolved: true), number: nil)
+                let showsSides = shownSides.contains(index)
+                add(Array("\(which) · \(kept)".utf8), .band(index, isResolved: true, showsSides: showsSides), number: nil)
                 let keptLines = file.lines(choice, for: conflict)
                 if keptLines.isEmpty {
                     add(Array("No lines".utf8), .empty(.kept), number: nil)
                 } else {
                     number = addLines(keptLines[...], .line(.kept), from: number)
+                }
+                // The sides aren't in the file any more, so their lines have no numbers.
+                if showsSides {
+                    _ = addSide(.ours, sides.ours.name + " · " + sides.ours.detail, file.bytes[conflict.ours], from: 0, numbered: false)
+                    if let base = conflict.base {
+                        _ = addSide(.base, conflict.baseLabel.map { "What both started from, \($0)" } ?? "What both started from", file.bytes[base], from: 0, numbered: false)
+                    }
+                    _ = addSide(.theirs, sides.theirs.name + " · " + sides.theirs.detail, file.bytes[conflict.theirs], from: 0, numbered: false)
                 }
                 continue
             }
@@ -189,8 +217,8 @@ nonisolated struct ConflictLayout: Sendable {
     /// The bands, in order.
     var bands: [ConflictBand] {
         rows.indices.compactMap { row in
-            if case .band(let conflict, let isResolved) = rows[row] {
-                ConflictBand(row: row, conflict: conflict, isResolved: isResolved)
+            if case .band(let conflict, let isResolved, let showsSides) = rows[row] {
+                ConflictBand(row: row, conflict: conflict, isResolved: isResolved, showsSides: showsSides)
             } else {
                 nil
             }
@@ -200,7 +228,7 @@ nonisolated struct ConflictLayout: Sendable {
     /// The color a row's text takes, when it isn't a line of the file.
     static func textColor(_ row: ConflictRow) -> NSColor? {
         switch row {
-        case .band(_, let isResolved): isResolved ? .secondaryLabelColor : .systemRed
+        case .band(_, let isResolved, _): isResolved ? .secondaryLabelColor : .systemRed
         case .label(.ours): .systemBlue
         case .label(.theirs): .systemPurple
         case .label: .secondaryLabelColor

@@ -1,3 +1,4 @@
+import AgentEngine
 import Foundation
 import GitCore
 import GitRunner
@@ -158,5 +159,109 @@ struct ConflictResolutionTests {
         await work.settled()
         #expect(try work.read("a.txt") == "one\nTHEIRS\nthree\n")
         #expect(work.changes.loaded?.conflicted.isEmpty == true)
+    }
+
+    // MARK: Asking an agent
+
+    func setup() -> GenerationSetup {
+        GenerationSetup(
+            kind: .claude,
+            agent: CommitMessageAgent(kind: .claude, executable: "/usr/local/bin/claude"),
+            programs: Programs(searchPath: "/usr/bin"),
+            style: "",
+            matchesStyle: false,
+            label: "Claude Code"
+        )
+    }
+
+    /// An agent that answers with Claude Code's JSON around `reply`, after `delay`.
+    func agent(_ reply: String, delay: Duration = .zero) -> @Sendable (ProgramCommand, [UInt8]) async throws -> ProgramResult {
+        { _, _ in
+            try await Task.sleep(for: delay)
+            let json = #"{"type":"result","is_error":false,"result":\#(String(reflecting: reply))}"#
+            return ProgramResult(status: .exited(0), output: Array(json.utf8), errorOutput: "", duration: .seconds(9))
+        }
+    }
+
+    func settledAgent(_ work: Worktree) async {
+        for _ in 0..<200 where work.changes.agentWork["a.txt"]?.isWorking == true {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        await work.settled()
+    }
+
+    @Test func anAgentsLinesAreWrittenForYouToReadOver() async throws {
+        let work = try await merging()
+        work.changes.runAgent = agent("<why>Both changed line two, so both stay.</why>\n<conflict n=\"1\">\nOURS\nTHEIRS\n</conflict>")
+        work.changes.askAgent(setup())
+        #expect(work.changes.agentWork["a.txt"]?.isWorking == true)
+        await settledAgent(work)
+        #expect(try work.read("a.txt") == "one\nOURS\nTHEIRS\nthree\n")
+        #expect(work.changes.agentWork["a.txt"]?.phase == .done(explanation: "Both changed line two, so both stay.", resolved: 1, duration: .seconds(9)))
+        #expect(work.rows.contains("Conflict 1 of 1 · Claude Code wrote this"))
+        // It isn't marked resolved until someone says so.
+        #expect(work.changes.loaded?.conflicted.map(\.path) == ["a.txt"])
+
+        work.changes.resolve(.showSides(0, true))
+        await work.settled()
+        #expect(work.rows.contains("OURS"))
+        #expect(work.rows.contains { $0.hasPrefix("other") })
+        #expect(try work.read("a.txt") == "one\nOURS\nTHEIRS\nthree\n")
+
+        work.changes.putConflictsBack(in: try #require(work.selectedFile.file))
+        await work.settled()
+        #expect(try work.read("a.txt").contains("<<<<<<< HEAD"))
+        #expect(work.changes.agentWork["a.txt"] == nil)
+        #expect(work.summary?.left == 1)
+    }
+
+    @Test func anAgentThatAnswersNothingSaysSo() async throws {
+        let work = try await merging()
+        let conflicted = try work.read("a.txt")
+        work.changes.runAgent = agent("Better not.")
+        work.changes.askAgent(setup())
+        await settledAgent(work)
+        guard case .failed(let message, _) = work.changes.agentWork["a.txt"]?.phase else {
+            Issue.record("Expected a failure")
+            return
+        }
+        #expect(message == "Claude Code replied without resolving any of the conflicts.")
+        #expect(try work.read("a.txt") == conflicted)
+    }
+
+    @Test func stoppingTheAgentChangesNothing() async throws {
+        let work = try await merging()
+        let conflicted = try work.read("a.txt")
+        work.changes.runAgent = agent("<conflict n=\"1\">\nx\n</conflict>", delay: .seconds(30))
+        work.changes.askAgent(setup())
+        work.changes.stopAgent(for: "a.txt")
+        await work.settled()
+        #expect(work.changes.agentWork["a.txt"] == nil)
+        #expect(try work.read("a.txt") == conflicted)
+    }
+
+    @Test func putsBackConflictsResolvedOutsideRoga() async throws {
+        let work = try await merging()
+        try work.write("one\nedited by hand\nthree\n", to: "a.txt")
+        work.changes.refresh()
+        await work.settled()
+        work.changes.putConflictsBack(in: try #require(work.selectedFile.file))
+        await work.settled()
+        #expect(try work.read("a.txt").contains("<<<<<<< ours"))
+    }
+
+    @Test func sendsAFewLinesAroundEachConflictButNotTheNextOne() throws {
+        let numbers = (1...20).map { "\($0)\n" }.joined()
+        let conflict = "<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> other\n"
+        let file = ConflictedFile.parse(Array((numbers + conflict + "x\n" + conflict + numbers).utf8))
+        let first = SelectedChanges.agentConflict(0, of: file)
+        #expect(first.before == (13...20).map { "\($0)\n" }.joined())
+        #expect(first.ours == "ours\n")
+        #expect(first.after == "x\n")
+        let second = SelectedChanges.agentConflict(1, of: file)
+        #expect(second.before == "x\n")
+        #expect(second.after == (1...8).map { "\($0)\n" }.joined())
+        let top = SelectedChanges.agentConflict(0, of: ConflictedFile.parse(Array(conflict.utf8)))
+        #expect(top.before.isEmpty && top.after.isEmpty)
     }
 }
