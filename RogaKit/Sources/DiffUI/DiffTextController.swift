@@ -1,4 +1,5 @@
 import AppKit
+import GitCore
 
 /// Owns the text view that shows one file's patch, and the line numbers beside
 /// it. It uses TextKit 1 with non-contiguous layout, which lays out only the
@@ -18,6 +19,18 @@ public final class DiffTextController: NSObject {
     public var discardHunk: ((Int) -> Void)? {
         didSet { updateHunkButton() }
     }
+
+    /// Resolves one of a file's conflicts, or puts one back, or nil when the
+    /// document showing has none to resolve (decision 60).
+    public var resolveConflict: ((ConflictRequest) -> Void)? {
+        didSet { updateConflictBars() }
+    }
+
+    /// The bars on the conflicts' bands in view, and spare ones, which stay
+    /// rather than being made again as the text scrolls.
+    private var conflictBars: [ConflictBar] = []
+    /// Where someone is writing the lines that resolve a conflict.
+    private var editor: NSPopover?
 
     /// The space above and below the text.
     private static let inset: CGFloat = 4
@@ -64,12 +77,14 @@ public final class DiffTextController: NSObject {
     @objc private func clipViewChangedSize() {
         updateTextSize()
         updateHunkButton()
+        updateConflictBars()
     }
 
     /// The gutter doesn't move with the text, so it draws again.
     @objc private func clipViewScrolled() {
         gutter.needsDisplay = true
         updateHunkButton()
+        updateConflictBars()
     }
 
     isolated deinit {
@@ -99,6 +114,8 @@ public final class DiffTextController: NSObject {
         textView.needsDisplay = true
         textView.scroll(keepingPosition ? position : NSPoint(x: 0, y: 0))
         updateHunkButton()
+        editor?.close()
+        updateConflictBars()
     }
 
     /// A text view that's going away takes its text container with it, so it
@@ -169,6 +186,72 @@ public final class DiffTextController: NSObject {
     @objc private func hunkMenuItemChosen(_ item: NSMenuItem) {
         guard let header = item.representedObject as? Int else { return }
         discardHunk?(header)
+    }
+
+    // MARK: Conflicts
+
+    /// Puts a bar on each conflict's band in view, at the edge of the view, so that
+    /// the buttons stay put as the text scrolls sideways.
+    func updateConflictBars() {
+        guard let document, let conflicts = document.conflicts, resolveConflict != nil, !document.conflictBands.isEmpty else {
+            conflictBars.forEach { $0.isHidden = true }
+            return
+        }
+        let clip = scrollView.contentView
+        let visible = view.convert(clip.bounds, from: clip)
+        let origin = textView.textContainerOrigin.y
+        let shown = textView.visibleRect
+        let firstRow = Int(((shown.minY - origin) / DiffStyle.lineHeight).rounded(.down))
+        let lastRow = Int(((shown.maxY - origin) / DiffStyle.lineHeight).rounded(.up))
+        let bands = document.conflictBands.filter { $0.row >= firstRow && $0.row <= lastRow }
+        let count = document.conflictBands.count
+        while conflictBars.count < bands.count {
+            let bar = ConflictBar()
+            bar.onAction = { [weak self] bar, action, button in self?.conflictAction(action, of: bar, from: button) }
+            sides.addSubview(bar)
+            conflictBars.append(bar)
+        }
+        for (index, bar) in conflictBars.enumerated() {
+            guard index < bands.count else {
+                bar.isHidden = true
+                continue
+            }
+            let band = bands[index]
+            bar.show(band, sides: conflicts.sides, of: count)
+            let top = origin + CGFloat(band.row) * DiffStyle.lineHeight
+            let row = view.convert(NSRect(x: 0, y: top, width: 1, height: DiffStyle.lineHeight), from: textView)
+            let size = bar.size
+            bar.frame = NSRect(x: visible.maxX - size.width - 6, y: (row.midY - size.height / 2).rounded(), width: size.width, height: size.height)
+            bar.isHidden = !(visible.minY...visible.maxY ~= row.midY)
+        }
+    }
+
+    private func conflictAction(_ action: ConflictBar.Action, of bar: ConflictBar, from button: NSButton) {
+        switch action {
+        case .keep(let choice): resolveConflict?(.choose(bar.conflict, choice))
+        case .undo: resolveConflict?(.undo(bar.conflict))
+        case .showSides(let shows): resolveConflict?(.showSides(bar.conflict, shows))
+        case .edit: edit(bar.conflict, from: button)
+        }
+    }
+
+    /// Opens a box for writing the lines that resolve a conflict, under its Edit…
+    /// button, starting with both sides.
+    private func edit(_ conflict: Int, from button: NSButton) {
+        guard let document, let text = document.conflicts?.edits[conflict] else { return }
+        editor?.close()
+        let count = document.conflictBands.count
+        let controller = ConflictEditor(heading: "Conflict \(conflict + 1) of \(count)", text: text)
+        let popover = NSPopover()
+        popover.contentViewController = controller
+        popover.behavior = .transient
+        controller.onFinish = { [weak self, weak popover] text in
+            popover?.close()
+            guard let self, let text, self.document === document else { return }
+            self.resolveConflict?(.choose(conflict, .lines(ConflictedFile.lines(typed: text))))
+        }
+        editor = popover
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .maxY)
     }
 
     /// TextKit keeps most of a text view's settings with its layout manager, so

@@ -1,5 +1,8 @@
+import AgentEngine
+import DiffUI
 import Foundation
 import GitCore
+import GitRunner
 import Observation
 import RepositoryEngine
 
@@ -64,6 +67,12 @@ final class SelectedChanges {
     /// The load in progress, which a newer one cancels.
     @ObservationIgnored private(set) var loading: Task<Void, Never>?
     @ObservationIgnored private var patience: Task<Void, any Error>?
+    /// What's been resolved in each conflicted file, which the diff panel shows
+    /// (decision 60).
+    @ObservationIgnored let conflicts = ConflictResolution()
+    /// The conflict being written to its file, which the next one waits for, so
+    /// that each starts from what the last one wrote.
+    @ObservationIgnored private(set) var resolving: Task<Void, Never>?
     @ObservationIgnored private let session: RepositorySession
     @ObservationIgnored private let worktree: String
 
@@ -72,6 +81,7 @@ final class SelectedChanges {
         self.worktree = worktree
         self.selectedFile = selectedFile
         self.fileList = fileList
+        selectedFile.conflictResolution = conflicts
     }
 
     /// Selects the row, and selects the first file once they're listed.
@@ -142,6 +152,10 @@ final class SelectedChanges {
     /// Stages a file, or takes it back out if it's a staged one. Staging a conflict
     /// says it's resolved.
     func toggle(_ file: DiffFile, in group: WorktreeChanges.Group) {
+        if group == .conflicted {
+            conflicts.forget(file.path)
+            agentWork[file.path] = nil
+        }
         apply(group == .staged ? .unstage([file]) : .stage([file]), from: group)
     }
 
@@ -165,6 +179,227 @@ final class SelectedChanges {
         let files = loaded[group].filter { $0.path.hasPrefix(path + "/") }
         guard !files.isEmpty else { return }
         apply(group == .staged ? .unstage(files) : .stage(files), from: group)
+    }
+
+    // MARK: Resolving conflicts
+
+    /// Resolves one of the selected file's conflicts, or puts one back, when it's
+    /// showing its conflicts (decision 60).
+    var conflictResolve: ((ConflictRequest) -> Void)? {
+        guard selectedFile.shown?.conflicts?.total ?? 0 > 0, case .worktree(_, .conflicted, _) = selectedFile.shown?.source else { return nil }
+        return { [weak self] request in self?.resolve(request) }
+    }
+
+    /// Writes what resolves a conflict into the selected file, or puts the conflict
+    /// back as it was, and shows the file again.
+    func resolve(_ request: ConflictRequest) {
+        guard let file = selectedFile.file, selectedFile.group == .conflicted else { return }
+        update(file, failure: "Can't resolve the conflict in \(file.name)") { progress in
+            switch request {
+            case .choose(let conflict, let choice):
+                progress.choices[conflict] = choice
+                progress.writtenBy[conflict] = nil
+            case .undo(let conflict):
+                progress.choices[conflict] = nil
+                progress.writtenBy[conflict] = nil
+                progress.shownSides.remove(conflict)
+            case .showSides(let conflict, let shows):
+                if shows { progress.shownSides.insert(conflict) } else { progress.shownSides.remove(conflict) }
+            }
+        }
+    }
+
+    /// Changes what's been resolved in a conflicted file, writes the file when
+    /// that changes what it has, and shows it again. Each change waits for the one
+    /// before, so that it starts from what that one wrote.
+    private func update(_ file: DiffFile, failure: String, _ change: @escaping (inout ConflictResolution.Progress) -> Void) {
+        let previous = resolving
+        resolving = Task {
+            await previous?.value
+            defer { resolving = nil }
+            guard var progress = conflicts.progress(of: file.path) else { return }
+            let before = progress.current
+            change(&progress)
+            do {
+                if progress.current != before {
+                    try await session.write(progress.current, replacing: before, at: file.path, in: worktree)
+                }
+                conflicts.remember(progress, for: file.path)
+            } catch {
+                onFailure?(failure, error)
+            }
+            guard selectedFile.file?.path == file.path, let changes = loaded else { return }
+            selectedFile.refresh(file, from: source(.conflicted, changes))
+            await selectedFile.loading?.value
+        }
+    }
+
+    // MARK: Asking an agent
+
+    /// An agent resolving a file's conflicts, or what came of it (decision 60).
+    struct AgentWork: Equatable {
+        enum Phase: Equatable {
+            case working(since: Date)
+            case done(explanation: String, resolved: Int, duration: Duration)
+            case failed(message: String, output: String?)
+        }
+
+        var kind: AgentKind
+        /// The agent and its model, as Generate names them.
+        var label: String
+        /// How many conflicts it was asked about.
+        var asked: Int
+        var phase: Phase
+    }
+
+    /// What agents are doing or did about each conflicted file, by its path.
+    private(set) var agentWork: [String: AgentWork] = [:]
+    /// The agents running, by the file's path, which Stop cancels.
+    @ObservationIgnored private var agentRuns: [String: Task<Void, Never>] = [:]
+    /// Runs an agent's command with its standard input, which tests replace.
+    @ObservationIgnored var runAgent: (@Sendable (ProgramCommand, [UInt8]) async throws -> ProgramResult)?
+
+    /// How many lines on each side of a conflict go to the agent with it.
+    static let agentContextLines = 8
+
+    /// Asks the agent Generate runs to resolve the selected file's conflicts that
+    /// are left, and writes what it sends back in their place, for someone to
+    /// read over. It's the agent and model from the Commit page of Settings
+    /// (decision 41), and it runs the same way, with no tools.
+    func askAgent(_ setup: GenerationSetup?) {
+        guard let setup, let file = selectedFile.file, selectedFile.group == .conflicted, agentRuns[file.path] == nil,
+              let sides = selectedFile.shown?.conflicts?.sides, let progress = conflicts.progress(of: file.path), progress.left > 0
+        else { return }
+        let path = file.path
+        let open = progress.original.conflicts.indices.filter { progress.choices[$0] == nil }
+        let request = ConflictResolutionRequest(
+            worktree: worktree,
+            path: path,
+            ours: .init(name: sides.ours.name, detail: sides.ours.detail),
+            theirs: .init(name: sides.theirs.name, detail: sides.theirs.detail),
+            conflicts: open.map { Self.agentConflict($0, of: progress.original) }
+        )
+        func work(_ phase: AgentWork.Phase) -> AgentWork {
+            AgentWork(kind: setup.kind, label: setup.label, asked: open.count, phase: phase)
+        }
+        guard request.fits else {
+            agentWork[path] = work(.failed(message: "These conflicts are too big to send to \(setup.kind.name). Resolve them here or in your editor.", output: nil))
+            return
+        }
+        let run = runAgent ?? { [programs = setup.programs] command, input in
+            try await programs.run(command, input: input)
+        }
+        agentWork[path] = work(.working(since: Date()))
+        agentRuns[path] = Task {
+            defer { agentRuns[path] = nil }
+            do {
+                let resolution = try await ConflictResolutionWriter.resolve(request, with: setup.agent, run: run)
+                try Task.checkCancellation()
+                // Someone may have resolved some of them meanwhile, and those stay.
+                update(file, failure: "Can't write what \(setup.kind.name) sent for \(file.name)") { progress in
+                    for (asked, index) in open.enumerated() where progress.choices[index] == nil {
+                        guard let text = resolution.lines[asked] else { continue }
+                        progress.choices[index] = .lines(ConflictedFile.lines(typed: text))
+                        progress.writtenBy[index] = setup.kind.name
+                    }
+                }
+                await resolving?.value
+                let written = conflicts.progress(of: path).map { progress in open.filter { progress.writtenBy[$0] != nil }.count } ?? 0
+                agentWork[path] = written == 0 ? nil : work(.done(explanation: resolution.explanation, resolved: written, duration: resolution.duration))
+            } catch is CancellationError {
+                agentWork[path] = nil
+            } catch {
+                let output = (error as? CommitMessageError)?.output
+                agentWork[path] = work(.failed(message: String(describing: error), output: output))
+            }
+        }
+    }
+
+    /// Stops the agent resolving a file's conflicts, which changes nothing.
+    func stopAgent(for path: String) {
+        agentRuns[path]?.cancel()
+        agentRuns[path] = nil
+        agentWork[path] = nil
+    }
+
+    /// Lets go of what an agent said about a file, once it's been read.
+    func forgetAgentWork(for path: String) {
+        guard agentRuns[path] == nil else { return }
+        agentWork[path] = nil
+    }
+
+    /// A conflict as an agent is sent it, with a few of the file's lines on each
+    /// side, but never into the conflicts next to it.
+    static func agentConflict(_ index: Int, of file: ConflictedFile) -> ConflictResolutionRequest.Conflict {
+        let conflict = file.conflicts[index]
+        let floor = index > 0 ? file.conflicts[index - 1].range.upperBound : 0
+        let ceiling = index + 1 < file.conflicts.count ? file.conflicts[index + 1].range.lowerBound : file.bytes.count
+        func text(_ bytes: ArraySlice<UInt8>) -> String { String(decoding: bytes, as: UTF8.self) }
+        // The lines before end at the conflict's first marker, which starts a line.
+        var start = conflict.range.lowerBound
+        var lines = 0
+        while start > floor, lines <= agentContextLines {
+            start -= 1
+            if file.bytes[start] == 0x0A { lines += 1 }
+        }
+        if start > floor || lines > agentContextLines { start += 1 }
+        var end = conflict.range.upperBound
+        lines = 0
+        while end < ceiling, lines < agentContextLines {
+            if file.bytes[end] == 0x0A { lines += 1 }
+            end += 1
+        }
+        return ConflictResolutionRequest.Conflict(
+            before: text(file.bytes[start..<conflict.range.lowerBound]),
+            ours: text(file.bytes[conflict.ours]),
+            base: conflict.base.map { text(file.bytes[$0]) },
+            theirs: text(file.bytes[conflict.theirs]),
+            after: text(file.bytes[conflict.range.upperBound..<end])
+        )
+    }
+
+    /// Puts a file's conflicts back: as Roga first read them when it has resolved
+    /// some, or as git first wrote them otherwise, such as after an editor or an
+    /// agent resolved them outside Roga.
+    func putConflictsBack(in file: DiffFile) {
+        agentWork[file.path] = nil
+        if let progress = conflicts.progress(of: file.path), !progress.choices.isEmpty {
+            update(file, failure: "Can't put the conflicts back in \(file.name)") { progress in
+                progress.choices = [:]
+                progress.writtenBy = [:]
+                progress.shownSides = []
+            }
+            return
+        }
+        conflicts.forget(file.path)
+        let previous = resolving
+        resolving = Task {
+            await previous?.value
+            defer { resolving = nil }
+            do {
+                try await session.putConflictsBack(in: file.path, in: worktree)
+            } catch {
+                onFailure?("Can't put the conflicts back in \(file.name)", error)
+            }
+            refresh()
+        }
+    }
+
+    /// Takes one side's whole version of a conflicted file, and marks it resolved.
+    func keep(_ side: ConflictSide, of file: DiffFile) {
+        conflicts.forget(file.path)
+        let previous = resolving
+        resolving = Task {
+            await previous?.value
+            defer { resolving = nil }
+            do {
+                try await session.keep(side, of: file.path, in: worktree)
+            } catch {
+                onFailure?("Can't keep a version of \(file.name)", error)
+            }
+            refresh()
+            lookAgain()
+        }
     }
 
     // MARK: Discarding

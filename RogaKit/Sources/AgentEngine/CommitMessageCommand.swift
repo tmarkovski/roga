@@ -28,10 +28,20 @@ public enum CommitMessageCommand {
     ///   - hasDraft: Whether the input has a draft, which changes what the
     ///     agent is asked to do.
     public static func command(for agent: CommitMessageAgent, worktree: String, style: String, hasDraft: Bool) -> ProgramCommand {
+        command(
+            for: agent,
+            worktree: worktree,
+            instructions: CommitMessagePrompt.instructions(style: style),
+            task: CommitMessagePrompt.task(hasDraft: hasDraft)
+        )
+    }
+
+    /// The command for any request that an agent answers with text alone, such as
+    /// resolving conflicts (decision 60), with the same flags that keep the run
+    /// small.
+    public static func command(for agent: CommitMessageAgent, worktree: String, instructions: String, task: String) -> ProgramCommand {
         let model = nonEmpty(agent.model)
         let effort = nonEmpty(agent.effort)
-        let instructions = CommitMessagePrompt.instructions(style: style)
-        let task = CommitMessagePrompt.task(hasDraft: hasDraft)
 
         var arguments: [String]
         switch agent.kind {

@@ -271,7 +271,7 @@ extension BranchModel {
         let inConflict: DialogText = conflict.files.isEmpty
             ? "is partway through a \(what)."
             : "is partway through a \(what), with \(files) in conflict."
-        var sentences = [subject, inConflict, "Roga can't resolve conflicts yet, so you can undo the \(started), or leave the worktree as it is and finish from the command line."]
+        var sentences = [subject, inConflict, "You can resolve them here, or undo the \(started)."]
         if conflict.stagedBefore > 0 {
             let staged = conflict.stagedBefore == 1 ? "the 1 file that was" : "the \(conflict.stagedBefore.formatted()) files that were"
             sentences.append("Undoing it also takes back \(staged) staged before.")
@@ -286,6 +286,13 @@ extension BranchModel {
         terminal += [.comment("Undo the \(started) runs")] + undo.map(TerminalLine.command)
         let rows = Self.fileRows(conflict.files)
         let leave = { [weak self] in self?.conflict = nil; return () }
+        // Resolving is usually what someone wants after a pull, and loses nothing,
+        // so Return presses it, and Undo stays a click away (decision 60).
+        let resolve = { [weak self] in
+            self?.conflict = nil
+            self?.showConflicts()
+            return ()
+        }
         return DialogContent(
             id: "conflict",
             title: "The \(started) stopped on a conflict",
@@ -293,11 +300,11 @@ extension BranchModel {
             cards: rows.isEmpty ? [] : [rows],
             terminal: terminal,
             buttons: [
-                DialogButton(title: "Leave it", kind: .secondary, action: leave),
                 // Files that were staged before can't be brought back.
-                DialogButton(title: "Undo the \(started)", kind: conflict.stagedBefore > 0 ? .destructive : .primary) { [weak self] in
+                DialogButton(title: "Undo the \(started)", kind: conflict.stagedBefore > 0 ? .destructive : .secondary) { [weak self] in
                     self?.undoConflict()
                 },
+                DialogButton(title: "Resolve", kind: .primary, action: resolve),
             ],
             dismiss: leave
         )
@@ -317,16 +324,21 @@ extension BranchModel {
         let files = conflict.files.count == 1 ? "1 file" : "\(conflict.files.count.formatted()) files"
         let sentences: [DialogText] = [
             "\(did) and put your uncommitted changes back, but in \(files) they conflict with \(against).",
-            "Roga can't resolve conflicts yet, so you can undo the \(noun), or leave the conflicts to resolve in your editor.",
+            "You can resolve them here, or undo the \(noun).",
         ]
         let note: DialogText? = .sentences([
             "Undo the \(noun) goes back to \(code: String(aside.head.hex.prefix(8))) and puts your changes back as they were, with what you'd staged.",
-            "If you leave it, the stash \(code: aside.message) keeps a copy until you drop it.",
+            "Until you drop it, the stash \(code: aside.message) keeps a copy of them as they were.",
         ])
         let undo = aside.undoArguments(stopped: nil) + [ChangesAside.putBackArguments]
         let terminal: [TerminalLine] = conflict.ran.map(TerminalLine.ran) + [.gap, .comment("Undo the \(noun) runs")] + undo.map(TerminalLine.command)
         let rows = Self.fileRows(conflict.files)
         let leave = { [weak self] in self?.putBackConflict = nil; return () }
+        let resolve = { [weak self] in
+            self?.putBackConflict = nil
+            self?.showConflicts()
+            return ()
+        }
         return DialogContent(
             id: "putBackConflict",
             title: "Putting your changes back stopped on a conflict",
@@ -335,11 +347,11 @@ extension BranchModel {
             note: note,
             terminal: terminal,
             buttons: [
-                DialogButton(title: "Leave it", kind: .secondary, action: leave),
                 // The stash has everything that was uncommitted, so nothing is lost.
-                DialogButton(title: "Undo the \(noun)", kind: .primary) { [weak self] in
+                DialogButton(title: "Undo the \(noun)", kind: .secondary) { [weak self] in
                     self?.undoPutBack()
                 },
+                DialogButton(title: "Resolve", kind: .primary, action: resolve),
             ],
             dismiss: leave
         )

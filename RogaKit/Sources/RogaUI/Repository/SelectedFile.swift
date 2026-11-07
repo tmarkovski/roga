@@ -24,6 +24,8 @@ final class SelectedFile {
         /// Whether this is the file that was showing already, with what it
         /// has now, so that the text should stay at the same place.
         var isUpdate = false
+        /// How far resolving a conflicted file has got, when it's one (decision 60).
+        var conflicts: ConflictSummary?
     }
 
     /// Where the text being searched for shows in a document.
@@ -80,6 +82,22 @@ final class SelectedFile {
     /// The patch showing, for telling whether looking at the file again found
     /// anything new, and for cutting a hunk out of.
     @ObservationIgnored private(set) var shownPatch: FilePatch?
+    /// What's been resolved in a worktree's conflicted files, which the
+    /// uncommitted changes share, so that a conflicted file shows its conflicts
+    /// rather than a patch (decision 60).
+    @ObservationIgnored var conflictResolution: ConflictResolution?
+    /// Names a conflicted file's sides, from the labels after the markers of its
+    /// first conflict, or from what the worktree is partway through when it has
+    /// none.
+    @ObservationIgnored var nameConflicts: (_ labels: (ours: String, theirs: String)?) async -> ConflictSides = { _ in
+        ConflictSides(
+            ours: ConflictSides.Side(name: "HEAD", detail: "", keepTitle: "Keep HEAD's", keptTitle: "Kept HEAD's"),
+            theirs: ConflictSides.Side(name: "Theirs", detail: "", keepTitle: "Keep Theirs", keptTitle: "Kept theirs")
+        )
+    }
+    /// The conflicted file showing and what's been resolved in it, for telling
+    /// whether reading it again found anything new.
+    @ObservationIgnored private var shownConflicts: ConflictResolution.Progress?
     /// The search for the latest text, which typing more cancels.
     @ObservationIgnored private(set) var searching: Task<Void, Never>?
     @ObservationIgnored private let session: RepositorySession
@@ -254,10 +272,17 @@ final class SelectedFile {
 
     private func load(_ file: DiffFile, from source: PatchSource, isRefresh: Bool = false) async {
         do {
+            var conflicts: ConflictSummary?
+            if case .worktree(let worktree, .conflicted, _) = source, let resolution = conflictResolution {
+                if try await loadConflicts(of: file, from: source, in: worktree, resolution: resolution, isRefresh: isRefresh) { return }
+                // Without markers, the file shows as a patch, and its header can
+                // still offer each side's version.
+                conflicts = ConflictSummary(total: 0, left: 0, sides: await nameConflicts(nil))
+            }
             let patch = try await session.patch(of: file, from: source)
             try Task.checkCancellation()
-            if isRefresh, let shown, patch.bytes == shownPatch?.bytes {
-                finishLoading(Shown(file: file, source: source, content: shown.content, isUpdate: true), patch: patch)
+            if isRefresh, let shown, patch.bytes == shownPatch?.bytes, shown.conflicts == conflicts {
+                finishLoading(Shown(file: file, source: source, content: shown.content, isUpdate: true, conflicts: conflicts), patch: patch)
                 return
             }
             let content: Content = if patch.lines.isEmpty {
@@ -266,17 +291,49 @@ final class SelectedFile {
                 .patch(await DiffTextBuilder.document(for: patch))
             }
             try Task.checkCancellation()
-            finishLoading(Shown(file: file, source: source, content: content, isUpdate: isRefresh), patch: patch)
+            finishLoading(Shown(file: file, source: source, content: content, isUpdate: isRefresh, conflicts: conflicts), patch: patch)
         } catch is CancellationError {
         } catch {
             finishLoading(Shown(file: file, source: source, content: .failed(String(describing: error))), patch: nil)
         }
     }
 
-    private func finishLoading(_ shown: Shown, patch: FilePatch?) {
+    /// Shows a conflicted file's conflicts, with what's been resolved in it, and
+    /// says whether it had any to show.
+    private func loadConflicts(
+        of file: DiffFile,
+        from source: PatchSource,
+        in worktree: String,
+        resolution: ConflictResolution,
+        isRefresh: Bool
+    ) async throws -> Bool {
+        guard let onDisk = try await session.conflictedFile(file.path, in: worktree) else { return false }
+        try Task.checkCancellation()
+        guard let progress = resolution.progress(of: file.path, onDisk: onDisk), let first = progress.original.conflicts.first else { return false }
+        let sides = await nameConflicts((first.oursLabel, first.theirsLabel))
+        try Task.checkCancellation()
+        let summary = ConflictSummary(total: progress.original.conflicts.count, left: progress.left, sides: sides)
+        if isRefresh, let shown, progress == shownConflicts, shown.conflicts == summary {
+            finishLoading(Shown(file: file, source: source, content: shown.content, isUpdate: true, conflicts: summary), patch: nil, conflicts: progress)
+            return true
+        }
+        let document = await DiffTextBuilder.document(
+            for: progress.original,
+            choices: progress.choices,
+            sides: sides,
+            writtenBy: progress.writtenBy,
+            shownSides: progress.shownSides
+        )
+        try Task.checkCancellation()
+        finishLoading(Shown(file: file, source: source, content: .patch(document), isUpdate: isRefresh, conflicts: summary), patch: nil, conflicts: progress)
+        return true
+    }
+
+    private func finishLoading(_ shown: Shown, patch: FilePatch?, conflicts: ConflictResolution.Progress? = nil) {
         patience?.cancel()
         self.shown = shown
         shownPatch = patch
+        shownConflicts = conflicts
         isWaiting = false
     }
 }
