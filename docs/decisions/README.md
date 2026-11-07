@@ -59,3 +59,4 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [49](0049-look-again-at-what-changes-on-disk.md) | Look again at what changes on disk | Accepted |
 | [50](0050-branches-in-folders-at-each-slash-of-their-names.md) | Branches in folders, at each slash of their names | Accepted |
 | [51](0051-marks-at-the-right-of-a-sidebar-row-and-names-that-fade.md) | Marks at the right of a sidebar row, and names that fade | Accepted |
+| [52](0052-maximize-or-minimize-the-panels-under-history.md) | Maximize or minimize the panels under history | Accepted |

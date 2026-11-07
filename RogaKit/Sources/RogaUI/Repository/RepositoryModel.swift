@@ -14,6 +14,11 @@ final class RepositoryModel {
         case loading
         case ready
         case failed(String)
+
+        /// Whether history and the panels under it show.
+        var isReady: Bool {
+            if case .ready = self { true } else { false }
+        }
     }
 
     /// What history to load: in which order, and how many times the user

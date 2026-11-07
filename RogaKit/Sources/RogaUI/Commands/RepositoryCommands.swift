@@ -15,6 +15,7 @@ public struct RepositoryCommands: Commands {
     @FocusedValue(\.sidebarScope) private var sidebarScope
     @FocusedValue(\.showsOrganizationRail) private var showsOrganizationRail
     @FocusedValue(\.refsPanelVisibility) private var refsPanelVisibility
+    @FocusedValue(\.lowerPanelSize) private var lowerPanelSize
     @FocusedValue(\.openSettings) private var openSettings
     @AppStorage(RefsPanelSettings.sort) private var refsSort = RefsModel.Sort.name
     @AppStorage(FileListSettings.layout) private var fileLayout = FileLayout.list
@@ -147,6 +148,20 @@ public struct RepositoryCommands: Commands {
                     Text(sort.title).tag(sort)
                 }
             }
+            Divider()
+            // A step at a time, the way the arrows point: up from minimized
+            // goes back to the panels' height, and from there covers history.
+            let size = lowerPanelSize?.wrappedValue ?? .regular
+            Button(size.tallerTitle) {
+                if let taller = size.taller { lowerPanelSize?.wrappedValue = taller }
+            }
+            .keyboardShortcut(LowerPanelSize.tallerShortcut)
+            .disabled(lowerPanelSize == nil || size.taller == nil)
+            Button(size.shorterTitle) {
+                if let shorter = size.shorter { lowerPanelSize?.wrappedValue = shorter }
+            }
+            .keyboardShortcut(LowerPanelSize.shorterShortcut)
+            .disabled(lowerPanelSize == nil || size.shorter == nil)
             Divider()
             // Command-1 to Command-9 select what's on the rail.
             let groups = list.groups
