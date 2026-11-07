@@ -43,6 +43,11 @@ struct GenerateButtonTests {
         #expect(GenerateButton<EmptyView>.help(agent: .claude, rewrites: false, readiness: .ready) == "Write the message with Claude Code (⌥\u{2009}⌘\u{2009}L)")
     }
 
+    @Test func theWordNamesTheAgentAClickRuns() {
+        #expect(GenerateButton<EmptyView>.title(agent: .claude) == "Generate with Claude")
+        #expect(GenerateButton<EmptyView>.title(agent: .codex) == "Generate with Codex")
+    }
+
     @Test func showsTheIconAloneToRewriteYourWords() {
         let state = GenerateButtonState(showsButton: true, agent: .codex, hasText: true, isWriting: false, readiness: .ready)
         #expect(state == .shown(agent: .codex, rewrites: true, readiness: .ready))

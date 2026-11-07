@@ -55,7 +55,7 @@ struct GenerateButton<Choices: View>: View {
                         .font(.system(size: Self.iconFontSize(13)))
                         .foregroundStyle(isEnabled ? Palette.action : DialogColors.note)
                     if !rewrites {
-                        Text("Generate")
+                        Text(Self.title(agent: agent))
                     }
                 }
                 .padding(.horizontal, 8)
@@ -66,7 +66,7 @@ struct GenerateButton<Choices: View>: View {
             // why the button can't be pressed.
             .disabled(!isEnabled)
             .help(Self.help(agent: agent, rewrites: rewrites, readiness: readiness))
-            .accessibilityLabel(rewrites ? "Rewrite with \(agent.name)" : "Generate")
+            .accessibilityLabel(rewrites ? "Rewrite with \(agent.name)" : Self.title(agent: agent))
             Rectangle()
                 .fill(SettingsColors.line)
                 .frame(width: 1)
@@ -112,6 +112,12 @@ struct GenerateButton<Choices: View>: View {
 }
 
 extension GenerateButton {
+    /// What the main button says while the box is empty, which names the agent a
+    /// click runs, since the popover is the only other place that says.
+    static func title(agent: AgentKind) -> String {
+        "Generate with \(agent.shortName)"
+    }
+
     /// What the main button's tooltip says: why it can't run when nothing's
     /// staged or a rebase has stopped, and otherwise what a click does. While
     /// the box is busy for a while, as when a commit is being made, it leaves
