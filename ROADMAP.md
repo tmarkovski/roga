@@ -20,7 +20,7 @@ The project is set up, so the next step is release 1. It has:
 Some of the setup comes later, when there's something for it to work on:
 
 - The benchmark job in CI comes with the first benchmark, in the history work.
-- The first release needs a Developer ID certificate, notarization credentials, Sparkle's signing key, and public repositories for the downloads and the Homebrew tap, which [docs/releasing.md](docs/releasing.md) describes.
+- The first release needs a Developer ID certificate, notarization credentials, Sparkle's signing key and a Homebrew tap, which [docs/releasing.md](docs/releasing.md) describes.
 
 ## Release 1: a fast viewer for reviewing agents' work
 

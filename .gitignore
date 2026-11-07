@@ -28,4 +28,3 @@ output/
 
 # Release builds (Scripts/release/release.py and the Release workflow)
 /dist/
-/private/

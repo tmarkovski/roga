@@ -14,16 +14,16 @@ order, and so can anyone with the credentials on their own Mac:
     uv run Scripts/release/release.py notarize dist/Roga-0.1.0.dmg
     uv run Scripts/release/release.py appcast dist/Roga-0.1.0.zip --tag v0.1.0 --out dist
 
-The publish workflow then writes the Homebrew cask with `cask`.
+Once the release is approved, the publish job writes the Homebrew cask with
+`cask`.
 
 `archive --signing adhoc` builds without the Developer ID certificate, for
 trying the packaging steps without it, and `rehearse` turns two such builds
 into an update that can be tried on this Mac with no credentials at all.
 
-The process is the one Errol uses, with two differences. Roga's code is in a
-private repository, so the downloads go to the releases of a public one,
-tmarkovski/roga-releases. And Sparkle's tools come from the package that
-xcodebuild resolves for the app, so they're always the version the app links.
+The process is the one Errol uses, except that Sparkle's tools come from the
+package that xcodebuild resolves for the app, so they're always the version
+the app links, and that Roga also has a Homebrew cask.
 
 Credentials come from the environment in CI and from the keychain on a Mac:
 notarizing reads NOTARY_KEY_P8 (base64), NOTARY_KEY_ID, and NOTARY_ISSUER_ID
@@ -56,7 +56,7 @@ SCHEME = "Roga"
 APP_NAME = "Roga"
 BUNDLE_ID = "sh.roga.app"
 TEAM_ID = "JN3SN725AZ"
-RELEASES_REPO = "tmarkovski/roga-releases"
+GITHUB_REPO = "tmarkovski/roga"
 WEBSITE = "https://roga.sh"
 # Roga's Sparkle key is kept apart from other apps' keys, under its own
 # account in the keychain.
@@ -284,7 +284,7 @@ def dmg(app: Path, output: Path, volume_name: str, sign: bool) -> None:
     image has a background showing which way to drag; Roga's doesn't have one
     yet.
     """
-    # Imported here, so that the publish workflow can write the cask on Linux.
+    # Imported here, so that the publish job can write the cask on Linux.
     import dmgbuild
 
     icon = app / "Contents/Resources/AppIcon.icns"
@@ -348,7 +348,7 @@ def sparkle_tools() -> Path:
 def published_releases(limit: int) -> list[str]:
     """Tags of the newest published releases, leaving out drafts and prereleases."""
     listing = run(
-        "gh", "release", "list", "--repo", RELEASES_REPO,
+        "gh", "release", "list", "--repo", GITHUB_REPO,
         "--exclude-drafts", "--exclude-pre-releases",
         "--limit", str(limit), "--json", "tagName",
         capture_output=True, text=True,
@@ -406,7 +406,7 @@ def appcast(
     release alongside the ZIP.
     """
     tools = sparkle_tools()
-    prefix = download_url_prefix or f"https://github.com/{RELEASES_REPO}/releases/download/{tag}/"
+    prefix = download_url_prefix or f"https://github.com/{GITHUB_REPO}/releases/download/{tag}/"
     out.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as work_dir:
         work = Path(work_dir)
@@ -419,7 +419,7 @@ def appcast(
             # Only the newest feed is wanted; the ZIPs are there for deltas.
             patterns = ["--pattern", f"{APP_NAME}-*.zip"] + (["--pattern", "appcast.xml"] if index == 0 else [])
             fetched = run(
-                "gh", "release", "download", earlier, "--repo", RELEASES_REPO, "--dir", work, "--skip-existing",
+                "gh", "release", "download", earlier, "--repo", GITHUB_REPO, "--dir", work, "--skip-existing",
                 *patterns, check=False,
             )  # fmt: skip
             if fetched.returncode != 0:
@@ -429,7 +429,7 @@ def appcast(
             tools / "generate_appcast",
             "--download-url-prefix", prefix,
             "--link", WEBSITE,
-            "--full-release-notes-url", f"https://github.com/{RELEASES_REPO}/releases",
+            "--full-release-notes-url", f"https://github.com/{GITHUB_REPO}/releases",
             # Without it the notes become a link built on --link, roga.sh/<zip>.md,
             # which the site answers with its 404 page, shown raw in the window.
             "--embed-release-notes",
@@ -463,7 +463,7 @@ def cask(archive_zip: Path, out: Path) -> None:
     """Write the Homebrew cask that installs the release whose ZIP this is.
 
     The ZIP must be the one uploaded to the release, since the cask holds its
-    checksum. The publish workflow downloads it from there before calling this.
+    checksum. The publish job downloads it from there before calling this.
     """
     info = bundle_info(archive_zip)
     version = info["CFBundleShortVersionString"]
@@ -478,8 +478,8 @@ def cask(archive_zip: Path, out: Path) -> None:
   version "{version}"
   sha256 "{sha256}"
 
-  url "https://github.com/{RELEASES_REPO}/releases/download/v#{{version}}/{APP_NAME}-#{{version}}.zip",
-      verified: "github.com/{RELEASES_REPO}/"
+  url "https://github.com/{GITHUB_REPO}/releases/download/v#{{version}}/{APP_NAME}-#{{version}}.zip",
+      verified: "github.com/{GITHUB_REPO}/"
   name "Roga"
   desc "Native Git client for reviewing what your agents wrote"
   homepage "{WEBSITE}/"

@@ -1,31 +1,26 @@
 name: Release
 
 # Pushing a v* tag builds Roga, signs it with Developer ID, notarizes it,
-# checks it, and publishes it as a prerelease in tmarkovski/roga-releases.
-# Roga's code is private, so the downloads live in that public repository,
-# which holds nothing else. Installed copies don't see a prerelease: their
-# feed, roga.sh/appcast.xml, redirects to the feed in the latest release, and
-# GitHub never counts a prerelease as the latest.
+# checks it, and publishes it as a prerelease on GitHub. Installed copies don't
+# see a prerelease: their feed, roga.sh/appcast.xml, redirects to the feed in
+# the latest release, and GitHub never counts a prerelease as the latest.
 #
 # That leaves room to try the update on a real Mac before anyone else gets it.
 # Point a copy of Roga at the prerelease's own feed, check for updates, and
 # confirm it relaunches and agents' marks still come through:
 #
-#   defaults write sh.roga.app SUFeedURL https://github.com/tmarkovski/roga-releases/releases/download/vX.Y.Z/appcast.xml
+#   defaults write sh.roga.app SUFeedURL https://github.com/tmarkovski/roga/releases/download/vX.Y.Z/appcast.xml
 #
-# (and `defaults delete sh.roga.app SUFeedURL` afterwards). Then run the
-# Publish workflow, which makes the prerelease the latest release and updates
-# the Homebrew cask. From that moment every installed copy is offered the
-# update. Errol gates this step with a required reviewer on an environment,
-# which GitHub doesn't enforce for a private repository without Enterprise, so
-# here it's a workflow you start by hand.
+# (and `defaults delete sh.roga.app SUFeedURL` afterwards). Then approve the
+# publish job, which makes the prerelease the latest release and updates the
+# Homebrew cask. From that moment every installed copy is offered the update.
 #
-# Run by hand from the Actions tab, this is a dry run: it builds with ad hoc
+# Run by hand from the Actions tab, it's a dry run: it builds with ad hoc
 # signing, needs no credentials, and keeps the app, ZIP, and DMG as workflow
 # artifacts instead of making a release.
 #
 # Scripts/release/release.py does the work in each step, so every step can also
-# be run on a Mac. docs/releasing.md has the whole process.
+# be run on a Mac. The process is Errol's, and docs/releasing.md has all of it.
 
 on:
   push:
@@ -35,16 +30,12 @@ on:
 # Actions are pinned to commits, since this workflow handles the signing
 # secrets. The comment beside each names the release it came from.
 
-permissions:
-  contents: write
-
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
 env:
   APP_NAME: Roga
-  RELEASES_REPO: tmarkovski/roga-releases
   # Pinned deliberately: the runner image also carries betas, and a release
   # shouldn't be built with one. The JSON project format needs Xcode 27.2
   # (decision 11). Change it as a reviewed change.
@@ -54,6 +45,11 @@ jobs:
   build:
     name: Build, sign, notarize
     runs-on: xcode-27
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      build: ${{ steps.version.outputs.build }}
     env:
       RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') }}
     steps:
@@ -193,20 +189,17 @@ jobs:
           Scripts/verify-artifact.sh "$RUNNER_TEMP/build/$APP_NAME.app"
           Scripts/verify-artifact.sh "dist/$APP_NAME-$V.dmg"
 
-      # The dSYMs stay in this private repository, since they'd show the
-      # code's structure to anyone who downloads them.
       - name: Keep the dSYMs
         run: |
-          mkdir -p private
           ditto -c -k --sequesterRsrc --keepParent \
             "$RUNNER_TEMP/build/$APP_NAME.xcarchive/dSYMs" \
-            "private/$APP_NAME-${{ steps.version.outputs.version }}-dSYMs.zip"
+            "dist/$APP_NAME-${{ steps.version.outputs.version }}-dSYMs.zip"
 
       - name: Write the update feed
         if: env.RELEASE == 'true'
         env:
           SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
-          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           V="${{ steps.version.outputs.version }}"
@@ -219,40 +212,91 @@ jobs:
       - name: Publish the prerelease
         if: env.RELEASE == 'true'
         env:
-          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           V="${{ steps.version.outputs.version }}"
-          gh release create "v$V" --repo "$RELEASES_REPO" --prerelease --title "Roga $V" \
+          gh release create "v$V" --prerelease --verify-tag --title "Roga $V" \
             --notes-file "docs/release-notes/$V.md" dist/*
           cat >> "$GITHUB_STEP_SUMMARY" <<EOF
           ### Roga $V is a prerelease
 
-          Before publishing it, update a real copy of Roga to it:
+          Before approving the publish job, update a real copy of Roga to it:
 
           \`\`\`
-          defaults write sh.roga.app SUFeedURL https://github.com/$RELEASES_REPO/releases/download/v$V/appcast.xml
+          defaults write sh.roga.app SUFeedURL https://github.com/${{ github.repository }}/releases/download/v$V/appcast.xml
           \`\`\`
 
           Then choose Check for Updates, confirm Roga relaunches and agents' marks still come through, and run
-          \`defaults delete sh.roga.app SUFeedURL\`. Then run the Publish workflow with version $V.
+          \`defaults delete sh.roga.app SUFeedURL\`.
           EOF
-
-      - name: Keep the dSYMs with this repository's tag
-        if: env.RELEASE == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          V="${{ steps.version.outputs.version }}"
-          gh release create "v$V" --repo "$GITHUB_REPOSITORY" --verify-tag --title "Roga $V" \
-            --notes "Debug symbols for Roga $V. The download is in https://github.com/$RELEASES_REPO/releases/tag/v$V." \
-            private/*
 
       - name: Keep the dry run's builds
         if: env.RELEASE != 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: roga-dry-run
-          path: |
-            dist/
-            private/
+          path: dist/
+
+  publish:
+    name: Publish (after the update test)
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    # The environment requires a reviewer, and the approval is the update
+    # test: approving without trying the prerelease defeats the point of it.
+    environment: release-publish
+    permissions:
+      contents: write
+    env:
+      V: ${{ needs.build.outputs.version }}
+      # The tap is another repository, which this workflow's own token can't
+      # write to. Until the secret exists, publishing skips the cask.
+      TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+    steps:
+      - name: Make the prerelease the latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release edit "v$V" --repo "${{ github.repository }}" --prerelease=false --latest
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.TAP_TOKEN != ''
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        if: env.TAP_TOKEN != ''
+
+      - name: Update the Homebrew cask
+        if: env.TAP_TOKEN != ''
+        run: |
+          set -euo pipefail
+          GH_TOKEN="${{ github.token }}" gh release download "v$V" --repo "${{ github.repository }}" \
+            --pattern "$APP_NAME-$V.zip" --dir "$RUNNER_TEMP"
+          export GH_TOKEN="$TAP_TOKEN"
+          gh repo clone tmarkovski/homebrew-roga "$RUNNER_TEMP/tap" -- --depth 1
+          uv run Scripts/release/release.py cask "$RUNNER_TEMP/$APP_NAME-$V.zip" --out "$RUNNER_TEMP/tap/Casks/roga.rb"
+          cd "$RUNNER_TEMP/tap"
+          git add Casks/roga.rb
+          if git diff --cached --quiet; then
+            echo "The cask already installs $V."
+            exit 0
+          fi
+          git -c user.name="github-actions[bot]" \
+            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -m "Roga $V"
+          gh auth setup-git
+          git push
+
+      - name: Check the live feed
+        run: |
+          set -euo pipefail
+          BUILD="${{ needs.build.outputs.build }}"
+          for attempt in 1 2 3 4 5 6; do
+            if curl -fsSL https://roga.sh/appcast.xml | grep -q "<sparkle:version>$BUILD</sparkle:version>"; then
+              echo "roga.sh/appcast.xml offers build $BUILD."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::roga.sh/appcast.xml doesn't offer build $BUILD yet."
+          exit 1
