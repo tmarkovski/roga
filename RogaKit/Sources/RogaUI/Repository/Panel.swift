@@ -71,6 +71,11 @@ struct Panel<Leading: View, Trailing: View, Content: View>: View {
             }
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // The panel is never taller than the room it's given, even when
+                // what it shows can't get that short, as when it's minimized to
+                // its header. What doesn't fit runs off its bottom edge, so that
+                // its header lines up with the one beside it.
+                .frame(minHeight: 0, maxHeight: .infinity, alignment: .top)
         }
         .background(Palette.surface)
     }

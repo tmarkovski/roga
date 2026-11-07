@@ -83,3 +83,63 @@ struct LowerPanelSizeTests {
         #expect(LowerPanelSize.shorterShortcut.symbols == "⌃\u{2009}⌘\u{2009}↓")
     }
 }
+
+/// Where the panels' headers end up in a real layout, with one panel whose
+/// content can't get shorter than its own height.
+@MainActor
+@Suite(.timeLimit(.minutes(1)))
+struct MinimizedPanelHeadersTests {
+    final class Positions {
+        var leading: CGFloat?
+        var trailing: CGFloat?
+    }
+
+    /// A header's title that reports how far down the window it is.
+    func title(_ text: String, into position: @escaping (CGFloat) -> Void) -> some View {
+        Text(text)
+            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { position($0) }
+    }
+
+    @Test func bothHeadersShowAtTheBottomWhenOnePanelCantShrink() async throws {
+        let positions = Positions()
+        let height = 300.0
+        let view = PanelSplit(lowerHeight: .constant(200), lowerSize: .constant(.minimized)) {
+            Color.clear
+        } lower: {
+            PanelColumns(leadingWidth: .constant(200)) {
+                Panel {
+                    title("Commit") { positions.leading = $0 }
+                } trailing: {
+                    EmptyView()
+                } content: {
+                    // Like the note that asks for a commit to be selected.
+                    Color.clear.frame(minHeight: 100)
+                }
+            } trailing: {
+                Panel {
+                    title("Diff") { positions.trailing = $0 }
+                } trailing: {
+                    EmptyView()
+                } content: {
+                    Color.clear
+                }
+            }
+        }
+        .frame(width: 600, height: height)
+        let host = NSHostingView(rootView: view)
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 600, height: height), styleMask: .borderless, backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        for _ in 0..<20 where positions.leading == nil || positions.trailing == nil {
+            host.layoutSubtreeIfNeeded()
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        let leading = try #require(positions.leading)
+        let trailing = try #require(positions.trailing)
+        #expect(leading == trailing)
+        // Each title sits in the header, the last 40 points of the window.
+        #expect(leading > height - PanelSplitLayout.headerHeight)
+        #expect(leading < height - 10)
+        window.contentView = nil
+    }
+}
