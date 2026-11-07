@@ -146,6 +146,35 @@ public actor RepositorySession {
         try await DiffLoader.changedFiles(in: commit, git: git, directory: location.commonDirectory)
     }
 
+    /// Lists the files that differ from one commit to another, with the lines
+    /// added and removed in each.
+    ///
+    /// - Parameter from: The commit to compare from, or nil for nothing at all,
+    ///   which lists every file in `to` as added.
+    public nonisolated func changedFiles(from: ObjectID?, to: ObjectID) async throws -> [DiffFile] {
+        try await DiffLoader.changedFiles(from: from, to: to, format: location.format, git: git, directory: location.commonDirectory)
+    }
+
+    /// Reads what a stash holds, from its commit.
+    ///
+    /// - Throws: `RepositoryError.notAStash` for a commit that isn't one.
+    public func stashContents(_ stash: ObjectID) async throws -> StashContents {
+        guard let commit = try await commits([stash]).first ?? nil else { throw RepositoryError.notAStash(stash) }
+        return try await StashContents.load(
+            stash: stash, parents: commit.parents, format: location.format, git: git, directory: location.commonDirectory
+        )
+    }
+
+    /// Reads a branch's commits since it left the branches it's compared with, by
+    /// their full names, and where it left them.
+    ///
+    /// - Parameter limit: The most commits to list.
+    /// - Throws: `RepositoryError.noSuchRef` when the branch isn't there any more.
+    @concurrent
+    public nonisolated func review(branch: String, against others: [String], limit: Int = 10_000) async throws -> BranchReview {
+        try await BranchReview.load(branch: branch, against: others, limit: limit, git: git, directory: location.commonDirectory)
+    }
+
     /// Reads what a commit changed in one of its files, which is the slower
     /// half of showing a commit, so it waits until someone looks at the file.
     ///
@@ -219,6 +248,8 @@ public actor RepositorySession {
         switch source {
         case .commit(let commit):
             try await patch(of: file, in: commit)
+        case .commits(let from, let to, _):
+            try await DiffLoader.patch(of: file, from: from, to: to, format: location.format, git: git, directory: location.commonDirectory)
         case .worktree(let path, let group, let head):
             try await ChangesLoader.patch(of: file, in: group, head: head, directory: path, format: location.format, git: git)
         }
@@ -696,6 +727,19 @@ public actor RepositorySession {
 /// Where a file's changes are, which says how to read its patch.
 public enum PatchSource: Sendable, Hashable {
     case commit(ObjectID)
+    /// What changed from one commit to another. `from` is nil for nothing at
+    /// all, such as the parent of a root commit. `group` says which part of a
+    /// stash the file is in, and is nil otherwise.
+    case commits(from: ObjectID?, to: ObjectID, group: WorktreeChanges.Group? = nil)
+
+    /// The group of a worktree's changes or a stash's that the file is in.
+    public var group: WorktreeChanges.Group? {
+        switch self {
+        case .commit: nil
+        case .commits(_, _, let group): group
+        case .worktree(_, let group, _): group
+        }
+    }
     /// A group of a worktree's uncommitted files. `head` is the commit that
     /// the worktree's staged changes compare with, or nil when there's none yet.
     case worktree(path: String, group: WorktreeChanges.Group, head: ObjectID?)

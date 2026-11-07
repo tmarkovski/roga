@@ -11,10 +11,10 @@ struct CommitList: NSViewRepresentable {
     /// The model's history version, so that SwiftUI updates the list when it
     /// changes.
     let version: Int
-    /// The model's selected row, which is set from outside the list when a
+    /// The model's selected rows, which are set from outside the list when a
     /// new history puts the commit in another row, or when the commit panel
-    /// goes to a parent.
-    let selectedRow: Int?
+    /// goes to a parent, or when a branch is reviewed.
+    let selectedRows: IndexSet
     /// Shows one of the repository's worktrees in the window, by its folder,
     /// with a commit selected in it.
     let showWorktree: (String, ObjectID?) -> Void
@@ -29,7 +29,7 @@ struct CommitList: NSViewRepresentable {
 
     func updateNSView(_ view: NSScrollView, context: Context) {
         context.coordinator.showWorktree = showWorktree
-        context.coordinator.show(version, selecting: selectedRow)
+        context.coordinator.show(version, selecting: selectedRows)
     }
 
     final class Coordinator {
@@ -42,7 +42,7 @@ struct CommitList: NSViewRepresentable {
                 count: { model.rowCount },
                 content: { model.rowContent($0) },
                 loadText: { await model.loadText(for: $0) },
-                selectRow: { model.selectRow($0) }
+                selectRows: { model.selectRows($0) }
             ))
             controller.source.checkOut = { [unowned self] badge in
                 model.checkOut(badge) { [unowned self] in showWorktree($0, $1) }
@@ -59,12 +59,12 @@ struct CommitList: NSViewRepresentable {
             controller.source.canDiscardChanges = { model.selectedChanges.canDiscardEverything() }
         }
 
-        func show(_ version: Int, selecting row: Int?) {
+        func show(_ version: Int, selecting rows: IndexSet) {
             if version != shownVersion {
                 shownVersion = version
                 controller.reloadData()
             }
-            controller.select(row: row)
+            controller.select(rows: rows)
         }
     }
 }

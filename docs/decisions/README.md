@@ -63,3 +63,4 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [53](0053-organizations-as-groups-in-the-list-and-add-and-settings-at-the-top.md) | Organizations as groups in the list, and Add Repositories and Settings at the top | Accepted |
 | [54](0054-menus-as-wide-as-their-rows-and-shortcuts-for-the-worktree-on-screen.md) | Menus as wide as their rows, and shortcuts for the worktree on screen | Accepted |
 | [55](0055-split-the-panel-for-uncommitted-changes-40-40-and-20.md) | Split the panel for uncommitted changes 40, 40 and 20 | Accepted |
+| [56](0056-the-panels-show-a-run-of-commits-two-commits-a-branch-or-a-stash.md) | The panels show a run of commits, two commits, a branch or a stash | Accepted |
