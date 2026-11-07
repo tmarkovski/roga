@@ -1,4 +1,4 @@
-# 57. The mark under the menu's button, and the count before it
+# 58. The mark under the menu's button, and the count before it
 
 Accepted on 2026-11-07. Partly supersedes [decision 51](0051-marks-at-the-right-of-a-sidebar-row-and-names-that-fade.md), which put an agent's mark just before the count and kept it there on hover, while the count gave way to the menu's button. The rest of decision 51 still holds.
 

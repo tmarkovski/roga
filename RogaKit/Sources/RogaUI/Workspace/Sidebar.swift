@@ -380,7 +380,7 @@ private struct GroupLabel: View {
 /// over it: 24-point buttons 4 points from the row's top and right edges.
 ///
 /// An agent's mark sits at the right edge, in a box as wide as a command's
-/// button, and the menu's button covers it on hover (decisions 41 and 57). The
+/// button, and the menu's button covers it on hover (decisions 41 and 58). The
 /// row's second line still says what the agent is doing. The label, such as
 /// the count, sits just before that box, which every row keeps whether or not
 /// it has a mark, so that the counts line up and the pointer never hides one.

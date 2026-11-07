@@ -52,16 +52,17 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [42](0042-run-each-line-down-to-its-parent-in-its-lanes-color.md) | Run each line down to its parent, in its lane's color | Accepted |
 | [43](0043-show-a-new-version-in-the-sidebar-rather-than-sparkles-window.md) | Show a new version in the sidebar, rather than in Sparkle's window | Moved from the rail to a row at the top of the sidebar by [53](0053-organizations-as-groups-in-the-list-and-add-and-settings-at-the-top.md) |
 | [44](0044-revert-a-commit-from-its-menu-in-history.md) | Revert a commit from its menu in history | Accepted |
-| [45](0045-fetch-and-new-branch-as-buttons-and-the-commit-count-with-history.md) | Fetch and New Branch as buttons, and the number of commits with history's commands | Accepted |
+| [45](0045-fetch-and-new-branch-as-buttons-and-the-commit-count-with-history.md) | Fetch and New Branch as buttons, and the number of commits with history's commands | The Fetch icon's turn replaced by the house dropping through the button in [57](0057-the-house-drops-through-the-fetch-button.md) |
 | [46](0046-turn-the-ring-of-an-agent-at-work.md) | Turn the ring of an agent at work | Accepted |
 | [47](0047-say-what-an-agent-is-doing-in-a-line-the-helper-makes.md) | Say what an agent is doing, in a line the helper makes | Accepted |
 | [48](0048-a-second-line-under-a-sidebar-row-while-theres-something-to-say.md) | A second line under a sidebar row while there's something to say | The mark moved to the right of the row, and the line's words given a fade and how long its own place at the right, by [51](0051-marks-at-the-right-of-a-sidebar-row-and-names-that-fade.md) |
 | [49](0049-look-again-at-what-changes-on-disk.md) | Look again at what changes on disk | Accepted |
 | [50](0050-branches-in-folders-at-each-slash-of-their-names.md) | Branches in folders, at each slash of their names | Accepted |
-| [51](0051-marks-at-the-right-of-a-sidebar-row-and-names-that-fade.md) | Marks at the right of a sidebar row, and names that fade | The mark moved under the menu's button, and the count before it, by [57](0057-the-mark-under-the-menus-button-and-the-count-before-it.md) |
+| [51](0051-marks-at-the-right-of-a-sidebar-row-and-names-that-fade.md) | Marks at the right of a sidebar row, and names that fade | The mark moved under the menu's button, and the count before it, by [58](0058-the-mark-under-the-menus-button-and-the-count-before-it.md) |
 | [52](0052-maximize-or-minimize-the-panels-under-history.md) | Maximize or minimize the panels under history | Accepted |
 | [53](0053-organizations-as-groups-in-the-list-and-add-and-settings-at-the-top.md) | Organizations as groups in the list, and Add Repositories and Settings at the top | Accepted |
 | [54](0054-menus-as-wide-as-their-rows-and-shortcuts-for-the-worktree-on-screen.md) | Menus as wide as their rows, and shortcuts for the worktree on screen | Accepted |
 | [55](0055-split-the-panel-for-uncommitted-changes-40-40-and-20.md) | Split the panel for uncommitted changes 40, 40 and 20 | Accepted |
 | [56](0056-the-panels-show-a-run-of-commits-two-commits-a-branch-or-a-stash.md) | The panels show a run of commits, two commits, a branch or a stash | Accepted |
-| [57](0057-the-mark-under-the-menus-button-and-the-count-before-it.md) | The mark under the menu's button, and the count before it | Accepted |
+| [57](0057-the-house-drops-through-the-fetch-button.md) | The house drops through the Fetch button | Accepted |
+| [58](0058-the-mark-under-the-menus-button-and-the-count-before-it.md) | The mark under the menu's button, and the count before it | Accepted |
