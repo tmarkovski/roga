@@ -4,7 +4,7 @@ import SwiftUI
 /// updates. The boards also draw reopening windows at launch, the rail of
 /// organizations and an editor for Open in Editor. Reopening windows and the
 /// editor wait until they can work, since there's no Open in Editor yet, and
-/// groups in the sidebar's list replaced the rail (decision 52).
+/// groups in the sidebar's list replaced the rail (decision 53).
 ///
 /// Search shows it too, with only the settings it found.
 struct GeneralSection: View {

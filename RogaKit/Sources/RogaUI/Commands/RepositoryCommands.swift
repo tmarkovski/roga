@@ -13,6 +13,7 @@ public struct RepositoryCommands: Commands {
     @FocusedValue(\.sidebarVisibility) private var sidebarVisibility
     @FocusedValue(\.deleteSelectedWorktree) private var deleteSelectedWorktree
     @FocusedValue(\.refsPanelVisibility) private var refsPanelVisibility
+    @FocusedValue(\.lowerPanelSize) private var lowerPanelSize
     @FocusedValue(\.openSettings) private var openSettings
     @AppStorage(RefsPanelSettings.sort) private var refsSort = RefsModel.Sort.name
     @AppStorage(SidebarSettings.groupsByOrganization) private var groupsByOrganization = true
@@ -150,6 +151,20 @@ public struct RepositoryCommands: Commands {
                     Text(sort.title).tag(sort)
                 }
             }
+            Divider()
+            // A step at a time, the way the arrows point: up from minimized
+            // goes back to the panels' height, and from there covers history.
+            let size = lowerPanelSize?.wrappedValue ?? .regular
+            Button(size.tallerTitle) {
+                if let taller = size.taller { lowerPanelSize?.wrappedValue = taller }
+            }
+            .keyboardShortcut(LowerPanelSize.tallerShortcut)
+            .disabled(lowerPanelSize == nil || size.taller == nil)
+            Button(size.shorterTitle) {
+                if let shorter = size.shorter { lowerPanelSize?.wrappedValue = shorter }
+            }
+            .keyboardShortcut(LowerPanelSize.shorterShortcut)
+            .disabled(lowerPanelSize == nil || size.shorter == nil)
             Divider()
         }
         CommandGroup(before: .toolbar) {

@@ -2,7 +2,7 @@ import Foundation
 import GitCore
 
 /// A group of repositories in the sidebar's list, under a gray label
-/// (decision 52).
+/// (decision 53).
 enum SidebarGroup: Hashable, Sendable {
     /// An organization, by its name in lowercase.
     case organization(String)
@@ -48,7 +48,7 @@ enum SidebarSort: String, CaseIterable, Sendable {
 }
 
 /// How the sidebar arranges its repositories, which the menu at the top of its
-/// list picks, for every window (decision 52).
+/// list picks, for every window (decision 53).
 struct SidebarArrangement: Equatable {
     /// Whether the list has a group for each organization, and one for the
     /// rest, or every repository in one run.
@@ -87,7 +87,7 @@ struct RepositoryOrganization: Identifiable {
     var group: SidebarGroup { .organization(id) }
 }
 
-/// The repositories grouped by organization (decisions 16, 18 and 52).
+/// The repositories grouped by organization (decisions 16, 18 and 53).
 struct RepositoryGroups {
     /// From A to Z.
     private(set) var organizations: [RepositoryOrganization] = []

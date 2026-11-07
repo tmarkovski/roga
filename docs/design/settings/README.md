@@ -73,7 +73,7 @@ Each hook runs `roga-hook hook --host <agent> --event <name>`, a launcher in Rog
 
 - **A theme of Roga's own.** Appearance starts with an Interface section and its Theme: System, which is the default, Light and Dark, with Lucide's `monitor`, `sun` and `moon`. Roga sets the application's appearance, so every window, sheet and menu changes at once, and it applies the stored theme as it starts, before its first window, so a dark theme never shows a light window first. Each choice has its word beside its icon, on the board too, because a monitor alone doesn't say "follow the system". The graph's lanes, the badges, the diff, the house (still or moving) and the menus all follow while they're on screen. A menu that's open while the theme changes keeps the look it opened with, as any macOS menu does, and the next one opens in the new theme. Built on November 6, 2026.
 
-- **Settings is a row at the top of the sidebar,** under Add Repositories, now that organizations are groups in the list and the rail and its gear are gone ([decision 52](../../decisions/0052-organizations-as-groups-in-the-list-and-add-and-settings-at-the-top.md)). It keeps the darker gray while the sheet is open, as the gear did, and a new version shows as an orange row under it. Decided on November 7, 2026.
+- **Settings is a row at the top of the sidebar,** under Add Repositories, now that organizations are groups in the list and the rail and its gear are gone ([decision 53](../../decisions/0053-organizations-as-groups-in-the-list-and-add-and-settings-at-the-top.md)). It keeps the darker gray while the sheet is open, as the gear did, and a new version shows as an orange row under it. Decided on November 7, 2026.
 
 ## Still to decide
 

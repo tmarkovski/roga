@@ -1,4 +1,4 @@
-# 52. Organizations as groups in the list, and Add Repositories and Settings at the top
+# 53. Organizations as groups in the list, and Add Repositories and Settings at the top
 
 Accepted on 2026-11-07. This supersedes the rail of [decision 16](0016-a-rail-of-organizations-in-the-sidebar.md): picking one organization at a time, Command-1 to Command-9, View > Hide Organizations, and each window remembering its organization and the worktree it last showed there. It supersedes [decision 36](0036-a-solid-ink-tile-for-whats-selected-on-the-rail.md), whose ink tile only the rail had, and moves the new version that [decision 43](0043-show-a-new-version-in-the-sidebar-rather-than-sparkles-window.md) put above the rail's gear. It changes [decision 18](0018-every-remote-counts-toward-a-repositorys-organization.md) so that a repository with remotes in two organizations is listed once. Repositories' rows and their worktrees stay as decisions 16, 17, 48 and 51 have them.
 

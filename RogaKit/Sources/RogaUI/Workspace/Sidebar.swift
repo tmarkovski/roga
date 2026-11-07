@@ -8,7 +8,7 @@ import SwiftUI
 /// The window's sidebar: rows for adding repositories and for Settings at the
 /// top, and under them the list of repositories with their worktrees, in a
 /// group for each organization unless the person turned that off
-/// (docs/main-window.md, decision 52).
+/// (docs/main-window.md, decision 53).
 ///
 /// It draws its own rows rather than using a `List`, because its rows fill
 /// with gray on hover and when selected, and swap a label for commands on

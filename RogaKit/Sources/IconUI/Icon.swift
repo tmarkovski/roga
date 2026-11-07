@@ -69,6 +69,14 @@ extension Icon {
     public static let agent = bot
     public static let organization = buildingComplex
 
+    // The panels under history, which can cover history and the refs panel, or
+    // fold down to their headers. Each command's icon turns into the one that
+    // puts them back.
+    public static let maximize = maximize2
+    public static let unmaximize = minimize2
+    public static let minimize = panelBottomClose
+    public static let unminimize = panelBottomOpen
+
     // The themes in Settings › Appearance.
     public static let systemTheme = monitor
     public static let lightTheme = sun
