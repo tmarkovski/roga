@@ -283,7 +283,7 @@ private struct SidebarCommandRow: View {
                     .foregroundStyle(tint.map(AnyShapeStyle.init) ?? AnyShapeStyle(.secondary))
                     .frame(width: 16)
                 Text(title)
-                    .font(.system(size: 14))
+                    .font(.system(size: 13))
                     .lineLimit(1)
                     .foregroundStyle(tint.map(AnyShapeStyle.init) ?? AnyShapeStyle(.primary))
             }
@@ -641,7 +641,7 @@ private struct RepositoryRow: View {
         SidebarRow(isSelected: isSelected, agent: agent, unfinished: unfinished, action: select) {
             HStack(spacing: 3) {
                 FadingText(title)
-                    .font(.system(size: 14))
+                    .font(.system(size: 13))
                     .layoutPriority(1)
                 if linkedWorktrees > 0 {
                     Button(action: toggle) {
@@ -773,7 +773,7 @@ private struct WorktreeRow: View {
         let agent = agents?.summary
         SidebarRow(isSelected: isSelected, isEnabled: !isDeleting, canSelect: canSelect, agent: agent, unfinished: unfinished, lineIndent: WorktreeConnector.textIndent, action: select) {
             FadingText(worktree.title)
-                .font(.system(size: 14))
+                .font(.system(size: 13))
                 .opacity(worktree.isPrunable ? 0.6 : 1)
                 .padding(.leading, WorktreeConnector.textIndent)
         } trailing: {
