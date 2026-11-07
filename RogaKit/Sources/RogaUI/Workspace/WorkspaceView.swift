@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import GitCore
 import GitRunner
@@ -57,6 +58,53 @@ public struct WorkspaceWindow: Codable, Hashable, Sendable {
     func leavesRoom(for width: Double, besides taken: Double) -> Bool {
         guard let available = room(besides: taken), let shown else { return true }
         return available - shown >= width + Self.toolbarSpacing
+    }
+}
+
+/// Says how far the pointer is from the leading edge of the window, or nil once
+/// it has left. It's an AppKit tracking area behind the window's views rather
+/// than SwiftUI's hover, which hit-tests the views under the pointer again
+/// whenever they move, as they all do on every frame while the sidebar's line
+/// is dragged.
+private struct PointerTracker: NSViewRepresentable {
+    let moved: (Double?) -> Void
+
+    func makeNSView(context: Context) -> TrackingView {
+        let view = TrackingView()
+        view.moved = moved
+        return view
+    }
+
+    func updateNSView(_ view: TrackingView, context: Context) {
+        view.moved = moved
+    }
+
+    final class TrackingView: NSView {
+        var moved: (Double?) -> Void = { _ in }
+
+        override init(frame: NSRect) {
+            super.init(frame: frame)
+            addTrackingArea(NSTrackingArea(
+                rect: .zero,
+                options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                owner: self
+            ))
+        }
+
+        required init?(coder: NSCoder) {
+            fatalError("The tracker is made in code.")
+        }
+
+        /// Lets every click through to the views in front.
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        override func mouseEntered(with event: NSEvent) { report(event) }
+        override func mouseMoved(with event: NSEvent) { report(event) }
+        override func mouseExited(with event: NSEvent) { moved(nil) }
+
+        private func report(_ event: NSEvent) {
+            moved(convert(event.locationInWindow, from: nil).x)
+        }
     }
 }
 
@@ -243,11 +291,9 @@ public struct WorkspaceView: View {
                 .sharedBackgroundVisibility(.hidden)
             }
         }
-        .onContinuousHover { phase in
-            switch phase {
-            case .active(let location): sidebarLine.pointerMoved(toX: location.x)
-            case .ended: sidebarLine.pointerMoved(toX: nil)
-            }
+        .background {
+            PointerTracker { sidebarLine.pointerMoved(toX: $0) }
+                .ignoresSafeArea()
         }
         .navigationTitle(title)
         .frame(minWidth: 720, minHeight: 480)
