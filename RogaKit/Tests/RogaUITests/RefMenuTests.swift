@@ -94,6 +94,30 @@ struct RefMenuTests {
         #expect(chosen == ["agent/fix-login"])
     }
 
+    @Test func anOptionSaysWhetherItsChosenAndRunsItsAction() {
+        var chosen: [String] = []
+        let menu = RefMenu.make([
+            .header("Sort By"),
+            .option("Name", isChecked: true) { chosen.append("Name") },
+            .option("Uncommitted Changes", isChecked: false) { chosen.append("Uncommitted Changes") },
+        ])
+        #expect(rows(menu).map(\.title) == ["Sort By", "Name", "Uncommitted Changes"])
+        #expect(rows(menu).map(\.state) == [.off, .on, .off])
+        #expect(heights(menu) == [24, 28, 28])
+        choose(at: 2, in: menu)
+        #expect(chosen == ["Uncommitted Changes"])
+    }
+
+    @Test func aMenuOfOptionsIsNarrowerThanOneOfCommands() {
+        let options = RefMenu.make([.option("Name", isChecked: true) {}, .option("None", isChecked: false) {}])
+        #expect(widths(options) == [180])
+        let mixed = RefMenu.make([.option("Name", isChecked: true) {}, .command("Copy Name") {}])
+        #expect(widths(mixed) == [264])
+        // A long option still leaves room for its checkmark after it.
+        let long = RefMenu.make([.option(String(repeating: "Uncommitted Changes ", count: 8), isChecked: true) {}])
+        #expect(widths(long) == [480])
+    }
+
     @Test func aChoiceIsAsWideAsItsSecondLineUpToTheLimit() throws {
         let short = RefMenu.make([choice("main")])
         #expect(widths(short) == [264])

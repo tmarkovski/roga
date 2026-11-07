@@ -51,7 +51,7 @@ The list starts with **Repositories** in bold and how many there are, and at its
 - A label shows a chevron after its name while the pointer is over it, and clicking it collapses or expands the group, for every window. A collapsed group goes on showing the repository with the selected worktree, and its label has the mark of the most urgent agent among the worktrees it hides.
 - **Without groups**, the list has every repository in one run.
 - **Sorted by name**, repositories go from A to Z. **Sorted by uncommitted changes**, the ones whose worktrees have the most uncommitted files come first, and those with as many go from A to Z. Grouped, each group is sorted on its own.
-- The menu at the right of the list's header has **Group By** Organization or None, and **Sort By** Name or Uncommitted Changes. The View menu has the same, as Group Repositories by Organization, Control-Command-O, and Sort Repositories. Both are one setting for every window.
+- The menu at the right of the list's header has **Group By** Organization or None, and **Sort By** Name or Uncommitted Changes, with a checkmark at the right of each one that's chosen. The View menu has the same, as Group Repositories by Organization, Control-Command-O, and Sort Repositories. Both are one setting for every window.
 
 ### Adding repositories
 

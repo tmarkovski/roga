@@ -1,8 +1,9 @@
 import AppKit
 import IconUI
 
-/// The menu for right-clicking a ref, a commit or a row in the sidebar, and for
-/// choosing one of a repository's worktrees. It draws its own rows, because an
+/// The menu for right-clicking a ref, a commit or a row in the sidebar, for
+/// choosing one of a repository's worktrees, and for choosing how a list is
+/// arranged. It draws its own rows, because an
 /// `NSMenuItem`'s title can't choose how tall its row is or how wide its margins
 /// are, and it fills with the accent color rather than the panels' soft gray. It's
 /// still an `NSMenu`, so macOS handles the arrow keys, typing to select and closing
@@ -13,6 +14,9 @@ public enum RefMenu {
         /// A dim line that names what the commands under it act on.
         case header(String)
         case command(String, isDestructive: Bool = false, isEnabled: Bool = true, action: () -> Void)
+        /// One of a set of ways to do something, such as how a list is sorted,
+        /// with a checkmark at the right of the one that's chosen.
+        case option(String, isChecked: Bool, action: () -> Void)
         /// One of several places to go, such as a worktree, with what's going on
         /// there on a second line.
         case choice(Choice)
@@ -98,6 +102,7 @@ public enum RefMenu {
         let hasChoices = entries.contains { if case .choice = $0 { true } else { false } }
         let inset = hasChoices ? Metrics.choiceTextInset : Metrics.textInset
         let width = Metrics.width(fitting: entries, inset: inset)
+        let commandSize = NSSize(width: width, height: Metrics.commandHeight)
         for entry in entries {
             switch entry {
             case let .header(title):
@@ -117,8 +122,14 @@ public enum RefMenu {
                     font: Metrics.commandFont,
                     color: Colors.row(isDestructive: isDestructive, isEnabled: isEnabled),
                     inset: inset,
-                    size: NSSize(width: width, height: Metrics.commandHeight)
+                    size: commandSize
                 )
+                menu.addItem(item)
+            case let .option(title, isChecked, action):
+                let item = item(title: title, isEnabled: true, action: action)
+                // Drawn by the row, and read by VoiceOver from the item.
+                item.state = isChecked ? .on : .off
+                item.view = RowView(title: title, font: Metrics.commandFont, color: Colors.command, inset: inset, size: commandSize, isChecked: isChecked)
                 menu.addItem(item)
             case let .choice(choice):
                 let item = item(title: choice.title, isEnabled: choice.isEnabled, action: choice.action)
@@ -171,6 +182,14 @@ private enum Metrics {
     static let highlightInset = 6.0
     static let highlightRadius = 9.0
     static let minimumWidth = 264.0
+    /// A menu of options only, such as how to sort a list, has short titles,
+    /// so it can be narrower.
+    static let minimumOptionsWidth = 180.0
+    /// From the menu's right edge to the middle of an option's checkmark,
+    /// which ends where text would, and what an option takes for it after its
+    /// title.
+    static let optionCheckCenter = textInset + 7
+    static let optionCheckRoom = 30.0
     /// A longer name gets cut short in its middle, where branch names differ least.
     static let maximumWidth = 480.0
     /// What a choice's last part, such as a folder, keeps when the parts
@@ -187,11 +206,18 @@ private enum Metrics {
             switch entry {
             case let .header(title): inset + textWidth(title, font: headerFont)
             case let .command(title, _, _, _): inset + textWidth(title, font: commandFont)
+            case let .option(title, _, _): inset + textWidth(title, font: commandFont) + optionCheckRoom
             case let .choice(choice): choiceTextInset + choiceWidth(choice)
             case .divider: 0
             }
         }.max() ?? 0
-        return min(max(widest.rounded(.up) + textInset, minimumWidth), maximumWidth)
+        let onlyOptions = entries.allSatisfy { entry in
+            switch entry {
+            case .option, .header, .divider: true
+            case .command, .choice: false
+            }
+        }
+        return min(max(widest.rounded(.up) + textInset, onlyOptions ? minimumOptionsWidth : minimumWidth), maximumWidth)
     }
 
     /// How wide a choice's text and count are.
@@ -372,6 +398,21 @@ private class MenuRowView: NSView {
         ).fill()
     }
 
+    func drawSymbol(_ image: NSImage, size: Double, weight: NSFont.Weight, color: NSColor, centeredAt center: NSPoint) {
+        let configuration = NSImage.SymbolConfiguration(pointSize: size, weight: weight)
+            .applying(NSImage.SymbolConfiguration(paletteColors: [color]))
+        let symbol = image.withSymbolConfiguration(configuration) ?? image
+        let rect = NSRect(
+            x: (center.x - symbol.size.width / 2).rounded(),
+            y: (center.y - symbol.size.height / 2).rounded(),
+            width: symbol.size.width,
+            height: symbol.size.height
+        )
+        symbol.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+    }
+
+    static let checkmark = Icon.check.nsImage ?? NSImage()
+
     // A view in a menu gets the clicks that its item would have handled, including
     // the release of a right-click that was dragged here.
     override func mouseUp(with event: NSEvent) {
@@ -391,15 +432,18 @@ private class MenuRowView: NSView {
     }
 }
 
-/// A row's text, and the fill under it while it's highlighted.
+/// A row's text, and the fill under it while it's highlighted. An option that's
+/// chosen has a checkmark at the right, where its text would end.
 private final class RowView: MenuRowView {
     private let title: String
     private let inset: Double
+    private let isChecked: Bool
     private let attributes: [NSAttributedString.Key: Any]
 
-    init(title: String, font: NSFont, color: NSColor, inset: Double, size: NSSize) {
+    init(title: String, font: NSFont, color: NSColor, inset: Double, size: NSSize, isChecked: Bool = false) {
         self.title = title
         self.inset = inset
+        self.isChecked = isChecked
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineBreakMode = .byTruncatingMiddle
         attributes = [.font: font, .foregroundColor: color, .paragraphStyle: paragraph]
@@ -417,11 +461,14 @@ private final class RowView: MenuRowView {
             in: NSRect(
                 x: inset,
                 y: (bounds.height - height) / 2,
-                width: bounds.width - inset - Metrics.textInset,
+                width: bounds.width - inset - Metrics.textInset - (isChecked ? Metrics.optionCheckRoom : 0),
                 height: height
             ),
             withAttributes: attributes
         )
+        if isChecked {
+            drawSymbol(Self.checkmark, size: 15, weight: .regular, color: Colors.command, centeredAt: NSPoint(x: bounds.width - Metrics.optionCheckCenter, y: bounds.midY))
+        }
     }
 }
 
@@ -536,21 +583,6 @@ private final class ChoiceView: MenuRowView {
         let height = (count.text as NSString).size(withAttributes: attributes).height
         (count.text as NSString).draw(at: NSPoint(x: x, y: rect.midY - height / 2), withAttributes: attributes)
     }
-
-    private func drawSymbol(_ image: NSImage, size: Double, weight: NSFont.Weight, color: NSColor, centeredAt center: NSPoint) {
-        let configuration = NSImage.SymbolConfiguration(pointSize: size, weight: weight)
-            .applying(NSImage.SymbolConfiguration(paletteColors: [color]))
-        let symbol = image.withSymbolConfiguration(configuration) ?? image
-        let rect = NSRect(
-            x: (center.x - symbol.size.width / 2).rounded(),
-            y: (center.y - symbol.size.height / 2).rounded(),
-            width: symbol.size.width,
-            height: symbol.size.height
-        )
-        symbol.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
-    }
-
-    private static let checkmark = Icon.check.nsImage ?? NSImage()
 
     private static func attributes(font: NSFont, color: NSColor, lineBreak: NSLineBreakMode = .byTruncatingMiddle) -> [NSAttributedString.Key: Any] {
         let paragraph = NSMutableParagraphStyle()

@@ -36,6 +36,8 @@ struct Sidebar: View {
     /// grouped and sorted, it's one setting for every window.
     @AppStorage(SidebarSettings.collapsedGroups) private var collapsedGroups = ""
     @State private var isAddingRepositories = false
+    /// Opens the menu that groups and sorts the list for VoiceOver's press.
+    @State private var arrangementOpener = RefMenuOpener()
     @State private var adding = AddRepositoriesChoices()
     @State private var deletions = WorktreeDeletionModel()
     @State private var repairs = WorktreeRepairModel()
@@ -87,20 +89,29 @@ struct Sidebar: View {
         collapsedGroups = SidebarArrangement.saved(collapsed)
     }
 
-    /// The menu at the right of the list's header, which groups and sorts the
-    /// list, as the View menu does.
+    /// The button at the right of the list's header, with a menu that groups
+    /// and sorts the list, as the View menu does. It's one of Roga's own menus,
+    /// which puts the checkmark at the right of the option that's chosen.
     private var arrangementMenu: some View {
-        Menu {
-            SidebarArrangementPickers(groupsByOrganization: $groupsByOrganization, sort: $sort)
-        } label: {
-            HoverIcon(size: 24) { Icon.slidersHorizontal.image }
+        let entries = arrangementEntries
+        return HoverIcon(size: 24) { Icon.slidersHorizontal.image }
+            .overlay { RefMenuArea(entries: entries, opensOnClick: true, opener: arrangementOpener) }
+            .help("Group and Sort")
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Group and Sort")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { arrangementOpener.open() }
+            .accessibilityActions { refMenuActions(entries) }
+    }
+
+    private var arrangementEntries: [RefMenu.Entry] {
+        let grouping: [RefMenu.Entry] = [(true, "Organization"), (false, "None")].map { value, title in
+            .option(title, isChecked: groupsByOrganization == value) { groupsByOrganization = value }
         }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .help("Group and Sort")
-        .accessibilityLabel("Group and Sort")
+        let order: [RefMenu.Entry] = SidebarSort.allCases.map { option in
+            .option(option.title, isChecked: sort == option) { sort = option }
+        }
+        return [.header("Group By")] + grouping + [.divider, .header("Sort By")] + order
     }
 
     /// Closes the popover while the open panel is up, because a popover can
@@ -246,28 +257,6 @@ struct Sidebar: View {
         default:
             return .ignored
         }
-    }
-}
-
-/// The two choices that arrange the sidebar's list: whether it has a group for
-/// each organization, and what order repositories go in. The menu at the top of
-/// the list and the View menu show the same choices.
-struct SidebarArrangementPickers: View {
-    @Binding var groupsByOrganization: Bool
-    @Binding var sort: SidebarSort
-
-    var body: some View {
-        Picker("Group By", selection: $groupsByOrganization) {
-            Text("Organization").tag(true)
-            Text("None").tag(false)
-        }
-        .pickerStyle(.inline)
-        Picker("Sort By", selection: $sort) {
-            ForEach(SidebarSort.allCases, id: \.self) { sort in
-                Text(sort.title).tag(sort)
-            }
-        }
-        .pickerStyle(.inline)
     }
 }
 

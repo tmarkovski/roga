@@ -12,7 +12,7 @@ The user pointed to Conductor's sidebar, which puts a few actions in rows at the
 
 **Adding repositories and Settings are rows at the top of the sidebar.** Each has an icon in gray and its title, is 32 points tall like the list's rows, and fills with gray on hover. Add Repositories keeps the darker gray while its popover is open, and Settings while its sheet is, because neither is a selection. A new version of Roga is a third row under them, in orange, reading Update to 1.4 or Restart to Update. A line across the sidebar separates these rows from the list.
 
-**The list has a header,** Repositories in bold with how many there are in gray, and at its right a button with sliders that opens a menu of two choices:
+**The list has a header,** Repositories in bold with how many there are in gray, and at its right a button with sliders that opens a menu of two choices. It's one of Roga's own menus, like a row's, with a checkmark at the right of the option that's chosen rather than the system's at the left:
 
 - **Group By** Organization, the default, or None.
 - **Sort By** Name, the default, or Uncommitted Changes.

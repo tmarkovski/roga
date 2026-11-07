@@ -16,6 +16,7 @@ struct SidebarMenusTests {
             case .divider: "—"
             case .header(let title): "# " + title
             case .choice(let choice): "> " + choice.title
+            case .option(let title, let isChecked, _): (isChecked ? "✓ " : "  ") + title
             }
         }
     }
