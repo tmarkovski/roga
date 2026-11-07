@@ -37,7 +37,7 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [27](0027-give-the-graph-and-branches-monokais-colors.md) | Give the graph and the branches Monokai's colors | Colors given to lanes rather than columns by [42](0042-run-each-line-down-to-its-parent-in-its-lanes-color.md) |
 | [28](0028-show-a-worktree-thats-stuck-partway.md) | Show a worktree that's stuck partway through | Reverts added by [44](0044-revert-a-commit-from-its-menu-in-history.md) |
 | [29](0029-dialogs-that-say-what-happens-and-show-the-command.md) | Dialogs that say what happens and show the command | Partly superseded by [33](0033-one-row-in-a-menu-and-the-choice-in-the-dialog.md) and [38](0038-one-delete-on-a-commit-with-its-branches-in-the-dialog.md) |
-| [30](0030-stage-and-commit-beside-history.md) | Stage and commit in the panels under history | When a heading's buttons show changed by [39](0039-discard-with-undo-and-ask-only-for-many.md) |
+| [30](0030-stage-and-commit-beside-history.md) | Stage and commit in the panels under history | When a heading's buttons show changed by [39](0039-discard-with-undo-and-ask-only-for-many.md), and how the panel's height is split by [55](0055-split-the-panel-for-uncommitted-changes-40-40-and-20.md) |
 | [31](0031-chevrons-for-what-folds-and-lines-down-a-tree.md) | Chevrons for what folds, and lines down a tree of files | Accepted |
 | [32](0032-ask-before-forcing-a-worktree-with-submodules.md) | Ask before forcing a worktree with submodules | Accepted |
 | [33](0033-one-row-in-a-menu-and-the-choice-in-the-dialog.md) | Put one row in a menu, and the choice in the dialog | A commit's menu changed by [38](0038-one-delete-on-a-commit-with-its-branches-in-the-dialog.md) |
@@ -52,7 +52,7 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [42](0042-run-each-line-down-to-its-parent-in-its-lanes-color.md) | Run each line down to its parent, in its lane's color | Accepted |
 | [43](0043-show-a-new-version-in-the-sidebar-rather-than-sparkles-window.md) | Show a new version in the sidebar, rather than in Sparkle's window | Moved from the rail to a row at the top of the sidebar by [53](0053-organizations-as-groups-in-the-list-and-add-and-settings-at-the-top.md) |
 | [44](0044-revert-a-commit-from-its-menu-in-history.md) | Revert a commit from its menu in history | Accepted |
-| [45](0045-fetch-and-new-branch-as-buttons-and-the-commit-count-with-history.md) | Fetch and New Branch as buttons, and the number of commits with history's commands | The Fetch icon's turn replaced by the house dropping through the button in [55](0055-the-house-drops-through-the-fetch-button.md) |
+| [45](0045-fetch-and-new-branch-as-buttons-and-the-commit-count-with-history.md) | Fetch and New Branch as buttons, and the number of commits with history's commands | The Fetch icon's turn replaced by the house dropping through the button in [57](0057-the-house-drops-through-the-fetch-button.md) |
 | [46](0046-turn-the-ring-of-an-agent-at-work.md) | Turn the ring of an agent at work | Accepted |
 | [47](0047-say-what-an-agent-is-doing-in-a-line-the-helper-makes.md) | Say what an agent is doing, in a line the helper makes | Accepted |
 | [48](0048-a-second-line-under-a-sidebar-row-while-theres-something-to-say.md) | A second line under a sidebar row while there's something to say | The mark moved to the right of the row, and the line's words given a fade and how long its own place at the right, by [51](0051-marks-at-the-right-of-a-sidebar-row-and-names-that-fade.md) |
@@ -62,4 +62,6 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [52](0052-maximize-or-minimize-the-panels-under-history.md) | Maximize or minimize the panels under history | Accepted |
 | [53](0053-organizations-as-groups-in-the-list-and-add-and-settings-at-the-top.md) | Organizations as groups in the list, and Add Repositories and Settings at the top | Accepted |
 | [54](0054-menus-as-wide-as-their-rows-and-shortcuts-for-the-worktree-on-screen.md) | Menus as wide as their rows, and shortcuts for the worktree on screen | Accepted |
-| [55](0055-the-house-drops-through-the-fetch-button.md) | The house drops through the Fetch button | Accepted |
+| [55](0055-split-the-panel-for-uncommitted-changes-40-40-and-20.md) | Split the panel for uncommitted changes 40, 40 and 20 | Accepted |
+| [56](0056-the-panels-show-a-run-of-commits-two-commits-a-branch-or-a-stash.md) | The panels show a run of commits, two commits, a branch or a stash | Accepted |
+| [57](0057-the-house-drops-through-the-fetch-button.md) | The house drops through the Fetch button | Accepted |

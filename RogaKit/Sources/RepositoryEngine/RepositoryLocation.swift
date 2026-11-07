@@ -109,6 +109,10 @@ public enum RepositoryError: Error, Sendable, Hashable, CustomStringConvertible 
     case tooManyChanges(limit: Int)
     /// A fetch that nobody asked for ran for longer than Roga lets it.
     case fetchTookTooLong
+    /// A commit that was taken for a stash doesn't have the parents a stash has.
+    case notAStash(ObjectID)
+    /// A ref isn't in the repository any more, by its full name.
+    case noSuchRef(String)
 
     public var description: String {
         switch self {
@@ -122,6 +126,10 @@ public enum RepositoryError: Error, Sendable, Hashable, CustomStringConvertible 
             "The list of files that changed takes more than \(limit >> 20) MB of text, which is too much to show. A folder of generated files may need to be ignored."
         case .fetchTookTooLong:
             "git fetch took too long, so Roga stopped it."
+        case .notAStash(let id):
+            "\(id.hex.prefix(8)) isn't a stash, because it doesn't have the parents git gives a stash."
+        case .noSuchRef(let name):
+            "\(Ref.shortName(name)) isn't in the repository any more."
         }
     }
 }

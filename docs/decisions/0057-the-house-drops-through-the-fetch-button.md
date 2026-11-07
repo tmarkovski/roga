@@ -1,4 +1,4 @@
-# 55. The house drops through the Fetch button
+# 57. The house drops through the Fetch button
 
 Accepted on 2026-11-07. This replaces how the Fetch button shows a running fetch in [decision 45](0045-fetch-and-new-branch-as-buttons-and-the-commit-count-with-history.md), where its icon turned. Everything else about the button stays as decision 45 has it.
 

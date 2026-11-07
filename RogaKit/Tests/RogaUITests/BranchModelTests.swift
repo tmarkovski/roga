@@ -129,7 +129,7 @@ struct BranchModelTests {
     }
 
     /// The house drops through the button while it runs, and the counts say
-    /// what it found, so nothing takes their place (decisions 45 and 55).
+    /// what it found, so nothing takes their place (decisions 45 and 57).
     @Test func aFetchSomeoneAsksForSaysNothingInTheRow() async throws {
         let clones = try await clones()
         let model = model(clones)

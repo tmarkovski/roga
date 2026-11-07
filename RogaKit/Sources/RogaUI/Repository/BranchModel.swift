@@ -179,7 +179,7 @@ final class BranchModel {
     private(set) var action: Action?
 
     /// Whether any fetch is running, whoever asked for it, which the Fetch button
-    /// shows by dropping the house through it (decisions 45 and 55).
+    /// shows by dropping the house through it (decisions 45 and 57).
     var isFetching: Bool { action == .fetching || isFetchingByItself }
 
     /// What just happened, as in `Pulled`, for a moment.
@@ -297,8 +297,8 @@ final class BranchModel {
 
     /// Fetches because someone asked to. Nothing opens in the title row, because
     /// the house drops through the Fetch button while it runs, and when it's done
-    /// a count appears or ticks up (decisions 45 and 55). A fetch Roga started by itself stops, so that
-    /// this one can report what goes wrong.
+    /// a count appears or ticks up (decisions 45 and 57). A fetch Roga started by
+    /// itself stops, so that this one can report what goes wrong.
     func fetch() {
         guard let remote = status?.remote else { return }
         run(.fetching, failure: "Can't fetch from \(remote)") { [session, worktree] in

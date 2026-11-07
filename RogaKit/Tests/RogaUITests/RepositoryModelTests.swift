@@ -770,10 +770,11 @@ struct RepositoryModelTests {
 
         #expect(model.selectedCommit.info?.subject == "Change the app")
         #expect(model.selectedCommit.info?.body == "The body says why.")
-        guard case .loaded(let files) = model.selectedCommit.files else {
+        guard case .loaded = model.selectedCommit.files else {
             Issue.record("Files aren't loaded: \(model.selectedCommit.files)")
             return
         }
+        let files = model.selectedCommit.files.all
         #expect(files.map(\.path) == ["src/app.txt"])
         #expect(files.first?.lines == .init(added: 1, removed: 0))
         #expect(model.selectedCommit.problem == nil)
@@ -801,11 +802,11 @@ struct RepositoryModelTests {
         #expect(model.selectedCommit.info?.id == last)
         let parents = try #require(model.selectedCommit.info?.parents)
         #expect(parents.isEmpty == (last == ObjectID(hex: Fixture.Basic.mainHistory[2])))
-        guard case .loaded(let files) = model.selectedCommit.files else {
+        guard case .loaded = model.selectedCommit.files else {
             Issue.record("Files aren't loaded: \(model.selectedCommit.files)")
             return
         }
-        #expect(files.map(\.path) == ["README.md"])
+        #expect(model.selectedCommit.files.all.map(\.path) == ["README.md"])
     }
 
     @Test func goesToAParent() async throws {

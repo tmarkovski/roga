@@ -8,7 +8,7 @@ import IconUI
 /// are, and it fills with the accent color rather than the panels' soft gray. It's
 /// still an `NSMenu`, so macOS handles the arrow keys, typing to select and closing
 /// it. macOS ignores Return while a row that draws itself is highlighted, so the
-/// rows hear it themselves (https://github.com/tmarkovski/yaga/issues/12).
+/// rows hear it themselves (https://github.com/tmarkovski/roga/issues/12).
 public enum RefMenu {
     public enum Entry {
         /// A dim line that names what the commands under it act on.

@@ -12,12 +12,12 @@ struct CommitTableControllerTests {
     /// A list with rows, which records the selections it reports.
     final class List {
         var count: Int
-        var reported: [Int?] = []
+        var reported: [IndexSet] = []
         private(set) lazy var controller = CommitTableController(source: CommitTableController.Source(
             count: { [unowned self] in count },
             content: { _ in CommitRowContent(shortID: "") },
             loadText: { _ in [] },
-            selectRow: { [unowned self] in reported.append($0) }
+            selectRows: { [unowned self] in reported.append($0) }
         ))
 
         init(count: Int) {
@@ -33,7 +33,7 @@ struct CommitTableControllerTests {
         // What a click or an arrow key ends up doing.
         list.table.selectRowIndexes(IndexSet(integer: 3), byExtendingSelection: false)
         list.table.deselectAll(nil)
-        #expect(list.reported == [3, nil])
+        #expect(list.reported == [IndexSet(integer: 3), IndexSet()])
     }
 
     @Test func doesntReportASelectionFromOutside() {
@@ -110,7 +110,66 @@ struct CommitTableControllerTests {
         list.controller.select(row: 1)
         list.controller.reloadData()
         list.table.selectRowIndexes(IndexSet(integer: 2), byExtendingSelection: false)
-        #expect(list.reported == [2])
+        #expect(list.reported == [IndexSet(integer: 2)])
+    }
+
+    @Test func reportsSeveralRowsTheUserSelects() {
+        // What Shift-clicking a run of rows and Command-clicking another does.
+        let list = List(count: 10)
+        list.table.selectRowIndexes(IndexSet(2...4), byExtendingSelection: false)
+        list.table.selectRowIndexes(IndexSet(integer: 7), byExtendingSelection: true)
+        #expect(list.reported == [IndexSet(2...4), IndexSet([2, 3, 4, 7])])
+        #expect(list.controller.selectedRows == IndexSet([2, 3, 4, 7]))
+        #expect(list.controller.selectedRow == nil)
+    }
+
+    @Test func selectsSeveralRowsFromOutsideWithoutReportingThem() {
+        // A branch's commits, which a review selects.
+        let list = List(count: 10)
+        list.controller.select(rows: IndexSet([1, 2, 5]))
+        #expect(list.controller.selectedRows == IndexSet([1, 2, 5]))
+        list.controller.select(rows: [])
+        #expect(list.controller.selectedRows.isEmpty)
+        #expect(list.reported.isEmpty)
+    }
+}
+
+/// The row for uncommitted changes, which can't be one of several selected rows.
+@Suite(.timeLimit(.minutes(1)))
+struct CommitTableWorkingTreeSelectionTests {
+    func makeController() -> CommitTableController {
+        let controller = CommitTableController(source: CommitTableController.Source(
+            count: { 10 },
+            content: { $0 == 0 ? CommitRowContent(shortID: "", isWorkingTree: true) : CommitRowContent(shortID: "") },
+            loadText: { _ in [] },
+            selectRows: { _ in }
+        ))
+        controller.reloadData()
+        return controller
+    }
+
+    func propose(_ rows: IndexSet, to controller: CommitTableController) -> IndexSet {
+        let table = controller.scrollView.documentView as! NSTableView
+        return controller.tableView(table, selectionIndexesForProposedSelection: rows)
+    }
+
+    @Test func itsLeftOutOfARunOfCommits() {
+        let controller = makeController()
+        controller.select(row: 0)
+        #expect(propose(IndexSet(0...3), to: controller) == IndexSet(1...3))
+    }
+
+    @Test func commandClickingItSelectsItAlone() {
+        let controller = makeController()
+        controller.select(rows: IndexSet([2, 3]))
+        #expect(propose(IndexSet([0, 2, 3]), to: controller) == IndexSet(integer: 0))
+    }
+
+    @Test func itsSelectedAloneAsUsual() {
+        let controller = makeController()
+        controller.select(row: 4)
+        #expect(propose(IndexSet(integer: 0), to: controller) == IndexSet(integer: 0))
+        #expect(propose(IndexSet([4, 5]), to: controller) == IndexSet([4, 5]))
     }
 }
 
@@ -142,7 +201,7 @@ struct CommitTableBadgeTests {
             count: { 3 },
             content: { CommitTableBadgeTests.content(ofRow: $0) },
             loadText: { _ in [] },
-            selectRow: { _ in },
+            selectRows: { _ in },
             checkOut: { [unowned self] in checkedOut.append($0) },
             goToRow: { [unowned self] in wentTo.append($0) },
             deleteBranches: { [unowned self] in deleted.append($0) },
@@ -336,7 +395,7 @@ struct CommitTableBadgeTests {
             count: { 1 },
             content: { _ in CommitRowContent(shortID: "", isWorkingTree: true) },
             loadText: { _ in [] },
-            selectRow: { _ in },
+            selectRows: { _ in },
             discardChanges: { discards += 1 },
             canDiscardChanges: { canDiscard }
         ))
@@ -601,7 +660,7 @@ struct CommitRowIndentTests {
             count: { 100 },
             content: content,
             loadText: { _ in [] },
-            selectRow: { _ in }
+            selectRows: { _ in }
         ))
         let table = try #require(controller.scrollView.documentView as? NSTableView)
         controller.scrollView.frame = NSRect(x: 0, y: 0, width: 800, height: 300)

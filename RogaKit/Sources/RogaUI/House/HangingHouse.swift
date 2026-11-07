@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// The house hanging by a thread tied to its chimney, with its legs spread,
-/// which drops through the Fetch button while a fetch runs (decision 55). It
+/// which drops through the Fetch button while a fetch runs (decision 57). It
 /// holds still on the way down, so it's one pose rather than a `HouseMotion`.
 /// Everything is in the coordinates of the mark, as in `HouseRig`.
 nonisolated enum HangingHouse {

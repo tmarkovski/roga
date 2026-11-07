@@ -11,6 +11,7 @@ public enum Icon: String, CaseIterable, Sendable {
     case archiveX = "archive-x"
     case arrowDownToDot = "arrow-down-to-dot"
     case arrowLeft = "arrow-left"
+    case arrowLeftRight = "arrow-left-right"
     case arrowRight = "arrow-right"
     case arrowUpDown = "arrow-up-down"
     case arrowUpFromDot = "arrow-up-from-dot"

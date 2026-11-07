@@ -57,7 +57,7 @@ Until `SUPublicEDKey` is in the Info.plist, the app doesn't start Sparkle, and t
    ```bash
    codesign --verify --strict --verbose=2 build/release/0.2.0/export/Roga.app/Contents/Helpers/roga
    ```
-4. Create a GitHub release for the tag with the zip attached. The appcast expects the zip at `https://github.com/tmarkovski/yaga/releases/download/v0.2.0/roga-0.2.0.zip`.
+4. Create a GitHub release for the tag with the zip attached. The appcast expects the zip at `https://github.com/tmarkovski/roga/releases/download/v0.2.0/roga-0.2.0.zip`.
 
    ```bash
    gh release create v0.2.0 build/updates/roga-0.2.0.zip --title "Roga 0.2.0" --notes-file <notes>

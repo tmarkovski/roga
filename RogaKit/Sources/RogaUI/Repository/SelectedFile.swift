@@ -220,10 +220,10 @@ final class SelectedFile {
         shownDocument != nil
     }
 
-    /// The group of a worktree's changes that the selected file is in, or nil
-    /// when it belongs to a commit.
+    /// The group of a worktree's changes or a stash's that the selected file is
+    /// in, or nil when it belongs to a commit or a comparison.
     var group: WorktreeChanges.Group? {
-        if case .worktree(_, let group, _) = source { group } else { nil }
+        source?.group
     }
 
     /// What to say about a file instead of comparing it, when it's known from

@@ -6,7 +6,8 @@ import SwiftUI
 
 /// The message of the next commit, under the worktree's files (decision 30). It's
 /// one text box, with the first line in bold, the way the commit panel will show
-/// it, and it grows as it fills.
+/// it. It fills the fifth of the panel it's given, and grows past that as it
+/// fills.
 ///
 /// Its bottom right corner has the Generate button, which has an agent write the
 /// message from what's staged (decision 41). While the agent writes, the box
@@ -179,6 +180,7 @@ struct CommitBox: View {
         let room = leavesGenerateRoom ? Self.generateRoom : 0
         let isWriting = generator.isWriting
         let fitted = min(max(textHeight, Self.shortest - room), Self.tallest - room)
+        let least = isWriting ? max(fitted, Self.barsHeight) : fitted
         return ZStack(alignment: .topLeading) {
             // The text view stays while an agent writes, so that its undo and the
             // keyboard's place in it are still there afterward. It's hidden from
@@ -215,7 +217,9 @@ struct CommitBox: View {
                 }
             }
         }
-        .frame(height: isWriting ? max(fitted, Self.barsHeight) : fitted)
+        // As tall as the text needs, or more when the panel gives the box more
+        // room than that (`ChangesSplit`).
+        .frame(minHeight: least, idealHeight: least, maxHeight: .infinity)
         .padding(.horizontal, 9)
         .padding(.top, 7)
         .padding(.bottom, 7 + room)

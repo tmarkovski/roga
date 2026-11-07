@@ -108,7 +108,7 @@ spctl --assess --type execute --verbose=2 "$app"
 echo "Updating the appcast"
 ditto -c -k --sequesterRsrc --keepParent "$app" "$zip"
 "$derived/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_appcast" \
-    --download-url-prefix "https://github.com/tmarkovski/yaga/releases/download/v$version/" \
+    --download-url-prefix "https://github.com/tmarkovski/roga/releases/download/v$version/" \
     "$updates"
 
 echo

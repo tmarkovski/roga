@@ -3,7 +3,7 @@ import SwiftUI
 
 /// The Fetch button's icon, which slides down out of the button while a fetch
 /// runs. The house follows it down, hanging by a thread from its chimney, and
-/// then the icon comes back in from the top (decision 55). That repeats until
+/// then the icon comes back in from the top (decision 57). That repeats until
 /// the fetch is done, and the drop it's on always finishes, so even a quick
 /// fetch shows a whole one. Someone who asked for less motion sees the icon fade
 /// in and out instead.

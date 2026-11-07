@@ -1,6 +1,6 @@
 # 30. Stage and commit in the panels under history
 
-Accepted on 2026-11-04. Partly superseded by [decision 39](0039-discard-with-undo-and-ask-only-for-many.md), which shows a heading's buttons all the time rather than while the pointer is over it. The rest of this decision still holds. This builds on [decision 15](0015-uncommitted-changes-as-a-row-in-history.md) and settles the option of showing changes as a view of their own, which [the main window](../main-window.md#options-were-keeping-open) kept open until staging arrived.
+Accepted on 2026-11-04. Partly superseded by [decision 39](0039-discard-with-undo-and-ask-only-for-many.md), which shows a heading's buttons all the time rather than while the pointer is over it, and by [decision 55](0055-split-the-panel-for-uncommitted-changes-40-40-and-20.md), which splits the panel's height 40, 40 and 20 rather than giving Staged up to 45%. The rest of this decision still holds. This builds on [decision 15](0015-uncommitted-changes-as-a-row-in-history.md) and settles the option of showing changes as a view of their own, which [the main window](../main-window.md#options-were-keeping-open) kept open until staging arrived.
 
 ## Context
 
