@@ -14,9 +14,8 @@ public protocol UpdaterControls: AnyObject {
 
 /// New versions of Roga, as the windows and Settings see them. Sparkle finds
 /// them once a day and, rather than opening its own window, leaves a notice
-/// above the gear at the bottom of the rail, or at the bottom of the sidebar's
-/// list while the rail is hidden. The app target keeps this up to date from
-/// Sparkle.
+/// as a row under Settings at the top of the sidebar. The app target keeps
+/// this up to date from Sparkle.
 @Observable public final class Updates {
     /// A new version that's waiting for the person.
     public enum Pending: Equatable {
@@ -32,8 +31,7 @@ public protocol UpdaterControls: AnyObject {
             }
         }
 
-        /// What the notice says, and what its tooltip and VoiceOver say on the
-        /// rail.
+        /// What the notice's row says.
         var title: String {
             switch self {
             case .found(let version): "Update to \(version)"

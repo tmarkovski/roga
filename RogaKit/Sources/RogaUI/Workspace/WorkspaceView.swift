@@ -12,9 +12,6 @@ import SwiftUI
 public struct WorkspaceWindow: Codable, Hashable, Sendable {
     public var id = UUID()
     public var selection: WorktreeSelection?
-    /// Where the sidebar is. It's optional because a window saved by an earlier
-    /// version doesn't have it.
-    var sidebar: SidebarPlace?
 
     public init(selection: WorktreeSelection? = nil) {
         self.selection = selection
@@ -132,7 +129,6 @@ public struct WorkspaceView: View {
     @State private var recent = RecentWorktrees()
     @State private var columns = NavigationSplitViewVisibility.all
     @SceneStorage("showsRefsPanel") private var wantsRefsPanel = true
-    @SceneStorage("showsOrganizationRail") private var showsRail = true
     @AppStorage("refsPanelWidth") private var refsPanelWidth = RefsPanelVisibility.defaultWidth
     /// The width of the column that holds the worktree and the refs panel, once
     /// it's been laid out.
@@ -158,47 +154,13 @@ public struct WorkspaceView: View {
         } set: { selection in
             var changed = window ?? WorkspaceWindow()
             changed.selection = selection
-            if let selection {
-                var place = changed.sidebar ?? SidebarPlace()
-                place.record(selection, in: list.groups)
-                changed.sidebar = place
-            }
-            window = changed
-        }
-    }
-
-    private var place: Binding<SidebarPlace> {
-        Binding {
-            window?.sidebar ?? SidebarPlace()
-        } set: { place in
-            var changed = window ?? WorkspaceWindow()
-            changed.sidebar = place
-            window = changed
-        }
-    }
-
-    /// What the rail shows as selected. Setting it picks a scope, which also
-    /// shows the worktree the window showed there last.
-    private var scope: Binding<SidebarScope> {
-        Binding {
-            place.wrappedValue.effectiveScope(in: list.groups, showsRail: showsRail)
-        } set: { scope in
-            if scope != .all { showsRail = true }
-            var changed = window ?? WorkspaceWindow()
-            var place = changed.sidebar ?? SidebarPlace()
-            place.scope = scope
-            if let shown = list.selectionToShow(in: scope, place: place, current: changed.selection) {
-                changed.selection = shown
-                place.record(shown, in: list.groups)
-            }
-            changed.sidebar = place
             window = changed
         }
     }
 
     public var body: some View {
         NavigationSplitView(columnVisibility: $columns) {
-            Sidebar(list: list, monitor: agentMonitor, selection: selection, scope: scope, place: place, showsRail: showsRail, showsSettings: $showsSettings, locate: locate, newWorktree: startNewWorktree)
+            Sidebar(list: list, monitor: agentMonitor, selection: selection, showsSettings: $showsSettings, locate: locate, newWorktree: startNewWorktree)
                 .overlay(alignment: .trailing) {
                     // A line between the sidebar and the worktree, from the
                     // top of the window to the bottom.
@@ -316,8 +278,6 @@ public struct WorkspaceView: View {
             }
         }
         .focusedSceneValue(\.selection, selection)
-        .focusedSceneValue(\.sidebarScope, scope)
-        .focusedSceneValue(\.showsOrganizationRail, $showsRail)
         .focusedSceneValue(\.sidebarVisibility, $columns)
         .focusedSceneValue(\.refsPanelVisibility, refsPanelVisibility)
         .focusedSceneValue(\.showsSettings, $showsSettings)

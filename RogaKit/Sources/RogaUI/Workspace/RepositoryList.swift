@@ -67,7 +67,7 @@ public final class RepositoryList {
 
     var isConnected: Bool { git != nil }
 
-    /// The repositories grouped the way the rail picks them.
+    /// The repositories grouped by organization, as the sidebar lists them.
     var groups: RepositoryGroups { RepositoryGroups(repositories) }
 
     /// Opens every repository with `git`, the first time it's called, and
@@ -216,21 +216,6 @@ public final class RepositoryList {
         let searched = (repositories.map(\.parentFolder) + folders).filter { seen.insert($0).inserted }
         let listed = Set(repositories.map(\.path))
         return await LocalClones.find(in: searched, git: git).filter { !listed.contains($0.path + "/.git") }
-    }
-
-    /// The worktree a window should show after picking `scope`: the one it
-    /// showed there last, then `current` if it's there, then the first
-    /// repository's main worktree. Picking All leaves the window as it is, so
-    /// it's nil.
-    func selectionToShow(in scope: SidebarScope, place: SidebarPlace, current: WorktreeSelection?) -> WorktreeSelection? {
-        guard scope != .all else { return nil }
-        let repositories = groups.repositories(in: scope)
-        func isListed(_ selection: WorktreeSelection?) -> Bool {
-            repositories.contains { $0.path == selection?.repository }
-        }
-        if let last = resolve(place.lastSelections[scope]), isListed(last) { return last }
-        if isListed(current) { return current }
-        return repositories.first?.home
     }
 
     /// Takes the repository out of the list and closes its session.

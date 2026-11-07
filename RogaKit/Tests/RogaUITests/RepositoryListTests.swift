@@ -462,36 +462,6 @@ struct RepositoryListTests {
         #expect(await list.clonesToAdd().isEmpty)
     }
 
-    @Test func picksTheWorktreeToShowInAnOrganization() async throws {
-        let first = try await copyRepository(try await Fixture.repository("basic"), into: folder)
-        let second = try await copyRepository(try await Fixture.repository("history") + "/single", into: folder)
-        try await runGit("worktree", "add", "--quiet", folder + "/notes", "feature", in: first)
-        for repository in [first, second] {
-            try await runGit("remote", "set-url", "origin", "git@github.com:acme/x.git", in: repository)
-        }
-        let list = try await makeList()
-        let main = try await list.add(folder: first)
-        _ = try await list.add(folder: second)
-        let scope = SidebarScope.organization("acme")
-        var place = SidebarPlace()
-
-        // The first time, it's the first repository's main worktree.
-        #expect(list.selectionToShow(in: scope, place: place, current: nil) == main)
-
-        // After that, it's where the window was, for as long as that's there.
-        let notes = WorktreeSelection(repository: first + "/.git", worktree: folder + "/notes")
-        place.record(notes, in: list.groups)
-        #expect(list.selectionToShow(in: scope, place: place, current: nil) == notes)
-        try await runGit("worktree", "remove", folder + "/notes", in: first)
-        await list.refresh()
-        #expect(list.selectionToShow(in: scope, place: place, current: nil) == main)
-
-        // A window that's already there stays, and All never moves a window.
-        let inSecond = WorktreeSelection(repository: second + "/.git", worktree: second)
-        #expect(list.selectionToShow(in: scope, place: SidebarPlace(), current: inSecond) == inSecond)
-        #expect(list.selectionToShow(in: .all, place: place, current: nil) == nil)
-    }
-
     @Test func setsAsideAFileItCantRead() async throws {
         try FileManager.default.createDirectory(at: store.file.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data("not json".utf8).write(to: store.file)

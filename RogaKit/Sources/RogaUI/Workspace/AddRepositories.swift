@@ -17,7 +17,6 @@ struct AddRepositoriesChoices {
 /// (decision 16).
 struct AddRepositories: View {
     let list: RepositoryList
-    let scope: SidebarScope
     @Binding var choices: AddRepositoriesChoices
     let lookInAnotherFolder: () -> Void
     let select: (WorktreeSelection) -> Void
@@ -37,13 +36,13 @@ struct AddRepositories: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(title)
+            Text("Add Repositories")
                 .font(.system(size: 15, weight: .semibold))
                 .frame(height: 44)
                 .padding(.horizontal, 16)
                 .accessibilityAddTraits(.isHeader)
             filterField
-            Text(hint)
+            Text("Clones found in the folders you’ve already added from.")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -74,21 +73,6 @@ struct AddRepositories: View {
         .onAppear { isFilterFocused = true }
     }
 
-    private var title: String {
-        scope == .all || scope == .other ? "Add Repositories" : "Add to \(list.groups.title(of: scope))"
-    }
-
-    private var hint: String {
-        switch scope {
-        case .all:
-            "Clones found in the folders you’ve already added from."
-        case .organization:
-            "Clones of \(list.groups.title(of: scope))’s repositories, found in the folders you’ve already added from."
-        case .other:
-            "Clones that aren’t in an organization on the rail, found in the folders you’ve already added from."
-        }
-    }
-
     /// The folders the user picked with symbolic links resolved, as git and
     /// the clones found have them.
     private var pickedPaths: Set<String> {
@@ -99,15 +83,10 @@ struct AddRepositories: View {
         })
     }
 
-    /// The clones that belong to what the rail picked, and any from a folder
-    /// the user picked, narrowed by the filter.
+    /// The clones found, narrowed by the filter.
     private var visible: [LocalClone] {
-        let groups = list.groups
-        let picked = pickedPaths
-        return (clones ?? []).filter { clone in
-            let isPicked = picked.contains(clone.path) || picked.contains((clone.path as NSString).deletingLastPathComponent)
-            return (isPicked || scope == .all || groups.scopes(ofOwners: clone.owners).contains(scope))
-                && (filter.isEmpty || clone.name.localizedStandardContains(filter))
+        (clones ?? []).filter { clone in
+            filter.isEmpty || clone.name.localizedStandardContains(filter)
         }
     }
 
