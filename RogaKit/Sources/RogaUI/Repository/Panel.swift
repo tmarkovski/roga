@@ -63,7 +63,7 @@ struct Panel<Leading: View, Trailing: View, Content: View>: View {
                 trailing
             }
             .padding(.horizontal, 10)
-            .frame(height: 40)
+            .frame(height: PanelSplitLayout.headerHeight)
             .overlay(alignment: .bottom) {
                 Rectangle()
                     .fill(Palette.separator)
@@ -78,36 +78,55 @@ struct Panel<Leading: View, Trailing: View, Content: View>: View {
 
 /// Two panels, one above the other, with a thin line between them that drags
 /// to resize them. The lower one keeps its height as the window changes size,
-/// unless that would make the upper one too short.
+/// unless that would make the upper one too short. It can also cover the upper
+/// one, or fold down to its header.
 struct PanelSplit<Upper: View, Lower: View>: View {
     /// The lower panel's height, or 0 until someone has dragged it, which leaves
     /// the upper panel `upperHeightUntilDragged`.
     @Binding var lowerHeight: Double
+    @Binding var lowerSize: LowerPanelSize
     var upperHeightUntilDragged = 0.0
     @ViewBuilder var upper: Upper
     @ViewBuilder var lower: Lower
     /// The lower panel's height when the current drag started.
     @State private var heightAtStart: Double?
 
-    private static var minimumHeight: Double { 100 }
-
     var body: some View {
         GeometryReader { geometry in
-            let tallest = max(Self.minimumHeight, geometry.size.height - Self.minimumHeight - 1)
-            let wanted = lowerHeight > 0 ? lowerHeight : geometry.size.height - upperHeightUntilDragged - 1
-            let height = min(max(wanted, Self.minimumHeight), tallest)
+            let layout = PanelSplitLayout(
+                height: geometry.size.height,
+                lowerHeight: lowerHeight,
+                upperHeightUntilDragged: upperHeightUntilDragged,
+                size: lowerSize
+            )
+            let isCovered = lowerSize == .maximized
+            // Both panels stay in place while one covers the other, with no
+            // height, so that what they show, such as where history is
+            // scrolled to and the diff's place, is still there when they come
+            // back.
             VStack(spacing: 0) {
                 upper
-                    .frame(maxHeight: .infinity)
+                    .frame(height: layout.upper)
+                    .opacity(isCovered ? 0 : 1)
+                    .allowsHitTesting(!isCovered)
+                    .accessibilityHidden(isCovered)
                 PanelDivider(axis: .vertical) { moved in
-                    let start = heightAtStart ?? height
+                    let start = heightAtStart ?? layout.lower
                     heightAtStart = start
-                    lowerHeight = min(max(start - moved, Self.minimumHeight), tallest)
+                    let dragged = PanelSplitLayout.dragged(to: start - moved, in: geometry.size.height)
+                    lowerSize = dragged.size
+                    if let height = dragged.height { lowerHeight = height }
                 } ended: {
                     heightAtStart = nil
                 }
+                .frame(height: isCovered ? 0 : nil)
+                .opacity(isCovered ? 0 : 1)
+                .allowsHitTesting(!isCovered)
+                // A minimized panel keeps its header at the top, and what
+                // doesn't fit under it is cut off rather than pushing it up.
                 lower
-                    .frame(height: height)
+                    .frame(height: layout.lower, alignment: .top)
+                    .clipped()
             }
         }
     }
@@ -405,7 +424,12 @@ extension KeyboardShortcut {
         if modifiers.contains(.option) { symbols.append("⌥") }
         if modifiers.contains(.shift) { symbols.append("⇧") }
         if modifiers.contains(.command) { symbols.append("⌘") }
-        symbols.append(key == .return ? "↩" : String(key.character).uppercased())
+        switch key {
+        case .return: symbols.append("↩")
+        case .upArrow: symbols.append("↑")
+        case .downArrow: symbols.append("↓")
+        default: symbols.append(String(key.character).uppercased())
+        }
         return symbols.joined(separator: "\u{2009}")
     }
 }
