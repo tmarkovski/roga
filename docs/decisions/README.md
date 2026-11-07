@@ -66,3 +66,4 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [56](0056-the-panels-show-a-run-of-commits-two-commits-a-branch-or-a-stash.md) | The panels show a run of commits, two commits, a branch or a stash | Accepted |
 | [57](0057-the-house-drops-through-the-fetch-button.md) | The house drops through the Fetch button | Accepted |
 | [58](0058-the-mark-under-the-menus-button-and-the-count-before-it.md) | The mark under the menu's button, and the count before it | Accepted |
+| [59](0059-set-aside-changes-in-the-way-and-put-them-back.md) | Set aside changes in the way, and put them back | Accepted |

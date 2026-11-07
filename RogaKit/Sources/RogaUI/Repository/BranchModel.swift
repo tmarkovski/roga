@@ -61,6 +61,14 @@ final class BranchModel {
 
         /// Says what went wrong with something git was asked to run.
         init(title: String, error: any Error, changedNothing: Bool = false) {
+            if let refused = error as? RefusedWithChangesAside {
+                self.init(title: title, message: refused.refusal.dialogMessage, command: refused.refusal.gitArguments)
+                summary = .sentences([
+                    "Nothing moved, but Roga couldn't put your uncommitted changes back, so they're still in the stash \(code: refused.aside.message).",
+                    "What git said is below.",
+                ])
+                return
+            }
             self.init(title: title, message: error.dialogMessage, command: error.gitArguments, changedNothing: changedNothing)
         }
 
@@ -85,11 +93,41 @@ final class BranchModel {
         /// How many files were staged before a revert that was to leave its changes
         /// uncommitted. Undoing it takes those back to `HEAD` too.
         var stagedBefore = 0
+        /// The uncommitted changes that were set aside for the pull, which undoing
+        /// it puts back (decision 59).
+        var aside: ChangesAside? = nil
 
         /// Whether a pull stopped, rather than a revert.
         var startedByPull: Bool {
             if case .revert = work { false } else { true }
         }
+    }
+
+    /// Uncommitted changes that were set aside for a pull or for going to a commit,
+    /// and came back with conflicts, until the user has said what to do (decision 59).
+    struct PutBackConflict: Equatable {
+        var aside: ChangesAside
+        /// The files in conflict.
+        var files: [String]
+        /// What ran, each by its arguments after `git`: setting the changes aside,
+        /// the move, and putting them back.
+        var ran: [[String]]
+
+        /// What the move is called in a sentence, as in `the pull`.
+        var noun: String {
+            switch aside.move {
+            case .pull: "pull"
+            case .reset: "reset"
+            case .detach: "switch"
+            }
+        }
+    }
+
+    /// git refused a move, and the uncommitted changes that were set aside for it
+    /// couldn't go back either, which the dialog has to say.
+    struct RefusedWithChangesAside: Error {
+        var refusal: any Error
+        var aside: ChangesAside
     }
 
     /// A force push that's waiting for someone to agree to what it overwrites.
@@ -193,6 +231,9 @@ final class BranchModel {
     /// A pull or a revert that stopped on a conflict, until the user has said what
     /// to do.
     var conflict: Conflict?
+    /// Changes set aside for a move that came back with conflicts, until the user
+    /// has said what to do.
+    var putBackConflict: PutBackConflict?
     /// A pull that needs someone to choose between rebasing and merging.
     var pullChoice: PullChoice?
     /// What the worktree is stuck partway through, whoever started it, which
@@ -337,9 +378,17 @@ final class BranchModel {
     }
 
     func pull(_ pull: Pull, remembering: Bool = false) {
+        let move = status?.upstream.map { ChangesAside.Move.pull(upstream: $0, rebases: rebases(pull)) }
+        let message = "Roga: before pulling \(branchName)"
         run(.pulling, failure: "Can't pull \(branchName)", changesNothing: true) { [session, worktree] in
             if remembering { try await session.remember(pull, in: worktree) }
             let wasStopped = (try? await session.stoppedWork(in: worktree)) != nil
+            // Uncommitted changes that git would refuse to overwrite go aside and
+            // come back afterward (decision 59).
+            var aside: ChangesAside?
+            if let move, !wasStopped {
+                aside = try await session.setAsideChanges(inTheWayOf: move, message: message, in: worktree)
+            }
             do {
                 try await session.pull(pull, in: worktree)
             } catch {
@@ -347,23 +396,142 @@ final class BranchModel {
                 // clean up, rather than one that was there already.
                 if !wasStopped, let stopped = try? await session.stoppedWork(in: worktree) {
                     let status = try? await session.status(in: worktree)
-                    self.conflict = Conflict(work: stopped, files: status?.conflicted.map(\.path) ?? [], ran: error.gitArguments)
+                    self.conflict = Conflict(work: stopped, files: status?.conflicted.map(\.path) ?? [], ran: error.gitArguments, aside: aside)
                     return nil
                 }
+                try await self.putBack(afterRefusing: error, aside)
                 throw error
             }
-            return "Pulled"
+            guard let aside else { return "Pulled" }
+            return try await self.putBack(aside, ran: [ChangesAside.arguments(message: message), pull.arguments], done: "Pulled")
         }
     }
 
-    /// Goes back to before the pull or the revert that stopped on a conflict.
+    /// Whether git will rebase for this pull, which makes it refuse any uncommitted
+    /// change rather than only the ones its commits would overwrite. A fast-forward
+    /// rebases too when the config says to.
+    private func rebases(_ pull: Pull) -> Bool {
+        switch pull {
+        case .rebase: true
+        case .merge: false
+        case .fastForward, .configured: status?.pullRebase.map { !["false", "no", "off", "0"].contains($0.lowercased()) } ?? false
+        }
+    }
+
+    /// Goes to a commit the way `commitSwitch` says. Uncommitted changes that git
+    /// would refuse to overwrite go aside and come back afterward (decision 59).
+    ///
+    /// - Returns: What the title row says about that, or nil when there's nothing
+    ///   to say, or a dialog says it.
+    /// - Throws: What git said when it refused, once the changes are back where
+    ///   they were.
+    func go(_ commitSwitch: CommitSwitch) async throws -> String? {
+        var move: ChangesAside.Move?
+        var message = ""
+        switch commitSwitch.way {
+        case .movingBranch(let name) where !commitSwitch.keepsChanges:
+            move = .reset(to: commitSwitch.commit)
+            message = "Roga: before resetting \(Ref.shortName(name)) to \(commitSwitch.shortCommit)"
+        case .movingBranch:
+            // `--soft` leaves the files alone, so nothing can be in the way.
+            break
+        case .detaching:
+            move = .detach(at: commitSwitch.commit)
+            message = "Roga: before switching to \(commitSwitch.shortCommit)"
+        }
+        var aside: ChangesAside?
+        if let move { aside = try await session.setAsideChanges(inTheWayOf: move, message: message, in: worktree) }
+        do {
+            try await session.run(commitSwitch, in: worktree)
+        } catch {
+            try await putBack(afterRefusing: error, aside)
+            throw error
+        }
+        guard let aside else { return nil }
+        return try await putBack(aside, ran: [ChangesAside.arguments(message: message), commitSwitch.arguments], done: nil)
+    }
+
+    /// Puts back changes that were set aside for a move git refused, which left
+    /// `HEAD` where they fit.
+    ///
+    /// - Throws: `RefusedWithChangesAside` when they couldn't go back.
+    private func putBack(afterRefusing refusal: any Error, _ aside: ChangesAside?) async throws {
+        guard let aside else { return }
+        if (try? await session.putBack(aside, in: worktree)) != .back {
+            throw RefusedWithChangesAside(refusal: refusal, aside: aside)
+        }
+    }
+
+    /// Puts back changes that were set aside for a move that went through.
+    ///
+    /// - Parameters:
+    ///   - ran: What ran so far, for the dialog when they come back with conflicts.
+    ///   - done: What the title row says about the move, if anything.
+    /// - Returns: What the title row says, or nil when a dialog says how it went.
+    private func putBack(_ aside: ChangesAside, ran: [[String]], done: String?) async throws -> String? {
+        switch try await session.putBack(aside, in: worktree) {
+        case .back:
+            return done.map { "\($0) · your changes are back" } ?? "Your changes are back"
+        case .conflicted(let files):
+            putBackConflict = PutBackConflict(aside: aside, files: files, ran: ran + [ChangesAside.putBackArguments])
+            return nil
+        case .stillAside(let popped, let said):
+            failure = Self.stillAside(aside, ran: popped, said: said)
+            return nil
+        }
+    }
+
+    /// Says that git wouldn't put changes back, such as when an agent wrote to one
+    /// of the files meanwhile, so they're still in the stash.
+    private static func stillAside(_ aside: ChangesAside, ran: [String], said: String) -> Failure {
+        var failure = Failure(title: "Your changes are still in a stash", message: said, command: ran)
+        failure.summary = .sentences([
+            "git wouldn't put your uncommitted changes back over what's in the worktree now, so they're in the stash \(code: aside.message), and nothing is lost.",
+            "What git said is below.",
+        ])
+        return failure
+    }
+
+    /// Goes back to before the pull or the revert that stopped on a conflict, and
+    /// puts back any changes that were set aside for the pull.
     func undoConflict() {
         guard let conflict else { return }
         self.conflict = nil
         let what = conflict.startedByPull ? "pull" : conflict.work.noun
         run(.undoing, failure: "Can't undo the \(what)") { [session, worktree] in
-            try await session.abort(conflict.work, in: worktree)
+            guard let aside = conflict.aside else {
+                try await session.abort(conflict.work, in: worktree)
+                return "Undid the \(what)"
+            }
+            let putBack = try await session.undo(puttingBack: aside, stopped: conflict.work, in: worktree)
+            return self.finishUndoing(what, putBack, aside)
+        }
+    }
+
+    /// Goes back to before a move whose changes came back with conflicts, and puts
+    /// them back there.
+    func undoPutBack() {
+        guard let conflict = putBackConflict else { return }
+        putBackConflict = nil
+        run(.undoing, failure: "Can't undo the \(conflict.noun)") { [session, worktree] in
+            let putBack = try await session.undo(puttingBack: conflict.aside, stopped: nil, in: worktree)
+            return self.finishUndoing(conflict.noun, putBack, conflict.aside)
+        }
+    }
+
+    /// What the title row says once an undo has put the changes back, or nil when
+    /// a dialog says they couldn't go back.
+    private func finishUndoing(_ what: String, _ putBack: ChangesAside.PutBack, _ aside: ChangesAside) -> String? {
+        switch putBack {
+        case .back:
             return "Undid the \(what)"
+        case .conflicted(let files):
+            // Only something writing to the files meanwhile could do this.
+            putBackConflict = PutBackConflict(aside: aside, files: files, ran: [ChangesAside.putBackArguments])
+            return nil
+        case .stillAside(let ran, let said):
+            failure = Self.stillAside(aside, ran: ran, said: said)
+            return nil
         }
     }
 
@@ -431,8 +599,9 @@ final class BranchModel {
         guard let push = status?.push else { return }
         run(.pushing, failure: "Can't push \(branchName)", changesNothing: true, fetchesAfterFailing: true) { [session, worktree, weak self, branchName] in
             try await session.push(push, in: worktree)
+            var note: String?
             do {
-                try await session.run(commitSwitch, in: worktree)
+                note = try await self?.go(commitSwitch)
             } catch {
                 var failure = Failure(title: commitSwitch.failureTitle, error: error)
                 let stayed: DialogText = "The push went through, but \(code: branchName) is still where it was."
@@ -440,7 +609,7 @@ final class BranchModel {
                 self?.failure = failure
                 return nil
             }
-            return "Pushed"
+            return note == nil ? "Pushed" : "Pushed · your changes are back"
         }
     }
 

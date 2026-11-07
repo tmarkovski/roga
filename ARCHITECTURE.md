@@ -81,6 +81,7 @@ roga/
 │   │   │   ├── BranchCheckout.swift    putting a worktree on a branch or remote branch
 │   │   │   ├── CommitSwitch.swift      going to a commit, and what that would lose
 │   │   │   ├── CommitRevert.swift      reverting a commit, and what to say before it
+│   │   │   ├── ChangesAside.swift      setting aside changes in the way of a pull or a reset, decision 59
 │   │   │   ├── BranchDeletion.swift    what deleting a branch would lose, and deleting it
 │   │   │   ├── WorktreeDeletion.swift  what deleting a linked worktree would lose
 │   │   │   ├── DiffLoader.swift        the files a commit changed or two commits differ in, and their patches

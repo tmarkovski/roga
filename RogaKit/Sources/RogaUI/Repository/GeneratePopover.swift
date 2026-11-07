@@ -18,7 +18,9 @@ struct GeneratePopover: View {
     let generate: (AgentKind) -> Void
     let close: () -> Void
 
-    static var width: CGFloat { 312 }
+    /// Wide enough for Claude Code's four models on one row of chips, and for the
+    /// command to take fewer lines.
+    static var width: CGFloat { 400 }
 
     var body: some View {
         let picked = agents.generateAgent

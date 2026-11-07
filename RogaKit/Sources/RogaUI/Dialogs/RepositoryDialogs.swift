@@ -229,6 +229,7 @@ extension BranchModel {
     var dialog: RepositoryDialog? {
         if let failure { return .message(dialog(for: failure)) }
         if let conflict { return .message(dialog(for: conflict)) }
+        if let putBackConflict { return .message(dialog(for: putBackConflict)) }
         if let pullChoice {
             return .pull(pullChoice) { [weak self] in self?.pullChoice = nil }
         }
@@ -275,13 +276,15 @@ extension BranchModel {
             let staged = conflict.stagedBefore == 1 ? "the 1 file that was" : "the \(conflict.stagedBefore.formatted()) files that were"
             sentences.append("Undoing it also takes back \(staged) staged before.")
         }
-        var rows = conflict.files.prefix(DialogContent.listLimit).map(DialogRow.name)
-        if conflict.files.count > DialogContent.listLimit {
-            rows.append(.more("and \((conflict.files.count - DialogContent.listLimit).formatted()) more"))
+        var undo = [conflict.work.abortArguments]
+        if let aside = conflict.aside {
+            sentences.append("Your uncommitted changes are in the stash \(code: aside.message). Undoing the \(started) puts them back, and so does \(code: ShellCommand.text(ChangesAside.putBackArguments)) once you've finished.")
+            undo = aside.undoArguments(stopped: conflict.work) + [ChangesAside.putBackArguments]
         }
         var terminal: [TerminalLine] = []
         if let ran = conflict.ran { terminal += [.ran(ran), .gap] }
-        terminal += [.comment("Undo the \(started) runs"), .command(conflict.work.abortArguments)]
+        terminal += [.comment("Undo the \(started) runs")] + undo.map(TerminalLine.command)
+        let rows = Self.fileRows(conflict.files)
         let leave = { [weak self] in self?.conflict = nil; return () }
         return DialogContent(
             id: "conflict",
@@ -298,6 +301,57 @@ extension BranchModel {
             ],
             dismiss: leave
         )
+    }
+
+    /// Which files came back with conflicts once uncommitted changes that were set
+    /// aside for a move were put back, and what can be done about them (decision 59).
+    private func dialog(for conflict: PutBackConflict) -> DialogContent {
+        let aside = conflict.aside
+        let noun = conflict.noun
+        let branch = aside.branch.map(Ref.shortName) ?? "HEAD"
+        let (did, against): (DialogText, String) = switch aside.move {
+        case .pull: ("Roga pulled into \(code: branch)", "what came in")
+        case .reset(let commit): ("Roga moved \(code: branch) to \(code: String(commit.hex.prefix(8)))", "what's there")
+        case .detach(let commit): ("Roga switched to \(code: String(commit.hex.prefix(8)))", "what's there")
+        }
+        let files = conflict.files.count == 1 ? "1 file" : "\(conflict.files.count.formatted()) files"
+        let sentences: [DialogText] = [
+            "\(did) and put your uncommitted changes back, but in \(files) they conflict with \(against).",
+            "Roga can't resolve conflicts yet, so you can undo the \(noun), or leave the conflicts to resolve in your editor.",
+        ]
+        let note: DialogText? = .sentences([
+            "Undo the \(noun) goes back to \(code: String(aside.head.hex.prefix(8))) and puts your changes back as they were, with what you'd staged.",
+            "If you leave it, the stash \(code: aside.message) keeps a copy until you drop it.",
+        ])
+        let undo = aside.undoArguments(stopped: nil) + [ChangesAside.putBackArguments]
+        let terminal: [TerminalLine] = conflict.ran.map(TerminalLine.ran) + [.gap, .comment("Undo the \(noun) runs")] + undo.map(TerminalLine.command)
+        let rows = Self.fileRows(conflict.files)
+        let leave = { [weak self] in self?.putBackConflict = nil; return () }
+        return DialogContent(
+            id: "putBackConflict",
+            title: "Putting your changes back stopped on a conflict",
+            message: .sentences(sentences),
+            cards: rows.isEmpty ? [] : [rows],
+            note: note,
+            terminal: terminal,
+            buttons: [
+                DialogButton(title: "Leave it", kind: .secondary, action: leave),
+                // The stash has everything that was uncommitted, so nothing is lost.
+                DialogButton(title: "Undo the \(noun)", kind: .primary) { [weak self] in
+                    self?.undoPutBack()
+                },
+            ],
+            dismiss: leave
+        )
+    }
+
+    /// Files in a card, as many as a dialog lists.
+    private static func fileRows(_ files: [String]) -> [DialogRow] {
+        var rows = files.prefix(DialogContent.listLimit).map(DialogRow.name)
+        if files.count > DialogContent.listLimit {
+            rows.append(.more("and \((files.count - DialogContent.listLimit).formatted()) more"))
+        }
+        return rows
     }
 
     /// What aborting loses, as the vision asks of destructive operations, and the

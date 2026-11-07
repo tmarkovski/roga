@@ -564,6 +564,34 @@ public actor RepositorySession {
         _ = try await Self.run(work.abortArguments, in: worktree, git: git)
     }
 
+    /// Sets aside a worktree's uncommitted changes in a stash when some of them are
+    /// in the way of a pull or of going to a commit, which git would otherwise
+    /// refuse (decision 59).
+    ///
+    /// - Returns: Where they went, or nil when nothing is in the way.
+    /// - Throws: `GitError` when git can't make the stash, which changes nothing.
+    @concurrent
+    public nonisolated func setAsideChanges(inTheWayOf move: ChangesAside.Move, message: String, in worktree: String) async throws -> ChangesAside? {
+        try await ChangesAside.setAside(for: move, message: message, in: worktree, git: git)
+    }
+
+    /// Puts back changes that were set aside, where `HEAD` is now.
+    ///
+    /// - Throws: `ChangesAside.Missing` when the stash has gone, or `GitError`.
+    @concurrent
+    public nonisolated func putBack(_ aside: ChangesAside, in worktree: String) async throws -> ChangesAside.PutBack {
+        try await aside.putBack(in: worktree, git: git)
+    }
+
+    /// Goes back to before a move whose changes came back with conflicts, or
+    /// that stopped partway with them still aside, and puts them back there.
+    ///
+    /// - Throws: `ChangesAside.Missing` when the stash has gone, or `GitError`.
+    @concurrent
+    public nonisolated func undo(puttingBack aside: ChangesAside, stopped: StoppedWork?, in worktree: String) async throws -> ChangesAside.PutBack {
+        try await aside.undo(stopped: stopped, in: worktree, git: git)
+    }
+
     /// Makes a new branch on the commit a worktree is on, and switches to it
     /// there or in a new worktree.
     ///

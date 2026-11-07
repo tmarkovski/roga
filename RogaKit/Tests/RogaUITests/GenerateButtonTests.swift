@@ -43,6 +43,11 @@ struct GenerateButtonTests {
         #expect(GenerateButton<EmptyView>.help(agent: .claude, rewrites: false, readiness: .ready) == "Write the message with Claude Code (⌥\u{2009}⌘\u{2009}L)")
     }
 
+    @Test func theWordNamesTheAgentAClickRuns() {
+        #expect(GenerateButton<EmptyView>.title(agent: .claude) == "Generate with Claude")
+        #expect(GenerateButton<EmptyView>.title(agent: .codex) == "Generate with Codex")
+    }
+
     @Test func showsTheIconAloneToRewriteYourWords() {
         let state = GenerateButtonState(showsButton: true, agent: .codex, hasText: true, isWriting: false, readiness: .ready)
         #expect(state == .shown(agent: .codex, rewrites: true, readiness: .ready))
@@ -144,7 +149,10 @@ struct GenerateButtonTests {
         let provider = provider()
         // A model of its own and extra arguments make it longer still.
         defaults.set("gpt-6-astra-mini", forKey: AgentPreferences.modelKey(.codex))
-        defaults.set("-c model_verbosity=low", forKey: AgentPreferences.extraArgumentsKey(.codex))
+        defaults.set(
+            "-c model_verbosity=low -c model_reasoning_summary=none -c hide_agent_reasoning=true",
+            forKey: AgentPreferences.extraArgumentsKey(.codex)
+        )
         provider.reloadSettings()
         for kind in AgentKind.allCases {
             let setup = try #require(provider.generation(with: kind))

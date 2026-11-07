@@ -13,4 +13,13 @@ public enum AgentKind: String, Sendable, Hashable, CaseIterable, Codable, Identi
         case .codex: "Codex"
         }
     }
+
+    /// The name in a button's few words, as in Generate with Claude, where the
+    /// full name would be long.
+    public var shortName: String {
+        switch self {
+        case .claude: "Claude"
+        case .codex: "Codex"
+        }
+    }
 }

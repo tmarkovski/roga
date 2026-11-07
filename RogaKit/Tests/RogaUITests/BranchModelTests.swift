@@ -708,8 +708,9 @@ struct BranchModelTests {
         let target = try await git("rev-parse", "HEAD~1", in: clones.work)
         model.goToRow(try await row("HEAD~1", in: clones, of: model), showWorktree: notInAnotherWorktree)
         await model.checkout?.value
-        // A change that the reset would have to overwrite.
-        try "Two\n".write(toFile: clones.work + "/mine.txt", atomically: true, encoding: .utf8)
+        // Another git holding the index, which the reset needs. A change the reset
+        // would overwrite doesn't stop it any more, because it goes aside.
+        try "".write(toFile: clones.work + "/.git/index.lock", atomically: false, encoding: .utf8)
 
         try dialogContent(model).buttons[3].action()
         await finishGoing(model)
@@ -873,6 +874,145 @@ struct BranchModelTests {
         dialog.dismiss()
         #expect(model.checkoutFailure == nil)
         #expect(model.dialog?.id == "abort")
+    }
+
+    // MARK: Changes in the way
+
+    /// Clones that both have `notes.txt`, with `origin/main` changing its first line,
+    /// and `work` fetched but not pulled, and with this uncommitted in `notes.txt`.
+    private func clonesWithChangesInTheWay(_ mine: String) async throws -> Clones {
+        let clones = try await clones()
+        try await commit("Notes", in: clones.work, file: "notes.txt", text: "1\n2\n3\n4\n5\n")
+        try await git("push", "--quiet", in: clones.work)
+        try await git("pull", "--quiet", in: clones.other)
+        try await pushFromOther(clones, file: "notes.txt", text: "theirs\n2\n3\n4\n5\n")
+        try await git("fetch", "--quiet", in: clones.work)
+        try mine.write(toFile: clones.work + "/notes.txt", atomically: true, encoding: .utf8)
+        return clones
+    }
+
+    private func notes(_ clones: Clones) throws -> String {
+        try String(contentsOfFile: clones.work + "/notes.txt", encoding: .utf8)
+    }
+
+    @Test func pullsWithChangesInTheWayAndPutsThemBack() async throws {
+        let clones = try await clonesWithChangesInTheWay("1\n2\n3\n4\nmine\n")
+        let model = model(clones, fetches: false)
+        await model.appear()
+
+        model.branch.pull()
+        await model.branch.running?.value
+        #expect(model.branch.failure == nil)
+        #expect(model.branch.putBackConflict == nil)
+        #expect(model.branch.finished == "Pulled · your changes are back")
+        #expect(try notes(clones) == "theirs\n2\n3\n4\nmine\n")
+        #expect(try await git("stash", "list", in: clones.work).isEmpty)
+    }
+
+    @Test func changesThatComeBackWithAConflictOfferToUndoThePull() async throws {
+        let clones = try await clonesWithChangesInTheWay("mine\n2\n3\n4\n5\n")
+        let before = try await git("rev-parse", "HEAD", in: clones.work)
+        let model = model(clones, fetches: false)
+        await model.appear()
+
+        model.branch.pull()
+        await model.branch.running?.value
+        #expect(model.branch.failure == nil)
+        #expect(model.branch.putBackConflict?.files == ["notes.txt"])
+        let dialog = try dialogContent(model)
+        #expect(dialog.title == "Putting your changes back stopped on a conflict")
+        #expect(dialog.message?.plain == "Roga pulled into main and put your uncommitted changes back, but in 1 file they conflict with what came in. Roga can't resolve conflicts yet, so you can undo the pull, or leave the conflicts to resolve in your editor.")
+        #expect(dialog.cards == [[.name("notes.txt")]])
+        #expect(dialog.buttons.map(\.title) == ["Leave it", "Undo the pull"])
+        #expect(dialog.buttons[1].kind == .primary)
+        #expect(dialog.terminal == [
+            .ran(["stash", "push", "--message", "Roga: before pulling main"]),
+            .ran(["pull", "--ff-only"]),
+            .ran(["stash", "pop", "--index"]),
+            .gap,
+            .comment("Undo the pull runs"),
+            .command(["reset", "--hard", before]),
+            .command(["stash", "pop", "--index"]),
+        ])
+
+        dialog.buttons[1].action()
+        await model.branch.running?.value
+        #expect(model.branch.putBackConflict == nil)
+        #expect(model.branch.failure == nil)
+        #expect(model.branch.finished == "Undid the pull")
+        #expect(try await git("rev-parse", "HEAD", in: clones.work) == before)
+        #expect(try notes(clones) == "mine\n2\n3\n4\n5\n")
+        #expect(try await git("stash", "list", in: clones.work).isEmpty)
+    }
+
+    @Test func leavingChangesThatConflictLeavesTheConflictInTheTitleRow() async throws {
+        let clones = try await clonesWithChangesInTheWay("mine\n2\n3\n4\n5\n")
+        let model = model(clones, fetches: false)
+        await model.appear()
+
+        model.branch.pull()
+        await model.branch.running?.value
+        try dialogContent(model).buttons[0].action()
+        #expect(model.dialog == nil)
+        await look(model)
+        #expect(model.branch.unfinished?.title == "1 conflict")
+        #expect(try await git("stash", "list", "--format=%s", in: clones.work) == "On main: Roga: before pulling main")
+    }
+
+    @Test func aPullThatStopsWithChangesAsideUndoesBoth() async throws {
+        let clones = try await clonesWithChangesInTheWay("1\n2\n3\n4\nuncommitted\n")
+        let uncommitted = try notes(clones)
+        try "unchanged\n".write(toFile: clones.work + "/notes.txt", atomically: true, encoding: .utf8)
+        let mine = try await commit("Mine", in: clones.work, file: "notes.txt", text: "mine\n2\n3\n4\n5\n")
+        try uncommitted.write(toFile: clones.work + "/notes.txt", atomically: true, encoding: .utf8)
+        let model = model(clones, fetches: false)
+        await model.appear()
+
+        model.branch.pull(.merge)
+        await model.branch.running?.value
+        let conflict = try #require(model.branch.conflict)
+        #expect(conflict.aside?.message == "Roga: before pulling main")
+        let dialog = try dialogContent(model)
+        #expect(dialog.message?.plain.hasSuffix("Your uncommitted changes are in the stash Roga: before pulling main. Undoing the pull puts them back, and so does git stash pop --index once you've finished.") == true)
+        #expect(Array(dialog.terminal.suffix(3)) == [
+            .command(["merge", "--abort"]),
+            .command(["reset", "--hard", mine]),
+            .command(["stash", "pop", "--index"]),
+        ])
+
+        model.branch.undoConflict()
+        await model.branch.running?.value
+        #expect(model.branch.finished == "Undid the pull")
+        #expect(try await git("rev-parse", "HEAD", in: clones.work) == mine)
+        #expect(try notes(clones) == uncommitted)
+        #expect(try await clones.session.stoppedWork(in: clones.work) == nil)
+    }
+
+    @Test func goingToACommitPutsBackChangesThatWereInTheWay() async throws {
+        let clones = try await clonesWithChangesInTheWay("1\n2\n3\n4\nmine\n")
+        let target = try await git("rev-parse", "origin/main", in: clones.work)
+        let model = model(clones, fetches: false)
+        await model.appear()
+
+        model.goTo(commit: try #require(ObjectID(hex: target)))
+        await finishGoing(model)
+        #expect(model.dialog == nil)
+        #expect(try await git("rev-parse", "HEAD", in: clones.work) == target)
+        #expect(model.branch.finished == "Your changes are back")
+        #expect(try notes(clones) == "theirs\n2\n3\n4\nmine\n")
+    }
+
+    @Test func changesNotInTheWayStayPutWithoutAStash() async throws {
+        let clones = try await clonesWithChangesInTheWay("1\n2\n3\n4\n5\n")
+        try "mine\n".write(toFile: clones.work + "/elsewhere.txt", atomically: true, encoding: .utf8)
+        try await git("add", "elsewhere.txt", in: clones.work)
+        let model = model(clones, fetches: false)
+        await model.appear()
+
+        model.branch.pull()
+        await model.branch.running?.value
+        #expect(model.branch.finished == "Pulled")
+        #expect(try await git("status", "--porcelain", in: clones.work) == "A  elsewhere.txt")
     }
 
     // MARK: Unfinished work
