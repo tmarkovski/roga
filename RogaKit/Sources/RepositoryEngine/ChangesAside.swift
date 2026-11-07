@@ -4,7 +4,7 @@ import GitRunner
 
 /// Uncommitted changes that Roga set aside in a stash, because a pull or going to a
 /// commit would otherwise have refused to overwrite them, and that go back once the
-/// move is done (decision 58).
+/// move is done (decision 59).
 public struct ChangesAside: Sendable, Hashable {
     /// What moves `HEAD`, which decides which changes are in its way, and how to
     /// go back.

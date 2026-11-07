@@ -566,7 +566,7 @@ public actor RepositorySession {
 
     /// Sets aside a worktree's uncommitted changes in a stash when some of them are
     /// in the way of a pull or of going to a commit, which git would otherwise
-    /// refuse (decision 58).
+    /// refuse (decision 59).
     ///
     /// - Returns: Where they went, or nil when nothing is in the way.
     /// - Throws: `GitError` when git can't make the stash, which changes nothing.

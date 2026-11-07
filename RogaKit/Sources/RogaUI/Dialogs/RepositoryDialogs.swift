@@ -304,7 +304,7 @@ extension BranchModel {
     }
 
     /// Which files came back with conflicts once uncommitted changes that were set
-    /// aside for a move were put back, and what can be done about them (decision 58).
+    /// aside for a move were put back, and what can be done about them (decision 59).
     private func dialog(for conflict: PutBackConflict) -> DialogContent {
         let aside = conflict.aside
         let noun = conflict.noun

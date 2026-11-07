@@ -6,7 +6,7 @@ import Testing
 @testable import RepositoryEngine
 
 /// Setting aside uncommitted changes that are in the way of a pull or of going to
-/// a commit, and putting them back (decision 58), between clones of a bare copy of
+/// a commit, and putting them back (decision 59), between clones of a bare copy of
 /// the `basic` repository. `other` stands for someone else pushing to the remote.
 @Suite(.timeLimit(.minutes(1)))
 struct ChangesAsideTests {

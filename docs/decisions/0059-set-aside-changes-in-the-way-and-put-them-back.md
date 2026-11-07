@@ -1,4 +1,4 @@
-# 58. Set aside changes in the way, and put them back
+# 59. Set aside changes in the way, and put them back
 
 Accepted on 2026-11-07. This changes what [decision 19](0019-pull-and-push-from-the-branch-in-the-title-row.md) says about a pull that git refuses, and what [decision 37](0037-double-click-a-commit-to-go-to-it.md) says about uncommitted changes that are in the way of going to a commit.
 

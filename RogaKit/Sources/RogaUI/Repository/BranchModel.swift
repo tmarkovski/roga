@@ -94,7 +94,7 @@ final class BranchModel {
         /// uncommitted. Undoing it takes those back to `HEAD` too.
         var stagedBefore = 0
         /// The uncommitted changes that were set aside for the pull, which undoing
-        /// it puts back (decision 58).
+        /// it puts back (decision 59).
         var aside: ChangesAside? = nil
 
         /// Whether a pull stopped, rather than a revert.
@@ -104,7 +104,7 @@ final class BranchModel {
     }
 
     /// Uncommitted changes that were set aside for a pull or for going to a commit,
-    /// and came back with conflicts, until the user has said what to do (decision 58).
+    /// and came back with conflicts, until the user has said what to do (decision 59).
     struct PutBackConflict: Equatable {
         var aside: ChangesAside
         /// The files in conflict.
@@ -384,7 +384,7 @@ final class BranchModel {
             if remembering { try await session.remember(pull, in: worktree) }
             let wasStopped = (try? await session.stoppedWork(in: worktree)) != nil
             // Uncommitted changes that git would refuse to overwrite go aside and
-            // come back afterward (decision 58).
+            // come back afterward (decision 59).
             var aside: ChangesAside?
             if let move, !wasStopped {
                 aside = try await session.setAsideChanges(inTheWayOf: move, message: message, in: worktree)
@@ -419,7 +419,7 @@ final class BranchModel {
     }
 
     /// Goes to a commit the way `commitSwitch` says. Uncommitted changes that git
-    /// would refuse to overwrite go aside and come back afterward (decision 58).
+    /// would refuse to overwrite go aside and come back afterward (decision 59).
     ///
     /// - Returns: What the title row says about that, or nil when there's nothing
     ///   to say, or a dialog says it.
