@@ -123,7 +123,7 @@ struct HistoryPanel: View {
                     Text("Commits appear here once there are some.")
                 }
             } else {
-                CommitList(model: model, version: model.historyVersion, selectedRow: model.selectedRow, showWorktree: showWorktree)
+                CommitList(model: model, version: model.historyVersion, selectedRows: model.selectedRows, showWorktree: showWorktree)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

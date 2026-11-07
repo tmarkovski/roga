@@ -24,9 +24,9 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
         /// rows that have new text. It's cancelled when other rows come into
         /// view before it finishes.
         public var loadText: (Range<Int>) async -> IndexSet
-        /// Says that the user selected a row, or no row. A selection made with
-        /// `select(row:)` isn't reported.
-        public var selectRow: (Int?) -> Void
+        /// Says that the user selected rows, or none. A selection made with
+        /// `select(rows:)` isn't reported.
+        public var selectRows: (IndexSet) -> Void
         /// Says that the user double-clicked the badge of a branch.
         public var checkOut: (CommitRowContent.Badge) -> Void
         /// Says that the user double-clicked a row anywhere else.
@@ -51,7 +51,7 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
             count: @escaping () -> Int,
             content: @escaping (Int) -> CommitRowContent,
             loadText: @escaping (Range<Int>) async -> IndexSet,
-            selectRow: @escaping (Int?) -> Void,
+            selectRows: @escaping (IndexSet) -> Void,
             checkOut: @escaping (CommitRowContent.Badge) -> Void = { _ in },
             goToRow: @escaping (Int) -> Void = { _ in },
             deleteBranches: @escaping ([String]) -> Void = { _ in },
@@ -65,7 +65,7 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
             self.count = count
             self.content = content
             self.loadText = loadText
-            self.selectRow = selectRow
+            self.selectRows = selectRows
             self.checkOut = checkOut
             self.goToRow = goToRow
             self.deleteBranches = deleteBranches
@@ -113,11 +113,12 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
         tableView.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
         tableView.backgroundColor = .clear
         tableView.focusRingType = .none
-        tableView.allowsMultipleSelection = false
+        tableView.allowsMultipleSelection = true
         tableView.setAccessibilityLabel("History")
         tableView.dataSource = self
         tableView.delegate = self
         tableView.target = self
+        tableView.action = #selector(clicked)
         tableView.doubleAction = #selector(doubleClicked)
         tableView.pointerMoved = { [unowned self] in updateHoveredBadge(atWindowLocation: $0) }
         tableView.menuForRow = { [unowned self] in menu(forRow: $0) }
@@ -155,37 +156,68 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
         updateHoveredBadge()
     }
 
-    /// The selected row, or nil when there's none.
+    /// The selected row, or nil when there's none or more than one.
     public var selectedRow: Int? {
-        tableView.selectedRow >= 0 ? tableView.selectedRow : nil
+        selectedRows.count == 1 ? selectedRows.first : nil
+    }
+
+    /// The selected rows.
+    public var selectedRows: IndexSet {
+        tableView.selectedRowIndexes
     }
 
     /// Selects a row or none, for a selection that didn't start in the list.
-    /// A newly selected row is scrolled into view.
     public func select(row: Int?) {
-        guard row != selectedRow else { return }
+        select(rows: row.map { IndexSet(integer: $0) } ?? [])
+    }
+
+    /// Selects rows or none, for a selection that didn't start in the list, such
+    /// as a branch's commits. The first of them is scrolled into view, if none of
+    /// them was selected before.
+    public func select(rows: IndexSet) {
+        guard rows != selectedRows else { return }
         isSettingSelection = true
         defer { isSettingSelection = false }
-        if let row {
-            tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
-            revealSelectedRow()
-        } else {
+        let isNew = rows.intersection(selectedRows).isEmpty
+        if rows.isEmpty {
             tableView.deselectAll(nil)
+        } else {
+            tableView.selectRowIndexes(rows, byExtendingSelection: false)
+            if isNew { revealSelectedRow() }
         }
     }
 
-    /// Scrolls the selected row into view, as little as that takes. A new list
-    /// has no height until it's laid out, and scrolling then would put the row at
-    /// the top of the list however near the top it is, so that waits.
+    /// Scrolls the first selected row into view, as little as that takes. A new
+    /// list has no height until it's laid out, and scrolling then would put the row
+    /// at the top of the list however near the top it is, so that waits.
     private func revealSelectedRow() {
         needsToRevealSelection = scrollView.contentView.bounds.height < tableView.rowHeight
-        guard !needsToRevealSelection, let selectedRow else { return }
-        tableView.scrollRowToVisible(selectedRow)
+        guard !needsToRevealSelection, let first = selectedRows.first else { return }
+        tableView.scrollRowToVisible(first)
     }
 
     public func tableViewSelectionDidChange(_ notification: Notification) {
         guard !isSettingSelection else { return }
-        source.selectRow(selectedRow)
+        source.selectRows(selectedRows)
+    }
+
+    /// The row for uncommitted changes can't be one of several selected rows
+    /// (decision 54). Command-clicking it selects it alone, and otherwise it's left
+    /// out of what's selected with it.
+    public func tableView(_ tableView: NSTableView, selectionIndexesForProposedSelection proposed: IndexSet) -> IndexSet {
+        guard proposed.count > 1, source.count() > 0, source.content(0).isWorkingTree, proposed.contains(0) else { return proposed }
+        return selectedRows.contains(0) ? proposed.subtracting(IndexSet(integer: 0)) : IndexSet(integer: 0)
+    }
+
+    /// A click on the row that's already the only one selected reports it again,
+    /// because the panels may be showing something else for it, such as a branch
+    /// with only that commit.
+    @objc private func clicked() {
+        let row = tableView.clickedRow
+        guard row >= 0, selectedRows == IndexSet(integer: row),
+              NSApp.currentEvent?.modifierFlags.intersection([.command, .shift]).isEmpty ?? true
+        else { return }
+        source.selectRows(selectedRows)
     }
 
     /// Finds the badge at a point in the table, if double-clicking it would do

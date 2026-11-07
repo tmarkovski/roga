@@ -52,6 +52,8 @@ public struct RepositoryCommands: Commands {
     static let pushShortcut = KeyboardShortcut("p", modifiers: [.shift, .command])
     static let fetchShortcut = KeyboardShortcut("e", modifiers: [.shift, .command])
     static let newBranchShortcut = KeyboardShortcut("b", modifiers: [.shift, .command])
+    /// Reviews the branch the worktree is on against the main branch (decision 54).
+    static let reviewShortcut = KeyboardShortcut("r", modifiers: [.shift, .command])
 
     /// The shortcuts for a worktree's uncommitted changes (decision 30).
     static let goToChangesShortcut = KeyboardShortcut("u", modifiers: [.shift, .command])
@@ -103,7 +105,7 @@ public struct RepositoryCommands: Commands {
                 repository?.selectedCommit.copyHash()
             }
             .keyboardShortcut(Self.copyHashShortcut)
-            .disabled(repository?.selectedCommit.id == nil)
+            .disabled(repository?.selectedCommit.hashToCopy == nil)
         }
         CommandGroup(after: .textEditing) {
             Button("Find in Diff…") {
@@ -234,6 +236,14 @@ public struct RepositoryCommands: Commands {
                 Button("Switch Branch…") {}
                     .disabled(true)
             }
+            Divider()
+            // It names the branch it compares with, as the refs panel's button does.
+            let base = repository?.currentReviewBase
+            Button(base.map { "Review Against \($0)" } ?? "Review Branch") {
+                repository?.reviewCurrentBranch()
+            }
+            .keyboardShortcut(Self.reviewShortcut)
+            .disabled(base == nil)
         }
     }
 }

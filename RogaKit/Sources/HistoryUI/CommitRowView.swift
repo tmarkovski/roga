@@ -28,13 +28,19 @@ final class CommitRowView: NSTableRowView {
         fatalError("Rows are made in code.")
     }
 
+    /// Selected rows next to each other make one block, with rounded corners only
+    /// at its ends (decision 54).
     override func drawSelection(in dirtyRect: NSRect) {
         Self.selectionColor.setFill()
-        NSBezierPath(
-            roundedRect: Self.selectionFrame(inRow: bounds),
-            xRadius: Self.selectionRadius,
-            yRadius: Self.selectionRadius
-        ).fill()
+        let frame = Self.selectionFrame(inRow: bounds)
+        NSBezierPath(roundedRect: frame, xRadius: Self.selectionRadius, yRadius: Self.selectionRadius).fill()
+        // Rows are flipped, so the row above starts at the top, where y is 0.
+        if isPreviousRowSelected {
+            NSRect(x: frame.minX, y: frame.minY, width: frame.width, height: Self.selectionRadius).fill()
+        }
+        if isNextRowSelected {
+            NSRect(x: frame.minX, y: frame.maxY - Self.selectionRadius, width: frame.width, height: Self.selectionRadius).fill()
+        }
     }
 }
 
@@ -182,7 +188,9 @@ final class CommitCellView: NSView {
         look.fill.setFill()
         NSBezierPath(roundedRect: rect, xRadius: 5, yRadius: 5).fill()
         (isHovered ? look.text : look.edge).setStroke()
-        NSBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), xRadius: 4.5, yRadius: 4.5).stroke()
+        let edge = NSBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), xRadius: 4.5, yRadius: 4.5)
+        if badge.kind == .mark { edge.setLineDash([2, 2], count: 2, phase: 0) }
+        edge.stroke()
 
         var textX = rect.minX + padding
         if let icon = Self.icon(for: badge.kind) {
@@ -222,7 +230,7 @@ final class CommitCellView: NSView {
     fileprivate static func icon(for kind: CommitRowContent.Badge.Kind) -> NSImage? {
         switch kind {
         case .tag: symbol(.tag, size: 8.5, weight: .regular, for: kind)
-        case .currentBranch, .detachedHead, .branch, .remoteBranch: nil
+        case .currentBranch, .detachedHead, .branch, .remoteBranch, .mark: nil
         }
     }
 
@@ -304,12 +312,15 @@ final class CommitCellView: NSView {
         private static let here = BadgeLook(fill: GitColors.current, edge: GitColors.current, text: GitColors.onCurrent, weight: .bold)
         private static let yours = BadgeLook(fill: plainFill, edge: plainEdge, text: GitColors.otherBranch)
         private static let others = BadgeLook(fill: plainFill, edge: plainEdge, text: GitColors.color(light: 0x55554F, dark: 0xC4C4BE))
+        /// A mark isn't a ref, so it's lighter, and its edge is dashed.
+        private static let mark = BadgeLook(fill: plainFill, edge: plainEdge, text: GitColors.color(light: 0x6E6E68, dark: 0xA8A8A2), weight: .regular)
 
         static func of(_ kind: CommitRowContent.Badge.Kind) -> BadgeLook {
             switch kind {
             case .currentBranch, .detachedHead: here
             case .branch: yours
             case .remoteBranch, .tag: others
+            case .mark: mark
             }
         }
     }

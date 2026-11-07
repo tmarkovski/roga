@@ -96,9 +96,15 @@ final class RepositoryModel {
     private(set) var stagedFiles = 0
     /// The message of the next commit, and making it.
     let composer: CommitComposer
-    /// The selected row. It's nil while the history being loaded hasn't reached
-    /// the selected commit yet, and the commit stays selected.
-    private(set) var selectedRow: Int?
+    /// The selected rows: usually one, and several when commits are picked
+    /// together or a branch is reviewed (decision 54). It's empty while the
+    /// history being loaded hasn't reached the selected commit yet, and the commit
+    /// stays selected, and while a stash shows.
+    private(set) var selectedRows = IndexSet()
+    /// The commit history marks while the panels show what it's the base of, such
+    /// as a branch's merge base or the commit a stash was made on, and what the
+    /// mark says.
+    private(set) var mark: (commit: ObjectID, title: String)?
     /// The branch being checked out, once that's taken long enough to mention.
     private(set) var slowCheckout: String?
     /// What to tell the user about a checkout that didn't work, until they've
@@ -119,6 +125,18 @@ final class RepositoryModel {
     /// The commits that the count under the pointer would move, which history
     /// tints.
     @ObservationIgnored private var previewedCommits: Set<CommitGraph.Position> = []
+    /// The commits of the selected rows while there's more than one, from the
+    /// newest, so that they can be found again when history loads.
+    @ObservationIgnored private var selectedCommits: [ObjectID] = []
+    /// Where the marked commit is in the loaded graph.
+    @ObservationIgnored private var markedPosition: CommitGraph.Position?
+    /// What branches are reviewed against: the main branch and its upstream, by
+    /// their full names, and the main branch's short name. It's observed, so that
+    /// the refs panel's buttons show once history knows the main branch.
+    private var reviewMain: (refs: [String], title: String)?
+    /// Reading what's needed for a review or a stash, which selecting something
+    /// else cancels.
+    @ObservationIgnored private(set) var selecting: Task<Void, Never>?
     @ObservationIgnored private let now = Date()
     /// Whether the user wants commit-graph files kept up to date.
     @ObservationIgnored private let keepsCommitGraphCurrent: () -> Bool
@@ -232,7 +250,13 @@ final class RepositoryModel {
     var fileList: FileListModel { selectedCommit.fileList }
 
     /// Whether a panel has files to list, or will have once they're read.
-    var canFilterFiles: Bool { selectedChanges.isSelected || selectedCommit.id != nil }
+    var canFilterFiles: Bool {
+        if selectedChanges.isSelected { return true }
+        switch selectedCommit.subject {
+        case nil, .scattered: return false
+        case .commit, .comparison, .stash: return true
+        }
+    }
 
     /// Selects the file `step` places from the selected one.
     func selectFile(by step: Int) {
@@ -694,8 +718,8 @@ final class RepositoryModel {
             workingTreeLine = history.map { WorkingTreeLine(layout: $0.lanes, head: $0.head) }
             if selectedChanges.isSelected {
                 selectRow(nil)
-            } else if let row = selectedRow {
-                selectedRow = row + (hasWorkingTreeRow ? 1 : -1)
+            } else if !selectedRows.isEmpty {
+                selectedRows = IndexSet(selectedRows.map { $0 + (hasWorkingTreeRow ? 1 : -1) })
             }
         }
         historyVersion += 1
@@ -716,7 +740,8 @@ final class RepositoryModel {
     /// Selects a commit that history doesn't have yet, because Roga just made it,
     /// which the next load of history finds a row for.
     private func selectNewCommit(_ id: ObjectID) {
-        selectedRow = nil
+        selectedRows = []
+        leaveSeveralCommits()
         selectedChanges.deselect()
         selectedCommit.show(id)
     }
@@ -736,10 +761,11 @@ final class RepositoryModel {
                     texts = [:]
                     badges = Self.badges(history)
                     previewedCommits = []
+                    reviewMain = Self.reviewMain(history.refs)
                 }
                 self.history = history
                 if hasWorkingTreeRow { workingTreeLine = WorkingTreeLine(layout: history.lanes, head: history.head) }
-                findSelectedRow(in: history)
+                findSelectedRows(in: history)
                 historyVersion += 1
                 phase = .ready
                 isComplete = history.isComplete
@@ -761,10 +787,28 @@ final class RepositoryModel {
         historyVersion += 1
     }
 
+    /// The selected row, while only one is.
+    var selectedRow: Int? {
+        selectedRows.count == 1 ? selectedRows.first : nil
+    }
+
+    /// Whether the panels show what the selected rows are, rather than a branch
+    /// or a stash, which select rows of their own or none.
+    private var panelsFollowRows: Bool {
+        switch selectedCommit.subject {
+        case nil, .commit, .scattered: true
+        case .comparison(let comparison):
+            if case .branch = comparison.kind { false } else { true }
+        case .stash: false
+        }
+    }
+
     /// Selects a row, or none.
     func selectRow(_ row: Int?) {
-        guard row != selectedRow else { return }
-        selectedRow = row
+        let rows = row.map { IndexSet(integer: $0) } ?? IndexSet()
+        guard rows != selectedRows || !panelsFollowRows else { return }
+        selectedRows = rows
+        leaveSeveralCommits()
         if hasWorkingTreeRow, row == 0 {
             selectedCommit.show(nil, keepingFile: true)
             selectedChanges.select()
@@ -779,6 +823,69 @@ final class RepositoryModel {
         selectedCommit.show(history.graph.id(at: history.rows[row - rowOffset]))
     }
 
+    /// Selects the rows someone picked in history. Several commits show as one
+    /// diff when they're a run on one line, or compared when there are two
+    /// (decision 54). The row for uncommitted changes isn't one of several.
+    func selectRows(_ rows: IndexSet) {
+        var rows = rows
+        if hasWorkingTreeRow, rows.count > 1 { rows.remove(0) }
+        guard rows.count > 1, let history else {
+            selectRow(rows.first)
+            return
+        }
+        guard rows != selectedRows || !panelsFollowRows else { return }
+        selectedRows = rows
+        leaveSeveralCommits()
+        selectedChanges.deselect()
+        let positions = rows.map { history.rows[$0 - rowOffset] }
+        selectedCommits = positions.map { history.graph.id(at: $0) }
+        selectedCommit.show(subject: Self.subject(of: positions, in: history.graph))
+    }
+
+    /// What several commits show as, from the newest, as history lists them, where
+    /// a commit always comes before its parents. A run on one line, each the first
+    /// parent of the one before, is one diff from the oldest one's parent. Two
+    /// others are compared, from the older to the newer.
+    static func subject(of positions: [CommitGraph.Position], in graph: CommitGraph) -> SelectedCommit.Subject {
+        let isRun = zip(positions, positions.dropFirst()).allSatisfy { child, parent in
+            (try? graph.parent(of: child, at: 0)) == parent
+        }
+        if isRun, let newest = positions.first, let oldest = positions.last {
+            let base = try? graph.parent(of: oldest, at: 0)
+            return .comparison(SelectedCommit.Comparison(
+                kind: .run(count: positions.count, oldest: graph.id(at: oldest)),
+                from: base.map { graph.id(at: $0) },
+                to: graph.id(at: newest)
+            ))
+        }
+        if positions.count == 2 {
+            return .comparison(SelectedCommit.Comparison(kind: .pair, from: graph.id(at: positions[1]), to: graph.id(at: positions[0])))
+        }
+        return .scattered(positions.count)
+    }
+
+    /// Shows a comparison with the rows as they are, as when swapping two commits.
+    func compare(_ comparison: SelectedCommit.Comparison) {
+        selectedCommit.show(subject: .comparison(comparison))
+    }
+
+    /// Forgets the commits that were selected together, the review or stash that
+    /// was showing, and the mark that went with them.
+    private func leaveSeveralCommits() {
+        selecting?.cancel()
+        selecting = nil
+        selectedCommits = []
+        setMark(nil)
+    }
+
+    /// Marks a commit in history, or none.
+    private func setMark(_ mark: (commit: ObjectID, title: String)?) {
+        guard mark?.commit != self.mark?.commit || mark?.title != self.mark?.title else { return }
+        self.mark = mark
+        markedPosition = mark.flatMap { history?.graph.position(of: $0.commit) }
+        historyVersion += 1
+    }
+
     /// Selects a commit. While history hasn't reached it, which includes when
     /// history hasn't started loading, the commit is selected without a row until
     /// loading finds one. Once history is complete, it has to have the commit.
@@ -786,10 +893,119 @@ final class RepositoryModel {
         if let row = history.flatMap({ Self.row(of: id, in: $0) }) {
             selectRow(row + rowOffset)
         } else if history?.isComplete != true {
-            selectedRow = nil
+            selectedRows = []
+            leaveSeveralCommits()
             selectedChanges.deselect()
             selectedCommit.show(id)
         }
+    }
+
+    /// Shows what a stash holds in the panels, with no row selected and the commit
+    /// it was made on marked in history (decision 54).
+    func select(stash: StashDetails) {
+        refs.select(ref: stash.name)
+        guard selectedCommit.stash != stash else { return }
+        selectedRows = []
+        leaveSeveralCommits()
+        selectedChanges.deselect()
+        selectedCommit.show(subject: .stash(stash))
+        selecting = Task {
+            guard let base = (try? await session.commits([stash.commit]))?.first??.parents.first, !Task.isCancelled else { return }
+            setMark((base, stash.name))
+        }
+    }
+
+    /// The branches a branch is reviewed against: the main branch and its upstream,
+    /// by their full names, and the main branch's short name. A branch that is the
+    /// main branch, or its upstream, has nothing to review against.
+    func reviewBase(for name: String) -> (refs: [String], title: String)? {
+        guard let reviewMain, !reviewMain.refs.contains(name) else { return nil }
+        return reviewMain
+    }
+
+    /// Works out what branches are reviewed against, once for each history,
+    /// because every branch's row in the refs panel asks.
+    private static func reviewMain(_ refs: RefList) -> (refs: [String], title: String)? {
+        guard let main = refs.mainBranch else { return nil }
+        let upstream = main.upstream.flatMap { upstream in refs.refs.contains { $0.name == upstream } ? upstream : nil }
+        return ([main.name] + [upstream].compactMap(\.self), main.shortName)
+    }
+
+    /// Selects a branch's commits since it left the main branch, marks where it
+    /// left, and shows them as one diff (decision 54).
+    func review(branch name: String) {
+        guard let base = reviewBase(for: name) else { return }
+        refs.select(ref: name)
+        leaveSeveralCommits()
+        selecting = Task {
+            do {
+                let review = try await session.review(branch: name, against: base.refs)
+                try Task.checkCancellation()
+                show(review, against: base.refs[0])
+            } catch is CancellationError {
+            } catch {
+                branch.failure = BranchModel.Failure(title: "Can't review \(Ref.shortName(name))", error: error, changedNothing: true)
+            }
+        }
+    }
+
+    /// Reviews the branch the worktree is on, from the menu bar.
+    func reviewCurrentBranch() {
+        guard let current = history?.refs.currentBranch else { return }
+        review(branch: current)
+    }
+
+    /// The short name of the branch that the branch the worktree is on would be
+    /// reviewed against, or nil when it can't be.
+    var currentReviewBase: String? {
+        history?.refs.currentBranch.flatMap(reviewBase(for:))?.title
+    }
+
+    /// Selects a review's commits and shows them as one diff.
+    private func show(_ review: BranchReview, against main: String) {
+        selectedChanges.deselect()
+        selectedCommits = review.commits
+        selectedRows = history.map { rows(of: review.commits, in: $0) } ?? []
+        selectedCommit.show(subject: .comparison(SelectedCommit.Comparison(
+            kind: .branch(name: review.branch, against: main, count: review.commits.count, hasMore: review.hasMore),
+            from: review.base,
+            to: review.tip
+        )))
+        setMark(review.base.map { ($0, "merge base") })
+    }
+
+    /// The branch whose review is showing, by its full name.
+    var reviewedBranch: String? {
+        guard case .branch(let name, _, _, _) = selectedCommit.comparison?.kind else { return nil }
+        return name
+    }
+
+    /// Reviews the branch again once history has loaded, because what moved may
+    /// have been the branch, as when an agent commits. A branch that's gone leaves
+    /// nothing selected.
+    private func refreshReview() {
+        guard let name = reviewedBranch, case .comparison(let shown) = selectedCommit.subject else { return }
+        guard let base = reviewBase(for: name), history?.refs.refs.contains(where: { $0.name == name }) == true else {
+            selectRow(nil)
+            return
+        }
+        selecting?.cancel()
+        selecting = Task {
+            guard let review = try? await session.review(branch: name, against: base.refs), !Task.isCancelled else { return }
+            guard review.tip != shown.to || review.base != shown.from || review.commits.count != selectedCommits.count else { return }
+            show(review, against: base.refs[0])
+        }
+    }
+
+    /// The rows of some commits in history, going through history once.
+    private func rows(of commits: [ObjectID], in history: History) -> IndexSet {
+        let positions = Set(commits.compactMap { history.graph.position(of: $0) })
+        guard !positions.isEmpty else { return [] }
+        var rows = IndexSet()
+        for (row, position) in history.rows.enumerated() where positions.contains(position) {
+            rows.insert(row + rowOffset)
+        }
+        return rows
     }
 
     /// Selects the commit a ref points to, and the ref's row in the refs panel.
@@ -804,13 +1020,20 @@ final class RepositoryModel {
         history?.graph.position(of: id) != nil
     }
 
-    /// Finds the selected commit in a history that has just loaded, where it
-    /// can be in another row. Once history is complete, a commit that isn't in
-    /// it is gone, such as after deleting its branch.
-    private func findSelectedRow(in history: History) {
+    /// Finds the selected commits in a history that has just loaded, where they
+    /// can be in other rows, and the marked one. Once history is complete, a
+    /// commit that isn't in it is gone, such as after deleting its branch. A
+    /// review is read again then, because the branch may have moved.
+    private func findSelectedRows(in history: History) {
+        markedPosition = mark.flatMap { history.graph.position(of: $0.commit) }
+        if !selectedCommits.isEmpty {
+            selectedRows = rows(of: selectedCommits, in: history)
+            if history.isComplete, reviewedBranch != nil { refreshReview() }
+            return
+        }
         guard let id = selectedCommit.id else { return }
-        selectedRow = Self.row(of: id, in: history).map { $0 + rowOffset }
-        if selectedRow == nil, history.isComplete { selectedCommit.show(nil) }
+        selectedRows = Self.row(of: id, in: history).map { IndexSet(integer: $0 + rowOffset) } ?? []
+        if selectedRows.isEmpty, history.isComplete { selectedCommit.show(nil) }
     }
 
     /// Goes through the rows, which takes up to a millisecond for as many as
@@ -847,9 +1070,11 @@ final class RepositoryModel {
         guard let history, row >= 0, row < history.rows.count else { return CommitRowContent(shortID: "") }
         let position = history.rows[row]
         let text = texts[position]
+        var badges = badges[position] ?? []
+        if position == markedPosition, let mark { badges.append(CommitRowContent.Badge(title: mark.title, kind: .mark)) }
         return CommitRowContent(
             shortID: String(history.graph.id(at: position).hex.prefix(8)),
-            badges: badges[position] ?? [],
+            badges: badges,
             subject: text?.subject,
             body: text?.body,
             author: text?.author,

@@ -163,7 +163,7 @@ struct RefsPanel: View {
                     }
                     section(.stashes, count: details.stashes.count) {
                         ForEach(details.stashes, id: \.position) { stash in
-                            RefRow(icon: .stash, title: stash.message, subtitle: stash.subtitle())
+                            stashRow(stash)
                         }
                     }
                 }
@@ -219,15 +219,16 @@ struct RefsPanel: View {
     ///   it's in.
     private func branchRow(_ branch: BranchDetails, title: String, depth: Int, isCurrent: Bool) -> some View {
         let otherWorktree = isCurrent ? nil : branch.worktree
+        let reviewBase = model.reviewBase(for: branch.name)?.title
         return RefRow(
             icon: .branch,
             imageColor: isCurrent ? Palette.current : .secondary,
             title: title,
             subtitle: branch.subtitle(isCurrent: isCurrent),
-            menu: branchMenu(branch, isCurrent: isCurrent, otherWorktree: otherWorktree),
-            isSelected: isSelected(branch.name, branch.tip),
+            menu: branchMenu(branch, isCurrent: isCurrent, otherWorktree: otherWorktree, reviewBase: reviewBase),
+            isSelected: isSelected(branch.name, branch.tip) || model.reviewedBranch == branch.name,
             indent: RefIndent.of(depth),
-            hasCommands: otherWorktree != nil,
+            hasCommands: otherWorktree != nil || reviewBase != nil,
             action: { select(branch.name, branch.tip) },
             // There's nothing to do for the current branch, as for its badge.
             doubleAction: isCurrent ? nil : { checkOut(branch.name) }
@@ -241,6 +242,14 @@ struct RefsPanel: View {
                 AheadBehind(ahead: comparison.ahead, behind: comparison.behind)
             }
         } commands: {
+            if let reviewBase {
+                Button { review(branch.name) } label: { Icon.compare.image }
+                    .buttonStyle(.icon(size: 24))
+                    .help(isCurrent
+                        ? "Review Against \(reviewBase) (\(RepositoryCommands.reviewShortcut.symbols))"
+                        : "Review Against \(reviewBase)")
+                    .accessibilityLabel("Review Against \(reviewBase)")
+            }
             if let otherWorktree {
                 Button { showWorktree(otherWorktree, branch.tip) } label: { Icon.worktree.image }
                     .buttonStyle(.icon(size: 24))
@@ -251,13 +260,21 @@ struct RefsPanel: View {
         .id(branch.name)
     }
 
-    private func branchMenu(_ branch: BranchDetails, isCurrent: Bool, otherWorktree: String?) -> [RefMenu.Entry] {
+    private func review(_ name: String) {
+        isListFocused = true
+        model.review(branch: name)
+    }
+
+    private func branchMenu(_ branch: BranchDetails, isCurrent: Bool, otherWorktree: String?, reviewBase: String?) -> [RefMenu.Entry] {
         var entries: [RefMenu.Entry] = [.header(branch.shortName)]
+        if let reviewBase {
+            entries.append(.command("Review Against \(reviewBase)") { review(branch.name) })
+        }
         if let otherWorktree {
-            entries += [
-                .command("Show Worktree") { showWorktree(otherWorktree, branch.tip) },
-                .divider,
-            ]
+            entries.append(.command("Show Worktree") { showWorktree(otherWorktree, branch.tip) })
+        }
+        if reviewBase != nil || otherWorktree != nil {
+            entries.append(.divider)
         }
         entries += [
             .command("Copy Name") { copy(branch.shortName) },
@@ -317,6 +334,23 @@ struct RefsPanel: View {
         } commands: {
         }
         .id(tag.name)
+    }
+
+    /// A stash, which shows what it holds in the panels (decision 54).
+    private func stashRow(_ stash: StashDetails) -> some View {
+        RefRow(
+            icon: .stash,
+            title: stash.message,
+            subtitle: stash.subtitle(),
+            isSelected: model.selectedCommit.stash?.commit == stash.commit,
+            action: {
+                isListFocused = true
+                model.select(stash: stash)
+            }
+        ) {
+        } commands: {
+        }
+        .id(stash.name)
     }
 
     private func isSelected(_ name: String, _ commit: ObjectID) -> Bool {
@@ -608,15 +642,6 @@ private struct RefRow<Trailing: View, Commands: View>: View {
                 Button("Check Out", action: doubleAction)
             }
             refMenuActions(menu)
-        }
-    }
-}
-
-extension RefRow where Trailing == EmptyView, Commands == EmptyView {
-    /// A row with nothing but its text, such as a stash's.
-    init(icon: Icon, title: String, subtitle: String) {
-        self.init(icon: icon, title: title, subtitle: subtitle) {
-        } commands: {
         }
     }
 }

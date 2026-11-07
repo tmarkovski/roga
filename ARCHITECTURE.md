@@ -83,7 +83,8 @@ roga/
 │   │   │   ├── CommitRevert.swift      reverting a commit, and what to say before it
 │   │   │   ├── BranchDeletion.swift    what deleting a branch would lose, and deleting it
 │   │   │   ├── WorktreeDeletion.swift  what deleting a linked worktree would lose
-│   │   │   ├── DiffLoader.swift        the files a commit changed, and their patches
+│   │   │   ├── DiffLoader.swift        the files a commit changed or two commits differ in, and their patches
+│   │   │   ├── StashContents.swift     a stash's staged, unstaged and untracked files, and a branch's review, decision 54
 │   │   │   ├── StagedChanges.swift     what's staged, cut down to what an agent can read quickly
 │   │   │   ├── RepositoryWatcher.swift one FSEvents stream, numbered batches, decision 49
 │   │   │   ├── FolderWatcher.swift     the FSEvents stream itself

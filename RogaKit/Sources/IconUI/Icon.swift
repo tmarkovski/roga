@@ -26,6 +26,8 @@ extension Icon {
     public static let commit = gitCommitHorizontal
     public static let graph = gitGraph
     public static let compare = gitCompare
+    /// Swapping two commits that are being compared.
+    public static let swap = arrowLeftRight
     public static let merge = gitMerge
     public static let conflict = gitMergeConflict
     public static let squash = combine
