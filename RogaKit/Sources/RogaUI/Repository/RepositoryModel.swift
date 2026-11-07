@@ -629,8 +629,9 @@ final class RepositoryModel {
     private func run(_ commitSwitch: CommitSwitch) async {
         await sayingIfSlow(commitSwitch.shortCommit) {
             do {
-                try await session.run(commitSwitch, in: worktree)
+                let note = try await branch.go(commitSwitch)
                 select(commit: commitSwitch.commit)
+                if let note { branch.announce(note, undo: nil) }
                 lookAgain()
                 await reportBranchChange()
             } catch {
