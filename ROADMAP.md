@@ -93,6 +93,10 @@ Release 1 was also going to have file history, search and blame, and to pass the
 - Show the result before applying it, using `git merge-tree --write-tree`, and abort cleanly if a rebase stops partway.
 - Consider `git replay` for rewriting branches without touching the working tree. It's still marked experimental, and its options have changed since git 2.44, so Roga would need a fallback.
 
+## Decided, not scheduled
+
+- **Replaying history.** Roga plays a repository's history as an animation: branches leave the main line, their commits land one by one, and they merge back, ending on the whole range at once. It works in any repository, and saves a video or an image to share. [Decision 62](docs/decisions/0062-replay-a-repositorys-history.md) says how, and a [prototype](prototypes/history-replay/README.md) tried the motion in a browser. It needs nothing that isn't built yet, so it can come whenever there's time for it.
+
 ## Not planned yet
 
 These each need their own decision before they're scheduled:

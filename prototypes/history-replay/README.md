@@ -1,6 +1,8 @@
 # History replay
 
-This is a throwaway motion study for a feature that replays a repository's history as an animation: a branch starts, its commits land one by one, and it merges back, with the camera following along. It isn't part of the app. The app would draw the replay natively, but a page in a browser was the quickest way to try the motion on real histories, the same way the house's walk was tried first ([decision 21](../../docs/decisions/0021-draw-the-houses-animations-from-joints.md)).
+This is a throwaway motion study for a feature that replays a repository's history as an animation: a branch starts, its commits land one by one, and it merges back, with the camera following along. It isn't part of the app. [Decision 62](../../docs/decisions/0062-replay-a-repositorys-history.md) has the app draw the replay in Swift, but a page in a browser was the quickest way to try the motion on real histories, the same way the house's walk was tried first ([decision 21](../../docs/decisions/0021-draw-the-houses-animations-from-joints.md)).
+
+This README records what the prototype showed and what other tools have done. The decision says what Roga will build and where its code goes.
 
 ## Running it
 
@@ -52,21 +54,44 @@ That guess is right for this repository. It isn't always right:
 
 **Each frame depends only on its time.** The camera follows an average of where the newest commit was over the last half second, rather than easing toward it frame by frame. So playing, scrubbing and recording all draw the same frame for the same moment. This is what makes saving a video simple in the app: it can draw each frame on its own, faster than real time.
 
-## Building it in the app
+## What others have done
 
-The replay fits the app's layers without changing them.
+Before building the prototype, we looked at what other people have made for showing Git history, and at what spread. The numbers are from November 2026. Star counts are rounded, and points are from Hacker News. We couldn't find view counts for videos or posts.
 
-- **Working out the replay** goes in `CommitGraph`, next to `LaneLayout`, as a type that takes the graph, the tip, a range and the subjects, and returns the branches, their lanes, and when each commit lands. It's the prototype's `build()` in Swift. It needs no AppKit, so it can be tested against the fixture repositories and run in `roga-bench`. Deciding which side of a merge is main has to walk each side, which generation numbers can bound the same way they bound `HistoryOrder`.
-- **Drawing it** goes in `RogaUI`, as a SwiftUI `Canvas` inside a `TimelineView`, the way the house is drawn. A replay is a function from time to a frame, just as each of the house's animations is a function from time to a pose. It takes the lane colors from `GitColors`, and it starts on the last frame for someone who asked for less motion.
-- **Saving it** draws each frame with `ImageRenderer` and writes them with `AVAssetWriter` as an MP4, and saves the last frame as a PNG. Both are part of macOS, so there's no new dependency. We haven't measured how long a minute of video takes to render.
+- [Gource](https://github.com/acaudwell/Gource) animates a repository as a tree of files, with people flying around it as they commit. It has about 13,000 stars and has reached the front page of Hacker News several times, most recently with 173 points in 2024. It skips idle stretches, glows, follows the activity with its camera, and saves video through ffmpeg.
+- [Learn Git Branching](https://learngitbranching.js.org) is a sandbox where the graph rearranges itself smoothly after each command. It has about 34,000 stars and 717 points from 2013, and it keeps coming back.
+- [Git History](https://githistory.xyz) animates one file through its versions when you swap the domain in a GitHub address. It has about 14,000 stars and 407 points. Starting it takes no setup at all.
+- [git-sim](https://github.com/initialcommit-com/git-sim) shows what a git command would do, as an image or a video, drawn with the same engine as 3Blue1Brown's videos. It has about 4,700 stars and 447 points. Its author's git-story, which turns the last few commits into a video, has only about 275 stars, and its author says busy branching with crossing lines looks bad. A clean diagram on its own doesn't spread.
+- [GitHub Unwrapped](https://www.githubunwrapped.com) makes a year-in-review video, with themes and music, to post. It has come back every year since 2021. A crowd of similar year-in-review tools appeared in 2025 without much to show for it.
+- [Git City](https://github.com/srizzon/git-city) turns a GitHub profile into a building in a 3D pixel-art city, with share cards shaped for posts and for phones. It reached about 6,000 stars within months in 2026.
+- [GitHub Skyline](https://skyline.github.com) turns a year of contributions into a 3D model you can print, and [snk](https://github.com/Platane/snk) is a snake that eats your contribution graph, as a GIF that keeps itself up to date. snk has about 6,200 stars.
+- [MetroGit](https://github.com/vbarbaresi/MetroGit) draws the Paris Métro as a git graph. It got 262 points in 2015, which says developers like history drawn as a metro map.
+- GitHub's [repo-visualizer](https://github.com/githubocto/repo-visualizer) draws a repository's files as packed circles, and [git-of-theseus](https://github.com/erikbern/git-of-theseus) charts how much of each year's code survives. Either would make a good last frame.
+- [gitgraph.js](https://github.com/nicoespeon/gitgraph.js) has a metro template, and Mermaid's `gitGraph` takes turns with eight branch colors, as Roga's graph does.
 
-It would open from a **Replay History** command in the History menu and from the menu of a branch, and play in its own window, for whichever repository and branch is on screen. The window would offer a range, such as the last two weeks, since a tag, or the whole history for a small repository, and a length. Replaying all of Linux's million commits wouldn't mean anything, so the range matters more than speed.
+**What the ones that spread have in common**:
 
-**Rough size**, for one person: two or three days for working out the replay, with tests; three or four for drawing it, with the camera, labels and controls; two for saving videos and images; and two for the range picker, less motion, VoiceOver, and both appearances. That's about two weeks in all.
+- They leave people with one thing to post: a video, an image, a model to print, or something to embed.
+- They're about the person's own work.
+- Starting them takes almost no effort: one address, one name, or one command.
+- A new way of picturing history helps, such as a city, a snake or a metro map, as does music and coming back every year.
 
-**Still open:**
+**For big or messy histories**, Gource compresses time, skips idle stretches and limits the range, git-story stops at a handful of commits, and the year-in-review tools drop the graph and show totals. We found none that picks out what mattered, such as the ten biggest pull requests.
 
-- whether the replay belongs in its own window or over the history in the main window
-- whether the house should walk along the main line ahead of the newest commit, the way it does on the landing page
-- what the replay should show for a repository that squashes every pull request
-- whether to offer a version shaped for phones (9:16) as well as a wide one
+**What the prototype takes from them**:
+
+- metro-map lanes;
+- a camera that follows the newest commit;
+- labels that pop in;
+- fast-forwarding through quiet stretches;
+- a slider to scrub with;
+- a last frame that sums the history up, and works as an image to share.
+
+**What it leaves for later**:
+
+- avatars;
+- a lane for each author, which would help repositories that squash everything;
+- themes;
+- versions shaped for phones;
+- showing the code of a key commit being typed, the way [gitlogue](https://github.com/unhappychoice/gitlogue) replays commits in a terminal;
+- showing what a rebase will do before it runs, which git-sim's reception suggests people want.
