@@ -177,6 +177,11 @@ const RING = 0.8;
 // The zoom out to the whole history at the end, and how long it holds there.
 const FINALE = 2.4;
 const HOLD = 2.4;
+// Through a flat stretch, each commit's subject flicks off the line on a stem
+// for this long. The stems take turns going down and up, at two heights, so
+// that neighbors don't land on each other.
+const TICK = 0.9;
+const TICK_STEMS = [[1, 18], [-1, 18], [1, 36], [-1, 36]];
 
 // ---------------------------------------------------------------------------
 // Building the replay from the commits
@@ -386,11 +391,18 @@ function build(data, maxLength) {
   let running = 0;
   let forks = 0;
   let merges = 0;
+  let tick = 0;
+  let lastMerge = -Infinity;
   for (const c of shown) {
     running += open[c.x];
     c.fast = running === 0;
     c.isFork = c.branch.id > 0 && c === c.branch.first;
     c.isMerge = c.branch.id === 0 && c.parents.length > 1;
+    if (c.isMerge) lastMerge = c.x;
+    // The few commits right after a merge go without, so that their subjects
+    // don't land on the merge's note.
+    if (c.fast && !c.isMerge && c.x - lastMerge > 4) c.tick = tick++ % TICK_STEMS.length;
+    else if (!c.fast) tick = 0;
     if (c.isFork) t += FORK_PAUSE;
     c.time = t;
     t += c.fast ? FAST : SLOW;
@@ -718,6 +730,38 @@ function draw(time) {
     ctx.shadowBlur = 0;
   }
 
+  // Each commit in a flat stretch flicks its subject off the line, trailing
+  // behind its stem as the camera moves on, and fades quickly.
+  if (playing > 0) {
+    ctx.font = `500 ${L.small ? 10 : 11}px ${FONT}`;
+    ctx.textAlign = "right";
+    ctx.lineWidth = 1;
+    const room = L.kx * TICK_STEMS.length - 12;
+    for (const c of order) {
+      if (c.tick === undefined || c.time > time || c.x < xMin || c.x > xMax) continue;
+      const age = time - c.time - GROW * 0.4;
+      if (age < 0 || age > TICK) continue;
+      const [side, length] = TICK_STEMS[c.tick];
+      const reach = length * easeOut(clamp(age / 0.14)) + 4 * (age / TICK);
+      const alpha = (1 - clamp((age - 0.3) / (TICK - 0.3))) * playing;
+      const x = X(c.x);
+      const tip = Y(0) + side * reach;
+      ctx.globalAlpha = alpha * 0.7;
+      ctx.strokeStyle = theme.muted;
+      ctx.beginPath();
+      ctx.moveTo(x, Y(0) + side * 7 * L.dot);
+      ctx.lineTo(x, tip);
+      ctx.stroke();
+      if (room > 40) {
+        ctx.globalAlpha = alpha * 0.85 * clamp(age / 0.1);
+        ctx.fillStyle = theme.ink;
+        ctx.fillText(fit(c.s, room), x - 5, tip + 4);
+      }
+    }
+    ctx.textAlign = "left";
+    ctx.globalAlpha = 1;
+  }
+
   // Branch names, which fade once the branch has merged.
   const labelFont = `600 ${L.small ? 11 : 12}px ${FONT}`;
   for (const b of branches) {
@@ -912,6 +956,12 @@ document.addEventListener("keydown", (event) => {
   } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
     time = clamp(time + (event.key === "ArrowLeft" ? -2 : 2), 0, replay.end);
     dirty = true;
+  } else if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+    event.preventDefault();
+    const speeds = [...speedSelect.options].map((option) => Number(option.value));
+    const current = speeds.includes(speed) ? speeds.indexOf(speed) : speeds.indexOf(1);
+    speed = speeds[clamp(current + (event.key === "ArrowUp" ? 1 : -1), 0, speeds.length - 1)];
+    speedSelect.value = String(speed);
   }
 });
 

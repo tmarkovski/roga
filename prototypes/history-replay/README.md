@@ -22,7 +22,7 @@ The page takes these options in its address:
 - `?speed=2` starts it at twice the speed.
 - `?t=12` opens it at 12 seconds, paused, which is handy for screenshots.
 
-Space plays and pauses, and the arrow keys jump 2 seconds back or forward. **Record** plays the replay from the start and saves it as a video.
+Space plays and pauses, the left and right arrow keys jump 2 seconds back or forward, and the up and down arrow keys change the speed. **Record** plays the replay from the start and saves it as a video.
 
 ## What it shows
 
@@ -31,7 +31,7 @@ Space plays and pauses, and the arrow keys jump 2 seconds back or forward. **Rec
 - A merge into the main line is drawn as an interchange, with a ring in the merged branch's color. A pull request that was squashed onto the main line is drawn as an interchange too.
 - Each branch is labeled with its pull request's number and title, and the label fades once it has merged.
 - The top shows the date and how many commits, branches and merges have landed so far. The bottom shows the newest commit's hash and subject.
-- Stretches where no branch is open, like the first days of this repository, fast-forward.
+- Stretches where no branch is open, like the first days of this repository, fast-forward. Each commit there flicks its subject off the line on a thin stem, down and up in turn at two heights, and fades within a second, so that something visibly happens at every commit. The few commits right after a merge go without, so that they don't land on the merge's note.
 - At the end, the camera pulls back to show the whole history at once, with a summary over it. That last frame works as an image to share.
 - Someone who asked for less motion starts on that last frame, still.
 

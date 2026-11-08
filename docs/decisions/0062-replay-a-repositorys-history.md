@@ -21,7 +21,7 @@ We considered drawing the replay as a web page in a web view, since the prototyp
 
 **The replay is drawn in Swift, with a SwiftUI `Canvas` in a `TimelineView`, the way the house is.** The prototype stays a motion study, and Roga doesn't ship it.
 
-**It replays the branch on screen, in whatever repository is open.** **Replay History** in the Branch menu replays the current branch, and the same command in a branch's menu, in history or the refs panel, replays that one. It plays with a play button, a slider to scrub through it, and a choice of speed. Space plays and pauses, and the arrow keys jump back and forward.
+**It replays the branch on screen, in whatever repository is open.** **Replay History** in the Branch menu replays the current branch, and the same command in a branch's menu, in history or the refs panel, replays that one. It has a play button, a slider to scrub through it, and a speed control, from half speed to four times. Space plays and pauses, the left and right arrow keys jump back and forward, and the up and down arrow keys change the speed.
 
 **It looks like a metro map.**
 
@@ -29,6 +29,7 @@ We considered drawing the replay as a web page in a web view, since the prototyp
 - A branch's line curves off the commit it started from, runs along its lane, and curves back into its merge. The lanes take turns with the graph's Monokai colors ([decision 27](0027-give-the-graph-and-branches-monokais-colors.md)).
 - A merge into the main line is drawn as an interchange, and sends out a ring in the color of the branch it brought in. A pull request that was squashed onto the main line is drawn as an interchange too, since its branch is gone.
 - Each branch is labeled with its pull request's number and title, or its name when there's no pull request. The label fades once the branch has merged.
+- Through a stretch where no branch is open, the replay fast-forwards, and each commit flicks its subject off the line on a thin stem, down and up in turn, fading within a second. The flat stretches still show something happening at every commit.
 - The date and how many commits, branches and merges have landed so far are at the top. The newest commit's hash and subject are at the bottom.
 - At the end, the camera pulls back to show the whole range at once, with a summary over it such as **209 commits · 27 branches · 8 days**.
 
@@ -38,11 +39,11 @@ We considered drawing the replay as a web page in a web view, since the prototyp
 2. Each merge on the main line brings in a branch. Its commits are the ones behind the merge's other parents that no earlier branch has claimed.
 3. A merged branch's name comes from the merge's message. GitHub writes `Merge pull request #52 from owner/branch` with the pull request's title in the body, GitLab writes `Merge branch 'x' into 'main'`, and Bitbucket writes `Merged in x (pull request #12)`. GitHub can also be set to use the pull request's title as the subject, followed by its number. A branch that hasn't merged yet takes its name from its ref.
 
-**A replay has a length rather than a speed.** The user picks a range, such as the last two weeks, everything since a tag, or the whole history, and how long the replay plays. Stretches where no branch is open get a quarter of the time. Then the whole replay speeds up to fit the length, and the camera pulls back to match, so that it never pans faster than anyone can read. The range matters more than the length: a replay of all of Linux's million commits wouldn't mean anything.
+**A replay fits a length, and the speed control plays it faster or slower.** The user picks a range, such as the last two weeks, everything since a tag, or the whole history, and how long the replay plays at normal speed. Stretches where no branch is open get a quarter of the time. Then the whole replay speeds up to fit the length, and the camera pulls back to match, so that it never pans faster than anyone can read. The range matters more than the length: a replay of all of Linux's million commits wouldn't mean anything. The speed control only changes how fast the clock runs, so changing it carries on from the same moment, as the house's speed setting does.
 
 **Each frame depends only on its time.** The camera follows an average of where the newest commit was over the last half second, rather than easing toward it frame by frame. So playing, scrubbing and saving all draw the same frame for the same moment.
 
-**Roga saves a replay as a video and its last frame as an image.** It draws each frame on its own with `ImageRenderer`, faster than real time, and writes them as an MP4 with `AVAssetWriter`. The last frame is saved as a PNG. Both are part of macOS.
+**Roga saves a replay as a video and its last frame as an image.** It draws each frame on its own with `ImageRenderer`, faster than real time, and writes them as an MP4 with `AVAssetWriter`. The last frame is saved as a PNG. Both are part of macOS. A saved video plays at normal speed, so it's as long as the length chosen.
 
 **Someone who asks for less motion sees the last frame, still**, as with the house. VoiceOver reads the summary, and every control names itself.
 
@@ -51,7 +52,7 @@ We considered drawing the replay as a web page in a web view, since the prototyp
 - Working out the replay is a type in `CommitGraph`, next to `LaneLayout`. It takes the graph, the tip, the range and the commits' subjects, and returns the branches, their lanes, and when each commit lands. It doesn't use AppKit, so it's tested against the fixture repositories and timed in `roga-bench`. It's the prototype's `build()`, in Swift.
 - The repository's session loads the subjects and merge messages for the range through the `cat-file` process, since views never run git.
 - Drawing, playing and saving the replay go in `RogaUI`, in a folder of their own, as the house's code is.
-- The player is kept apart from the picture. The clock, the controls, fitting a range to a length, and saving videos and images don't know what's being drawn, and the metro map is one picture they play. That leaves room for another picture of the same history later.
+- The player is kept apart from the picture. The clock, the controls and their speed, fitting a range to a length, and saving videos and images don't know what's being drawn, and the metro map is one picture they play. That leaves room for another picture of the same history later.
 
 ## Consequences
 
