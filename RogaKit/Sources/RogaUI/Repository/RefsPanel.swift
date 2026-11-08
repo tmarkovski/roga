@@ -277,6 +277,7 @@ struct RefsPanel: View {
             entries.append(.divider)
         }
         entries += [
+            .command("Replay History") { model.replayHistory(ofBranch: branch.name) },
             .command("Copy Name") { copy(branch.shortName) },
             .divider,
             // git won't delete a branch that a worktree has checked out.
@@ -298,6 +299,7 @@ struct RefsPanel: View {
             menu: [
                 // Its full name, because the row's title leaves out the remote.
                 .header(Ref.shortName(branch.name)),
+                .command("Replay History") { model.replayHistory(ofBranch: branch.name) },
                 .command("Copy Name") { copy(Ref.shortName(branch.name)) },
                 .divider,
                 .command("Delete from Remote…", isDestructive: true, isEnabled: !model.branch.isBusy) {

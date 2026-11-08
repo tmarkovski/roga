@@ -140,6 +140,62 @@ public actor RepositorySession {
         }
     }
 
+    /// Works out the replay of a branch's history (decision 62). The commits'
+    /// text comes from the session's `git cat-file`, and everything else from
+    /// `graph`, away from the session's actor so that the commit list can keep
+    /// reading text in the meantime.
+    ///
+    /// - Parameters:
+    ///   - tip: The commit the branch points to.
+    ///   - mainLineName: The name of the branch being replayed.
+    ///   - length: The longest it should play for, in seconds.
+    @concurrent
+    public nonisolated func replay(
+        of tip: CommitGraph.Position,
+        in graph: CommitGraph,
+        range: HistoryReplay.CommitRange,
+        mainLineName: String,
+        length: Double
+    ) async throws -> HistoryReplay {
+        let positions = try HistoryReplay.commits(in: graph, from: tip, range: range)
+        return try HistoryReplay(
+            graph: graph,
+            tip: tip,
+            positions: positions,
+            messages: try await replayMessages(for: positions, in: graph),
+            mainLineName: mainLineName,
+            length: length
+        )
+    }
+
+    /// Reads what a replay needs of each commit's text. A commit the
+    /// repository can't produce replays without a subject, rather than
+    /// stopping the whole replay.
+    public nonisolated func replayMessages(
+        for positions: [CommitGraph.Position],
+        in graph: CommitGraph
+    ) async throws -> [HistoryReplay.Message] {
+        var messages: [HistoryReplay.Message] = []
+        messages.reserveCapacity(positions.count)
+        // Reading them in pieces leaves room for the commit list to read the
+        // text of its rows in between.
+        for start in stride(from: 0, to: positions.count, by: 1000) {
+            try Task.checkCancellation()
+            let piece = positions[start..<min(start + 1000, positions.count)]
+            let commits = try await commits(piece.map(graph.id(at:)))
+            for commit in commits {
+                guard let commit else {
+                    messages.append(HistoryReplay.Message(subject: ""))
+                    continue
+                }
+                // Only a merge's body says anything to the replay.
+                let body = commit.parents.count > 1 ? commit.body.prefix { !$0.isNewline } : ""
+                messages.append(HistoryReplay.Message(subject: commit.subject, body: String(body)))
+            }
+        }
+        return messages
+    }
+
     /// Lists the files a commit changed, with the lines added and removed in
     /// each. A merge is compared with its first parent.
     public nonisolated func changedFiles(in commit: ObjectID) async throws -> [DiffFile] {

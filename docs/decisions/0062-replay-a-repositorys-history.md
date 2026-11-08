@@ -1,6 +1,6 @@
 # 62. Replay a repository's history, drawn in Swift
 
-Accepted on 2026-11-08. It isn't scheduled yet, and nothing in it is built. The [roadmap](../../ROADMAP.md) lists it as decided but not scheduled.
+Accepted on 2026-11-08, and built the same day.
 
 ## Context
 
@@ -21,7 +21,7 @@ We considered drawing the replay as a web page in a web view, since the prototyp
 
 **The replay is drawn in Swift, with a SwiftUI `Canvas` in a `TimelineView`, the way the house is.** The prototype stays a motion study, and Roga doesn't ship it.
 
-**It replays the branch on screen, in whatever repository is open.** **Replay History** in the Branch menu replays the current branch, and the same command in a branch's menu, in history or the refs panel, replays that one. It has a play button, a slider to scrub through it, and a speed control, from half speed to four times. Space plays and pauses, the left and right arrow keys jump back and forward, and the up and down arrow keys change the speed.
+**It replays the branch on screen, in whatever repository is open, in a window of its own.** **Replay History** in the Branch menu replays the current branch, and the same command in a branch's menu, in history or the refs panel, replays that one. It has a play button, a slider to scrub through it, and a speed control, from half speed to four times. Space plays and pauses, the left and right arrow keys jump back and forward, and the up and down arrow keys change the speed.
 
 **It looks like a metro map.**
 
@@ -35,11 +35,11 @@ We considered drawing the replay as a web page in a web view, since the prototyp
 
 **Roga works out the branches from the history, because git doesn't record them.**
 
-1. The main line runs back from the tip of the branch being replayed, through each commit's first parent. At a merge, it follows the second parent instead when the merge's message says it brought in the branch being replayed, or when more pull requests landed on that side.
+1. The main line runs back from the tip of the branch being replayed, through each commit's first parent. At a merge, it follows the second parent instead when the merge's message says it brought in the branch being replayed, or when more pull requests landed on that side. Pull requests are only counted where at least one commit in twenty landed one, because anywhere else they say nothing about which side is the main line.
 2. Each merge on the main line brings in a branch. Its commits are the ones behind the merge's other parents that no earlier branch has claimed.
 3. A merged branch's name comes from the merge's message. GitHub writes `Merge pull request #52 from owner/branch` with the pull request's title in the body, GitLab writes `Merge branch 'x' into 'main'`, and Bitbucket writes `Merged in x (pull request #12)`. GitHub can also be set to use the pull request's title as the subject, followed by its number. A branch that hasn't merged yet takes its name from its ref.
 
-**A replay fits a length, and the speed control plays it faster or slower.** The user picks a range, such as the last two weeks, everything since a tag, or the whole history, and how long the replay plays at normal speed. Stretches where no branch is open get a quarter of the time. Then the whole replay speeds up to fit the length, and the camera pulls back to match, so that it never pans faster than anyone can read. The range matters more than the length: a replay of all of Linux's million commits wouldn't mean anything. The speed control only changes how fast the clock runs, so changing it carries on from the same moment, as the house's speed setting does.
+**A replay fits a length, and the speed control plays it faster or slower.** The user picks a range, such as the last two weeks, everything since a tag, or the whole history, and how long the replay plays at normal speed. Stretches where no branch is open get a quarter of the time. Then the whole replay speeds up to fit the length, and the camera pulls back to match, so that it never pans faster than anyone can read. The range matters more than the length: a replay of all of Linux's million commits wouldn't mean anything. The speed control only changes how fast the clock runs, so changing it carries on from the same moment, as the house's speed setting does. A replay starts with the whole history when that's 2,000 commits or fewer, and otherwise the last 30 days up to the branch's newest commit, and either way with a length of 75 seconds.
 
 **Each frame depends only on its time.** The camera follows an average of where the newest commit was over the last half second, rather than easing toward it frame by frame. So playing, scrubbing and saving all draw the same frame for the same moment.
 
@@ -59,19 +59,10 @@ We considered drawing the replay as a web page in a web view, since the prototyp
 - Nothing new is linked except AVFoundation, which comes with macOS. `RogaUI`'s row in the architecture's table of modules gains it when the replay is built.
 - The replay guesses which commits made up each branch, and a history can still fool it. The guess is only used here, so history everywhere else in Roga stays exactly what git says.
 - A repository that squashes every pull request replays as one straight line of interchanges. A lane for each author might say more for those, since it would still show who did the work when the branches are gone. That's left for later.
-- Deciding which side of a merge is the main line walks both sides. The prototype walks all of each side, which won't do for a large repository. Roga has to bound the walk with generation numbers, the way `HistoryOrder` does, and `roga-bench` has to show that a replay of a large repository is worked out quickly.
-- The notes under merges crowd each other when merges come close together, which the prototype doesn't solve. Roga has to skip or move a note that would overlap another before this ships.
-- How long a minute of video takes to save hasn't been measured.
+- Deciding which side of a merge is the main line walks both sides. Roga bounds that walk with generation numbers, stopping where the two sides meet, and only makes it where pull requests are common. Without that second limit, all of Git's own history took 9 seconds, because its topics start from old commits. With it, `roga-bench replay` works out Git's 82,634 commits in 77 ms and Linux's 1.5 million in 0.9 seconds, which leaves reading their text as the slow part.
+- A note under a merge is left out when it would land on another note that's still showing on the same side of the main line. Which notes are left out is worked out once for the whole replay, so a note never flickers as the replay moves on.
+- Saving a video draws faster than it plays. A replay of 53 seconds took 17 seconds to save at 1920 by 1080 and 60 frames a second, and came to 44 MB.
+- The house doesn't walk along the main line in this first version. The picture is separate from the player, so it can be added without changing the rest.
 - We may later add a second picture that shows the repository's files and the people changing them, the way Gource draws a repository. It would use the same player. It needs the files each commit changed, which Roga loads today one commit at a time with `git diff-tree`, for the commit on screen. For a range, it would stream them from one `git log` in the background, the way search will stream commit text.
 - The timings and sizes in the prototype, such as how long a line takes to reach its commit and how far apart the lanes are, are where the Swift version starts.
-- It's about two weeks of work for one person:
-  - two or three days for working out the replay, with its tests;
-  - three or four for drawing it, with the camera, the labels and the controls;
-  - two for saving videos and images;
-  - two for the range and length, less motion, VoiceOver, and both appearances.
-- These are still open:
-  - whether the replay plays in its own window or over the history in the main window
-  - what range and length a replay starts with
-  - whether the house walks along the main line ahead of the newest commit, the way it does on the landing page
-  - what to show for a repository that squashes every pull request
-  - whether to offer a video shaped for phones (9:16) as well as a wide one
+- Saved videos are wide. Whether to offer one shaped for phones (9:16) as well is still open.
