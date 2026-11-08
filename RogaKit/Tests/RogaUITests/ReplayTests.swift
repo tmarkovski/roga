@@ -141,42 +141,113 @@ struct ReplayPlayerTests {
 }
 
 struct LabelStacksTests {
-    private func item(_ start: Double, width: Double = 100, above: Bool = true, lowest: Int = 0) -> LabelStacks.Item {
-        LabelStacks.Item(start: start, width: width, isAbove: above, lowestTier: lowest)
+    private func item(_ start: Double, width: Double = 100, above: Bool = true, lowest: Int = 0, time: Double? = nil) -> LabelStacks.Item {
+        LabelStacks.Item(start: start, width: width, isAbove: above, lowestTier: lowest, time: time ?? start)
     }
 
-    private func tiers(_ items: [LabelStacks.Item], room: Int = 50) -> [Int?] {
-        LabelStacks.tiers(of: items, tiersAbove: room, tiersBelow: room)
+    private func tiers(_ moves: [LabelStacks.Move]) -> [Int] {
+        moves.map(\.tier)
     }
 
-    @Test func theNewestSitsLowestAndPushesWhatItOverlapsUp() {
-        #expect(tiers([item(0), item(50)]) == [1, 0])
-        #expect(tiers([item(0), item(30), item(60)]) == [2, 1, 0])
+    /// The moves that took a label closer to the main line.
+    private func falls(_ moves: [LabelStacks.Move]) -> [Int] {
+        moves.indices.dropFirst().filter { moves[$0].tier < moves[$0 - 1].tier }
     }
 
-    @Test func aLabelOnTopFallsBackOnceTheNextClearsItPlusSlack() {
+    /// A long run of labels whose widths vary, as subjects do.
+    private var aRun: [LabelStacks.Item] {
+        (0 ..< 300).map { (index: Int) -> LabelStacks.Item in
+            let width = Double(90 + (index * 37) % 310)
+            return item(Double(index) * 40, width: width, above: index % 3 != 0)
+        }
+    }
+
+    @Test func aNewLabelSitsLowestAndPushesWhatItOverlapsUp() {
+        let moves = LabelStacks.moves(of: [item(0), item(30), item(60)])
+        #expect(tiers(moves[0]) == [0, 1, 2])
+        #expect(tiers(moves[1]) == [0, 1])
+        #expect(tiers(moves[2]) == [0])
+    }
+
+    @Test func aLabelIsLeftAloneByOneThatClearsIt() {
+        let moves = LabelStacks.moves(of: [item(0), item(100 + LabelStacks.slack + 1)])
+        #expect(tiers(moves[0]) == [0])
+        #expect(tiers(moves[1]) == [0])
+    }
+
+    @Test func aLabelOnTopFallsBackOnceTheNextOneClearsItPlusSlack() {
         let end = 100 + LabelStacks.slack
-        #expect(tiers([item(0), item(end - 1)]) == [1, 0])
-        #expect(tiers([item(0), item(end + 1)]) == [0, 0])
-        #expect(tiers([item(0), item(50), item(120)]) == [0, 1, 0])
+        let notYet = LabelStacks.moves(of: [item(0), item(50), item(end - 1)])
+        #expect(tiers(notYet[0]) == [0, 1, 2])
+        let clear = LabelStacks.moves(of: [item(0), item(50), item(end + 1)])
+        #expect(tiers(clear[0]) == [0, 1, 0])
+    }
+
+    @Test func aLabelThatHasFallenNeverMovesAgain() {
+        let moves = LabelStacks.moves(of: aRun)
+        #expect(moves.contains { !falls($0).isEmpty })
+        for own in moves {
+            if let fall = falls(own).first {
+                #expect(fall == own.count - 1)
+            }
+        }
+    }
+
+    @Test func noTwoLabelsOnATierEverOverlap() {
+        let items = aRun
+        let moves = LabelStacks.moves(of: items)
+        for landing in items.indices {
+            let time = items[landing].time
+            var seen: [[Int: [Int]]] = [[:], [:]]
+            for index in 0 ... landing {
+                guard let tier = moves[index].last(where: { $0.time <= time })?.tier else { continue }
+                seen[items[index].isAbove ? 0 : 1][tier, default: []].append(index)
+            }
+            for side in seen {
+                for labels in side.values {
+                    for first in labels {
+                        for second in labels where first < second {
+                            #expect(items[first].end + LabelStacks.slack < items[second].start)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     @Test func aStackIsAsTallAsItsLabelsOverlap() {
-        let items = (0 ..< 40).map { item(Double($0)) }
-        #expect(tiers(items) == (0 ..< 40).reversed().map(Optional.some))
+        let moves = LabelStacks.moves(of: (0 ..< 40).map { item(Double($0)) })
+        #expect(moves[0].last?.tier == 39)
     }
 
-    @Test func aLabelWithNoRoomLeftIsLeftOut() {
-        #expect(tiers([item(0), item(10), item(20)], room: 2) == [nil, 1, 0])
+    @Test func aLongerLabelMakesATallerStack() {
+        func tallest(_ width: Double) -> Int {
+            LabelStacks.moves(of: (0 ..< 60).map { item(Double($0) * 40, width: width) }).flatMap { $0 }.map(\.tier).max() ?? 0
+        }
+        #expect(tallest(400) > tallest(100))
+    }
+
+    @Test func aLabelFallsThreeTimesAsSlowlyAsItRises() {
+        #expect(LabelStacks.fallTime == LabelStacks.riseTime * 3)
+
+        #expect(LabelStacks.remaining(of: 16, age: 0) == 16)
+        #expect(LabelStacks.remaining(of: 16, age: LabelStacks.riseTime) == 0)
+
+        #expect(LabelStacks.remaining(of: -48, age: 0) == -48)
+        // A rise of the same time is over, and a fall isn't a third done.
+        #expect(LabelStacks.remaining(of: -48, age: LabelStacks.riseTime) < -32)
+        #expect(LabelStacks.remaining(of: -48, age: LabelStacks.fallTime) == 0)
     }
 
     @Test func eachSideStacksByItself() {
-        #expect(tiers([item(0, above: false), item(10, above: true)]) == [0, 0])
+        let moves = LabelStacks.moves(of: [item(0, above: false), item(10, above: true)])
+        #expect(tiers(moves[0]) == [0])
+        #expect(tiers(moves[1]) == [0])
     }
 
     @Test func aBranchsLabelStaysPastItsLane() {
-        #expect(tiers([item(0), item(500, lowest: 3)]) == [0, 3])
-        #expect(tiers([item(0, lowest: 2), item(10, lowest: 2)]) == [3, 2])
+        let moves = LabelStacks.moves(of: [item(0), item(500, lowest: 3)])
+        #expect(tiers(moves[1]) == [3])
     }
 }
 

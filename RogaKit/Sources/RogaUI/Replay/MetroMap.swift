@@ -20,11 +20,6 @@ struct MetroMap: ReplayPicture {
     /// The zoom out to the whole history at the end, and how long it holds there.
     static let finale = 2.4
     static let hold = 2.4
-    /// How many characters of a label are shown, which keeps stacks low.
-    static let labelCharacters = 30
-    /// A label glides to a new tier by looking this many frames back, a
-    /// sixtieth of a second apart.
-    static let settleFrames = 15
 
     /// Commit spacing in a window narrower than `smallWidth`, and in a wider one.
     private static let smallWidth = 640.0
@@ -35,6 +30,17 @@ struct MetroMap: ReplayPicture {
         var x: Double
         var time: Double
         var label: String
+    }
+
+    /// The moves of every label, kept for each way of spacing the picture out
+    /// so that a frame only has to look them up.
+    private final class Stacking {
+        struct Layout: Hashable {
+            var isSmall: Bool
+            var halfPointsBetweenLanes: Int
+        }
+
+        var moves: [Layout: [[LabelStacks.Move]]] = [:]
     }
 
     /// The name that stays by a commit on the main line, or by the first
@@ -58,6 +64,7 @@ struct MetroMap: ReplayPicture {
     /// Every label, oldest first.
     private let labels: [Label]
     private let widestLabel: Double
+    private let stacking = Stacking()
 
     private static let dateFormatter = formatter("EEEMMMdjmm")
     private static let dayFormatter = formatter("MMMd")
@@ -111,6 +118,8 @@ struct MetroMap: ReplayPicture {
         return "\(replay.mainLineName) in \(repositoryName): \(commits), \(branches), \(counted(days, "day"))."
     }
 
+    private static let labelFont = NSFont.systemFont(ofSize: 11, weight: .medium)
+
     /// A label for every commit on the main line and for the first commit of
     /// every branch. Commits on the main line take turns going above and
     /// below it, except that a merge goes on the side away from its branch.
@@ -119,7 +128,7 @@ struct MetroMap: ReplayPicture {
         var nextIsAbove = true
         for (step, commit) in replay.commits.enumerated() {
             let branch = replay.branches[commit.branch]
-            var text: String
+            let text: String
             let isAbove: Bool
             if commit.branch != 0 {
                 guard branch.first == step else { continue }
@@ -142,13 +151,10 @@ struct MetroMap: ReplayPicture {
                 nextIsAbove.toggle()
             }
             guard !text.isEmpty else { continue }
-            if text.count > labelCharacters {
-                text = String(text.prefix(labelCharacters - 1)).trimmingCharacters(in: .whitespaces) + "…"
-            }
             labels.append(Label(
                 step: step,
                 text: text,
-                width: estimatedWidth(text, size: 11) + 8,
+                width: (text as NSString).size(withAttributes: [.font: labelFont]).width + 8,
                 isAbove: isAbove,
                 branch: commit.branch,
                 lane: branch.lane
@@ -488,9 +494,11 @@ struct MetroMap: ReplayPicture {
     }
 
     /// The names that stay by their commits while the replay plays, each on a
-    /// thin line back to its commit, stacked by `LabelStacks`. A label's place
-    /// is averaged over the last moments, leaning on the most recent, so that
-    /// it glides between tiers and a frame still depends only on its time.
+    /// thin line back to its commit, on the tiers `LabelStacks` worked out. A
+    /// label glides between tiers: it rests where its latest move put it,
+    /// less what's left of the moves it's still making, so a frame still
+    /// depends only on its time. One pushed past the edge of the picture
+    /// fades until there's room for it to come back.
     private func drawLabels(_ context: GraphicsContext, _ frame: Frame, _ color: [Color]) {
         let alpha = 1 - clamp(frame.finished / 0.3)
         guard alpha > 0, frame.head >= 0 else { return }
@@ -502,63 +510,42 @@ struct MetroMap: ReplayPicture {
 
         let pitch = frame.isSmall ? 15.0 : 16.0
         func center(_ tier: Int) -> Double { 20 + Double(tier) * pitch }
-        func tiers(fitting room: Double) -> Int { max(0, Int((room - 7 - center(0)) / pitch) + 1) }
-        let tiersAbove = tiers(fitting: frame.y(0) - frame.top - 26)
-        let tiersBelow = tiers(fitting: frame.height - frame.bottom - 8 - frame.y(0))
-
-        let count = newest - oldest + 1
-        var landed = [Double](repeating: 0, count: count)
-        var placed = [Double](repeating: 0, count: count)
-        var distance = [Double](repeating: 0, count: count)
-        var stacks: [Int: [Int?]] = [:]
-        for sample in 0 ..< Self.settleFrames {
-            let last = lastLabel(upTo: headAt(frame.time - Double(sample) / 60))
-            guard last >= oldest else { continue }
-            let tiers = stacks[last] ?? LabelStacks.tiers(
-                of: labels[oldest ... last].map { label in
-                    LabelStacks.Item(
-                        start: Double(label.step) * frame.spacing,
-                        width: label.width * scale,
-                        isAbove: label.isAbove,
-                        lowestTier: max(0, Int(((Double(abs(label.lane)) * frame.lanesApart - 4) / pitch).rounded(.up)))
-                    )
-                },
-                tiersAbove: tiersAbove,
-                tiersBelow: tiersBelow
-            )
-            stacks[last] = tiers
-            let remaining = 1 - (Double(sample) + 0.5) / Double(Self.settleFrames)
-            let weight = 3 * remaining * remaining
-            for index in tiers.indices {
-                landed[index] += weight
-                if let tier = tiers[index] {
-                    placed[index] += weight
-                    distance[index] += weight * center(tier)
-                }
-            }
-        }
+        let moves = labelMoves(frame, pitch: pitch, scale: scale)
 
         struct Placed {
             var label: Label
             var x: Double
-            var side: Double
             var y: Double
             var alpha: Double
         }
         var shown: [Placed] = []
         var stems = Path()
-        for index in 0 ..< count where placed[index] > 0 {
-            let label = labels[oldest + index]
+        for index in oldest ... newest {
+            let label = labels[index]
             let x = frame.x(Double(label.step))
             let age = frame.time - replay.commits[label.step].time - Self.grow * 0.4
-            guard age >= 0, x <= frame.width else { continue }
+            guard age >= 0, x <= frame.width, x + label.width * scale >= 0 else { continue }
+
+            let own = moves[index]
+            var latest = own.count - 1
+            while latest > 0, own[latest].time > frame.time { latest -= 1 }
+            var unfinished = 0.0
+            var move = latest
+            while move > 0, frame.time - own[move].time < LabelStacks.fallTime {
+                unfinished += LabelStacks.remaining(of: center(own[move].tier) - center(own[move - 1].tier), age: frame.time - own[move].time)
+                move -= 1
+            }
+
             let side = label.isAbove ? -1.0 : 1.0
+            let y = frame.y(0) + side * (center(own[latest].tier) - unfinished)
+            let room = label.isAbove ? y - frame.top - 8 : frame.height - frame.bottom - 8 - y
+            let edge = clamp(room / 24)
+            guard edge > 0 else { continue }
             let start = frame.y(Double(label.lane)) + side * 7 * frame.dot
-            let y = frame.y(0) + side * distance[index] / placed[index]
             let end = y + side * 7
             stems.move(to: CGPoint(x: x, y: start))
             stems.addLine(to: CGPoint(x: x, y: start + (end - start) * easeOut(clamp(age / 0.14))))
-            shown.append(Placed(label: label, x: x, side: side, y: y, alpha: clamp(age / 0.12) * placed[index] / landed[index] * alpha))
+            shown.append(Placed(label: label, x: x, y: y, alpha: clamp(age / 0.12) * edge * alpha))
         }
 
         var stemContext = context
@@ -581,6 +568,23 @@ struct MetroMap: ReplayPicture {
             }
             opaque.draw(text, at: CGPoint(x: item.x + 4, y: item.y), anchor: .leading)
         }
+    }
+
+    /// Every label's moves when the picture is spaced out like `frame`.
+    private func labelMoves(_ frame: Frame, pitch: Double, scale: Double) -> [[LabelStacks.Move]] {
+        let layout = Stacking.Layout(isSmall: frame.isSmall, halfPointsBetweenLanes: Int((frame.lanesApart * 2).rounded()))
+        if let moves = stacking.moves[layout] { return moves }
+        let moves = LabelStacks.moves(of: labels.map { label in
+            LabelStacks.Item(
+                start: Double(label.step) * frame.spacing,
+                width: label.width * scale,
+                isAbove: label.isAbove,
+                lowestTier: max(0, Int(((Double(abs(label.lane)) * frame.lanesApart - 4) / pitch).rounded(.up))),
+                time: replay.commits[label.step].time
+            )
+        })
+        stacking.moves[layout] = moves
+        return moves
     }
 
     /// The index of the newest label whose commit is at or before `step`, or
