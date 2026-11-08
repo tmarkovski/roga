@@ -1,4 +1,4 @@
-# 60. Hide a list with no files
+# 61. Hide a list with no files
 
 Accepted on 2026-11-08. This changes what [decision 55](0055-split-the-panel-for-uncommitted-changes-40-40-and-20.md) says about a list with no files. The 40, 40 and 20 split still holds.
 
