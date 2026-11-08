@@ -1,3 +1,4 @@
+import AgentEngine
 import GitCore
 import RepositoryEngine
 import SwiftUI
@@ -7,10 +8,11 @@ enum RepositoryDialog: Identifiable {
     case message(DialogContent)
     case pull(PullChoice, dismiss: () -> Void)
     case branchChoice(BranchModel.BranchChoice, dismiss: () -> Void)
+    case gitFix(DialogContent)
 
     var id: String {
         switch self {
-        case .message(let content): content.id
+        case .message(let content), .gitFix(let content): content.id
         case .pull: "pull"
         case .branchChoice: "branchChoice"
         }
@@ -18,19 +20,25 @@ enum RepositoryDialog: Identifiable {
 
     func dismiss() {
         switch self {
-        case .message(let content): content.dismiss()
+        case .message(let content), .gitFix(let content): content.dismiss()
         case .pull(_, let dismiss), .branchChoice(_, let dismiss): dismiss()
         }
     }
 }
 
+/// Makes the button that asks an agent about a refusal, when there's a command to
+/// ask about and an agent to ask. It's given what failed, what git said, and how to
+/// close the refusal's dialog.
+typealias GitFixOffer = (_ command: [String]?, _ said: String, _ close: @escaping () -> Void) -> DialogButton?
+
 /// Shows whatever a worktree has to ask or say. One sheet shows all of them, so
 /// that two can't get in each other's way: the second waits for the first.
 struct RepositoryDialogs: ViewModifier {
     let model: RepositoryModel
+    @Environment(AgentProvider.self) private var agents: AgentProvider?
 
     func body(content: Content) -> some View {
-        let dialog = model.dialog
+        let dialog = model.dialog(fixingWith: agents?.generation())
         content.sheet(item: Binding {
             dialog
         } set: { newValue in
@@ -43,6 +51,8 @@ struct RepositoryDialogs: ViewModifier {
                 PullChoiceSheet(asked: choice, branch: model.branch)
             case .branchChoice(let choice, _):
                 BranchChoiceSheet(asked: choice, branch: model.branch)
+            case .gitFix(let content):
+                GitFixSheet(model: model.gitFix, shown: content)
             }
         }
     }
@@ -63,11 +73,29 @@ private struct BranchChoiceSheet: View {
 extension RepositoryModel {
     /// What to ask or say now, if anything.
     var dialog: RepositoryDialog? {
-        if let checkoutFailure { return .message(dialog(for: checkoutFailure)) }
+        dialog(fixingWith: nil)
+    }
+
+    /// What to ask or say now, with a way to ask `setup`'s agent about a refusal
+    /// when there's an agent that can be used (decision 63).
+    func dialog(fixingWith setup: GenerationSetup?) -> RepositoryDialog? {
+        if let content = gitFix.dialog { return .gitFix(content) }
+        let fix = gitFixOffer(setup)
+        if let checkoutFailure { return .message(dialog(for: checkoutFailure, offering: fix)) }
         if let pendingCommitSwitch { return .message(dialog(for: pendingCommitSwitch)) }
         if let pendingRevert { return .message(dialog(for: pendingRevert)) }
         if let pendingDiscard = selectedChanges.pendingDiscard { return .message(selectedChanges.dialog(for: pendingDiscard)) }
-        return branch.dialog
+        return branch.dialog(offering: fix)
+    }
+
+    private func gitFixOffer(_ setup: GenerationSetup?) -> GitFixOffer {
+        { [weak self] command, said, close in
+            guard let setup, let command else { return nil }
+            return DialogButton(title: "Fix with \(setup.kind.shortName)", kind: .secondary) { [weak self] in
+                close()
+                self?.gitFix.start(command: command, said: said, with: setup)
+            }
+        }
     }
 
     /// What going to a commit loses, as the vision asks of destructive operations,
@@ -198,16 +226,17 @@ extension RepositoryModel {
         )
     }
 
-    private func dialog(for failure: CheckoutFailure) -> DialogContent {
-        .refusal(
+    private func dialog(for failure: CheckoutFailure, offering fix: GitFixOffer) -> DialogContent {
+        let close = { [weak self] in self?.checkoutFailure = nil; return () }
+        return .refusal(
             id: "checkout",
             title: "Can't check out \(failure.branch)",
             summary: failure.command == nil ? nil : "Nothing changed. What git said is below.",
             command: failure.command,
-            said: failure.message
-        ) { [weak self] in
-            self?.checkoutFailure = nil
-        }
+            said: failure.message,
+            fix: fix(failure.command, failure.message, close),
+            dismiss: close
+        )
     }
 }
 
@@ -227,7 +256,12 @@ extension CommitSwitch {
 extension BranchModel {
     /// What to ask or say about the branch now, if anything.
     var dialog: RepositoryDialog? {
-        if let failure { return .message(dialog(for: failure)) }
+        dialog(offering: nil)
+    }
+
+    /// The same, with a way to ask an agent about a refusal (decision 63).
+    func dialog(offering fix: GitFixOffer?) -> RepositoryDialog? {
+        if let failure { return .message(dialog(for: failure, offering: fix)) }
         if let conflict { return .message(dialog(for: conflict)) }
         if let putBackConflict { return .message(dialog(for: putBackConflict)) }
         if let pullChoice {
@@ -242,19 +276,20 @@ extension BranchModel {
         return nil
     }
 
-    private func dialog(for failure: Failure) -> DialogContent {
+    private func dialog(for failure: Failure, offering fix: GitFixOffer?) -> DialogContent {
         let summary: DialogText? = failure.summary ?? (failure.command == nil
             ? nil
             : failure.changedNothing ? "Nothing changed. What git said is below." : "What git said is below.")
+        let close = { [weak self] in self?.failure = nil; return () }
         return .refusal(
             id: "failure",
             title: failure.title,
             summary: summary,
             command: failure.command,
-            said: failure.message
-        ) { [weak self] in
-            self?.failure = nil
-        }
+            said: failure.message,
+            fix: fix?(failure.command, failure.message, close),
+            dismiss: close
+        )
     }
 
     /// Which files a pull or a revert stopped on, and what can be done about them.

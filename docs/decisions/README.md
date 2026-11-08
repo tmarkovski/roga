@@ -70,3 +70,4 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [60](0060-resolve-conflicts-in-the-diff-panel.md) | Resolve conflicts in the diff panel | Accepted |
 | [61](0061-hide-a-list-with-no-files.md) | Hide a list with no files | Accepted |
 | [62](0062-replay-a-repositorys-history.md) | Replay a repository's history, drawn in Swift | Accepted |
+| [63](0063-ask-an-agent-to-fix-what-git-refused.md) | Ask an agent to fix what git refused | Accepted |
