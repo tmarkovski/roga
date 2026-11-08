@@ -55,13 +55,15 @@ struct RogaApplication: App {
             RepositoryCommands(list: repositories, agents: agents)
             SettingsCommands(request: settingsRequest)
         }
+        #if DEBUG
         // For looking at the house's animations up close. It's listed in the
-        // Window menu.
+        // Window menu, in debug builds only.
         Window("House Animations", id: "house-animations") {
             HouseAnimationDemo()
         }
         .defaultSize(width: 1000, height: 720)
         .defaultLaunchBehavior(.suppressed)
         .restorationBehavior(.disabled)
+        #endif
     }
 }
