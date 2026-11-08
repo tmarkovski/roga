@@ -75,6 +75,11 @@ struct ReplayBenchmark {
 
         print("\(repository), \(days.map { "the last \($0) days" } ?? "all of history")")
         print("\(positions.count) commits of \(graph.count), \(replay?.branches.count ?? 0) branches, \(replay?.farthestLane ?? 0) lanes each way")
+        if let replay {
+            let mainLine = replay.commits.filter { $0.branch == 0 }.count
+            let firstMerge = replay.commits.firstIndex { $0.isMerge }
+            print("\(mainLine) commits on the main line, \(replay.commits.last?.mergesSoFar ?? 0) merges, the first after \(firstMerge.map(String.init) ?? "no") commits")
+        }
         print("listing the range: \(listing)")
         print("reading the text: \(reading)")
         print("working it out: \(times[times.count / 2]) (median of \(runs))")

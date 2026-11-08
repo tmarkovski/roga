@@ -190,6 +190,48 @@ struct HistoryReplayTests {
         #expect(Set(replay.commits.map(\.id)) == (try await revList("--since=\(time)", "main", in: repository)))
     }
 
+    /// 1,050 hours after the fixture starts, which is after its old commits
+    /// and before its recent ones.
+    private static let cutoff: Int64 = 1_767_225_600 + 1050 * 3600
+
+    /// Six commits in a row with an old date used to end the walk, and lost
+    /// the recent commit underneath them.
+    @Test func keepsTheCommitsBehindOnesWithAnOldClock() async throws {
+        let repository = try await Fixture.repository("replay")
+        let graph = try openGraph(repository)
+        let replay = try await makeReplay(of: "skewed", in: repository, graph: graph, range: { _ in .since(time: Self.cutoff) })
+        #expect(replay.commits.filter { $0.branch == 0 }.map(\.subject) == [
+            "Recent base", "Recent follow-up", "Merge branch 'old-clock'",
+        ])
+        #expect(replay.commits.count == 9)
+        #expect(!replay.commits.contains { $0.subject == "Older work" })
+        #expect(replay.commits.last?.mergesSoFar == 1)
+    }
+
+    /// Without corrected commit dates, the old commits can't be told from
+    /// ones outside the range, but the recent commit is still found.
+    @Test func keepsTheMainLineWithoutCorrectedCommitDates() async throws {
+        let repository = try await Fixture.repository("replay")
+        var graph = try openGraph(repository)
+        graph.generations = .none
+        let replay = try await makeReplay(of: "skewed", in: repository, graph: graph, range: { _ in .since(time: Self.cutoff) })
+        #expect(replay.commits.map(\.subject) == ["Recent base", "Recent follow-up", "Merge branch 'old-clock'"])
+    }
+
+    /// A merge at the edge of the range starts the main line, and what it
+    /// brought in is a branch.
+    @Test func endsTheMainLineWhereItsFirstParentLeavesTheRange() async throws {
+        let repository = try await Fixture.repository("replay")
+        let graph = try openGraph(repository)
+        let replay = try await makeReplay(of: "lost", in: repository, graph: graph, range: { _ in .since(time: Self.cutoff) })
+        #expect(replay.commits.filter { $0.branch == 0 }.map(\.subject) == ["Merge branch 'side'", "After the merge"])
+        #expect(replay.commits.filter { $0.branch == 1 }.map(\.subject) == ["Side work", "More side work"])
+        #expect(replay.branches.map(\.name) == ["lost", "side"])
+        let merge = try #require(replay.commits.first { $0.subject == "Merge branch 'side'" })
+        #expect(merge.isMerge)
+        #expect(merge.merged == 1)
+    }
+
     @Test func replaysNothingForAnEmptyRange() async throws {
         let repository = try await Fixture.repository("replay")
         let graph = try openGraph(repository)

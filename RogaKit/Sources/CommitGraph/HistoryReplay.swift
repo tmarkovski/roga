@@ -21,7 +21,9 @@ public struct HistoryReplay: Sendable {
     public enum CommitRange: Sendable, Hashable {
         /// The whole history.
         case all
-        /// The commits made at or after a time, in seconds since 1970.
+        /// The commits made at or after a time, in seconds since 1970, and
+        /// any dated earlier that sit on top of those, as when someone's clock
+        /// was wrong.
         case since(time: Int64)
         /// The commits that aren't behind another commit, such as a tag.
         case after(Position)
@@ -135,15 +137,11 @@ public struct HistoryReplay: Sendable {
         case .all:
             commits = try order.next(Int.max)
         case .since(let time):
-            // Commits aren't quite in time order when clocks disagree, so like
-            // git, this only stops after a few in a row are too old.
-            var tooOld = 0
-            while tooOld < 5, let commit = try order.next() {
-                if graph.commitTime(at: commit) >= time {
+            var (isInside, remaining) = try commitsSince(time, in: graph, from: tip)
+            while remaining > 0, let commit = try order.next() {
+                if isInside[Int(commit)] {
                     commits.append(commit)
-                    tooOld = 0
-                } else {
-                    tooOld += 1
+                    remaining -= 1
                 }
             }
         case .after(let base):
@@ -158,6 +156,47 @@ public struct HistoryReplay: Sendable {
             }
         }
         return commits
+    }
+
+    /// Finds the commits in a range that starts at a time, by walking back
+    /// from the tip and stopping at the commits outside it. Stopping once a
+    /// few commits in a row look too old, as git does, loses newer commits
+    /// behind them, and in Linux that cut the main line in half.
+    private static func commitsSince(
+        _ time: Int64,
+        in graph: CommitGraph,
+        from tip: Position
+    ) throws(CommitGraphError) -> (isInside: [Bool], count: Int) {
+        var isInside = [Bool](repeating: false, count: graph.count)
+        var count = 0
+        var stack = [tip]
+        while let commit = stack.popLast() {
+            if isInside[Int(commit)] { continue }
+            guard try isInRange(commit, since: time, in: graph) else { continue }
+            isInside[Int(commit)] = true
+            count += 1
+            var index = 0
+            while let parent = try graph.parent(of: commit, at: index) {
+                index += 1
+                stack.append(parent)
+            }
+        }
+        return (isInside, count)
+    }
+
+    /// Whether a commit was made at or after `time`, or says it was made
+    /// earlier but has a parent that was made since. A corrected commit date
+    /// is never lower than a parent's, so it shows that second case. Without
+    /// one, a commit dated too early ends its line of the walk.
+    private static func isInRange(
+        _ commit: Position,
+        since time: Int64,
+        in graph: CommitGraph
+    ) throws(CommitGraphError) -> Bool {
+        if graph.commitTime(at: commit) >= time { return true }
+        guard case .correctedCommitDates = graph.generations else { return false }
+        let generation = try graph.generation(at: commit)
+        return generation != CommitGraph.infiniteGeneration && generation >= UInt64(max(0, time))
     }
 
     /// Works out the replay of `positions`, which came from
@@ -217,6 +256,8 @@ extension HistoryReplay {
         var parents: [[Int32]] = []
         var times: [Int64] = []
         var landsPullRequest: [Bool] = []
+        /// Whether each commit's first parent is outside the range.
+        var lostFirstParent: [Bool] = []
         /// Whether at least one commit in twenty landed a pull request.
         var pullRequestsAreHowWorkLands = false
         var walk: SidesWalk
@@ -291,7 +332,9 @@ extension HistoryReplay {
                     branch: Int(branchOf[number])
                 )
                 if isOnMainLine { replayed.pullRequest = MergeMessage.squash(in: replayed.subject)?.number }
-                if isOnMainLine && parents[number].count > 1 {
+                // A commit at the edge of the range that still has a parent
+                // inside it is bringing in a branch.
+                if isOnMainLine && (parents[number].count > 1 || (lostFirstParent[number] && !parents[number].isEmpty)) {
                     replayed.isMerge = true
                     let other = parents[number].first { $0 != mainParents[number] }
                     replayed.merged = other.map { Int(branchOf[Int($0)]) }
@@ -315,13 +358,19 @@ extension HistoryReplay {
             var landed = 0
             for (number, position) in positions.enumerated() {
                 var theirs: [Int32] = []
+                var lost = false
                 var index = 0
                 while let parent = try graph.parent(of: position, at: index) {
-                    index += 1
                     let parentNumber = numbers[Int(parent)]
-                    if parentNumber >= 0 { theirs.append(parentNumber) }
+                    if parentNumber >= 0 {
+                        theirs.append(parentNumber)
+                    } else if index == 0 {
+                        lost = true
+                    }
+                    index += 1
                 }
                 parents.append(theirs)
+                lostFirstParent.append(lost)
                 times.append(graph.commitTime(at: position))
                 let lands = MergeMessage.landsPullRequest(messages[number].subject)
                 landsPullRequest.append(lands)
@@ -365,7 +414,14 @@ extension HistoryReplay {
             precondition(commit >= 0, "The tip has to be among the commits replayed")
             while commit >= 0 {
                 let theirs = parents[Int(commit)]
-                let next = theirs.count > 1 ? try mainParent(of: commit) : (theirs.first ?? -1)
+                var next = theirs.first ?? -1
+                if lostFirstParent[Int(commit)] {
+                    // The main line starts at the edge of the range. Going on
+                    // through another parent would leave it for a branch.
+                    next = -1
+                } else if theirs.count > 1 {
+                    next = try mainParent(of: commit)
+                }
                 mainParents[Int(commit)] = next
                 trunk.append(commit)
                 branchOf[Int(commit)] = 0

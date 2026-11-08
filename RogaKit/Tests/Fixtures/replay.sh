@@ -95,6 +95,26 @@ body='
     commit s1 refs/heads/squashes 0 "First (#1)"
     commit s2 refs/heads/squashes 1 "Second (#2)" "$s1"
     commit s3 refs/heads/squashes 2 "Third (#3)" "$s2"
+
+    # Commits from a machine whose clock was far behind, on top of recent ones.
+    # Walking newest first reaches them before the recent commit under them.
+    commit q0 refs/heads/skewed 1000 "Older work"
+    commit q1 refs/heads/skewed 1100 "Recent base" "$q0"
+    commit q2 refs/heads/skewed 1101 "Recent follow-up" "$q1"
+    commit o1 refs/heads/old-clock 200 "Old clock 1" "$q1"
+    commit o2 refs/heads/old-clock 201 "Old clock 2" "$o1"
+    commit o3 refs/heads/old-clock 202 "Old clock 3" "$o2"
+    commit o4 refs/heads/old-clock 203 "Old clock 4" "$o3"
+    commit o5 refs/heads/old-clock 204 "Old clock 5" "$o4"
+    commit o6 refs/heads/old-clock 205 "Old clock 6" "$o5"
+    commit q3 refs/heads/skewed 1110 "Merge branch 'old-clock'" "$q2" "$o6"
+
+    # A merge whose first parent is older than a range and whose second isn't.
+    commit a0 refs/heads/lost 300 "Old main"
+    commit b0 refs/heads/side 1100 "Side work"
+    commit b1 refs/heads/side 1101 "More side work" "$b0"
+    commit x0 refs/heads/lost 1102 "Merge branch 'side'" "$a0" "$b1"
+    commit y0 refs/heads/lost 1103 "After the merge" "$x0"
 } > commits
 
 git init --quiet --initial-branch=main .
