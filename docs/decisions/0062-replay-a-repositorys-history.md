@@ -56,7 +56,7 @@ We considered drawing the replay as a web page in a web view, since the prototyp
 
 - Nothing new is linked except AVFoundation, which comes with macOS. `RogaUI`'s row in the architecture's table of modules gains it when the replay is built.
 - The replay guesses which commits made up each branch, and a history can still fool it. The guess is only used here, so history everywhere else in Roga stays exactly what git says.
-- A repository that squashes every pull request replays as one straight line of interchanges. A lane for each author, the way Gource shows people, might say more for those, and is left for later.
+- A repository that squashes every pull request replays as one straight line of interchanges. A lane for each author might say more for those, since it would still show who did the work when the branches are gone. That's left for later.
 - Deciding which side of a merge is the main line walks both sides. The prototype walks all of each side, which won't do for a large repository. Roga has to bound the walk with generation numbers, the way `HistoryOrder` does, and `roga-bench` has to show that a replay of a large repository is worked out quickly.
 - The notes under merges crowd each other when merges come close together, which the prototype doesn't solve. Roga has to skip or move a note that would overlap another before this ships.
 - How long a minute of video takes to save hasn't been measured.
