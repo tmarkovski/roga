@@ -182,7 +182,7 @@ roga/
 | `MenuUI` | The menu for right-clicking a ref or a sidebar row, which the commit list, the refs panel and the sidebar share, and the title row's menu of worktrees | `IconUI` | AppKit |
 | `HistoryUI` | The commit list: the table, drawing rows and graph lanes, keyboard handling and accessibility | `GitCore`, `CommitGraph`, `IconUI`, `MenuUI` | AppKit |
 | `DiffUI` | The diff view: the TextKit 1 text view, line numbers, line backgrounds, and building attributed text | `GitCore` | AppKit |
-| `RogaUI` | Windows, the sidebar, the refs panel, details, settings, menus and onboarding, and the main-actor models that connect sessions to views | all of the above | SwiftUI, AppKit |
+| `RogaUI` | Windows, the sidebar, the refs panel, details, settings, menus and onboarding, and the main-actor models that connect sessions to views | all of the above | SwiftUI, AppKit, AVFoundation |
 | App target | The entry point, Sparkle, the Info.plist and assets | `RogaUI`, Sparkle | SwiftUI |
 | `RogaHelper` target | The `roga` helper, built into `Contents/Helpers` | `AgentHooks` | Foundation |
 | `roga-bench` | Benchmarks for the performance targets in the roadmap | `GitCore`, `GitRunner`, `CommitGraph`, `RepositoryEngine`, `HistoryUI`, `DiffUI` | AppKit |

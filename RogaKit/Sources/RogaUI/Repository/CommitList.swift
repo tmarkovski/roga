@@ -51,6 +51,7 @@ struct CommitList: NSViewRepresentable {
                 model.goToRow(row) { [unowned self] in showWorktree($0, $1) }
             }
             controller.source.deleteBranches = { model.askToDeleteBranches($0) }
+            controller.source.replayHistory = { model.replayHistory(ofBranch: $0) }
             controller.source.commitOfRow = { model.commit(atRow: $0) }
             controller.source.revert = { model.askToRevert(commit: $0) }
             controller.source.canRevert = { model.canRevert }

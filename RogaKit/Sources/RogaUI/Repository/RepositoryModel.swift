@@ -985,6 +985,35 @@ final class RepositoryModel {
         }
     }
 
+    /// Whether there's a history to replay yet.
+    var canReplayHistory: Bool { history?.head != nil }
+
+    /// Opens a window that replays a branch's history (decision 62), or with
+    /// no name, whatever the worktree is on.
+    ///
+    /// - Parameter name: The branch's full name, such as `refs/heads/main`.
+    func replayHistory(ofBranch name: String? = nil) {
+        guard let history, let head = history.head else { return }
+        let ref = name.flatMap { name in history.refs.refs.first { $0.name == name } }
+        guard let tip = ref.map({ history.graph.position(of: $0.peeled) }) ?? head else { return }
+        let title = name.map(Ref.shortName) ?? history.refs.currentBranch.map(Ref.shortName) ?? "HEAD"
+        ReplayWindows.show(ReplayModel(
+            session: session,
+            graph: history.graph,
+            tip: tip,
+            branchName: title,
+            tags: Self.replayTags(history)
+        ))
+    }
+
+    /// The newest tags, for replaying everything since one of them.
+    private static func replayTags(_ history: History) -> [ReplayModel.Tag] {
+        let tags = history.refs.refs.filter { $0.kind == .tag }.compactMap { ref in
+            history.graph.position(of: ref.peeled).map { ReplayModel.Tag(name: Ref.shortName(ref.name), commit: $0) }
+        }
+        return Array(tags.sorted { history.graph.commitTime(at: $0.commit) > history.graph.commitTime(at: $1.commit) }.prefix(20))
+    }
+
     /// Reviews the branch the worktree is on, from the menu bar.
     func reviewCurrentBranch() {
         guard let current = history?.refs.currentBranch else { return }

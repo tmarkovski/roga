@@ -7,6 +7,7 @@
 //   roga-bench diff [--lines N] [--line-length N] [--jumps N]
 //   roga-bench status <worktree> [--runs N]
 //   roga-bench refs <worktree> [--runs N]
+//   roga-bench replay <repository> [--days N] [--runs N]
 //
 // The history benchmark orders history from HEAD with the commit-graph reader
 // alone, then through a repository session from every branch, remote branch
@@ -39,6 +40,10 @@
 //
 // The refs benchmark reads what the refs panel lists. It only reads the
 // repository, so the clone for the history benchmark works.
+//
+// The replay benchmark works out the replay of HEAD, for the last N days or
+// all of history. It only reads the repository, so the clone for the history
+// benchmark works.
 
 import Foundation
 
@@ -55,12 +60,15 @@ do {
         try await StatusBenchmark(arguments: Array(arguments.dropFirst())).run()
     case "refs":
         try await RefsBenchmark(arguments: Array(arguments.dropFirst())).run()
+    case "replay":
+        try await ReplayBenchmark(arguments: Array(arguments.dropFirst())).run()
     default:
         print("Usage: roga-bench history <repository> [--sort date|topological] [--runs N] [--verify] [--cold [--parts]]")
         print("       roga-bench commit-graph <repository>")
         print("       roga-bench diff [--lines N] [--line-length N] [--jumps N]")
         print("       roga-bench status <worktree> [--runs N]")
         print("       roga-bench refs <worktree> [--runs N]")
+        print("       roga-bench replay <repository> [--days N] [--runs N]")
         exit(2)
     }
 } catch {

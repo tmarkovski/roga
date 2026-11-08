@@ -69,4 +69,5 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [59](0059-set-aside-changes-in-the-way-and-put-them-back.md) | Set aside changes in the way, and put them back | Its dialog for a conflict offers Resolve by [60](0060-resolve-conflicts-in-the-diff-panel.md) |
 | [60](0060-resolve-conflicts-in-the-diff-panel.md) | Resolve conflicts in the diff panel | Accepted |
 | [61](0061-hide-a-list-with-no-files.md) | Hide a list with no files | Accepted |
+| [62](0062-replay-a-repositorys-history.md) | Replay a repository's history, drawn in Swift | Accepted |
 | [63](0063-ask-an-agent-to-fix-what-git-refused.md) | Ask an agent to fix what git refused | Accepted |

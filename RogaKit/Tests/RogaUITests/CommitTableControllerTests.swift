@@ -243,8 +243,23 @@ struct CommitTableBadgeTests {
     @Test func aRowsMenuRevertsItsCommitThenDeletesItsBranches() throws {
         let list = List()
         let menu = try #require(list.controller.menu(forRow: 1))
-        #expect(menu.items.map(\.title) == ["Revert…", "Delete…"])
-        #expect(!menu.items[0].isSectionHeader)
+        #expect(menu.items.map(\.title) == ["Replay History", "Revert…", "Delete…"])
+        #expect(!menu.items[1].isSectionHeader)
+    }
+
+    @Test func aRowsMenuReplaysItsFirstBranch() throws {
+        let list = List()
+        var replayed: [String] = []
+        list.controller.source.replayHistory = { replayed.append($0) }
+        let item = try #require(list.controller.menu(forRow: 1)).items[0]
+        _ = (item.target as? NSObject)?.perform(item.action, with: item)
+        #expect(replayed == ["refs/heads/main"])
+    }
+
+    @Test func aRowWithoutABranchHasNothingToReplay() throws {
+        let list = List()
+        let menu = try #require(list.controller.menu(forRow: 2))
+        #expect(menu.items.map(\.title) == ["Revert…"])
     }
 
     @Test func revertsTheCommitTheMenuWasOpenedOn() throws {
@@ -252,7 +267,7 @@ struct CommitTableBadgeTests {
         let menu = try #require(list.controller.menu(forRow: 1))
         // History loads again while the menu is open, and another commit takes the row.
         list.commits[1] = CommitTableBadgeTests.commit(9)
-        _ = (menu.items[0].target as? NSObject)?.perform(menu.items[0].action, with: menu.items[0])
+        _ = (menu.items[1].target as? NSObject)?.perform(menu.items[1].action, with: menu.items[1])
         #expect(list.reverted == [CommitTableBadgeTests.commit(1)])
         #expect(list.deleted.isEmpty)
     }
@@ -261,8 +276,8 @@ struct CommitTableBadgeTests {
         let list = List()
         list.canRevert = false
         let menu = try #require(list.controller.menu(forRow: 1))
-        #expect(!menu.items[0].isEnabled)
-        #expect(menu.items[1].isEnabled)
+        #expect(!menu.items[1].isEnabled)
+        #expect(menu.items[2].isEnabled)
     }
 
     @Test func listsEveryBranchWithLocalOnesFirstAndRemoteOnesFromAToZ() {
@@ -374,18 +389,18 @@ struct CommitTableBadgeTests {
     @Test func aRowsMenuAsksAboutEveryBranchOnTheCommit() throws {
         let list = List()
         let menu = try #require(list.controller.menu(forRow: 1))
-        let item = menu.items[1]
+        let item = menu.items[2]
         _ = (item.target as? NSObject)?.perform(item.action, with: item)
         #expect(list.deleted == [["refs/heads/main", "refs/heads/feature", "refs/remotes/origin/feature"]])
     }
 
     @Test func deletingIsDisabledWhileSomethingRuns() throws {
         let list = List()
-        #expect(try #require(list.controller.menu(forRow: 1)).items[1].isEnabled)
+        #expect(try #require(list.controller.menu(forRow: 1)).items[2].isEnabled)
         list.isBusy = true
         let menu = try #require(list.controller.menu(forRow: 1))
         #expect(!menu.autoenablesItems)
-        #expect(!menu.items[1].isEnabled)
+        #expect(!menu.items[2].isEnabled)
     }
 
     @Test func theRowForUncommittedChangesOffersToDiscardThem() throws {

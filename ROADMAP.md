@@ -68,6 +68,7 @@ Release 1 was also going to have file history, search and blame, and to pass the
 1. **File history.** Roga shows the commits that changed a file or folder, following renames. Where it appears is still open, now that branch review and stashes are in the panels under history (decision 56).
 2. **Search** across commit subjects, messages and authors, streamed in the background.
 3. **Blame**, showing who last changed each line of a file, and in which commit.
+4. **Replaying history.** Roga plays a repository's history as an animation: branches leave the main line, their commits land one by one, and they merge back, ending on the whole range at once. It works in any repository, and saves a video or an image to share. It's built, as [decision 62](docs/decisions/0062-replay-a-repositorys-history.md) describes, and a [prototype](prototypes/history-replay/README.md) tried the motion in a browser first.
 
 ### When release 1.1 is done
 
@@ -103,3 +104,4 @@ These each need their own decision before they're scheduled:
 - submodules and Git LFS
 - integration with GitHub or other hosts, including listing an organization's repositories to add them
 - a view of the work agents are doing, with what's waiting for review, based on the agents' hooks (decision 16)
+- a second kind of replay that shows the repository's files and the people changing them, the way Gource does, played by the same player as the replay in decision 62

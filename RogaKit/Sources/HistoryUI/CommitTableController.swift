@@ -34,6 +34,8 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
         /// Says that the user chose to delete some of the branches on a commit, by
         /// the full names of all of them.
         public var deleteBranches: ([String]) -> Void
+        /// Says that the user chose to replay a branch's history, by its full name.
+        public var replayHistory: (String) -> Void = { _ in }
         /// Whether something's running that deleting a branch has to wait for.
         public var isBusy: () -> Bool
         /// The commit of a row, or nil for the row for uncommitted changes.
@@ -292,6 +294,12 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
             ])
         }
         var entries: [RefMenu.Entry] = []
+        // Local branches come first, and every branch on a row has the same history.
+        if let branch = content.branches.first {
+            entries.append(.command("Replay History") { [weak self] in
+                self?.source.replayHistory(branch)
+            })
+        }
         // The commit, rather than the row, because history can load again while the
         // menu is open, and the rows move.
         if let commit = source.commitOfRow(row) {

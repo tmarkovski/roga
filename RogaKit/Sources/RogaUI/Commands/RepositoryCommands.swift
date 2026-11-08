@@ -55,6 +55,8 @@ public struct RepositoryCommands: Commands {
     static let newBranchShortcut = KeyboardShortcut("b", modifiers: [.shift, .command])
     /// Reviews the branch the worktree is on against the main branch (decision 56).
     static let reviewShortcut = KeyboardShortcut("r", modifiers: [.shift, .command])
+    /// Replays the history of the branch the worktree is on (decision 62).
+    static let replayHistoryShortcut = KeyboardShortcut("r", modifiers: [.control, .command])
 
     /// The shortcuts for the worktree on screen, which the menu of its
     /// repository's worktrees in the title row shows too. New Worktree… pairs
@@ -290,6 +292,11 @@ public struct RepositoryCommands: Commands {
             }
             .keyboardShortcut(Self.reviewShortcut)
             .disabled(base == nil)
+            Button("Replay History") {
+                repository?.replayHistory()
+            }
+            .keyboardShortcut(Self.replayHistoryShortcut)
+            .disabled(repository?.canReplayHistory != true)
         }
     }
 }
