@@ -80,11 +80,6 @@ public struct HistoryReplay: Sendable {
         public var merged: Int?
         /// Whether it's the first commit of a branch.
         public var isFork = false
-        /// Whether no branch is open here, so that the replay fast-forwards.
-        public var isFast = false
-        /// Which of the `stemCount` stems its subject flicks off on, when it's
-        /// in a flat stretch and not too close to a merge's note.
-        public var stem: Int?
         /// How many branches have started and merged, up to and including it.
         public var forksSoFar = 0
         public var mergesSoFar = 0
@@ -94,14 +89,15 @@ public struct HistoryReplay: Sendable {
         var unfittedTime = 0.0
     }
 
-    /// How many stems take turns through a flat stretch.
-    public static let stemCount = 4
+    /// What a branch is called when nothing says what its name was.
+    public static let unnamedBranch = "branch"
 
-    /// Seconds between commits while a branch is open, and through quiet
-    /// stretches of the main line.
+    /// Seconds between commits while a branch is open, and where none is. Both
+    /// leave time to read the name each commit leaves behind.
     static let slowStep = 0.26
-    static let fastStep = 0.07
-    /// Extra pauses for a branch starting and a merge, so that they read.
+    static let flatStep = 0.2
+    /// Extra pauses for a branch starting and for a merge or a squashed pull
+    /// request landing, so that they read.
     static let forkPause = 0.15
     static let mergePause = 0.3
     /// How long the replay waits before the first commit, and after the last.
@@ -304,7 +300,7 @@ extension HistoryReplay {
                 // not the branch it was made on.
                 let name = message.name.flatMap { $0 == mainLineName ? nil : $0 }
                 branches.append(Branch(
-                    name: name ?? "branch",
+                    name: name ?? HistoryReplay.unnamedBranch,
                     pullRequest: message.pullRequest,
                     title: message.title,
                     lane: 0,
@@ -523,26 +519,15 @@ extension HistoryReplay {
             var open = 0
             var forks = 0
             var merges = 0
-            var nextStem = 0
-            var lastMerge = Int.min / 2
             for step in commits.indices {
                 open += opening[step]
-                commits[step].isFast = open == 0
                 let isMerge = commits[step].isMerge
                 let isFork = commits[step].isFork
-                if isMerge { lastMerge = step }
-                // The few commits right after a merge go without, so that
-                // their subjects don't land on the merge's note.
-                if commits[step].isFast && !isMerge && step - lastMerge > 4 {
-                    commits[step].stem = nextStem % stemCount
-                    nextStem += 1
-                } else if !commits[step].isFast {
-                    nextStem = 0
-                }
+                let isSquash = !isMerge && commits[step].branch == 0 && commits[step].pullRequest != nil
                 if isFork { time += forkPause }
                 commits[step].unfittedTime = time
-                time += commits[step].isFast ? fastStep : slowStep
-                if isMerge { time += mergePause }
+                time += open == 0 ? flatStep : slowStep
+                if isMerge || isSquash { time += mergePause }
                 if isFork { forks += 1 }
                 if isMerge { merges += 1 }
                 commits[step].forksSoFar = forks

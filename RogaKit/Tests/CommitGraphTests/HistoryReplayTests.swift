@@ -126,15 +126,15 @@ struct HistoryReplayTests {
         #expect(replay.farthestLane >= 1)
     }
 
-    @Test func fastForwardsAndFlicksSubjectsThroughFlatStretches() async throws {
+    @Test func leavesTimeToReadAFlatStretch() async throws {
         let replay = try await replay()
-        let flat = replay.commits.prefix(6)
-        #expect(flat.allSatisfy { $0.isFast })
-        #expect(flat.map(\.stem) == [0, 1, 2, 3, 0, 1])
-        #expect(abs(replay.commits[1].time - replay.commits[0].time - HistoryReplay.fastStep) < 1e-9)
-        let inBranch = try #require(replay.commits.first { $0.subject == "Finish the login page" })
-        #expect(!inBranch.isFast)
-        #expect(inBranch.stem == nil)
+        #expect(abs(replay.commits[1].time - replay.commits[0].time - HistoryReplay.flatStep) < 1e-9)
+    }
+
+    @Test func givesASquashedPullRequestAsLongAsAMerge() async throws {
+        let repository = try await Fixture.repository("replay")
+        let replay = try await makeReplay(of: "squashes", in: repository, graph: try openGraph(repository))
+        #expect(abs(replay.commits[1].time - replay.commits[0].time - HistoryReplay.flatStep - HistoryReplay.mergePause) < 1e-9)
     }
 
     @Test func landsCommitsInOrderWithPausesForForksAndMerges() async throws {

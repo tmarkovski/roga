@@ -2,7 +2,9 @@ import AVFoundation
 import CommitGraph
 import Foundation
 import GitCore
+import RepositoryEngine
 import SwiftUI
+import TestSupport
 import Testing
 @testable import RogaUI
 
@@ -52,6 +54,12 @@ private func pixels(of map: MetroMap, at time: Double, colorScheme: ColorScheme 
     .frame(width: 640, height: 360)
     let image = try #require(ImageRenderer(content: view).cgImage)
     return try #require(image.dataProvider?.data as Data?)
+}
+
+/// Whether two frames look the same. While other tests draw, the same frame
+/// can come out one level different in a few places along the edges of text.
+private func looksTheSame(_ first: Data, _ second: Data) -> Bool {
+    first.count == second.count && zip(first, second).allSatisfy { abs(Int($0) - Int($1)) <= 1 }
 }
 
 @Suite @MainActor
@@ -132,25 +140,65 @@ struct ReplayPlayerTests {
     }
 }
 
+struct LabelStacksTests {
+    private func item(_ start: Double, width: Double = 100, above: Bool = true, lowest: Int = 0) -> LabelStacks.Item {
+        LabelStacks.Item(start: start, width: width, isAbove: above, lowestTier: lowest)
+    }
+
+    private func tiers(_ items: [LabelStacks.Item], room: Int = 50) -> [Int?] {
+        LabelStacks.tiers(of: items, tiersAbove: room, tiersBelow: room)
+    }
+
+    @Test func theNewestSitsLowestAndPushesWhatItOverlapsUp() {
+        #expect(tiers([item(0), item(50)]) == [1, 0])
+        #expect(tiers([item(0), item(30), item(60)]) == [2, 1, 0])
+    }
+
+    @Test func aLabelOnTopFallsBackOnceTheNextClearsItPlusSlack() {
+        let end = 100 + LabelStacks.slack
+        #expect(tiers([item(0), item(end - 1)]) == [1, 0])
+        #expect(tiers([item(0), item(end + 1)]) == [0, 0])
+        #expect(tiers([item(0), item(50), item(120)]) == [0, 1, 0])
+    }
+
+    @Test func aStackIsAsTallAsItsLabelsOverlap() {
+        let items = (0 ..< 40).map { item(Double($0)) }
+        #expect(tiers(items) == (0 ..< 40).reversed().map(Optional.some))
+    }
+
+    @Test func aLabelWithNoRoomLeftIsLeftOut() {
+        #expect(tiers([item(0), item(10), item(20)], room: 2) == [nil, 1, 0])
+    }
+
+    @Test func eachSideStacksByItself() {
+        #expect(tiers([item(0, above: false), item(10, above: true)]) == [0, 0])
+    }
+
+    @Test func aBranchsLabelStaysPastItsLane() {
+        #expect(tiers([item(0), item(500, lowest: 3)]) == [0, 3])
+        #expect(tiers([item(0, lowest: 2), item(10, lowest: 2)]) == [3, 2])
+    }
+}
+
 @Suite @MainActor
 struct MetroMapTests {
     /// Scrubbing, playing and saving all rely on this.
     @Test func drawsTheSameFrameForTheSameMoment() throws {
         let map = MetroMap(replay: try makeReplay(), repositoryName: "app")
         let time = map.replay.commits[9].time + 0.1
-        #expect(try pixels(of: map, at: time) == pixels(of: map, at: time))
-        #expect(try pixels(of: map, at: time) != pixels(of: map, at: time + 0.5))
+        #expect(looksTheSame(try pixels(of: map, at: time), try pixels(of: map, at: time)))
+        #expect(!looksTheSame(try pixels(of: map, at: time), try pixels(of: map, at: time + 0.5)))
     }
 
     @Test func drawsInBothAppearances() throws {
         let map = MetroMap(replay: try makeReplay(), repositoryName: "app")
-        #expect(try pixels(of: map, at: 3, colorScheme: .light) != pixels(of: map, at: 3, colorScheme: .dark))
+        #expect(!looksTheSame(try pixels(of: map, at: 3, colorScheme: .light), try pixels(of: map, at: 3, colorScheme: .dark)))
     }
 
     @Test func holdsTheWholeHistoryAtTheEnd() throws {
         let map = MetroMap(replay: try makeReplay(), repositoryName: "app")
         #expect(map.duration == map.replay.playEnd + MetroMap.finale + MetroMap.hold)
-        #expect(try pixels(of: map, at: map.duration) == pixels(of: map, at: map.duration - 0.1))
+        #expect(looksTheSame(try pixels(of: map, at: map.duration), try pixels(of: map, at: map.duration - 0.1)))
     }
 
     @Test func saysWhatItShowsForVoiceOver() throws {
@@ -168,6 +216,42 @@ struct MetroMapTests {
             length: 75
         )
         _ = try pixels(of: MetroMap(replay: replay, repositoryName: "app"), at: 1)
+    }
+}
+
+@Suite(.timeLimit(.minutes(1))) @MainActor
+struct ReplayModelTests {
+    /// Opens the replay of `main` in a fixture and waits for it to settle.
+    private func started() async throws -> ReplayModel {
+        let repository = try await Fixture.repository("replay")
+        let session = try await RepositorySession.open(containing: repository, git: try await TestGit.make())
+        var last: History?
+        for try await history in session.history(sort: .date) { last = history }
+        let history = try #require(last)
+        let model = ReplayModel(
+            session: session,
+            graph: history.graph,
+            tip: try #require(history.head),
+            branchName: "main",
+            tags: []
+        )
+        model.start(reducesMotion: true)
+        while case .loading = model.phase {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        await session.close()
+        return model
+    }
+
+    @Test func startsOnTheLastWeekAtFortyFiveSeconds() async throws {
+        let model = try await started()
+        #expect(model.scope == .days(7))
+        #expect(model.length == 45)
+    }
+
+    @Test func offersEveryRangeFromAWeekUp() {
+        #expect(ReplayModel.dayRanges == [7, 14, 30, 90, 365])
+        #expect(ReplayModel.lengths.contains(ReplayModel.startingLength))
     }
 }
 

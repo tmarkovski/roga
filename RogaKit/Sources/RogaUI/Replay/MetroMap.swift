@@ -20,13 +20,11 @@ struct MetroMap: ReplayPicture {
     /// The zoom out to the whole history at the end, and how long it holds there.
     static let finale = 2.4
     static let hold = 2.4
-    /// How long a commit's subject stays up through a flat stretch, and how
-    /// long a merge's note does.
-    static let tick = 0.9
-    static let note = 1.8
-    /// The stems take turns going down and up, at two heights, so that
-    /// neighbors don't land on each other.
-    static let stems: [(side: Double, length: Double)] = [(1, 18), (-1, 18), (1, 36), (-1, 36)]
+    /// How many characters of a label are shown, which keeps stacks low.
+    static let labelCharacters = 30
+    /// A label glides to a new tier by looking this many frames back, a
+    /// sixtieth of a second apart.
+    static let settleFrames = 15
 
     /// Commit spacing in a window narrower than `smallWidth`, and in a wider one.
     private static let smallWidth = 640.0
@@ -39,16 +37,27 @@ struct MetroMap: ReplayPicture {
         var label: String
     }
 
+    /// The name that stays by a commit on the main line, or by the first
+    /// commit of a branch.
+    private struct Label {
+        var step: Int
+        var text: String
+        /// How wide it is at the larger text size, with its padding.
+        var width: Double
+        var isAbove: Bool
+        var branch: Int
+        var lane: Int
+    }
+
     let replay: HistoryReplay
     let repositoryName: String
     private let markers: [Marker]
     private let days: Int
     /// How close commits are drawn, from how much the replay had to speed up.
     private let zoom: Double
-    /// Which merges get a note when the commits are spaced for each width.
-    /// The rest would land on a note that's still showing.
-    private let notesWhenSmall: Set<Int>
-    private let notesWhenLarge: Set<Int>
+    /// Every label, oldest first.
+    private let labels: [Label]
+    private let widestLabel: Double
 
     private static let dateFormatter = formatter("EEEMMMdjmm")
     private static let dayFormatter = formatter("MMMd")
@@ -90,8 +99,8 @@ struct MetroMap: ReplayPicture {
         } else {
             days = 0
         }
-        notesWhenSmall = Self.notes(of: replay, spacing: Self.smallSpacing * zoom)
-        notesWhenLarge = Self.notes(of: replay, spacing: Self.largeSpacing * zoom)
+        labels = Self.labels(of: replay)
+        widestLabel = labels.map(\.width).max() ?? 0
     }
 
     var duration: Double { replay.playEnd + Self.finale + Self.hold }
@@ -102,29 +111,50 @@ struct MetroMap: ReplayPicture {
         return "\(replay.mainLineName) in \(repositoryName): \(commits), \(branches), \(counted(days, "day"))."
     }
 
-    /// Finds the merges that can show their note. Going through them in order
-    /// makes a note's fate the same at every moment, so that nothing flickers.
-    /// Notes on opposite sides of the main line can't touch.
-    private static func notes(of replay: HistoryReplay, spacing: Double) -> Set<Int> {
-        var shown = Set<Int>()
-        var lastOnSide: [Bool: (step: Int, time: Double, width: Double)] = [:]
-        for (step, commit) in replay.commits.enumerated() where commit.isMerge {
-            guard let merged = commit.merged else { continue }
-            let side = replay.branches[merged].lane < 0
-            let width = estimatedWidth(noteText(replay.branches[merged]), size: 12)
-            if let last = lastOnSide[side],
-               commit.time - last.time < note,
-               Double(step - last.step) * spacing < (last.width + width) / 2 + 10 {
-                continue
+    /// A label for every commit on the main line and for the first commit of
+    /// every branch. Commits on the main line take turns going above and
+    /// below it, except that a merge goes on the side away from its branch.
+    private static func labels(of replay: HistoryReplay) -> [Label] {
+        var labels: [Label] = []
+        var nextIsAbove = true
+        for (step, commit) in replay.commits.enumerated() {
+            let branch = replay.branches[commit.branch]
+            var text: String
+            let isAbove: Bool
+            if commit.branch != 0 {
+                guard branch.first == step else { continue }
+                let name = branch.name == HistoryReplay.unnamedBranch ? commit.subject : branch.name
+                text = (branch.pullRequest.map { "#\($0)  " } ?? "") + (branch.title ?? name)
+                isAbove = branch.lane < 0
+            } else if let merged = commit.merged {
+                let mergedBranch = replay.branches[merged]
+                if let pullRequest = mergedBranch.pullRequest {
+                    text = "Merged #\(pullRequest)"
+                } else if mergedBranch.name != HistoryReplay.unnamedBranch {
+                    text = "Merged \(mergedBranch.name)"
+                } else {
+                    text = commit.subject
+                }
+                isAbove = mergedBranch.lane > 0
+            } else {
+                text = commit.subject
+                isAbove = nextIsAbove
+                nextIsAbove.toggle()
             }
-            shown.insert(step)
-            lastOnSide[side] = (step, commit.time, width)
+            guard !text.isEmpty else { continue }
+            if text.count > labelCharacters {
+                text = String(text.prefix(labelCharacters - 1)).trimmingCharacters(in: .whitespaces) + "…"
+            }
+            labels.append(Label(
+                step: step,
+                text: text,
+                width: estimatedWidth(text, size: 11) + 8,
+                isAbove: isAbove,
+                branch: commit.branch,
+                lane: branch.lane
+            ))
         }
-        return shown
-    }
-
-    private static func noteText(_ branch: HistoryReplay.Branch) -> String {
-        branch.pullRequest.map { "Merged #\($0)" } ?? "Merged"
+        return labels
     }
 
     /// Roughly how wide some text is, which is close enough for keeping it off
@@ -151,6 +181,10 @@ struct MetroMap: ReplayPicture {
         var finished: Double
         var kx: Double
         var ky: Double
+        /// How far apart commits and lanes are while the replay plays, which
+        /// is what labels are stacked by, even as the camera pulls back.
+        var spacing: Double
+        var lanesApart: Double
         var ox: Double
         var oy: Double
         var dot: Double
@@ -174,9 +208,7 @@ struct MetroMap: ReplayPicture {
         drawDays(context, frame)
         drawLines(context, frame, color)
         drawCommits(context, frame, color)
-        if frame.playing > 0 { drawSubjects(context, frame) }
-        drawBranchNames(context, frame, color)
-        drawNotes(context, frame)
+        drawLabels(context, frame, color)
         drawMainLineName(context, frame)
         drawHeader(context, frame)
         drawCaption(context, frame, color)
@@ -210,6 +242,8 @@ struct MetroMap: ReplayPicture {
             finished: finished,
             kx: kx,
             ky: ky,
+            spacing: spacing,
+            lanesApart: laneGap * fitLanes,
             ox: width * anchor - focus * kx,
             oy: top + (height - top - bottom) / 2,
             dot: lerp(1, 0.55, finished),
@@ -453,98 +487,133 @@ struct MetroMap: ReplayPicture {
         }
     }
 
-    /// Each commit in a flat stretch flicks its subject off the line, trailing
-    /// behind its stem as the camera moves on, and fades quickly.
-    private func drawSubjects(_ context: GraphicsContext, _ frame: Frame) {
-        guard frame.head >= 0 else { return }
+    /// The names that stay by their commits while the replay plays, each on a
+    /// thin line back to its commit, stacked by `LabelStacks`. A label's place
+    /// is averaged over the last moments, leaning on the most recent, so that
+    /// it glides between tiers and a frame still depends only on its time.
+    private func drawLabels(_ context: GraphicsContext, _ frame: Frame, _ color: [Color]) {
+        let alpha = 1 - clamp(frame.finished / 0.3)
+        guard alpha > 0, frame.head >= 0 else { return }
+        let newest = lastLabel(upTo: frame.head)
+        let scale = frame.isSmall ? 10.0 / 11.0 : 1.0
+        let widest = widestLabel * scale / frame.spacing
+        let oldest = firstLabel(from: max(frame.xMin, Double(frame.head) - frame.width / frame.spacing) - widest)
+        guard newest >= oldest else { return }
+
+        let pitch = frame.isSmall ? 15.0 : 16.0
+        func center(_ tier: Int) -> Double { 20 + Double(tier) * pitch }
+        func tiers(fitting room: Double) -> Int { max(0, Int((room - 7 - center(0)) / pitch) + 1) }
+        let tiersAbove = tiers(fitting: frame.y(0) - frame.top - 26)
+        let tiersBelow = tiers(fitting: frame.height - frame.bottom - 8 - frame.y(0))
+
+        let count = newest - oldest + 1
+        var landed = [Double](repeating: 0, count: count)
+        var placed = [Double](repeating: 0, count: count)
+        var distance = [Double](repeating: 0, count: count)
+        var stacks: [Int: [Int?]] = [:]
+        for sample in 0 ..< Self.settleFrames {
+            let last = lastLabel(upTo: headAt(frame.time - Double(sample) / 60))
+            guard last >= oldest else { continue }
+            let tiers = stacks[last] ?? LabelStacks.tiers(
+                of: labels[oldest ... last].map { label in
+                    LabelStacks.Item(
+                        start: Double(label.step) * frame.spacing,
+                        width: label.width * scale,
+                        isAbove: label.isAbove,
+                        lowestTier: max(0, Int(((Double(abs(label.lane)) * frame.lanesApart - 4) / pitch).rounded(.up)))
+                    )
+                },
+                tiersAbove: tiersAbove,
+                tiersBelow: tiersBelow
+            )
+            stacks[last] = tiers
+            let remaining = 1 - (Double(sample) + 0.5) / Double(Self.settleFrames)
+            let weight = 3 * remaining * remaining
+            for index in tiers.indices {
+                landed[index] += weight
+                if let tier = tiers[index] {
+                    placed[index] += weight
+                    distance[index] += weight * center(tier)
+                }
+            }
+        }
+
+        struct Placed {
+            var label: Label
+            var x: Double
+            var side: Double
+            var y: Double
+            var alpha: Double
+        }
+        var shown: [Placed] = []
+        var stems = Path()
+        for index in 0 ..< count where placed[index] > 0 {
+            let label = labels[oldest + index]
+            let x = frame.x(Double(label.step))
+            let age = frame.time - replay.commits[label.step].time - Self.grow * 0.4
+            guard age >= 0, x <= frame.width else { continue }
+            let side = label.isAbove ? -1.0 : 1.0
+            let start = frame.y(Double(label.lane)) + side * 7 * frame.dot
+            let y = frame.y(0) + side * distance[index] / placed[index]
+            let end = y + side * 7
+            stems.move(to: CGPoint(x: x, y: start))
+            stems.addLine(to: CGPoint(x: x, y: start + (end - start) * easeOut(clamp(age / 0.14))))
+            shown.append(Placed(label: label, x: x, side: side, y: y, alpha: clamp(age / 0.12) * placed[index] / landed[index] * alpha))
+        }
+
+        var stemContext = context
+        stemContext.opacity = alpha * 0.55
+        stemContext.stroke(stems, with: .color(frame.theme.muted), lineWidth: 1)
+
         let size = frame.isSmall ? 10.0 : 11.0
-        let room = frame.kx * Double(Self.stems.count) - 12
-        var step = frame.head
-        while step >= 0 {
-            let commit = replay.commits[step]
-            let age = frame.time - commit.time - Self.grow * 0.4
-            if age > Self.tick { break }
-            defer { step -= 1 }
-            guard age >= 0, let stem = commit.stem, Double(step) >= frame.xMin, Double(step) <= frame.xMax else { continue }
-
-            let (side, length) = Self.stems[stem]
-            let reach = length * easeOut(clamp(age / 0.14)) + 4 * (age / Self.tick)
-            let alpha = (1 - clamp((age - 0.3) / (Self.tick - 0.3))) * frame.playing
-            let x = frame.x(Double(step))
-            let tip = frame.y(0) + side * reach
-
-            var stemContext = context
-            stemContext.opacity = alpha * 0.7
-            var line = Path()
-            line.move(to: CGPoint(x: x, y: frame.y(0) + side * 7 * frame.dot))
-            line.addLine(to: CGPoint(x: x, y: tip))
-            stemContext.stroke(line, with: .color(frame.theme.muted), lineWidth: 1)
-
-            guard room > 40 else { continue }
-            drawText(
-                context,
-                fitted(commit.subject, width: room, size: size),
-                size: size,
-                weight: .medium,
-                color: frame.theme.ink,
-                x: x - 5,
-                baseline: tip + 4,
-                alignment: .trailing,
-                alpha: alpha * 0.85 * clamp(age / 0.1)
-            )
+        for item in shown {
+            var opaque = context
+            opaque.opacity = item.alpha
+            let tint = item.label.branch == 0 ? frame.theme.ink : color[colorIndex(item.label.branch)]
+            let text = opaque.resolve(Text(item.label.text).font(.system(size: size, weight: .medium)).foregroundStyle(tint))
+            let width = text.measure(in: CGSize(width: CGFloat.infinity, height: .infinity)).width
+            let box = Path(roundedRect: CGRect(x: item.x + 0.5, y: item.y - 7, width: width + 7, height: 14), cornerRadius: 3)
+            opaque.fill(box, with: .color(frame.theme.paper))
+            if item.label.branch != 0 {
+                var tinted = opaque
+                tinted.opacity = item.alpha * (frame.theme.isDark ? 0.16 : 0.12)
+                tinted.fill(box, with: .color(tint))
+            }
+            opaque.draw(text, at: CGPoint(x: item.x + 4, y: item.y), anchor: .leading)
         }
     }
 
-    private func drawBranchNames(_ context: GraphicsContext, _ frame: Frame, _ color: [Color]) {
-        let size = frame.isSmall ? 11.0 : 12.0
-        for (index, branch) in replay.branches.enumerated().dropFirst() {
-            let first = replay.commits[branch.first]
-            guard first.time <= frame.time, let merge = branch.merge else { continue }
-            let appear = clamp((frame.time - first.time) / 0.35)
-            var alpha = appear * frame.playing
-            let mergeTime = replay.commits[merge].time
-            if mergeTime <= frame.time { alpha *= 1 - clamp((frame.time - mergeTime - 0.9) / 0.5) }
-            guard alpha > 0 else { continue }
-            let side = branch.lane < 0 ? -1.0 : 1.0
-            var name = branch.title ?? branch.name
-            if name.count > 44 { name = String(name.prefix(43)).trimmingCharacters(in: .whitespaces) + "…" }
-            let label = (branch.pullRequest.map { "#\($0)  " } ?? "") + name
-            drawPill(
-                context,
-                label,
-                x: frame.x(Double(branch.first)) - 7,
-                y: frame.y(Double(branch.lane)) + side * (19 - 6 * (1 - appear)),
-                color: color[colorIndex(index)],
-                alpha: alpha,
-                size: size,
-                frame
-            )
+    /// The index of the newest label whose commit is at or before `step`, or
+    /// -1 if there's none.
+    private func lastLabel(upTo step: Int) -> Int {
+        var low = 0
+        var high = labels.count - 1
+        var found = -1
+        while low <= high {
+            let middle = (low + high) / 2
+            if labels[middle].step <= step {
+                found = middle
+                low = middle + 1
+            } else {
+                high = middle - 1
+            }
         }
+        return found
     }
 
-    /// A note under each merge, on the side away from its branch.
-    private func drawNotes(_ context: GraphicsContext, _ frame: Frame) {
-        guard frame.head >= 0 else { return }
-        let shown = frame.isSmall ? notesWhenSmall : notesWhenLarge
-        var step = frame.head
-        while step >= 0, frame.time - replay.commits[step].time <= Self.note {
-            defer { step -= 1 }
-            guard shown.contains(step), let merged = replay.commits[step].merged else { continue }
-            let age = frame.time - replay.commits[step].time
-            let branch = replay.branches[merged]
-            let alpha = min(clamp(age / 0.2), clamp((Self.note - age) / 0.5)) * frame.playing
-            drawText(
-                context,
-                Self.noteText(branch),
-                size: 12,
-                weight: .medium,
-                color: frame.theme.muted,
-                x: frame.x(Double(step)),
-                baseline: frame.y(0) + (branch.lane < 0 ? 26 : -18),
-                alignment: .center,
-                alpha: alpha
-            )
+    /// The index of the oldest label at `step` or later.
+    private func firstLabel(from step: Double) -> Int {
+        var low = 0
+        var high = labels.count
+        while low < high {
+            let middle = (low + high) / 2
+            if Double(labels[middle].step) < step {
+                low = middle + 1
+            } else {
+                high = middle
+            }
         }
+        return low
     }
 
     /// The main line's name stays at the left edge once it scrolls past.
@@ -569,10 +638,7 @@ struct MetroMap: ReplayPicture {
         drawText(context, repositoryName, size: 17, weight: .bold, color: theme.ink, x: 16, baseline: 32, alpha: alpha)
 
         let date = commit.map { Self.dateFormatter.string(from: Date(timeIntervalSince1970: Double($0.commitTime))) } ?? ""
-        let dateText = drawText(context, date, size: 13, color: theme.muted, x: 16, baseline: 52, alpha: alpha)
-        if let commit, commit.isFast, frame.head < replay.commits.count - 1 {
-            drawText(context, "Fast-forwarding", size: 12, weight: .semibold, color: theme.accent, x: 16 + dateText.width + 12, baseline: 52, alpha: alpha)
-        }
+        drawText(context, date, size: 13, color: theme.muted, x: 16, baseline: 52, alpha: alpha)
 
         let stats = [
             (commit == nil ? 0 : frame.head + 1, "commits"),
@@ -691,10 +757,15 @@ struct MetroMap: ReplayPicture {
         size: Double,
         _ frame: Frame
     ) {
+        let width = max(context.resolve(Text(string).font(.system(size: size, weight: .semibold))).measure(in: CGSize(width: CGFloat.infinity, height: .infinity)).width, 0) + 14
+        let pill = Path(roundedRect: CGRect(x: x, y: y - 10, width: width, height: 20), cornerRadius: 6)
+        // Labels can pass under it.
+        var paper = context
+        paper.opacity = alpha
+        paper.fill(pill, with: .color(frame.theme.paper))
         var background = context
         background.opacity = alpha * (frame.theme.isDark ? 0.16 : 0.12)
-        let width = max(context.resolve(Text(string).font(.system(size: size, weight: .semibold))).measure(in: CGSize(width: CGFloat.infinity, height: .infinity)).width, 0) + 14
-        background.fill(Path(roundedRect: CGRect(x: x, y: y - 10, width: width, height: 20), cornerRadius: 6), with: .color(color))
+        background.fill(pill, with: .color(color))
         drawText(context, string, size: size, weight: .semibold, color: color, x: x + 7, baseline: y + 4, alpha: alpha)
     }
 }

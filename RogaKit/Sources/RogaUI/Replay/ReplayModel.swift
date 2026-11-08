@@ -46,13 +46,12 @@ final class ReplayModel {
     }
 
     /// The ranges everyone gets. Tags add theirs.
-    static let dayRanges = [14, 30, 90, 365]
+    static let dayRanges = [7, 14, 30, 90, 365]
     /// The lengths it offers, in seconds.
     static let lengths = [30.0, 45, 60, 75, 90, 120]
-    /// The longest history that starts out whole. Beyond this a replay is a
-    /// blur, so it starts with the last `startingDays` days instead.
-    nonisolated static let wholeHistoryLimit = 2_000
-    static let startingDays = 30
+    /// Where a replay starts, until someone picks something else.
+    static let startingDays = 7
+    static let startingLength = 45.0
 
     let session: RepositorySession
     let graph: CommitGraph
@@ -64,7 +63,7 @@ final class ReplayModel {
     private(set) var phase = Phase.loading
     /// Which commits it covers, once it's worked out where to start.
     private(set) var scope: Scope?
-    private(set) var length = 75.0
+    private(set) var length = startingLength
     private(set) var saving: Saving?
 
     private var replay: HistoryReplay?
@@ -87,12 +86,11 @@ final class ReplayModel {
         Self.dayRanges.map(Scope.days) + [.wholeHistory]
     }
 
-    /// Works out where to start and loads it, the first time the window shows.
-    func start(reducesMotion: Bool) async {
+    /// Loads the starting range, the first time the window shows.
+    func start(reducesMotion: Bool) {
         self.reducesMotion = reducesMotion
         guard scope == nil else { return }
-        let isSmall = await Self.fitsWhole(graph: graph, tip: tip)
-        scope = isSmall ? .wholeHistory : .days(Self.startingDays)
+        scope = .days(Self.startingDays)
         load()
     }
 
@@ -117,14 +115,6 @@ final class ReplayModel {
     func stop() {
         loading?.cancel()
         save?.cancel()
-    }
-
-    @concurrent
-    private static func fitsWhole(graph: CommitGraph, tip: CommitGraph.Position) async -> Bool {
-        guard var order = try? HistoryOrder(graph: graph, tips: [tip], sort: .date),
-              let first = try? order.next(wholeHistoryLimit + 1)
-        else { return true }
-        return first.count <= wholeHistoryLimit
     }
 
     private func range(for scope: Scope) -> HistoryReplay.CommitRange {
@@ -228,7 +218,7 @@ struct ReplayView: View {
         content
             .frame(minWidth: 520, minHeight: 340)
             .overlay { savingOverlay }
-            .task { await model.start(reducesMotion: reducesMotion) }
+            .task { model.start(reducesMotion: reducesMotion) }
             .onDisappear { model.stop() }
     }
 
