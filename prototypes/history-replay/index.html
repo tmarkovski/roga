@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>History Replay</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --paper: #faf6ee;
+    --ink: #16150e;
+    --muted: #6a665a;
+    --line: #dcd5c6;
+    --accent: #b53d00;
+    --control: #efe9dc;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #16150e;
+      --ink: #f5f0e6;
+      --muted: #a9a394;
+      --line: #3a372d;
+      --accent: #f2702e;
+      --control: #24221a;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper: #16150e;
+    --ink: #f5f0e6;
+    --muted: #a9a394;
+    --line: #3a372d;
+    --accent: #f2702e;
+    --control: #24221a;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html,
+  body {
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    display: flex;
+    flex-direction: column;
+    background: var(--paper);
+    color: var(--ink);
+    font: 14px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  canvas {
+    display: block;
+    flex: 1;
+    width: 100%;
+    min-height: 0;
+  }
+
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px 14px;
+  }
+
+  button,
+  select {
+    height: 32px;
+    border: 0;
+    border-radius: 8px;
+    background: var(--control);
+    color: var(--ink);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-width: 32px;
+    padding: 0 10px;
+  }
+
+  button svg {
+    width: 14px;
+    height: 14px;
+    fill: currentColor;
+  }
+
+  select {
+    padding: 0 8px;
+  }
+
+  button:focus-visible,
+  select:focus-visible,
+  input:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  input[type="range"] {
+    flex: 1;
+    min-width: 0;
+    accent-color: var(--accent);
+  }
+
+  .clock {
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  #record.recording {
+    background: var(--accent);
+    color: var(--paper);
+  }
+
+  @media (max-width: 560px) {
+    .clock,
+    #record {
+      display: none;
+    }
+  }
+</style>
+</head>
+<body>
+<canvas id="replay" role="img" aria-label="An animated replay of the repository's history"></canvas>
+<div class="controls">
+  <button id="play" aria-label="Pause">
+    <svg viewBox="0 0 16 16" id="play-icon"><rect x="3" y="2" width="3.5" height="12" rx="1"/><rect x="9.5" y="2" width="3.5" height="12" rx="1"/></svg>
+  </button>
+  <button id="restart" aria-label="Start again">
+    <svg viewBox="0 0 16 16"><path d="M8 2.5a5.5 5.5 0 1 1-5.2 3.7l1.4.5A4 4 0 1 0 8 4v2L4.5 3.2 8 .5z"/></svg>
+  </button>
+  <input id="scrub" type="range" min="0" max="1000" value="0" step="1" aria-label="Position in the replay">
+  <span class="clock" id="clock">0:00</span>
+  <select id="speed" aria-label="Speed">
+    <option value="0.5">0.5×</option>
+    <option value="1" selected>1×</option>
+    <option value="2">2×</option>
+    <option value="4">4×</option>
+  </select>
+  <button id="record">Record</button>
+</div>
+<script src="history.js"></script>
+<script>
+"use strict";
+
+// The lane colors from GitColors.lanes in HistoryUI, which are Monokai's
+// (decision 27).
+const LANES = {
+  light: ["#DB1C61", "#10819E", "#608A00", "#7240C0", "#968505", "#2552AA", "#676450", "#0D906D"],
+  dark: ["#FF3478", "#66D9EF", "#A6E22E", "#AE81FF", "#E6DB74", "#6796E6", "#A59F85", "#A1EFE4"],
+};
+
+// How many commit steps a curve between two lanes spans.
+const CURVE = 0.9;
+// Seconds between commits while a branch is open, and through quiet stretches
+// of the main line, where the replay fast-forwards.
+const SLOW = 0.26;
+const FAST = 0.07;
+// Extra pauses for a branch starting and for a merge, so they read.
+const FORK_PAUSE = 0.15;
+const MERGE_PAUSE = 0.3;
+// How long a line takes to reach its commit, a dot takes to pop, and a merge's
+// ring takes to fade.
+const GROW = 0.32;
+const POP = 0.3;
+const RING = 0.8;
+// The zoom out to the whole history at the end, and how long it holds there.
+const FINALE = 2.4;
+const HOLD = 2.4;
+
+// ---------------------------------------------------------------------------
+// Building the replay from the commits
+
+class Heap {
+  constructor(less) {
+    this.items = [];
+    this.less = less;
+  }
+
+  get size() {
+    return this.items.length;
+  }
+
+  push(item) {
+    const a = this.items;
+    a.push(item);
+    let i = a.length - 1;
+    while (i > 0) {
+      const up = (i - 1) >> 1;
+      if (!this.less(a[i], a[up])) break;
+      [a[i], a[up]] = [a[up], a[i]];
+      i = up;
+    }
+  }
+
+  pop() {
+    const a = this.items;
+    const top = a[0];
+    const last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1;
+        const r = l + 1;
+        let m = i;
+        if (l < a.length && this.less(a[l], a[m])) m = l;
+        if (r < a.length && this.less(a[r], a[m])) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+// git doesn't record which branch a commit was made on, so the name comes from
+// the merge's message, the way GitHub, GitLab and Bitbucket write it. GitHub
+// puts the pull request's title in the body, which reads better than a branch
+// name.
+function describeMerge(subject, body) {
+  let m = subject.match(/^Merge pull request #(\d+) from [^/\s]+\/(\S+)/);
+  if (m) return { pr: m[1], name: m[2], title: body || undefined };
+  m = subject.match(/^Merged in (\S+)(?: \(pull request #(\d+)\))?/);
+  if (m) return { pr: m[2], name: m[1] };
+  m = subject.match(/^Merge (?:remote-tracking )?branch '([^']+)'/);
+  if (m) return { name: m[1].replace(/^origin\//, "") };
+  // GitHub can be set to write the pull request's title as the subject.
+  m = subject.match(/^(.*) \(#(\d+)\)$/);
+  if (m) return { pr: m[2], name: "branch", title: m[1] };
+  return { name: "branch" };
+}
+
+// Whether a commit is how a pull request landed: a merge of one, or a squash.
+const landsPullRequest = (c) => /^Merge pull request #\d+|\(#\d+\)$/.test(c.s);
+
+function build(data, maxLength) {
+  const total = data.commits.length;
+  const commits = data.commits.map(([h, p, t, a, s, b], i) => ({
+    h, ids: p ? p.split(" ") : [], t, a, s, b, seq: total - i,
+  }));
+  const byHash = new Map(commits.map((c) => [c.h, c]));
+  const kids = new Map(commits.map((c) => [c, []]));
+  const left = new Map();
+  for (const c of commits) {
+    c.parents = c.ids.map((id) => byHash.get(id)).filter(Boolean);
+    left.set(c, c.parents.length);
+    for (const p of c.parents) kids.get(p).push(c);
+  }
+
+  // Oldest first. A commit comes after all of its parents, and of the commits
+  // that are ready, the one with the earliest commit time goes next. Each
+  // commit's place in this order is its x.
+  const ready = new Heap((a, b) => a.t < b.t || (a.t === b.t && a.seq < b.seq));
+  for (const c of commits) if (!c.parents.length) ready.push(c);
+  const order = [];
+  while (ready.size) {
+    const c = ready.pop();
+    c.x = order.length;
+    order.push(c);
+    for (const k of kids.get(c)) {
+      const n = left.get(k) - 1;
+      left.set(k, n);
+      if (!n) ready.push(k);
+    }
+  }
+
+  // The commits reachable from `from` but not from `other`.
+  function only(from, other) {
+    const theirs = new Set();
+    const stack = [other];
+    while (stack.length) {
+      const c = stack.pop();
+      if (theirs.has(c)) continue;
+      theirs.add(c);
+      stack.push(...c.parents);
+    }
+    const ours = [];
+    const seen = new Set();
+    stack.push(from);
+    while (stack.length) {
+      const c = stack.pop();
+      if (theirs.has(c) || seen.has(c)) continue;
+      seen.add(c);
+      ours.push(c);
+      stack.push(...c.parents);
+    }
+    return ours;
+  }
+
+  // The main line runs back from the tip, usually through each commit's first
+  // parent. Pulling main into a branch and pushing the result puts main second,
+  // though, so at a merge it follows the second parent when the message says
+  // that's main, or when more pull requests landed on that side.
+  function mainParent(merge) {
+    const [first, second] = merge.parents;
+    const named = merge.s.match(/^Merge (?:remote-tracking )?branch '(?:origin\/)?([^']+)'/);
+    if (named && named[1] === data.ref) return second;
+    const landed = (side) => side.filter(landsPullRequest).length;
+    return landed(only(second, first)) > landed(only(first, second)) ? second : first;
+  }
+
+  // Each merge on the main line brings in a branch: the commits behind its
+  // other parents that no earlier branch has claimed.
+  const tip = byHash.get(data.tip) || commits[0];
+  const trunk = [];
+  for (let c = tip; c; c = c.mainParent) {
+    c.mainParent = c.parents.length > 1 ? mainParent(c) : c.parents[0];
+    trunk.push(c);
+  }
+  trunk.reverse();
+  const main = { id: 0, name: data.ref, slot: 0, commits: trunk };
+  for (const c of trunk) {
+    c.branch = main;
+    const squashed = c.s.match(/\(#(\d+)\)$/);
+    if (squashed) c.pr = squashed[1];
+  }
+  const branches = [main];
+  for (const merge of trunk) {
+    for (const p of merge.parents) {
+      if (p === merge.mainParent || p.branch) continue;
+      const b = { id: branches.length, ...describeMerge(merge.s, merge.b), merge, commits: [] };
+      const stack = [p];
+      while (stack.length) {
+        const c = stack.pop();
+        if (c.branch) continue;
+        c.branch = b;
+        b.commits.push(c);
+        stack.push(...c.parents);
+      }
+      b.commits.sort((x, y) => x.x - y.x);
+      b.first = b.commits[0];
+      b.start = b.first.parents[0] ? b.first.parents[0].x : b.first.x;
+      b.end = merge.x;
+      b.color = (b.id - 1) % 8;
+      branches.push(b);
+    }
+  }
+  // Commits that no merge on the main line reaches, in a repository whose
+  // history doesn't end at the tip, stay off the replay.
+  const shown = order.filter((c) => c.branch);
+  shown.forEach((c, i) => (c.x = i));
+  for (const b of branches.slice(1)) {
+    b.from = b.first.parents[0];
+    b.start = b.from ? b.from.x : b.first.x;
+    b.end = b.merge.x;
+  }
+  for (const c of trunk) {
+    if (c.parents.length > 1) c.merged = c.parents.find((p) => p !== c.mainParent).branch;
+  }
+
+  // Lanes alternate above and below the main line, nearest first, and a lane
+  // is free again once its branch has merged.
+  const freeAfter = new Map();
+  let maxSlot = 0;
+  for (const b of branches.slice(1).sort((a, b) => a.start - b.start)) {
+    for (let k = 0; ; k++) {
+      const slot = k % 2 === 0 ? -(k / 2 + 1) : (k + 1) / 2;
+      if ((freeAfter.get(slot) ?? -Infinity) < b.start) {
+        b.slot = slot;
+        freeAfter.set(slot, b.end + 1.5);
+        maxSlot = Math.max(maxSlot, Math.abs(slot));
+        break;
+      }
+    }
+  }
+
+  // When each commit lands. Stretches where no branch is open fast-forward.
+  const open = new Int32Array(shown.length + 1);
+  for (const b of branches.slice(1)) {
+    open[b.start] += 1;
+    open[b.end + 1] -= 1;
+  }
+  let t = 0.8;
+  let running = 0;
+  let forks = 0;
+  let merges = 0;
+  for (const c of shown) {
+    running += open[c.x];
+    c.fast = running === 0;
+    c.isFork = c.branch.id > 0 && c === c.branch.first;
+    c.isMerge = c.branch.id === 0 && c.parents.length > 1;
+    if (c.isFork) t += FORK_PAUSE;
+    c.time = t;
+    t += c.fast ? FAST : SLOW;
+    if (c.isMerge) t += MERGE_PAUSE;
+    if (c.isFork) forks += 1;
+    if (c.isMerge) merges += 1;
+    c.forksSoFar = forks;
+    c.mergesSoFar = merges;
+  }
+  // A long history plays faster to fit, and the camera pulls back to match, so
+  // it doesn't pan any faster than the screen can be read.
+  const pace = Math.min(1, maxLength / t);
+  for (const c of shown) c.time *= pace;
+  const playEnd = t * pace + 0.5;
+
+  // A marker where each day starts.
+  const dayOf = (c) => new Date(c.t * 1000).toDateString();
+  const markers = [];
+  shown.forEach((c, i) => {
+    if (i === 0 || dayOf(c) !== dayOf(shown[i - 1])) {
+      markers.push({
+        x: i - 0.5,
+        time: c.time,
+        label: new Date(c.t * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+      });
+    }
+  });
+  const first = new Date(shown[0].t * 1000);
+  const last = new Date(shown[shown.length - 1].t * 1000);
+  const midnight = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((midnight(last) - midnight(first)) / 86400000) + 1;
+
+  return {
+    name: data.name, ref: data.ref, order: shown, branches, maxSlot, markers, days, first, last,
+    pace, zoom: Math.max(0.35, Math.min(1, pace * 2)),
+    playEnd, end: playEnd + FINALE + HOLD,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Drawing a moment of the replay. Everything is worked out from the time
+// alone, so scrubbing, playing and recording all draw the same frame.
+
+const clamp = (v, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const easeOut = (t) => 1 - Math.pow(1 - t, 3);
+const easeOutBack = (t) => {
+  const c = 1.9;
+  return t <= 0 ? 0 : 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2);
+};
+
+// ?length=60 sets the longest the replay plays for, in seconds, before the
+// zoom out at the end.
+const replay = build(window.HISTORY, Number(new URLSearchParams(location.search).get("length")) || 75);
+const { order, branches } = replay;
+const N = order.length;
+
+function headAt(time) {
+  let lo = 0;
+  let hi = N - 1;
+  let found = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (order[mid].time <= time) {
+      found = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return found;
+}
+
+// Where the newest commit is, sliding toward the next one between them.
+function playheadX(time) {
+  const i = headAt(time);
+  if (i < 0) return 0;
+  if (i >= N - 1) return N - 1;
+  const a = order[i];
+  const b = order[i + 1];
+  return a.x + clamp((time - a.time) / (b.time - a.time)) * (b.x - a.x);
+}
+
+// The camera follows the average of where the playhead was over the last half
+// second, so it glides rather than stepping from commit to commit.
+function cameraX(time) {
+  const samples = 16;
+  let sum = 0;
+  for (let k = 0; k < samples; k++) sum += playheadX(time - (0.5 * k) / (samples - 1));
+  return sum / samples;
+}
+
+function layout(time, width, height) {
+  const small = width < 640;
+  const spacing = (small ? 26 : 34) * replay.zoom;
+  const laneGap = small ? 34 : 46;
+  const top = small ? 96 : 84;
+  const bottom = 60;
+  const f = easeInOut(clamp((time - replay.playEnd) / FINALE));
+  const fitZoom = Math.min(1, (width - 48) / (Math.max(N - 1, 1) * spacing));
+  const room = (height - top - bottom) / 2 - 30;
+  const yFit = Math.min(1, room / (Math.max(replay.maxSlot, 1) * laneGap));
+  const kx = spacing * lerp(1, fitZoom, f);
+  const ky = laneGap * yFit * lerp(1, 0.6, f);
+  const focus = lerp(cameraX(Math.min(time, replay.playEnd)), (N - 1) / 2, f);
+  const anchor = lerp(small ? 0.7 : 0.66, 0.5, f);
+  return {
+    f, small, top, bottom, kx, ky,
+    ox: width * anchor - focus * kx,
+    oy: top + (height - top - bottom) / 2,
+    dot: lerp(1, 0.55, f),
+  };
+}
+
+const canvas = document.getElementById("replay");
+const ctx = canvas.getContext("2d");
+const FONT = "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+const MONO = "ui-monospace, SFMono-Regular, Menlo, monospace";
+let theme;
+
+function readTheme() {
+  const root = document.documentElement;
+  const css = getComputedStyle(root);
+  const forced = root.getAttribute("data-theme");
+  const dark = forced ? forced === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  theme = {
+    dark,
+    paper: css.getPropertyValue("--paper").trim(),
+    ink: css.getPropertyValue("--ink").trim(),
+    muted: css.getPropertyValue("--muted").trim(),
+    line: css.getPropertyValue("--line").trim(),
+    accent: css.getPropertyValue("--accent").trim(),
+    lanes: LANES[dark ? "dark" : "light"],
+  };
+}
+
+const colorOf = (branch) => (branch.id === 0 ? theme.ink : theme.lanes[branch.color]);
+
+function splitCubic([a, b, c, d], t) {
+  const at = (p, q) => [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t];
+  const ab = at(a, b);
+  const bc = at(b, c);
+  const cd = at(c, d);
+  const abc = at(ab, bc);
+  const bcd = at(bc, cd);
+  return [a, ab, abc, at(abc, bcd)];
+}
+
+// An S-shaped curve between two lanes, as far along as `t`.
+function curve(L, x0, s0, x1, s1, t, move) {
+  const xm = (x0 + x1) / 2;
+  let points = [[x0, s0], [xm, s0], [xm, s1], [x1, s1]];
+  if (t < 1) points = splitCubic(points, t);
+  const p = points.map(([x, s]) => [L.ox + x * L.kx, L.oy + s * L.ky]);
+  if (move) ctx.moveTo(p[0][0], p[0][1]);
+  ctx.bezierCurveTo(p[1][0], p[1][1], p[2][0], p[2][1], p[3][0], p[3][1]);
+}
+
+// The line from a parent to its child, as far along as `progress`. A branch
+// leaves its parent's lane straight away, and a merge comes in at the end, so
+// lines run along their own lanes in between.
+function edge(L, parent, child, kind, progress) {
+  const X = (x) => L.ox + x * L.kx;
+  const Y = (s) => L.oy + s * L.ky;
+  const from = parent.branch.slot;
+  const to = child.branch.slot;
+  const span = child.x - parent.x;
+  const reach = span * progress;
+  ctx.beginPath();
+  if (kind === "straight" || from === to) {
+    ctx.moveTo(X(parent.x), Y(to));
+    ctx.lineTo(X(parent.x + reach), Y(to));
+    return;
+  }
+  const u = Math.min(CURVE, span);
+  if (kind === "fork") {
+    curve(L, parent.x, from, parent.x + u, to, Math.min(1, reach / u), true);
+    if (reach > u) ctx.lineTo(X(parent.x + reach), Y(to));
+  } else {
+    const straight = span - u;
+    ctx.moveTo(X(parent.x), Y(from));
+    ctx.lineTo(X(parent.x + Math.min(reach, straight)), Y(from));
+    if (reach > straight) curve(L, parent.x + straight, from, child.x, to, (reach - straight) / u, false);
+  }
+}
+
+function pill(text, x, y, color, alpha, font) {
+  ctx.font = font;
+  const w = ctx.measureText(text).width + 14;
+  ctx.globalAlpha = alpha * (theme.dark ? 0.16 : 0.12);
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.roundRect(x, y - 10, w, 20, 6);
+  ctx.fill();
+  ctx.globalAlpha = alpha;
+  ctx.fillText(text, x + 7, y + 4);
+  ctx.globalAlpha = 1;
+}
+
+function fit(text, maxWidth) {
+  if (ctx.measureText(text).width <= maxWidth) return text;
+  let lo = 0;
+  let hi = text.length;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (ctx.measureText(text.slice(0, mid) + "…").width <= maxWidth) lo = mid;
+    else hi = mid - 1;
+  }
+  return text.slice(0, lo) + "…";
+}
+
+const dateFormat = { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" };
+
+function draw(time) {
+  const dpr = window.devicePixelRatio || 1;
+  const W = canvas.clientWidth;
+  const H = canvas.clientHeight;
+  if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = theme.paper;
+  ctx.fillRect(0, 0, W, H);
+
+  const L = layout(time, W, H);
+  const X = (x) => L.ox + x * L.kx;
+  const Y = (s) => L.oy + s * L.ky;
+  const xMin = -L.ox / L.kx - 2;
+  const xMax = (W - L.ox) / L.kx + 2;
+  const head = headAt(time);
+  const playing = 1 - L.f;
+
+  // Where each day starts.
+  ctx.font = `500 11px ${FONT}`;
+  let lastLabel = -Infinity;
+  for (const m of replay.markers) {
+    if (m.time > time || m.x < xMin || m.x > xMax) continue;
+    const x = X(m.x);
+    ctx.strokeStyle = theme.line;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 5]);
+    ctx.beginPath();
+    ctx.moveTo(x, L.top + 8);
+    ctx.lineTo(x, H - L.bottom - 8);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    if (x - lastLabel > 48) {
+      ctx.fillStyle = theme.muted;
+      ctx.fillText(m.label, x + 6, L.top + 18);
+      lastLabel = x;
+    }
+  }
+
+  // Lines, the branches' first and the main line's on top.
+  ctx.lineCap = "round";
+  ctx.lineWidth = lerp(2.5, 1.6, L.f);
+  for (const onMain of [false, true]) {
+    for (const c of order) {
+      if (c.time > time || (c.branch.id === 0) !== onMain) continue;
+      const progress = clamp((time - c.time) / GROW);
+      c.parents.forEach((p, k) => {
+        if (c.x < xMin || p.x > xMax) return;
+        const kind = p.branch === c.branch ? "straight" : p === c.branch.from && c === c.branch.first ? "fork" : "merge";
+        ctx.strokeStyle = colorOf(kind === "merge" ? p.branch : c.branch);
+        edge(L, p, c, kind, easeOut(progress));
+        ctx.stroke();
+      });
+    }
+  }
+
+  // The newest commit glows softly while the replay plays, once its dot is in.
+  if (head >= 0 && playing > 0) {
+    const c = order[head];
+    ctx.globalAlpha = 0.16 * playing * clamp((time - c.time - GROW * 0.5) / POP);
+    ctx.fillStyle = colorOf(c.branch);
+    ctx.beginPath();
+    ctx.arc(X(c.x), Y(c.branch.slot), 13 + 2 * Math.sin(time * 5), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  // Commits. A merge into the main line is drawn like an interchange on a
+  // metro map, and sends out a ring in the color of the branch it brought in.
+  for (const c of order) {
+    if (c.time > time || c.x < xMin || c.x > xMax) continue;
+    const age = time - c.time;
+    const scale = easeOutBack(clamp((age - GROW * 0.5) / POP));
+    if (scale <= 0) continue;
+    const onMain = c.branch.id === 0;
+    const r = (onMain ? 5 : 4.5) * L.dot * scale;
+    const x = X(c.x);
+    const y = Y(c.branch.slot);
+    const color = colorOf(c.branch);
+    if (c.isMerge && age < RING) {
+      const q = age / RING;
+      ctx.globalAlpha = (1 - q) * 0.9;
+      ctx.strokeStyle = colorOf(c.merged);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x, y, r + 28 * easeOut(q), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    if (theme.dark) {
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 16 * (1 - clamp(age / 1.4));
+    }
+    ctx.beginPath();
+    // A pull request that was squashed onto the main line is an interchange
+    // too, since its branch is gone from the history.
+    if (c.isMerge || (onMain && c.pr)) {
+      ctx.arc(x, y, r + 1.5 * L.dot, 0, Math.PI * 2);
+      ctx.fillStyle = theme.paper;
+      ctx.fill();
+      ctx.lineWidth = 2.5 * L.dot;
+      ctx.strokeStyle = color;
+      ctx.stroke();
+    } else {
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+    }
+    ctx.shadowBlur = 0;
+  }
+
+  // Branch names, which fade once the branch has merged.
+  const labelFont = `600 ${L.small ? 11 : 12}px ${FONT}`;
+  for (const b of branches) {
+    if (b.id === 0 || b.first.time > time) continue;
+    const appear = clamp((time - b.first.time) / 0.35);
+    let alpha = appear * playing;
+    if (b.merge.time <= time) alpha *= 1 - clamp((time - b.merge.time - 0.9) / 0.5);
+    if (alpha <= 0) continue;
+    const side = b.slot < 0 ? -1 : 1;
+    ctx.fillStyle = colorOf(b);
+    const name = b.title ? (b.title.length > 44 ? b.title.slice(0, 43).trimEnd() + "…" : b.title) : b.name;
+    pill((b.pr ? `#${b.pr}  ` : "") + name, X(b.first.x) - 7, Y(b.slot) + side * (19 - 6 * (1 - appear)), colorOf(b), alpha, labelFont);
+  }
+
+  // A note under each merge, on the side away from the branch.
+  ctx.font = `500 12px ${FONT}`;
+  ctx.textAlign = "center";
+  for (const c of order) {
+    if (!c.isMerge || c.time > time || time - c.time > 1.8) continue;
+    const age = time - c.time;
+    const merged = c.merged;
+    const alpha = Math.min(clamp(age / 0.2), clamp((1.8 - age) / 0.5)) * playing;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = theme.muted;
+    const pr = merged.pr ? ` #${merged.pr}` : "";
+    ctx.fillText(`Merged${pr}`, X(c.x), Y(0) + (merged.slot < 0 ? 26 : -18));
+    ctx.globalAlpha = 1;
+  }
+  ctx.textAlign = "left";
+
+  // The main line's name stays at the left edge once it scrolls past.
+  if (N) {
+    ctx.fillStyle = theme.ink;
+    pill(replay.ref, Math.max(16, X(0) - 7), Y(0) - 19, theme.ink, clamp(time / 0.6), labelFont);
+  }
+
+  drawHeader(time, head, L, W);
+  drawCaption(time, head, L, W, H);
+  drawSummary(time, L, W, H);
+}
+
+function drawHeader(time, head, L, W) {
+  const alpha = 1 - L.f;
+  if (alpha <= 0) return;
+  ctx.globalAlpha = alpha;
+  const c = head >= 0 ? order[head] : null;
+  ctx.fillStyle = theme.ink;
+  ctx.font = `700 17px ${FONT}`;
+  ctx.fillText(replay.name, 16, 32);
+  ctx.font = `13px ${FONT}`;
+  ctx.fillStyle = theme.muted;
+  const date = c ? new Date(c.t * 1000).toLocaleString(undefined, dateFormat) : "";
+  ctx.fillText(date, 16, 52);
+  if (c && c.fast && head < N - 1) {
+    const w = ctx.measureText(date).width;
+    ctx.fillStyle = theme.accent;
+    ctx.font = `600 12px ${FONT}`;
+    ctx.fillText("Fast-forwarding", 16 + w + 12, 52);
+  }
+  const stats = [
+    [c ? head + 1 : 0, "commits"],
+    [c ? c.forksSoFar : 0, "branches"],
+    [c ? c.mergesSoFar : 0, "merges"],
+  ];
+  if (L.small) {
+    ctx.font = `13px ${FONT}`;
+    ctx.fillStyle = theme.muted;
+    ctx.fillText(stats.map(([n, label]) => `${n} ${label}`).join("  ·  "), 16, 74);
+  } else {
+    let x = W - 16;
+    for (const [n, label] of stats.reverse()) {
+      ctx.textAlign = "right";
+      ctx.font = `700 20px ${FONT}`;
+      ctx.fillStyle = theme.ink;
+      ctx.fillText(String(n), x, 34);
+      ctx.font = `600 10px ${FONT}`;
+      ctx.fillStyle = theme.muted;
+      ctx.fillText(label.toUpperCase(), x, 52);
+      x -= 86;
+    }
+    ctx.textAlign = "left";
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawCaption(time, head, L, W, H) {
+  if (head < 0) return;
+  const c = order[head];
+  const alpha = clamp((time - c.time) / 0.2) * (1 - L.f);
+  if (alpha <= 0) return;
+  ctx.globalAlpha = alpha;
+  const y = H - 26;
+  ctx.font = `12px ${MONO}`;
+  ctx.fillStyle = colorOf(c.branch);
+  ctx.fillText(c.h, 16, y);
+  const hashWidth = ctx.measureText(c.h).width + 12;
+  ctx.font = `15px ${FONT}`;
+  ctx.fillStyle = theme.ink;
+  ctx.fillText(fit(c.s, W - 32 - hashWidth), 16 + hashWidth, y);
+  ctx.globalAlpha = 1;
+}
+
+function drawSummary(time, L, W, H) {
+  const alpha = clamp((time - replay.playEnd - FINALE * 0.7) / 0.6);
+  if (alpha <= 0) return;
+  ctx.globalAlpha = alpha;
+  ctx.textAlign = "center";
+  const merged = branches.length - 1;
+  const counts = `${N} commits  ·  ${merged} branches  ·  ${replay.days} ${replay.days === 1 ? "day" : "days"}`;
+  ctx.font = `700 ${L.small ? 18 : 24}px ${FONT}`;
+  ctx.fillStyle = theme.ink;
+  ctx.fillText(counts, W / 2, L.small ? 40 : 42);
+  const range = { month: "short", day: "numeric", year: "numeric" };
+  ctx.font = `13px ${FONT}`;
+  ctx.fillStyle = theme.muted;
+  ctx.fillText(
+    `${replay.name}, ${replay.first.toLocaleDateString(undefined, range)} to ${replay.last.toLocaleDateString(undefined, range)}`,
+    W / 2,
+    L.small ? 62 : 66,
+  );
+  ctx.fillText("Replayed in Roga", W / 2, H - 26);
+  ctx.textAlign = "left";
+  ctx.globalAlpha = 1;
+}
+
+// ---------------------------------------------------------------------------
+// Playing, scrubbing and recording
+
+const playButton = document.getElementById("play");
+const scrub = document.getElementById("scrub");
+const clock = document.getElementById("clock");
+const speedSelect = document.getElementById("speed");
+const recordButton = document.getElementById("record");
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const PLAY_ICON = '<path d="M4 2.5v11a.8.8 0 0 0 1.2.7l9-5.5a.8.8 0 0 0 0-1.4l-9-5.5A.8.8 0 0 0 4 2.5z"/>';
+const PAUSE_ICON = '<rect x="3" y="2" width="3.5" height="12" rx="1"/><rect x="9.5" y="2" width="3.5" height="12" rx="1"/>';
+
+// Someone who asked for less motion starts on the whole history, still.
+let time = reduceMotion ? replay.end : 0;
+let playing = !reduceMotion;
+let speed = Number(new URLSearchParams(location.search).get("speed")) || 1;
+let last = null;
+let dirty = true;
+let recorder = null;
+
+const formatClock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+
+function setPlaying(value) {
+  playing = value;
+  if (playing && time >= replay.end) time = 0;
+  playButton.setAttribute("aria-label", playing ? "Pause" : "Play");
+  playButton.querySelector("svg").innerHTML = playing ? PAUSE_ICON : PLAY_ICON;
+  last = null;
+  dirty = true;
+}
+
+function frame(now) {
+  if (playing) {
+    if (last !== null) time = Math.min(replay.end, time + Math.min(0.1, (now - last) / 1000) * speed);
+    last = now;
+    dirty = true;
+    if (time >= replay.end) {
+      setPlaying(false);
+      if (recorder) recorder.stop();
+    }
+  }
+  if (dirty) {
+    draw(time);
+    scrub.value = String(Math.round((time / replay.end) * 1000));
+    clock.textContent = `${formatClock(time)} / ${formatClock(replay.end)}`;
+    dirty = false;
+  }
+  requestAnimationFrame(frame);
+}
+
+playButton.addEventListener("click", () => setPlaying(!playing));
+document.getElementById("restart").addEventListener("click", () => {
+  time = 0;
+  setPlaying(true);
+});
+scrub.addEventListener("input", () => {
+  time = (Number(scrub.value) / 1000) * replay.end;
+  dirty = true;
+});
+speedSelect.value = String(speed);
+speedSelect.addEventListener("change", () => (speed = Number(speedSelect.value)));
+document.addEventListener("keydown", (event) => {
+  if (event.target.closest("input, select")) return;
+  if (event.key === " ") {
+    event.preventDefault();
+    setPlaying(!playing);
+  } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+    time = clamp(time + (event.key === "ArrowLeft" ? -2 : 2), 0, replay.end);
+    dirty = true;
+  }
+});
+
+// Recording plays the replay from the start at normal speed and saves what the
+// canvas drew. The app would render each frame on its own instead, faster
+// than real time, since a frame depends only on its time.
+const recordType = window.MediaRecorder &&
+  ["video/mp4;codecs=avc1", "video/webm;codecs=vp9", "video/webm"].find((type) => MediaRecorder.isTypeSupported(type));
+if (!recordType) recordButton.hidden = true;
+recordButton.addEventListener("click", () => {
+  if (recorder) {
+    recorder.stop();
+    return;
+  }
+  const chunks = [];
+  recorder = new MediaRecorder(canvas.captureStream(60), { mimeType: recordType, videoBitsPerSecond: 12e6 });
+  recorder.ondataavailable = (event) => event.data.size && chunks.push(event.data);
+  recorder.onstop = () => {
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob(chunks, { type: recordType }));
+    link.download = `${replay.name}-history.${recordType.startsWith("video/mp4") ? "mp4" : "webm"}`;
+    link.click();
+    recorder = null;
+    recordButton.textContent = "Record";
+    recordButton.classList.remove("recording");
+  };
+  recordButton.textContent = "Stop";
+  recordButton.classList.add("recording");
+  speed = 1;
+  speedSelect.value = "1";
+  time = 0;
+  setPlaying(true);
+  recorder.start();
+});
+
+readTheme();
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+  readTheme();
+  dirty = true;
+});
+new MutationObserver(() => {
+  readTheme();
+  dirty = true;
+}).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+new ResizeObserver(() => (dirty = true)).observe(canvas);
+setPlaying(playing);
+requestAnimationFrame(frame);
+
+// For screenshots: ?t=12 opens at 12 seconds, paused.
+const at = new URLSearchParams(location.search).get("t");
+if (at !== null) {
+  time = clamp(Number(at), 0, replay.end);
+  setPlaying(false);
+}
+</script>
+</body>
+</html>
