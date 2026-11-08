@@ -1,6 +1,6 @@
 # 28. Show a worktree that's stuck partway through
 
-Accepted on 2026-11-04. [Decision 44](0044-revert-a-commit-from-its-menu-in-history.md) shows a revert the same way, as **Reverting 98c48e97**, with **Abort Revert…**, so what the consequences say about `git revert` no longer holds. The rest of this decision still holds.
+Accepted on 2026-11-04. [Decision 44](0044-revert-a-commit-from-its-menu-in-history.md) shows a revert the same way, as **Reverting 98c48e97**, with **Abort Revert…**, so what the consequences say about `git revert` no longer holds. The rest of this decision still holds. [decision 60](0060-resolve-conflicts-in-the-diff-panel.md) makes Show Conflicts into Resolve Conflicts, which also selects the first conflicted file, and has Roga resolve conflicts, so the consequence that it can't no longer holds.
 
 ## Context
 

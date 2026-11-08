@@ -429,7 +429,7 @@ private struct UnfinishedWorkControl: View {
     var body: some View {
         Menu {
             if unfinished.hasConflicts {
-                Button("Show Conflicts", action: branch.showChanges)
+                Button("Resolve Conflicts", action: branch.showConflicts)
             }
             if let work = unfinished.work {
                 if unfinished.hasConflicts { Divider() }

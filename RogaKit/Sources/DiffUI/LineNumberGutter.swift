@@ -96,6 +96,8 @@ final class LineNumberGutter: NSView {
         var positions: [CGPoint] = []
         var solidBars: [CGRect] = []
         var stripedBars: [CGRect] = []
+        // The bars beside a conflict's sides, by their color (decision 60).
+        var coloredBars: [NSColor: [CGRect]] = [:]
 
         // This view is flipped, and glyphs would come out upside down. Their
         // positions go through this too, so they're negative below.
@@ -115,9 +117,10 @@ final class LineNumberGutter: NSView {
         let rect = NSRect(x: 0, y: bounds.minY - top, width: 1, height: bounds.height)
         let shown = layoutManager.glyphRange(forBoundingRect: rect, in: container)
         layoutManager.enumerateLineFragments(forGlyphRange: shown) { fragment, _, _, glyphs, _ in
-            let line = document.lines[document.lineIndex(atCharacter: layoutManager.characterIndexForGlyph(at: glyphs.location))]
+            let index = document.lineIndex(atCharacter: layoutManager.characterIndexForGlyph(at: glyphs.location))
+            let line = document.lines[index]
             let row = NSRect(x: 0, y: fragment.minY + top, width: self.bounds.width, height: fragment.height)
-            if let color = DiffStyle.background(line.kind) {
+            if let color = document.background(ofRow: index) {
                 color.setFill()
                 row.fill(using: .sourceOver)
             }
@@ -125,6 +128,10 @@ final class LineNumberGutter: NSView {
             add(line.oldNumber, right: oldRight, baseline: baseline)
             add(line.newNumber, right: newRight, baseline: baseline)
             let bar = CGRect(x: 0, y: row.minY, width: Self.barWidth, height: row.height)
+            if let conflicts = document.conflicts {
+                if let color = conflicts.rows[index]?.bar { coloredBars[color, default: []].append(bar) }
+                return
+            }
             switch line.kind {
             case .added: solidBars.append(bar)
             case .removed: stripedBars.append(bar)
@@ -134,6 +141,10 @@ final class LineNumberGutter: NSView {
 
         NSColor.tertiaryLabelColor.setFill()
         CTFontDrawGlyphs(Self.font, glyphs, positions, glyphs.count, context)
+        for (color, bars) in coloredBars {
+            color.setFill()
+            context.fill(bars)
+        }
         NSColor.systemGreen.setFill()
         context.fill(solidBars)
         drawStripes(in: stripedBars, top: top, context: context)

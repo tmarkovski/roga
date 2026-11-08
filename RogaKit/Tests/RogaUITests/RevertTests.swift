@@ -231,9 +231,9 @@ struct RevertTests {
         ))
         let dialog = try branchDialog(work)
         #expect(dialog.title == "The revert stopped on a conflict")
-        #expect(dialog.message?.plain == "main is partway through a revert, with 1 file in conflict. Roga can't resolve conflicts yet, so you can undo the revert, or leave the worktree as it is and finish from the command line.")
+        #expect(dialog.message?.plain == "main is partway through a revert, with 1 file in conflict. You can resolve them here, or undo the revert.")
         #expect(dialog.terminal.suffix(2) == [.comment("Undo the revert runs"), .command(["revert", "--abort"])])
-        #expect(dialog.buttons.map(\.title) == ["Leave it", "Undo the revert"])
+        #expect(dialog.buttons.map(\.title) == ["Undo the revert", "Resolve"])
         #expect(dialog.buttons.map(\.kind) == [.secondary, .primary])
         #expect(work.branch.unfinished?.title == "Reverting da9ff973 · 1 conflict")
 
@@ -258,7 +258,7 @@ struct RevertTests {
         #expect(work.branch.conflict?.stagedBefore == 1)
         let dialog = try branchDialog(work)
         #expect(dialog.message?.plain.hasSuffix("Undoing it also takes back the 1 file that was staged before.") == true)
-        #expect(dialog.buttons.map(\.kind) == [.secondary, .destructive])
+        #expect(dialog.buttons.map(\.kind) == [.destructive, .primary])
     }
 
     @Test func saysWhatGitSaidWhenItRefuses() async throws {

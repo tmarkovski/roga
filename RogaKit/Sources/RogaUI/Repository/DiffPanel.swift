@@ -1,3 +1,4 @@
+import AgentEngine
 import AppKit
 import DiffUI
 import GitCore
@@ -14,6 +15,9 @@ struct DiffPanel: View {
     /// How much room the panels under history take, which the buttons at the
     /// right of the header change.
     @Binding var size: LowerPanelSize
+    /// The agents, for asking the one Generate runs to resolve a file's
+    /// conflicts (decision 60). A view that's tested on its own has none.
+    @Environment(AgentProvider.self) private var agents: AgentProvider?
     /// Whether the header has room for the file's path beside the search box.
     @State private var hasRoomForTitle = true
     /// Whether the panel is wide enough for the buttons that go through the
@@ -66,14 +70,52 @@ struct DiffPanel: View {
             }
         } trailing: {
             if let changes, let file = selection.file, let group = selection.group {
+                if group == .conflicted, let conflicts = selection.shown?.conflicts, selection.shown?.file.path == file.path {
+                    let setup = conflicts.left > 0 && changes.agentWork[file.path]?.isWorking != true ? agents?.generation() : nil
+                    if let setup, let worktree {
+                        Button {
+                            changes.askAgent(setup)
+                        } label: {
+                            Label("Resolve with \(setup.kind.shortName)", icon: .sparkles)
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 12))
+                        .padding(.horizontal, 8)
+                        .frame(height: 24)
+                        .background {
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .strokeBorder(Palette.separator)
+                        }
+                        .contentShape(Rectangle())
+                        .help(Self.agentHelp(setup, worktree: worktree, left: conflicts.left))
+                        .fixedSize()
+                    }
+                    ConflictFileMenu(
+                        file: file,
+                        sides: conflicts.sides,
+                        worktree: worktree,
+                        agent: setup.map { setup in ("Resolve with \(setup.kind.name)", { changes.askAgent(setup) }) },
+                        keep: { changes.keep($0, of: file) },
+                        putBack: { changes.putConflictsBack(in: file) }
+                    )
+                }
+                // Once a conflicted file has no markers left, marking it resolved
+                // is what's next, so it's orange, as a button that runs now is.
+                let isNext = group == .conflicted && selection.shown?.conflicts?.left == 0 && selection.shown?.file.path == file.path
                 Button(group.stageTitle) { changes.toggle(file, in: group) }
                     .buttonStyle(.plain)
-                    .font(.system(size: 12))
+                    .font(.system(size: 12, weight: isNext ? .medium : .regular))
+                    .foregroundStyle(isNext ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
                     .padding(.horizontal, 8)
                     .frame(height: 24)
                     .background {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .strokeBorder(Palette.separator)
+                        if isNext {
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(Palette.actionFill)
+                        } else {
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .strokeBorder(Palette.separator)
+                        }
                     }
                     .contentShape(Rectangle())
                     .help("\(group.stageTitle) (\(RepositoryCommands.stageShortcut.symbols))")
@@ -98,6 +140,16 @@ struct DiffPanel: View {
                 .help(selection.isFindShown ? "Close Find" : "Find in Diff (\(RepositoryCommands.findShortcut.symbols))")
             LowerPanelSizeButtons(size: $size)
         } content: {
+            VStack(spacing: 0) {
+            if let changes, selection.group == .conflicted, let path = selection.file?.path, let work = changes.agentWork[path] {
+                AgentNote(
+                    work: work,
+                    stop: { changes.stopAgent(for: path) },
+                    putBack: { if let file = selection.file { changes.putConflictsBack(in: file) } },
+                    close: { changes.forgetAgentWork(for: path) },
+                    tryAgain: agents?.generation(with: work.kind).map { setup in { changes.askAgent(setup) } }
+                )
+            }
             ZStack {
                 switch selection.shown?.content {
                 case .patch(let document):
@@ -107,7 +159,8 @@ struct DiffPanel: View {
                         matches: selection.matches,
                         matchSteps: selection.matchSteps,
                         findCloses: selection.findCloses,
-                        discardHunk: changes?.hunkDiscard
+                        discardHunk: changes?.hunkDiscard,
+                        resolveConflict: changes?.conflictResolve
                     )
                 case .note(let text):
                     note(text)
@@ -123,6 +176,7 @@ struct DiffPanel: View {
                         .controlSize(.small)
                 }
             }
+            }
         }
         .onGeometryChange(for: Bool.self) { geometry in
             geometry.size.width >= Self.widthForMatchButtons
@@ -131,9 +185,21 @@ struct DiffPanel: View {
         }
     }
 
+    /// What asking an agent does, and the exact command, as decision 29 asks.
+    private static func agentHelp(_ setup: GenerationSetup, worktree: String, left: Int) -> String {
+        let conflicts = left == 1 ? "the conflict" : "the \(left) conflicts"
+        let command = CommandBlock.copied([.program(ConflictResolutionWriter.command(for: setup.agent, worktree: worktree), showsPath: setup.showsPath)])
+        return "Ask \(setup.label) to resolve \(conflicts) left. It reads them on its standard input, and Roga writes what it sends back for you to read over.\n\n" + command
+    }
+
+    /// The worktree the uncommitted changes are in, for opening a file there.
+    private var worktree: String? {
+        if case .worktree(let path, _, _) = selection.source { path } else { nil }
+    }
+
     @ViewBuilder private var title: some View {
         if let shown = selection.shown {
-            FileTitle(file: shown.file, source: shown.source)
+            FileTitle(file: shown.file, source: shown.source, conflicts: shown.conflicts)
         } else {
             Text("Diff")
                 .font(.system(size: 13, weight: .medium))
@@ -157,6 +223,7 @@ struct DiffPanel: View {
 private struct FileTitle: View {
     let file: DiffFile
     let source: PatchSource
+    var conflicts: ConflictSummary?
 
     var body: some View {
         HStack(spacing: 8) {
@@ -185,6 +252,9 @@ private struct FileTitle: View {
     private var details: String {
         var details: [String] = []
         if let group = source.group { details.append(group.title) }
+        if let conflicts, conflicts.total > 0 {
+            details.append(conflicts.left == 0 ? "none left" : "\(conflicts.left) of \(conflicts.total) left")
+        }
         if let oldPath = file.oldPath { details.append("from " + oldPath) }
         if file.oldMode != file.newMode, file.oldMode != 0, file.newMode != 0 {
             details.append("mode \(String(file.oldMode, radix: 8)) → \(String(file.newMode, radix: 8))")
@@ -202,6 +272,7 @@ private struct DiffText: NSViewRepresentable {
     let matchSteps: Int
     let findCloses: Int
     let discardHunk: ((Int) -> Void)?
+    let resolveConflict: ((ConflictRequest) -> Void)?
 
     func makeCoordinator() -> Coordinator {
         Coordinator(matchSteps: matchSteps, findCloses: findCloses)
@@ -215,6 +286,7 @@ private struct DiffText: NSViewRepresentable {
         let controller = context.coordinator.controller
         controller.show(document, keepingPosition: isUpdate)
         controller.discardHunk = discardHunk
+        controller.resolveConflict = resolveConflict
         // Before the marks go away, since closing selects the current one.
         context.coordinator.update(findCloses: findCloses)
         // What's marked can be from the document before this one, until the
@@ -245,5 +317,172 @@ private struct DiffText: NSViewRepresentable {
             self.findCloses = findCloses
             controller.endFind()
         }
+    }
+}
+
+/// The menu for a conflicted file in the diff panel's header: one side's whole
+/// version, for a file such as a lockfile where one side is right, and opening the
+/// file in the app that opens it, for resolving it there (decision 60).
+private struct ConflictFileMenu: View {
+    let file: DiffFile
+    let sides: ConflictSides
+    let worktree: String?
+    /// Asking the agent Generate runs, with what the item says, when it can be asked.
+    let agent: (title: String, ask: () -> Void)?
+    let keep: (ConflictSide) -> Void
+    let putBack: () -> Void
+
+    var body: some View {
+        Menu {
+            if let agent {
+                Button(agent.title, action: agent.ask)
+                Divider()
+            }
+            Button("\(sides.ours.keepTitle) Version") { keep(.ours) }
+            Button("\(sides.theirs.keepTitle) Version") { keep(.theirs) }
+            Button("Put Conflicts Back", action: putBack)
+            if let url {
+                Divider()
+                Button("Open in \(Self.appName(opening: url) ?? "Default App")") {
+                    NSWorkspace.shared.open(url)
+                }
+            }
+        } label: {
+            Icon.ellipsis.image
+        }
+        .menuStyle(.button)
+        .buttonStyle(.icon)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Keep a Version or Open the File")
+        .accessibilityLabel("Keep a Version or Open the File")
+    }
+
+    private var url: URL? {
+        worktree.map { URL(filePath: $0).appending(path: file.path) }
+    }
+
+    /// The name of the app that opening a file opens it in, such as Xcode.
+    private static func appName(opening url: URL) -> String? {
+        guard let app = NSWorkspace.shared.urlForApplication(toOpen: url) else { return nil }
+        return FileManager.default.displayName(atPath: app.path(percentEncoded: false)).replacing(/\.app$/, with: "")
+    }
+}
+
+/// What an agent asked to resolve a file's conflicts is doing, or what came of it,
+/// in a strip above the file (decision 60).
+private struct AgentNote: View {
+    let work: SelectedChanges.AgentWork
+    let stop: () -> Void
+    let putBack: () -> Void
+    let close: () -> Void
+    let tryAgain: (() -> Void)?
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            icon
+                .frame(width: 16, height: 16)
+            VStack(alignment: .leading, spacing: 3) {
+                title
+                    .font(.system(size: 12, weight: .medium))
+                if let detail {
+                    Text(detail)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(5)
+                        .textSelection(.enabled)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            buttons
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Palette.hover)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Palette.separator)
+                .frame(height: 1)
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private var conflicts: String {
+        work.asked == 1 ? "the conflict" : "\(work.asked) conflicts"
+    }
+
+    @ViewBuilder private var icon: some View {
+        switch work.phase {
+        case .working: ProgressView().controlSize(.small)
+        case .done: Icon.sparkles.image.foregroundStyle(Palette.action)
+        case .failed: Icon.warning.image.foregroundStyle(Palette.red)
+        }
+    }
+
+    @ViewBuilder private var title: some View {
+        switch work.phase {
+        case .working(let since):
+            TimelineView(.periodic(from: since, by: 1)) { context in
+                let seconds = max(0, Int(context.date.timeIntervalSince(since)))
+                Text("\(work.label) is resolving \(conflicts)… \(seconds) s")
+                    .monospacedDigit()
+            }
+        case .done(_, let resolved, let duration):
+            let seconds = max(1, Int(Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18 + 0.5))
+            let which = resolved == work.asked ? conflicts : "\(resolved) of \(work.asked) conflicts"
+            Text("\(work.label) resolved \(which) in \(seconds) s. Read them over before marking the file resolved.")
+        case .failed:
+            Text("\(work.kind.name) didn't resolve them")
+        }
+    }
+
+    private var detail: String? {
+        switch work.phase {
+        case .working: nil
+        case .done(let explanation, _, _): explanation.isEmpty ? nil : explanation
+        case .failed(let message, let output): output.map { message + "\n" + $0 } ?? message
+        }
+    }
+
+    @ViewBuilder private var buttons: some View {
+        HStack(spacing: 4) {
+            switch work.phase {
+            case .working:
+                noteButton("Stop", action: stop)
+            case .done:
+                noteButton("Put Conflicts Back", action: putBack)
+                closeButton
+            case .failed:
+                if let tryAgain { noteButton("Try Again", action: tryAgain) }
+                closeButton
+            }
+        }
+    }
+
+    private func noteButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(title, action: action)
+            .buttonStyle(.plain)
+            .font(.system(size: 12))
+            .padding(.horizontal, 8)
+            .frame(height: 22)
+            .background {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .strokeBorder(Palette.separator)
+            }
+            .contentShape(Rectangle())
+            .fixedSize()
+    }
+
+    private var closeButton: some View {
+        Button("Close", icon: .x) { close() }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.icon)
+            .help("Close")
+    }
+}
+
+extension SelectedChanges.AgentWork {
+    var isWorking: Bool {
+        if case .working = phase { true } else { false }
     }
 }

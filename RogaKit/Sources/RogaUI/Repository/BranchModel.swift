@@ -269,8 +269,9 @@ final class BranchModel {
     @ObservationIgnored var isCheckingOut: () -> Bool = { false }
     /// Asks the worktree's model to look at what a fetch or a pull may have moved.
     @ObservationIgnored var lookAgain: () -> Void = {}
-    /// Asks the worktree's model to select the row for uncommitted changes.
-    @ObservationIgnored var showChanges: () -> Void = {}
+    /// Asks the worktree's model to select the row for uncommitted changes and
+    /// its first conflicted file, for resolving it (decision 60).
+    @ObservationIgnored var showConflicts: () -> Void = {}
     /// How many files are staged in the worktree, which aborting a revert takes back.
     @ObservationIgnored var stagedFiles: () -> Int = { 0 }
     /// Asks history to tint these commits, or none.

@@ -77,8 +77,13 @@ nonisolated public final class DiffDocument: @unchecked Sendable {
     let changedWords: [NSRange]
     /// Which lines are hunks' headers, in order.
     let hunkHeaders: [Int]
+    /// For a file with conflicts, what its rows are beyond lines of the file
+    /// (decision 60), or nil for a patch.
+    let conflicts: ConflictLayout?
+    /// The conflicts' bands, in order.
+    let conflictBands: [ConflictBand]
 
-    init(text: NSAttributedString, lines: [FilePatch.Line], lineStarts: [Int], columns: Int, changedWords: [NSRange]) {
+    init(text: NSAttributedString, lines: [FilePatch.Line], lineStarts: [Int], columns: Int, changedWords: [NSRange], conflicts: ConflictLayout? = nil) {
         storage = NSTextStorage(attributedString: text)
         layoutManager = DiffLayoutManager()
         layoutManager.allowsNonContiguousLayout = true
@@ -94,8 +99,21 @@ nonisolated public final class DiffDocument: @unchecked Sendable {
         self.columns = columns
         self.changedWords = changedWords
         hunkHeaders = lines.indices.filter { lines[$0].kind == .hunkHeader }
+        self.conflicts = conflicts
+        conflictBands = conflicts?.bands ?? []
         layoutManager.document = self
     }
+
+    /// The background of a row, by what it is.
+    func background(ofRow row: Int) -> NSColor? {
+        if let conflicts {
+            return conflicts.rows[row]?.background
+        }
+        return DiffStyle.background(lines[row].kind)
+    }
+
+    /// Whether this shows a file's conflicts rather than a patch.
+    public var hasConflicts: Bool { conflicts != nil }
 
     /// The header of the hunk that a row belongs to, or nil for a row past the end.
     func hunkHeader(atRow row: Int) -> Int? {
@@ -179,7 +197,7 @@ nonisolated public enum DiffTextBuilder {
     /// Only hunk headers and git's remarks differ from the text's attributes,
     /// and the layout manager draws the lines' backgrounds and the changed
     /// words, so most of a long patch costs no attributes.
-    static func build(_ patch: FilePatch) -> DiffDocument {
+    static func build(_ patch: FilePatch, conflicts: ConflictLayout? = nil) -> DiffDocument {
         var utf8: [UInt8] = []
         utf8.reserveCapacity(patch.bytes.count)
         var lineStarts: [Int] = []
@@ -225,10 +243,24 @@ nonisolated public enum DiffTextBuilder {
         for range in secondary {
             text.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: range)
         }
-        let changedWords = patch.lines.count <= wholeLayoutLimit
+        if let conflicts {
+            let bold = NSFont.monospacedSystemFont(ofSize: DiffStyle.font.pointSize, weight: .semibold)
+            for (index, row) in conflicts.rows.enumerated() {
+                guard let row, let color = ConflictLayout.textColor(row) else { continue }
+                let end = index + 1 < lineStarts.count ? lineStarts[index + 1] - 1 : length - 1
+                let range = NSRange(location: lineStarts[index], length: end - lineStarts[index])
+                text.addAttribute(.foregroundColor, value: color, range: range)
+                switch row {
+                case .band(_, false, _), .label(.ours), .label(.theirs): text.addAttribute(.font, value: bold, range: range)
+                default: break
+                }
+            }
+        }
+        // A conflicted file's sides aren't a change from one to the other.
+        let changedWords = conflicts == nil && patch.lines.count <= wholeLayoutLimit
             ? ChangedWords.ranges(in: Array(string.utf16), lines: patch.lines, lineStarts: lineStarts)
             : []
-        let document = DiffDocument(text: text, lines: patch.lines, lineStarts: lineStarts, columns: columns, changedWords: changedWords)
+        let document = DiffDocument(text: text, lines: patch.lines, lineStarts: lineStarts, columns: columns, changedWords: changedWords, conflicts: conflicts)
         if patch.lines.count <= wholeLayoutLimit {
             var laidOut = 0
             while laidOut < length, !Task.isCancelled {

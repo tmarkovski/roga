@@ -1,6 +1,6 @@
 # 19. Pull and push from the branch in the title row
 
-Accepted on 2026-11-03, and built straight away rather than waiting for release 2.
+Accepted on 2026-11-03, and built straight away rather than waiting for release 2. A pull that hits a conflict now offers to resolve it, by [decision 60](0060-resolve-conflicts-in-the-diff-panel.md).
 
 ## Context
 
