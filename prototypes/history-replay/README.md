@@ -88,6 +88,7 @@ Before building the prototype, we looked at what other people have made for show
 
 **What it leaves for later**:
 
+- a picture of the files and the people changing them, the way Gource draws a repository, which decision 62 leaves room for;
 - avatars;
 - a lane for each author, which would help repositories that squash everything;
 - themes;

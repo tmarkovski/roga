@@ -51,6 +51,7 @@ We considered drawing the replay as a web page in a web view, since the prototyp
 - Working out the replay is a type in `CommitGraph`, next to `LaneLayout`. It takes the graph, the tip, the range and the commits' subjects, and returns the branches, their lanes, and when each commit lands. It doesn't use AppKit, so it's tested against the fixture repositories and timed in `roga-bench`. It's the prototype's `build()`, in Swift.
 - The repository's session loads the subjects and merge messages for the range through the `cat-file` process, since views never run git.
 - Drawing, playing and saving the replay go in `RogaUI`, in a folder of their own, as the house's code is.
+- The player is kept apart from the picture. The clock, the controls, fitting a range to a length, and saving videos and images don't know what's being drawn, and the metro map is one picture they play. That leaves room for another picture of the same history later.
 
 ## Consequences
 
@@ -60,6 +61,7 @@ We considered drawing the replay as a web page in a web view, since the prototyp
 - Deciding which side of a merge is the main line walks both sides. The prototype walks all of each side, which won't do for a large repository. Roga has to bound the walk with generation numbers, the way `HistoryOrder` does, and `roga-bench` has to show that a replay of a large repository is worked out quickly.
 - The notes under merges crowd each other when merges come close together, which the prototype doesn't solve. Roga has to skip or move a note that would overlap another before this ships.
 - How long a minute of video takes to save hasn't been measured.
+- We may later add a second picture that shows the repository's files and the people changing them, the way Gource draws a repository. It would use the same player. It needs the files each commit changed, which Roga loads today one commit at a time with `git diff-tree`, for the commit on screen. For a range, it would stream them from one `git log` in the background, the way search will stream commit text.
 - The timings and sizes in the prototype, such as how long a line takes to reach its commit and how far apart the lanes are, are where the Swift version starts.
 - It's about two weeks of work for one person:
   - two or three days for working out the replay, with its tests;
