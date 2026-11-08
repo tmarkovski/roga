@@ -1,10 +1,14 @@
 import AgentEngine
+import AppKit
 import GitRunner
 import SwiftUI
 
 extension GitFixModel {
-    /// What to say now, if anything. Each step is its own sheet, because a sheet
-    /// can't change size once it's open (decision 63).
+    /// The most of an agent's explanation to show. It's asked for three sentences,
+    /// and the buttons come after it, so that much more shouldn't push them away.
+    static let explanationLimit = 1_200
+
+    /// What to say now, if anything, at each step of asking an agent (decision 63).
     var dialog: DialogContent? {
         switch phase {
         case nil:
@@ -35,7 +39,7 @@ extension GitFixModel {
 
     private func answer(from kind: AgentKind, _ fix: AgentGitFix, isRunning: Bool) -> DialogContent {
         let close = { [weak self] in self?.dismiss(); return () }
-        let said = fix.explanation.isEmpty ? nil : DialogText(stringLiteral: fix.explanation)
+        let said = fix.explanation.isEmpty ? nil : DialogText(stringLiteral: String(fix.explanation.prefix(Self.explanationLimit)))
         guard !fix.commands.isEmpty else {
             return DialogContent(
                 id: "gitFix-answer",
@@ -134,12 +138,60 @@ extension GitFixModel {
 /// Reads its dialog in its own body, so that Run is disabled while the commands
 /// run, since a sheet's item doesn't update what it shows while its `id` stays
 /// the same.
+///
+/// SwiftUI keeps the sheet that's open when one dialog follows another, at the
+/// size it opened with, and what an agent says can be any length. So this one
+/// changes its window's height to fit each step, which no other dialog needs.
 struct GitFixSheet: View {
     let model: GitFixModel
     /// The dialog as it was shown, for while the sheet closes and it's gone.
     let shown: DialogContent
+    @State private var height: CGFloat = 0
 
     var body: some View {
         DialogSheet(content: model.dialog ?? shown)
+            // As tall as it needs, whatever height the window has at the moment.
+            .fixedSize(horizontal: false, vertical: true)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+            .background(SheetHeight(height: height))
+            // Stays put at the top while the window's edge moves.
+            .frame(maxHeight: .infinity, alignment: .top)
+            .background(DialogColors.surface)
+    }
+}
+
+/// Animates the window it's in to a height for its content, keeping the top edge
+/// where it is.
+private struct SheetHeight: NSViewRepresentable {
+    let height: CGFloat
+
+    /// How long the window takes to get there.
+    private static let duration = 0.2
+    /// Room to leave when a dialog is as tall as the screen.
+    private static let screenMargin: CGFloat = 80
+
+    func makeNSView(context: Context) -> NSView { NSView() }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        let height = height
+        // Not during a layout pass, and the view may not be in its window yet.
+        DispatchQueue.main.async { [weak view] in
+            guard let window = view?.window, height > 0 else { return }
+            Self.resize(window, toContentHeight: height)
+        }
+    }
+
+    private static func resize(_ window: NSWindow, toContentHeight height: CGFloat) {
+        let limit = (window.screen?.visibleFrame.height ?? .greatestFiniteMagnitude) - screenMargin
+        let current = window.contentRect(forFrameRect: window.frame).height
+        let change = min(height.rounded(.up), limit) - current
+        guard abs(change) >= 1 else { return }
+        var frame = window.frame
+        frame.origin.y -= change
+        frame.size.height += change
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : duration
+            window.animator().setFrame(frame, display: true)
+        }
     }
 }
