@@ -1,6 +1,6 @@
 # 55. Split the panel for uncommitted changes 40, 40 and 20
 
-Accepted on 2026-11-07. This changes [decision 30](0030-stage-and-commit-beside-history.md), whose Staged list took up to 45% of the lists' room before it scrolled, and whose message box was only as tall as its text. The rest of decision 30 still holds.
+Accepted on 2026-11-07. Partly superseded by [decision 61](0061-hide-a-list-with-no-files.md), which hides a list with no files rather than keeping its heading. This changes [decision 30](0030-stage-and-commit-beside-history.md), whose Staged list took up to 45% of the lists' room before it scrolled, and whose message box was only as tall as its text. The rest of decision 30 still holds.
 
 ## Context
 

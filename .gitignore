@@ -25,3 +25,6 @@ output/
 
 # The site's local preview
 .wrangler/
+
+# Release builds (Scripts/release/release.py and the Release workflow)
+/dist/

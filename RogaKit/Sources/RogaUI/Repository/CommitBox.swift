@@ -26,6 +26,7 @@ struct CommitBox: View {
     /// own may not.
     @Environment(AgentProvider.self) private var agents: AgentProvider?
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.accessibilityReduceMotion) private var reducesMotion
     @AppStorage(AgentPreferences.showsGenerateButtonKey) private var showsGenerateButton = true
 
     /// Three lines, and then about half of an ordinary window's panel.
@@ -192,7 +193,8 @@ struct CommitBox: View {
                 focusRequests: composer.focusRequests,
                 textHeight: $textHeight,
                 leave: leave,
-                isCovered: isWriting
+                isCovered: isWriting,
+                replacedTextMotion: reducesMotion ? nil : ChangesSplit.motion
             )
             .opacity(isWriting ? 0 : 1)
             .accessibilityHidden(isWriting)
@@ -498,6 +500,9 @@ struct MessageEditor: NSViewRepresentable {
     /// has the text from before, since AppKit doesn't skip a view for being
     /// see-through.
     var isCovered = false
+    /// How the height changes for text that comes from elsewhere, such as the
+    /// message Amend brings in. Typing changes it at once, to keep up with the text.
+    var replacedTextMotion: Animation?
 
     private static let subjectAttributes: [NSAttributedString.Key: Any] = [
         .font: NSFont.systemFont(ofSize: 13, weight: .semibold),
@@ -565,15 +570,19 @@ struct MessageEditor: NSViewRepresentable {
             textView.setAccessibilityElement(!isCovered)
             scrollView.setAccessibilityElement(!isCovered)
         }
-        if textView.string != text {
+        let isNewText = textView.string != text
+        if isNewText {
             coordinator.replaceText(with: text)
         }
         if focusRequests != coordinator.focusRequests {
             coordinator.focusRequests = focusRequests
             textView.window?.makeFirstResponder(textView)
         }
-        // A new width can change how many lines there are.
-        coordinator.measure()
+        // A new width can change how many lines there are. New text has been
+        // measured already, on its way to a height that glides.
+        if !isNewText {
+            coordinator.measure()
+        }
     }
 
     @MainActor
@@ -591,8 +600,8 @@ struct MessageEditor: NSViewRepresentable {
         }
 
         func textDidChange(_ notification: Notification) {
-            guard let textView else { return }
-            if !isReplacing { parent.text = textView.string }
+            guard let textView, !isReplacing else { return }
+            parent.text = textView.string
             styleText()
             measure()
         }
@@ -628,6 +637,7 @@ struct MessageEditor: NSViewRepresentable {
             isReplacing = false
             textView.isEditable = isEditable
             styleText()
+            measure(motion: parent.replacedTextMotion)
         }
 
         func textViewDidChangeSelection(_ notification: Notification) {
@@ -656,12 +666,14 @@ struct MessageEditor: NSViewRepresentable {
         }
 
         /// Says how much room the text needs, once SwiftUI has finished updating.
-        func measure() {
+        func measure(motion: Animation? = nil) {
             guard let textView, let manager = textView.layoutManager, let container = textView.textContainer else { return }
             manager.ensureLayout(for: container)
             let height = Double(manager.usedRect(for: container).height)
             guard abs(height - parent.textHeight) > 0.5 else { return }
-            Task { @MainActor [parent] in parent.textHeight = height }
+            Task { @MainActor [parent] in
+                withAnimation(motion) { parent.textHeight = height }
+            }
         }
 
         func textView(_ textView: NSTextView, doCommandBy selector: Selector) -> Bool {

@@ -25,10 +25,15 @@ final class SparkleUpdates: NSObject, SPUUpdaterDelegate, SPUStandardUserDriverD
     init(updates: Updates) {
         self.updates = updates
         super.init()
-        // Sparkle starts only when the Info.plist has the public key that
-        // release builds are signed with, so development builds never look
-        // for updates.
+        // Sparkle starts only in Release builds that have the public key
+        // updates are signed with. A development build never looks for
+        // updates: its build number is 1, and a release's is the number of
+        // commits, so every release would look newer and offer to replace it.
+        #if DEBUG
+        let canUpdate = false
+        #else
         let canUpdate = Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") != nil
+        #endif
         controller = SPUStandardUpdaterController(startingUpdater: canUpdate, updaterDelegate: self, userDriverDelegate: self)
         guard canUpdate else { return }
         updates.controls = self

@@ -41,7 +41,7 @@ The mark is one path, so it can't move its legs. For animating, the house is spl
 
 The legs aren't artwork. The app draws each one from joints, which are a hip, a knee, a hock, an ankle and three toes, as lines with round ends. `HousePose.mark` places those joints in the stride the mark is drawn in, closely enough that it reads as the logo, but it isn't a trace.
 
-To add an animation, write a `HouseMotion` in `RogaKit/Sources/RogaUI/House/` that returns a pose for any moment, and add a case for it to `HouseAnimation`. It then appears in Settings and in Window > House Animations with the others, and the tests check that it loops without jumping and fits inside the frame. That window shows each animation large, with its joints, at its real sizes, and with its own pause, speed and frame slider.
+To add an animation, write a `HouseMotion` in `RogaKit/Sources/RogaUI/House/` that returns a pose for any moment, and add a case for it to `HouseAnimation`. It then appears in Settings and, in debug builds, in Window > House Animations with the others, and the tests check that it loops without jumping and fits inside the frame. That window shows each animation large, with its joints, at its real sizes, and with its own pause, speed and frame slider.
 
 The house that drops through the Fetch button while a fetch runs ([decision 57](../decisions/0057-the-house-drops-through-the-fetch-button.md)) is a single pose built from the same joints: the body tipped back so that it hangs from a thread tied to its chimney, and the legs spread straight down and apart. `HangingHouse.swift` holds it. It slides as a whole rather than moving its joints, so it isn't one of the animations in Settings.
 

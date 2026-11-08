@@ -1,0 +1,9 @@
+# Cloudflare applies these before serving the site's files.
+#
+# Installed copies of Roga check roga.sh/appcast.xml for updates. It points at
+# the feed in the latest release on GitHub, which never counts a prerelease,
+# so a tagged build reaches people only once it's published as a full release.
+/appcast.xml https://github.com/tmarkovski/roga/releases/latest/download/appcast.xml 302
+# The download links. Roga.dmg is the latest release's disk image under a
+# name without its version.
+/download https://github.com/tmarkovski/roga/releases/latest/download/Roga.dmg 302

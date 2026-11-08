@@ -15,20 +15,28 @@ The project is set up, so the next step is release 1. It has:
 - a thin Xcode project in the JSON format and the RogaKit package (decision 11), with the modules that the architecture lists
 - Swift 6 language mode with strict concurrency checking
 - CI that runs the tests against both the oldest supported git (2.44) and the newest release, and builds the app
-- a release script that signs and notarizes the app and updates the Sparkle appcast, so updates work from the first public build
+- a release workflow that signs and notarizes the app and publishes the Sparkle appcast, so updates work from the first public build
 
 Some of the setup comes later, when there's something for it to work on:
 
 - The benchmark job in CI comes with the first benchmark, in the history work.
-- The first release needs a Developer ID certificate, notarization credentials and Sparkle's signing key, which [docs/releasing.md](docs/releasing.md) describes. The Homebrew cask follows the first release.
+- The first release needs a Developer ID certificate, notarization credentials, Sparkle's signing key and a Homebrew tap, which [docs/releasing.md](docs/releasing.md) describes.
 
-## Release 1: a fast read-only viewer
+## Release 1: a fast viewer for reviewing agents' work
 
-Release 1 is for someone who works in the terminal and keeps Roga open next to it. They use it to read history and to review what they and their agents have changed.
+Release 1 is for someone who works in the terminal and keeps Roga open next to it. They use it to read history and to review what they and their agents have changed. It ships as version 0.1.0.
 
-Roga doesn't change the repository in release 1, with a few exceptions. It keeps the commit-graph file up to date (decision 6), double-clicking a branch's badge in history or its row in the refs panel checks that branch out with `git switch`, double-clicking a commit goes to it with `git reset --keep`, `git reset --soft` if the dialog was asked to keep the changes, or `git switch --detach` (decision 37), the branch in the title row fetches, pulls, pushes and starts new branches (decisions 19 and 20), right-clicking a branch or its commit deletes the branch, and a linked worktree's menu in the sidebar deletes the worktree, and the row for uncommitted changes stages files and commits them (decision 30). The last four came forward from release 2. Right-clicking a commit also reverts it, either committing the revert or leaving its changes staged (decision 44), which no release had planned. Switching worktrees only changes what Roga shows.
+It was planned as a read-only viewer, and it grew while it was built. Several of these changes came forward from release 2, and reverting a commit wasn't planned for any release. Besides keeping the commit-graph file up to date (decision 6), Roga changes the repository in these ways:
 
-The work happens in this order:
+- Double-clicking a branch's badge in history or its row in the refs panel checks that branch out with `git switch`. Double-clicking a commit goes to it with `git reset --keep`, `git reset --soft` if the dialog was asked to keep the changes, or `git switch --detach` (decision 37).
+- The title row fetches, pulls, pushes and starts new branches (decisions 19, 20 and 45). When uncommitted changes are in the way of a pull or a reset, Roga sets them aside and puts them back afterward (decision 59).
+- The panels for uncommitted changes stage files, commit and amend (decision 30), and discard files and hunks, with Undo (decision 39).
+- Right-clicking a commit reverts it, either committing the revert or leaving its changes staged (decision 44), and right-clicking a branch or its commit deletes the branch (decision 38).
+- The sidebar makes new worktrees, repairs a worktree whose folder moved, and deletes linked worktrees.
+
+Roga also follows the agents working in each worktree. Settings installs hooks for Claude Code and Codex, and the sidebar then marks the worktrees where an agent is working, waiting or finished, with a line saying what it's doing (decisions 41, 46 and 47). Either agent can write the commit message (decision 41).
+
+The work for reading the repository happened in this order:
 
 1. **History.**
    - The commit graph comes from the commit-graph reader. That includes split chains, commits newer than the file, and the fallbacks to git that decision 5 lists.
@@ -39,29 +47,35 @@ The work happens in this order:
 3. **Worktrees and uncommitted changes.** Roga lists every worktree with its branch, its path, and whether it has uncommitted changes, and lets the user switch between them. For any worktree, it shows the staged, unstaged and untracked changes, without changing them.
 4. **Branch review.** Roga shows everything a branch changed since it left its base, the way a pull request does. That means the branch's commits and one combined diff against the merge base. The panels under history show it, and two commits or a run of them, as they show one commit (decision 56).
 5. **Live refresh.** Roga watches every worktree and the repository with FSEvents. It updates history, branches and changes as the user or their agents write. Background git commands run with `--no-optional-locks`, so Roga never holds the index lock while someone else is running git.
-6. **File history and stashes.** Roga shows the commits that changed a file or folder, following renames. It also lists the stashes and shows what each one contains. Clicking a stash shows it in the panels under history (decision 56).
-
-Release 1 can ship without the next two items. They're built last, and if they aren't ready they follow in release 1.1.
-
-7. **Search** across commit subjects, messages and authors, streamed in the background.
-8. **Blame**, showing who last changed each line of a file, and in which commit.
+6. **Stashes.** Roga lists the stashes and shows what each one contains. Clicking a stash shows it in the panels under history (decision 56).
 
 ### When release 1 is done
 
-- Every action has a keyboard shortcut, and the commit list works with VoiceOver.
-- CI checks these targets on a repository the size of Linux. They come from what the prototypes measured:
-  - When the repository has a commit-graph file, the first screen of history is ready to draw within 100 ms.
-  - Scrolling, jumping, selecting a commit, and new commits arriving never take longer than two frames.
-  - Status for a worktree finishes within 300 ms.
-- Roga ships signed and notarized, with Sparkle updates and a Homebrew cask (decision 1).
+Roga ships signed and notarized, with Sparkle updates and a Homebrew cask (decision 1). The steps are in [docs/releasing.md](docs/releasing.md).
 
 ### Not in release 1
 
-- anything else that changes the repository, such as staging hunks or discarding changes
+- anything else that changes the repository, such as staging hunks or lines
 - side-by-side diffs and syntax highlighting
 - managing submodules or Git LFS
 - resolving merge conflicts
 - anything specific to GitHub or other hosts
+
+## Release 1.1: finishing the viewer
+
+Release 1 was also going to have file history, search and blame, and to pass the checks below. They didn't hold up the first release, so they come next.
+
+1. **File history.** Roga shows the commits that changed a file or folder, following renames. Where it appears is still open, now that branch review and stashes are in the panels under history (decision 56).
+2. **Search** across commit subjects, messages and authors, streamed in the background.
+3. **Blame**, showing who last changed each line of a file, and in which commit.
+
+### When release 1.1 is done
+
+- Every action has a keyboard shortcut, and the commit list works with VoiceOver. Issues [5](https://github.com/tmarkovski/roga/issues/5) and [12](https://github.com/tmarkovski/roga/issues/12) are open against this.
+- CI checks these targets on a repository the size of Linux. They come from what the prototypes measured:
+  - When the repository has a commit-graph file, the first screen of history is ready to draw within 100 ms.
+  - Scrolling, jumping, selecting a commit, and new commits arriving never take longer than two frames.
+  - Status for a worktree finishes within 300 ms. Listing uncommitted files misses this today ([issue 3](https://github.com/tmarkovski/roga/issues/3)).
 
 ## Release 2: working with changes
 

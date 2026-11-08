@@ -158,8 +158,9 @@ roga/
 ├── Scripts/
 │   ├── build-git.sh                builds an old git for CI
 │   ├── generate-icons.swift        turns the SVGs in docs/design/icons into custom symbols
-│   └── release.sh                  builds, signs and notarizes a release, and updates the appcast
-├── .github/workflows/ci.yml
+│   ├── release/release.py          archives, signs, notarizes and packages a release, and writes the appcast and the cask
+│   └── verify-artifact.sh          checks a release's signatures, helper and key before it's published
+├── .github/workflows/              ci.yml, site.yml, and release.yml for releases
 ├── docs/
 │   ├── decisions/
 │   ├── design/icons/               the SVGs the app's icons are made from
@@ -424,7 +425,7 @@ The `roga` helper is built by its own target and copied into `Contents/Helpers`,
 
 `roga --version` prints which app the helper is inside, and which version, which is the quickest check that a build carries it.
 
-`Scripts/release.sh` archives the app, signs it with a Developer ID, notarizes and staples it, zips it, and adds it to the Sparkle appcast (decision 1). The zips are published as GitHub releases, and the appcast at `https://roga.sh/appcast.xml`. [docs/releasing.md](docs/releasing.md) describes the one-time setup and the steps for each release. Sparkle starts only when the Info.plist has the public key that updates are signed with, so development builds never look for updates.
+Pushing a version tag starts the Release workflow, which archives the app, signs it with a Developer ID, notarizes and staples it, packs a ZIP and a DMG, checks them with `Scripts/verify-artifact.sh`, and publishes them with the Sparkle appcast as a prerelease (decision 1). Its publish job, approved by hand once the update has been tried, makes it the latest release and updates the Homebrew cask. `https://roga.sh/appcast.xml` redirects to the latest release's appcast. [docs/releasing.md](docs/releasing.md) describes the one-time setup and the steps for each release. Sparkle starts only in Release builds that have the public key updates are signed with, so development builds never look for updates.
 
 ## Still open
 

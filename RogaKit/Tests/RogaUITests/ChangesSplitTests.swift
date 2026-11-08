@@ -19,19 +19,14 @@ struct ChangesSplitTests {
 
     @Test func theListsShareTheRestEvenly() {
         // 800 points make 320, 320 and 160, which is 40, 40 and 20.
-        #expect(ChangesSplit.filesToStage(in: 640, hasFilesToStage: true, hasStagedFiles: true, emptyListHeight: 36) == 320)
+        #expect(ChangesSplit.filesToStage(in: 640, hasFilesToStage: true, hasStagedFiles: true) == 320)
     }
 
-    @Test func nothingStagedLeavesStagedItsHeading() {
-        #expect(ChangesSplit.filesToStage(in: 640, hasFilesToStage: true, hasStagedFiles: false, emptyListHeight: 36) == 604)
+    @Test func nothingStagedGivesTheFilesToStageEverything() {
+        #expect(ChangesSplit.filesToStage(in: 640, hasFilesToStage: true, hasStagedFiles: false) == 640)
     }
 
-    @Test func nothingToStageLeavesUnstagedItsHeading() {
-        #expect(ChangesSplit.filesToStage(in: 640, hasFilesToStage: false, hasStagedFiles: true, emptyListHeight: 36) == 36)
-    }
-
-    @Test func anEmptyHeadingFitsInTheRoomThereIs() {
-        #expect(ChangesSplit.filesToStage(in: 20, hasFilesToStage: false, hasStagedFiles: true, emptyListHeight: 36) == 20)
-        #expect(ChangesSplit.filesToStage(in: 20, hasFilesToStage: true, hasStagedFiles: false, emptyListHeight: 36) == 0)
+    @Test func nothingToStageGivesTheStagedFilesEverything() {
+        #expect(ChangesSplit.filesToStage(in: 640, hasFilesToStage: false, hasStagedFiles: true) == 0)
     }
 }
