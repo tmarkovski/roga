@@ -56,18 +56,17 @@ That guess is right for this repository. It isn't always right:
 
 ## What others have done
 
-Before building the prototype, we looked at what other people have made for showing Git history, and at what spread. The numbers are from November 2026. Star counts are rounded, and points are from Hacker News. We couldn't find view counts for videos or posts.
+Before building the prototype, we looked at what other people have made for showing Git history, and at what spread. Each project's year is when it started. Star counts are from GitHub in November 2026, rounded, and points are from Hacker News. We couldn't find view counts for videos or posts. We left out projects that are archived or no longer change.
 
-- [Gource](https://github.com/acaudwell/Gource) animates a repository as a tree of files, with people flying around it as they commit. It has about 13,000 stars and has reached the front page of Hacker News several times, most recently with 173 points in 2024. It skips idle stretches, glows, follows the activity with its camera, and saves video through ffmpeg.
-- [Learn Git Branching](https://learngitbranching.js.org) is a sandbox where the graph rearranges itself smoothly after each command. It has about 34,000 stars and 717 points from 2013, and it keeps coming back.
-- [Git History](https://githistory.xyz) animates one file through its versions when you swap the domain in a GitHub address. It has about 14,000 stars and 407 points. Starting it takes no setup at all.
-- [git-sim](https://github.com/initialcommit-com/git-sim) shows what a git command would do, as an image or a video, drawn with the same engine as 3Blue1Brown's videos. It has about 4,700 stars and 447 points. Its author's git-story, which turns the last few commits into a video, has only about 275 stars, and its author says busy branching with crossing lines looks bad. A clean diagram on its own doesn't spread.
-- [GitHub Unwrapped](https://www.githubunwrapped.com) makes a year-in-review video, with themes and music, to post. It has come back every year since 2021. A crowd of similar year-in-review tools appeared in 2025 without much to show for it.
-- [Git City](https://github.com/srizzon/git-city) turns a GitHub profile into a building in a 3D pixel-art city, with share cards shaped for posts and for phones. It reached about 6,000 stars within months in 2026.
-- [GitHub Skyline](https://skyline.github.com) turns a year of contributions into a 3D model you can print, and [snk](https://github.com/Platane/snk) is a snake that eats your contribution graph, as a GIF that keeps itself up to date. snk has about 6,200 stars.
-- [MetroGit](https://github.com/vbarbaresi/MetroGit) draws the Paris Métro as a git graph. It got 262 points in 2015, which says developers like history drawn as a metro map.
-- GitHub's [repo-visualizer](https://github.com/githubocto/repo-visualizer) draws a repository's files as packed circles, and [git-of-theseus](https://github.com/erikbern/git-of-theseus) charts how much of each year's code survives. Either would make a good last frame.
-- [gitgraph.js](https://github.com/nicoespeon/gitgraph.js) has a metro template, and Mermaid's `gitGraph` takes turns with eight branch colors, as Roga's graph does.
+- [Gource](https://github.com/acaudwell/Gource) (2009) animates a repository as a tree of files, with people flying around it as they commit. It has about 13,000 stars and has reached the front page of Hacker News several times, most recently with 173 points in 2024. It skips idle stretches, glows, follows the activity with its camera, and saves video through ffmpeg.
+- [Learn Git Branching](https://learngitbranching.js.org) (2012) is a sandbox where the graph rearranges itself smoothly after each command. It has about 34,000 stars and got 717 points in 2013, and it keeps coming back.
+- [Git History](https://githistory.xyz) (2019) animates one file through its versions when you swap the domain in a GitHub address. It has about 14,000 stars and got 407 points. Starting it takes no setup at all.
+- [git-sim](https://github.com/initialcommit-com/git-sim) (2022) shows what a git command would do, as an image or a video, drawn with the same engine as 3Blue1Brown's videos. It has about 4,700 stars and got 447 points. Its author's git-story, which turns the last few commits into a video, has only about 275 stars, and its author says busy branching with crossing lines looks bad. A clean diagram on its own doesn't spread.
+- [GitHub Unwrapped](https://www.githubunwrapped.com) (2021) makes a year-in-review video, with themes and music, to post. It has come back every year since. A crowd of similar year-in-review tools appeared in 2025 without much to show for it.
+- [Git City](https://github.com/srizzon/git-city) (2026) turns a GitHub profile into a building in a 3D pixel-art city, with share cards shaped for posts and for phones. It reached about 6,000 stars within months.
+- [gitlogue](https://github.com/unhappychoice/gitlogue) (2025) replays commits in a terminal as code being typed. It has about 5,300 stars and got 159 points.
+- [GitHub Skyline](https://skyline.github.com) (2020, with a [command-line version](https://github.com/github/gh-skyline) in 2024) turns a year of contributions into a 3D model you can print, and [snk](https://github.com/Platane/snk) (2020) is a snake that eats your contribution graph, as a GIF that keeps itself up to date. snk has about 6,200 stars.
+- [MetroGit](https://github.com/vbarbaresi/MetroGit) (2015) draws the Paris Métro as a git graph. It got 262 points when it came out, which says developers like history drawn as a metro map. Mermaid's `gitGraph` draws branches the same way, taking turns with eight colors, as Roga's graph does.
 
 **What the ones that spread have in common**:
 
@@ -93,5 +92,5 @@ Before building the prototype, we looked at what other people have made for show
 - a lane for each author, which would help repositories that squash everything;
 - themes;
 - versions shaped for phones;
-- showing the code of a key commit being typed, the way [gitlogue](https://github.com/unhappychoice/gitlogue) replays commits in a terminal;
+- showing the code of a key commit being typed, the way gitlogue does;
 - showing what a rebase will do before it runs, which git-sim's reception suggests people want.
