@@ -88,6 +88,8 @@ final class RepositoryModel {
     let refs: RefsModel
     /// The branch in the title row, and what can be done with it.
     let branch: BranchModel
+    /// Asking an agent about something git refused (decision 63).
+    let gitFix: GitFixModel
     /// Goes up when the refs panel should read its lists again, if it's showing.
     private(set) var refsChecks = 0
     /// How many files have uncommitted changes. While there are any, a row for
@@ -216,6 +218,7 @@ final class RepositoryModel {
         selectedChanges = SelectedChanges(session: session, worktree: worktree, selectedFile: selectedCommit.selectedFile, fileList: selectedCommit.fileList)
         refs = RefsModel(session: session, worktree: worktree)
         branch = BranchModel(session: session, worktree: worktree, fetchesByItself: fetchesByItself, reportBranchChange: reportBranchChange)
+        gitFix = GitFixModel(session: session, worktree: worktree)
         composer = CommitComposer(session: session, worktree: worktree, branch: branch, changes: selectedChanges, drafts: drafts, generators: generators)
         selectedChanges.onLoad = { [weak self] changes in self?.show(uncommittedFiles: changes.fileCount, staged: changes.staged.count) }
         selectedChanges.onFailure = { [weak branch] title, error in branch?.failure = BranchModel.Failure(title: title, error: error, changedNothing: true) }
@@ -229,6 +232,7 @@ final class RepositoryModel {
             return !branch.isBusy && branch.unfinished == nil
         }
         selectedChanges.lookAgain = { [weak self] in self?.lookAgain() }
+        gitFix.lookAgain = { [weak self] in self?.lookAgain() }
         selectedChanges.showChanges = { [weak self] in self?.selectChangesOnceTheyShow() }
         composer.currentBranch = { [weak self] in self?.history?.refs.currentBranch }
         composer.select = { [weak self] commit in self?.selectNewCommit(commit) }

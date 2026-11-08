@@ -218,7 +218,8 @@ extension DialogContent {
 
     /// Says that git refused, or that something else went wrong, with an OK button.
     /// With a command to show, what git said goes under it in the terminal block.
-    /// Otherwise it's only words, and they go with the message.
+    /// Otherwise it's only words, and they go with the message. `fix` goes beside
+    /// OK, for asking an agent what to do about it (decision 63).
     static func refusal(
         id: String,
         title: String,
@@ -226,6 +227,7 @@ extension DialogContent {
         command: [String]?,
         said: String,
         note: DialogText? = nil,
+        fix: DialogButton? = nil,
         dismiss: @escaping () -> Void
     ) -> DialogContent {
         let ok = DialogButton(title: "OK", kind: .primary, action: dismiss)
@@ -245,7 +247,7 @@ extension DialogContent {
             message: summary,
             note: note,
             terminal: [.ran(command), .output(said)],
-            buttons: [ok],
+            buttons: [fix, ok].compactMap(\.self),
             dismiss: dismiss
         )
     }
