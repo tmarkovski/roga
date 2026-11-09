@@ -6,6 +6,9 @@ import AppKit
 final class DiffTextView: NSTextView {
     /// What right-clicking a place in the text offers beside what text views do.
     var menuItem: ((NSPoint) -> NSMenuItem?)?
+    /// Whether something sits over the text at a place in the window, such as a
+    /// button on a band.
+    var isCovered: ((NSPoint) -> Bool)?
 
     override func menu(for event: NSEvent) -> NSMenu? {
         // A copy, because a text view's menu can be shared by all of them.
@@ -18,6 +21,24 @@ final class DiffTextView: NSTextView {
             menu.insertItem(.separator(), at: 1)
         }
         return menu
+    }
+
+    // A text view can put up its text cursor as the pointer moves over it, even
+    // where something else is on top.
+    override func mouseMoved(with event: NSEvent) {
+        if isCovered?(event.locationInWindow) == true {
+            NSCursor.arrow.set()
+        } else {
+            super.mouseMoved(with: event)
+        }
+    }
+
+    override func cursorUpdate(with event: NSEvent) {
+        if isCovered?(event.locationInWindow) == true {
+            NSCursor.arrow.set()
+        } else {
+            super.cursorUpdate(with: event)
+        }
     }
 
     override func moveUp(_ sender: Any?) {

@@ -80,6 +80,7 @@ public final class DiffTextController: NSObject {
         hunkButton.action = #selector(hunkButtonPressed)
         sides.pointerChanged = { [weak self] in self?.updateHunkButton() }
         textView.menuItem = { [weak self] point in self?.hunkMenuItem(atTextY: point.y) }
+        textView.isCovered = { [weak self] point in self?.isCovered(atWindowPoint: point) ?? false }
 
         configureTextView()
         let clipView = scrollView.contentView
@@ -206,11 +207,18 @@ public final class DiffTextController: NSObject {
 
     // MARK: Conflicts
 
-    /// Puts a bar on each conflict's band in view, at the edge of the view, so that
-    /// the buttons stay put as the text scrolls sideways.
+    private func isCovered(atWindowPoint point: NSPoint) -> Bool {
+        let inView = view.convert(point, from: nil)
+        let controls: [NSView] = conflictBars + [hunkButton]
+        return controls.contains { !$0.isHidden && $0.frame.contains(inView) }
+    }
+
+    /// Puts a bar on each conflict's band in view, as wide as the view, so that its
+    /// label and buttons stay put as the text scrolls sideways. A bar has no buttons
+    /// while the conflicts can't be resolved from here.
     func updateConflictBars() {
         updateConflictOutlines()
-        guard let document, let conflicts = document.conflicts, resolveConflict != nil, !document.conflictBands.isEmpty else {
+        guard let document, let conflicts = document.conflicts, !document.conflictBands.isEmpty else {
             conflictBars.forEach { $0.isHidden = true }
             return
         }
@@ -220,11 +228,12 @@ public final class DiffTextController: NSObject {
         let shown = textView.visibleRect
         let firstRow = Int(((shown.minY - origin) / DiffStyle.lineHeight).rounded(.down))
         let lastRow = Int(((shown.maxY - origin) / DiffStyle.lineHeight).rounded(.up))
-        let bands = document.conflictBands.filter { $0.row >= firstRow && $0.row <= lastRow }
+        let bands = document.conflictBands.filter { $0.row + ConflictBand.rowCount > firstRow && $0.row <= lastRow }
         let count = document.conflictBands.count
         while conflictBars.count < bands.count {
             let bar = ConflictBar()
             bar.onAction = { [weak self] bar, action, button in self?.conflictAction(action, of: bar, from: button) }
+            bar.scrollTarget = scrollView
             sides.addSubview(bar)
             conflictBars.append(bar)
         }
@@ -234,12 +243,11 @@ public final class DiffTextController: NSObject {
                 continue
             }
             let band = bands[index]
-            bar.show(band, sides: conflicts.sides, of: count)
+            bar.show(band, sides: conflicts.sides, of: count, canResolve: resolveConflict != nil)
             let top = origin + CGFloat(band.row) * DiffStyle.lineHeight
-            let row = view.convert(NSRect(x: 0, y: top, width: 1, height: DiffStyle.lineHeight), from: textView)
-            let size = bar.size
-            bar.frame = NSRect(x: visible.maxX - size.width - 6, y: (row.midY - size.height / 2).rounded(), width: size.width, height: size.height)
-            bar.isHidden = !(visible.minY...visible.maxY ~= row.midY)
+            let row = view.convert(NSRect(x: 0, y: top, width: 1, height: ConflictBar.height), from: textView)
+            bar.place(in: NSRect(x: 0, y: row.minY, width: visible.maxX, height: row.height), textStart: gutter.thickness + DiffStyle.textPadding)
+            bar.isHidden = row.maxY <= visible.minY || row.minY >= visible.maxY
         }
     }
 
