@@ -212,8 +212,8 @@ struct HistoryCommands: ToolbarContent {
         ToolbarItem {
             Menu {
                 Picker("Order", selection: $model.sort) {
-                    Text("Topological Order").tag(HistoryOrder.Sort.topological)
-                    Text("Date Order").tag(HistoryOrder.Sort.date)
+                    Text("Topological order").tag(HistoryOrder.Sort.topological)
+                    Text("Date order").tag(HistoryOrder.Sort.date)
                 }
                 .pickerStyle(.inline)
             } label: {

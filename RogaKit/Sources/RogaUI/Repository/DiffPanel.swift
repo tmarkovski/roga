@@ -317,12 +317,12 @@ private struct ConflictFileMenu: View {
                 Button(agent.title, action: agent.ask)
                 Divider()
             }
-            Button("\(sides.ours.keepTitle) Version") { keep(.ours) }
-            Button("\(sides.theirs.keepTitle) Version") { keep(.theirs) }
-            Button("Put Conflicts Back", action: putBack)
+            Button("\(sides.ours.keepTitle) version") { keep(.ours) }
+            Button("\(sides.theirs.keepTitle) version") { keep(.theirs) }
+            Button("Put conflicts back", action: putBack)
             if let url {
                 Divider()
-                Button("Open in \(Self.appName(opening: url) ?? "Default App")") {
+                Button("Open in \(Self.appName(opening: url) ?? "default app")") {
                     NSWorkspace.shared.open(url)
                 }
             }
@@ -349,7 +349,7 @@ private struct ConflictFileMenu: View {
 }
 
 /// The button in the header for asking an agent to resolve a file's conflicts,
-/// with the orange line that marks an agent's command (decision 65).
+/// with the orange line that marks an agent's command (decision 68).
 private struct ResolveWithAgentButton: View {
     let title: String
     let action: () -> Void

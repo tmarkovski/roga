@@ -27,7 +27,7 @@ public final class DiffTextController: NSObject {
     }
 
     /// Makes what goes around each unresolved conflict in view, while an agent is
-    /// working on them, or nil while none is (decision 65). The view that's made
+    /// working on them, or nil while none is (decision 68). The view that's made
     /// shouldn't take clicks, since it sits over the conflict's buttons.
     public var makeConflictOutline: (() -> NSView)? {
         didSet {
@@ -193,7 +193,7 @@ public final class DiffTextController: NSObject {
     /// What right-clicking a hunk offers, if it can be discarded.
     func hunkMenuItem(atTextY y: CGFloat) -> NSMenuItem? {
         guard discardHunk != nil, let header = hunkHeader(atTextY: y) else { return nil }
-        let item = NSMenuItem(title: "Discard Hunk", action: #selector(hunkMenuItemChosen), keyEquivalent: "")
+        let item = NSMenuItem(title: "Discard hunk", action: #selector(hunkMenuItemChosen), keyEquivalent: "")
         item.target = self
         item.representedObject = header
         return item

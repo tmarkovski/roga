@@ -92,7 +92,7 @@ final class SelectedFile {
     @ObservationIgnored var nameConflicts: (_ labels: (ours: String, theirs: String)?) async -> ConflictSides = { _ in
         ConflictSides(
             ours: ConflictSides.Side(name: "HEAD", detail: "", keepTitle: "Keep HEAD's", keptTitle: "Kept HEAD's"),
-            theirs: ConflictSides.Side(name: "Theirs", detail: "", keepTitle: "Keep Theirs", keptTitle: "Kept theirs")
+            theirs: ConflictSides.Side(name: "Theirs", detail: "", keepTitle: "Keep theirs", keptTitle: "Kept theirs")
         )
     }
     /// The conflicted file showing and what's been resolved in it, for telling

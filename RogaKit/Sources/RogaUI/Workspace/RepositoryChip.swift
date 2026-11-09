@@ -164,7 +164,7 @@ enum WorktreeMenu {
             return .choice(choice)
         }
         entries.append(.divider)
-        entries.append(.command("New Worktree…", isEnabled: actions.newWorktree != nil, shortcut: RefMenu.Shortcut(RepositoryCommands.newWorktreeShortcut)) { actions.newWorktree?() })
+        entries.append(.command("New worktree…", isEnabled: actions.newWorktree != nil, shortcut: RefMenu.Shortcut(RepositoryCommands.newWorktreeShortcut)) { actions.newWorktree?() })
         entries.append(.command("Show in Finder", shortcut: RefMenu.Shortcut(RepositoryCommands.showInFinderShortcut)) { actions.reveal(shown) })
         entries.append(.command("Open in Terminal", shortcut: RefMenu.Shortcut(RepositoryCommands.openInTerminalShortcut)) { actions.openInTerminal(shown) })
         return entries

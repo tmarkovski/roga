@@ -77,7 +77,7 @@ struct DiffTextControllerTests {
 
     /// While an agent works on a file's conflicts, each one in view has what its
     /// owner made around the whole section, from its band to its last side and
-    /// from the line numbers to the far edge (decision 65).
+    /// from the line numbers to the far edge (decision 68).
     @Test func putsAnOutlineAroundEachConflictWhileAnAgentWorks() throws {
         let sides = ConflictSides(
             ours: .init(name: "main", detail: "a", keepTitle: "Keep main's", keptTitle: "Kept main's"),
@@ -289,7 +289,7 @@ struct DiffTextControllerTests {
         controller.discardHunk = { discarded.append($0) }
         let y = text(of: controller).textContainerOrigin.y + DiffStyle.lineHeight * 30
         let item = try #require(controller.hunkMenuItem(atTextY: y))
-        #expect(item.title == "Discard Hunk")
+        #expect(item.title == "Discard hunk")
         _ = (item.target as? NSObject)?.perform(item.action, with: item)
         #expect(discarded == [21])
     }

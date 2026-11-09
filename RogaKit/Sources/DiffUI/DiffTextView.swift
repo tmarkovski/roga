@@ -10,6 +10,9 @@ final class DiffTextView: NSTextView {
     override func menu(for event: NSEvent) -> NSMenu? {
         // A copy, because a text view's menu can be shared by all of them.
         let menu = (super.menu(for: event)?.copy() as? NSMenu) ?? NSMenu()
+        // Otherwise macOS 27 puts Ask Siri above everything else in it.
+        menu.allowsContextMenuPlugIns = false
+        menu.automaticallyInsertsWritingToolsItems = false
         if let item = menuItem?(convert(event.locationInWindow, from: nil)) {
             menu.insertItem(item, at: 0)
             menu.insertItem(.separator(), at: 1)

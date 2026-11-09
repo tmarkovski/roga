@@ -37,6 +37,25 @@ enum SidebarMenus {
         var openInTerminal: (String) -> Void
     }
 
+    /// The menu that groups and sorts the list, with what's chosen on each row
+    /// and the choices in a submenu.
+    static func arrangement(
+        groupsByOrganization: Bool,
+        sort: SidebarSort,
+        setGrouping: @escaping (Bool) -> Void,
+        setSort: @escaping (SidebarSort) -> Void
+    ) -> [RefMenu.Entry] {
+        let grouping: [(value: Bool, title: String)] = [(true, "Organization"), (false, "None")]
+        return [
+            .submenu("Group by", value: grouping.first { $0.value == groupsByOrganization }?.title, entries: grouping.map { option in
+                .option(RefMenu.Title(option.title), isChecked: groupsByOrganization == option.value) { setGrouping(option.value) }
+            }),
+            .submenu("Sort by", value: sort.title, entries: SidebarSort.allCases.map { option in
+                .option(RefMenu.Title(option.title), isChecked: sort == option) { setSort(option) }
+            }),
+        ]
+    }
+
     /// A repository's menu.
     ///
     /// - Parameters:
@@ -47,11 +66,11 @@ enum SidebarMenus {
     static func entries(forRepository main: Worktree?, cantOpen: Bool, actions: RepositoryActions) -> [RefMenu.Entry] {
         var entries: [RefMenu.Entry] = []
         if let main {
-            entries += [.command("Open in New Window", action: actions.openInNewWindow), .divider]
+            entries += [.command("Open in new window", action: actions.openInNewWindow), .divider]
             // A bare repository has no files to start a branch in, as in the
             // title row.
             if !main.isBare {
-                entries.append(.command("New Worktree…", action: actions.newWorktree))
+                entries.append(.command("New worktree…", action: actions.newWorktree))
             }
             entries += [
                 .command("Show in Finder") { actions.reveal(main.path) },
@@ -61,7 +80,7 @@ enum SidebarMenus {
         } else if cantOpen {
             entries += [.command("Locate…", action: actions.locate), .divider]
         }
-        entries.append(.command("Remove from Sidebar", action: actions.remove))
+        entries.append(.command("Remove from sidebar", action: actions.remove))
         return entries
     }
 
@@ -76,14 +95,14 @@ enum SidebarMenus {
     /// `git worktree prune` would clear every missing folder's, including one on
     /// a disk that isn't mounted.
     static func entries(forWorktree worktree: Worktree, isDeleting: Bool, actions: WorktreeActions) -> [RefMenu.Entry] {
-        let delete = RefMenu.Entry.command(worktree.canDeleteBranch ? "Delete…" : "Delete Worktree", isDestructive: true, isEnabled: !isDeleting, action: actions.delete)
+        let delete = RefMenu.Entry.command(worktree.canDeleteBranch ? "Delete…" : "Delete worktree", isDestructive: true, isEnabled: !isDeleting, action: actions.delete)
         if worktree.isPrunable {
             return [.command("Locate…", isEnabled: !isDeleting, action: actions.locate), .divider, delete]
         }
         return [
-            .command("Open in New Window", action: actions.openInNewWindow),
+            .command("Open in new window", action: actions.openInNewWindow),
             .divider,
-            .command("New Worktree…", isEnabled: !isDeleting, action: actions.newWorktree),
+            .command("New worktree…", isEnabled: !isDeleting, action: actions.newWorktree),
             .command("Show in Finder") { actions.reveal(worktree.path) },
             .command("Open in Terminal") { actions.openInTerminal(worktree.path) },
             .divider,

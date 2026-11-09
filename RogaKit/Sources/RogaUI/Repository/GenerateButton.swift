@@ -8,7 +8,7 @@ import SwiftUI
 /// that opens the popover for choosing the agent, its model and its effort.
 ///
 /// It's a gray tile cut in two by a thin line, with the orange line around it
-/// that marks an agent's command (decision 65).
+/// that marks an agent's command (decision 68).
 struct GenerateButton<Choices: View>: View {
     /// The agent a click runs.
     let agent: AgentKind

@@ -4,7 +4,7 @@ import Testing
 @testable import RogaUI
 
 /// The orange line around an agent's command and what's being worked on, and
-/// the light that runs along it (decision 65).
+/// the light that runs along it (decision 68).
 struct AgentOutlineTests {
     private static let button = CGSize(width: 150, height: 24)
 

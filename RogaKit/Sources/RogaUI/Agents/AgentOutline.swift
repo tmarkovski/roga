@@ -3,7 +3,7 @@ import QuartzCore
 import SwiftUI
 
 /// What marks a command that one of your own agents carries out, and the thing
-/// an agent is working on (decision 65): a thin orange line that stands still,
+/// an agent is working on (decision 68): a thin orange line that stands still,
 /// and a light that runs along it once when the pointer arrives and for as long
 /// as the agent works.
 struct AgentOutline: NSViewRepresentable {

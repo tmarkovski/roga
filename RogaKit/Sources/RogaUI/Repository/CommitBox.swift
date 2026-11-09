@@ -221,7 +221,7 @@ struct CommitBox: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .strokeBorder(Palette.separator)
         }
-        // The light goes around what the agent is working on (decision 65).
+        // The light goes around what the agent is working on (decision 68).
         .overlay {
             if isWriting {
                 AgentOutline(shape: .outline(cornerRadius: 8), showsLine: false, isWorking: true)

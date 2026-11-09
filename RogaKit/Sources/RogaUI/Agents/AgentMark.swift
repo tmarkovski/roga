@@ -224,7 +224,7 @@ enum AgentColors {
     /// The track of the ring, in the canvas's line gray.
     static let ringTrack = SettingsColors.line
     /// The still line around an agent's command, the brand's orange at about
-    /// half strength (decision 65).
+    /// half strength (decision 68).
     static let outline = orange(light: 0.42, dark: 0.45)
     /// The same line under the pointer or while an agent works, and the tail of
     /// the light that runs along it.

@@ -1,4 +1,4 @@
-# 65. Mark an agent's commands with an orange line, rather than sparkles
+# 68. Mark an agent's commands with an orange line, rather than sparkles
 
 Accepted on 2026-11-09, and built the same day. This replaces the sparkles that [decision 41](0041-agents-status-from-their-hooks-and-messages-from-their-clis.md), [decision 60](0060-resolve-conflicts-in-the-diff-panel.md) and [decision 63](0063-ask-an-agent-to-fix-what-git-refused.md) used for what an agent does. Everything else about those stays as decided.
 

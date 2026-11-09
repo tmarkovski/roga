@@ -105,6 +105,29 @@ public struct CommitGraph: Sendable {
     /// The commit's parent at `index`, or nil when it has fewer parents.
     /// Walks call this with indexes from 0 up until it returns nil, which
     /// saves them making an array for every commit.
+    /// Whether a commit is reachable from another by following parents, without
+    /// going further back than the commit's own time. It's nil when finding out
+    /// would take more than `visitLimit` steps, so that this stays quick enough
+    /// for opening a menu. A commit dated after its child, from a wrong clock, may
+    /// be missed, so a false answer is only a good guess.
+    public func reaches(_ target: Position, from start: Position, visitLimit: Int) -> Bool? {
+        let oldest = commitTime(at: target)
+        var seen: Set<Position> = [start]
+        var waiting = [start]
+        var visited = 0
+        while let position = waiting.popLast() {
+            if position == target { return true }
+            visited += 1
+            if visited > visitLimit { return nil }
+            guard let parents = try? parents(of: position) else { return nil }
+            // First parents come off the stack first, since that's the likeliest line.
+            for parent in parents.reversed() where commitTime(at: parent) >= oldest && seen.insert(parent).inserted {
+                waiting.append(parent)
+            }
+        }
+        return false
+    }
+
     public func parent(of position: Position, at index: Int) throws(CommitGraphError) -> Position? {
         if let (layer, commit) = locate(position) {
             let limit = layerStarts[layer] + layers[layer].count

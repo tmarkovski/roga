@@ -93,7 +93,7 @@ public struct CommitRevert: Sendable, Hashable {
         )
     }
 
-    private static func headContains(_ commit: ObjectID, head: ObjectID?, in worktree: String, git: Git) async throws -> Bool {
+    static func headContains(_ commit: ObjectID, head: ObjectID?, in worktree: String, git: Git) async throws -> Bool {
         guard let head else { return false }
         var command = GitCommand("merge-base", "--is-ancestor", commit.hex, head.hex, in: worktree)
         command.successStatuses = [0, 1]

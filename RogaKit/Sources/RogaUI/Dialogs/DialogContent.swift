@@ -167,7 +167,7 @@ struct DialogButton {
         /// in red rather than filled, and takes a click.
         case partlyDestructive
         /// Has an agent do it. It's a secondary button with the orange line that
-        /// marks an agent's command (decision 65).
+        /// marks an agent's command (decision 68).
         case agent
     }
 
@@ -208,8 +208,11 @@ struct DialogContent: Identifiable {
     var note: DialogText?
     var terminal: [TerminalLine] = []
     /// Whether the terminal block shows an agent that hasn't answered yet, which a
-    /// light moving along its top says (decision 65).
+    /// light moving along its top says (decision 68).
     var isWaitingForAgent = false
+    /// How tall the terminal block is, for a dialog whose commands change as
+    /// someone types, since a sheet can't change size. Otherwise it fits them.
+    var terminalHeight: CGFloat? = nil
     var buttons: [DialogButton]
     /// What Escape, the × and clicking outside of a button mean.
     var dismiss: () -> Void

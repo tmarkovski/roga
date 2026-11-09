@@ -164,6 +164,9 @@ final class CommitComposer {
     private var isReverting: Bool {
         if case .revert = stoppedWork { true } else { false }
     }
+    private var isCherryPicking: Bool {
+        if case .cherryPick = stoppedWork { true } else { false }
+    }
     private var isRebasing: Bool {
         if case .rebase = stoppedWork { true } else { false }
     }
@@ -205,6 +208,8 @@ final class CommitComposer {
             return ("Commit merge", "")
         case .revert:
             return ("Commit revert", "")
+        case .cherryPick:
+            return ("Commit cherry-pick", "")
         case .rebase(let name):
             return ("Rebasing", name.map(Ref.shortName) ?? "")
         case nil:
@@ -249,6 +254,7 @@ final class CommitComposer {
         if isAmending { return "Amend Commit" }
         if isMerging { return "Commit Merge" }
         if isReverting { return "Commit Revert" }
+        if isCherryPicking { return "Commit Cherry-Pick" }
         let staged = changes.loaded?.staged.count ?? 0
         if staged == 0 { return "Stage All and Commit" }
         return staged == 1 ? "Commit 1 File" : "Commit \(staged.formatted()) Files"

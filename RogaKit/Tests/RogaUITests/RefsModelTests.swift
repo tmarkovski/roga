@@ -51,6 +51,20 @@ struct RefsModelTests {
         #expect(sorted.tags.map(\.shortName) == ["v2", "v1", "undated"])
     }
 
+    @Test func tagsAndStashesGoAwayWhenThereAreNoneAndAFilterHidesAnyEmptySection() {
+        for section in [RefsModel.Section.tags, .stashes] {
+            #expect(!section.isShown(count: 0, isFiltering: false))
+            #expect(section.isShown(count: 1, isFiltering: false))
+        }
+        for section in [RefsModel.Section.branches, .remotes] {
+            #expect(section.isShown(count: 0, isFiltering: false))
+        }
+        for section in RefsModel.Section.allCases {
+            #expect(!section.isShown(count: 0, isFiltering: true))
+            #expect(section.isShown(count: 1, isFiltering: true))
+        }
+    }
+
     @Test func aFilterNarrowsEverySectionAndIgnoresCase() {
         let details = RefDetails(
             branches: [branch("agent/fix-login"), branch("main")],
