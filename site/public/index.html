@@ -75,8 +75,7 @@
     text-underline-offset: 0.15em;
   }
 
-  a:focus-visible,
-  button:focus-visible {
+  a:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
   }
@@ -86,10 +85,10 @@
     margin-inline: auto;
   }
 
-  /* The header's bottom edge is the line of commits the house walks along. */
+  /* The house stands on the header's bottom edge. */
   .top {
-    overflow-x: clip;
     padding-top: 1.25rem;
+    border-bottom: 1px solid var(--line);
   }
 
   .bar {
@@ -106,22 +105,10 @@
     text-decoration: none;
   }
 
-  #house {
+  .house {
     display: block;
-    width: 4.25rem;
-    height: auto;
-    overflow: visible;
-  }
-
-  .floor {
-    stroke: var(--line);
-    stroke-width: 11;
-  }
-
-  .commits {
-    stroke: var(--muted);
-    stroke-width: 26;
-    stroke-linecap: round;
+    width: auto;
+    height: 3rem;
   }
 
   .leg {
@@ -146,7 +133,7 @@
     stroke: var(--orange);
   }
 
-  #body {
+  .body {
     fill: var(--orange);
   }
 
@@ -155,21 +142,6 @@
     width: auto;
     height: 1.5rem;
     margin-bottom: 0.625rem;
-  }
-
-  #motion {
-    min-height: 2.75rem;
-    padding: 0 0.25rem;
-    border: 0;
-    background: none;
-    color: var(--muted);
-    font: inherit;
-    font-size: 0.8125rem;
-    cursor: pointer;
-  }
-
-  #motion:hover {
-    color: var(--ink);
   }
 
   .links {
@@ -306,6 +278,99 @@
     margin-top: clamp(2rem, 4vw, 3rem);
   }
 
+  .feature > .wide > .points {
+    margin-top: 0.875rem;
+    color: var(--ink);
+    font-size: 1.0625rem;
+    font-weight: 600;
+  }
+
+  /* Two pictures of one window. The light one, on top, stops at --split. */
+  .compare {
+    --split: 50%;
+    position: relative;
+    margin-top: clamp(2.5rem, 6vw, 4rem);
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: pan-y;
+  }
+
+  .compare.ready {
+    cursor: ew-resize;
+  }
+
+  .compare img {
+    -webkit-user-drag: none;
+  }
+
+  .compare .base {
+    filter: drop-shadow(0 1.25rem 2.5rem var(--shadow));
+  }
+
+  .compare .over {
+    position: absolute;
+    inset: 0;
+    height: 100%;
+    clip-path: inset(0 calc(100% - var(--split)) 0 0);
+  }
+
+  .line,
+  .knob {
+    display: none;
+    position: absolute;
+    pointer-events: none;
+  }
+
+  .compare.ready .line {
+    display: block;
+    top: 0;
+    bottom: 0;
+    left: var(--split);
+    width: 2px;
+    margin-left: -1px;
+    background: var(--orange);
+  }
+
+  /* The knob stops short of the edges, so it stays on the page. */
+  .compare.ready .knob {
+    display: grid;
+    place-items: center;
+    top: 50%;
+    left: clamp(1.375rem, var(--split), calc(100% - 1.375rem));
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 50%;
+    background: var(--button);
+    color: #fff;
+    box-shadow: 0 0.25rem 0.75rem rgb(0 0 0 / 0.3);
+    translate: -50% -50%;
+  }
+
+  .compare:has(input:focus-visible) .knob {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  /* Out of sight but still reachable with the keyboard and VoiceOver. */
+  .compare input {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .compare-labels {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 0.75rem;
+    color: var(--muted);
+    font-size: 0.875rem;
+  }
+
   .band {
     margin-top: clamp(4.5rem, 11vw, 8rem);
     padding-block: clamp(3.5rem, 8vw, 6rem);
@@ -341,6 +406,11 @@
   .frames img {
     border: 1px solid var(--band-line);
     border-radius: 0.75rem;
+  }
+
+  .pair img {
+    border-color: var(--line);
+    box-shadow: 0 1rem 2rem -0.75rem var(--shadow);
   }
 
   /* The promises are drawn like history: commits on a line, and the one that
@@ -428,30 +498,20 @@
     .frames {
       grid-template-columns: minmax(0, 1fr);
     }
-
-  }
-
-  /* The footer has the GitHub link too, and the house needs its Pause button. */
-  @media (max-width: 26rem) {
-    .links a:not(.get) {
-      display: none;
-    }
   }
 </style>
-<script src="/house.js" defer></script>
+<script src="/compare.js" defer></script>
 </head>
 <body>
 <header class="top">
   <div class="wide bar">
     <a class="logo" href="/" aria-label="Roga">
-      <svg id="house" viewBox="278 128 640 570" aria-hidden="true">
-        <line class="floor" x1="-60000" y1="693" x2="60000" y2="693"/>
-        <line id="commits" class="commits" x1="-60000" y1="693" x2="60000" y2="693" stroke-dasharray="0 200"/>
-        <polyline id="rear-bones" class="leg bones rear" points="552 470 495 541 423 497 392 548"/>
-        <path id="rear-toes" class="leg toes rear" d="M392 548L380 605M392 548L342 572M392 548L350 520"/>
-        <polyline id="front-bones" class="leg bones front" points="680 480 706 548 728 590 742 632"/>
-        <path id="front-toes" class="leg toes front" d="M742 632L825 607M742 632L838 668M742 632L690 668"/>
-        <path id="body" fill-rule="evenodd" d="M 652.79 509.23 L 635.65 505.99 C 601.04 499.46 567.46 492.94 565.84 492.44 L 517.23 480.68 C 516.34 480.18 499.68 475.27 483.5 470.75 C 472.99 467.8 471.42 467.09 470.81 464.94 C 470.43 463.6 469.59 456.31 468.95 448.74 C 468.09 438.66 468.07 434.62 468.88 433.64 C 469.49 432.91 476.29 429.68 484 426.47 C 497.91 420.66 498 420.61 498 417.39 C 498 414.55 497.61 414.08 494.75 413.5 C 483.43 411.18 470.31 407.65 469.24 406.62 C 468.43 405.84 467.63 399.89 466.99 389.95 C 465.71 369.9 465.16 370.75 482.6 365.96 L 495.5 362.41 495.32 358.46 C 495.23 356.28 494.85 350.55 494.48 345.71 C 493.91 338.18 493.58 336.99 492.16 337.41 C 491.25 337.67 476.1 340.2 458.5 343.02 C 440.9 345.85 424.69 348.49 422.48 348.9 C 420.27 349.32 417.89 349.46 417.2 349.23 C 415.62 348.71 408.75 335.26 409.76 334.68 C 410.17 334.45 415.9 332.13 422.5 329.53 C 429.1 326.93 443.5 320.39 454.5 315 C 529.53 278.21 595.37 224.72 645.04 160.17 L 651.44 151.84 653.43 156.17 C 664.03 179.23 673.9 196.9 685.45 213.47 C 696.98 230 718.81 257.27 720.1 256.76 C 720.46 256.62 723.06 253.8 725.87 250.5 L 730.98 244.5 730.99 233.23 L 731 221.96 735.48 213.04 L 739.96 204.13 734.44 202.06 C 731.41 200.93 728.56 200 728.12 200 C 726.69 200 724 196.4 724 194.49 C 724 192.34 733.68 167.11 735.21 165.25 C 735.78 164.56 737.3 164 738.59 164 C 739.87 164 755.58 169.47 773.48 176.15 C 802.33 186.91 806.1 188.57 806.64 190.7 C 807.05 192.34 805.51 197.49 801.83 206.8 C 795.66 222.39 794.61 223.38 786.54 221.22 C 784.1 220.57 781.63 219.92 781.03 219.77 C 780.44 219.62 778.45 222.91 776.62 227.08 C 773.97 233.12 772.94 237.48 771.56 248.49 C 770.21 259.2 769.29 263.16 767.5 266 C 766.22 268.02 762.2 275 758.56 281.51 L 751.93 293.35 768.22 309.42 C 790.47 331.38 814.56 352.03 836.64 368.07 C 842.06 372.01 846.45 375.81 846.38 376.51 C 846.31 377.21 843.2 381.43 839.47 385.89 C 834.9 391.35 832 393.99 830.59 393.97 C 829.44 393.96 817.26 389.47 803.52 384 C 789.79 378.53 778.25 374.38 777.88 374.78 C 776.56 376.21 767.07 400.3 767.53 401.04 C 767.79 401.47 772.29 404.22 777.54 407.16 C 783.69 410.6 787.26 413.24 787.6 414.57 C 787.9 415.76 785.96 422.51 783.06 430.33 C 780.28 437.85 778 444.44 778 444.98 C 778 445.52 776.85 446.71 775.44 447.63 C 773.24 449.07 770.97 449.22 759.1 448.71 L 745.31 448.12 743.66 451.6 C 742.75 453.51 742 455.46 742 455.94 C 742 456.42 743.96 458.31 746.35 460.15 C 758.96 469.84 764 474.35 764 475.95 C 764 478.79 748.21 510.99 746.79 511.06 C 746.08 511.09 736.61 511.06 725.75 511 C 714.89 510.94 706 511.14 706 511.44 Z M 682.6 431.1 C 688.36 428.48 690.37 424.45 693.39 409.5 C 696.67 393.23 696.66 391.75 693.25 388.03 C 690.66 385.21 689.36 384.83 670.74 381.5 C 652.21 378.18 650.79 378.06 647.95 379.53 C 646.28 380.39 644.49 382.09 643.97 383.3 C 642.15 387.55 636.27 416.97 636.74 419.45 C 637.63 424.1 641.5 426.74 649.31 428.03 C 653.26 428.69 660.77 430.03 666 431.01 C 678.11 433.29 677.76 433.29 682.6 431.1 Z M 618.07 417.15 C 620.19 414.86 621.19 411.59 623.82 398.44 C 625.57 389.67 627 381.52 627 380.33 C 627 376.82 622.49 372.31 618.26 371.58 C 616.19 371.22 607.21 369.5 598.31 367.75 C 583.02 364.75 581.93 364.66 578.8 366.16 C 574.38 368.26 573.61 370.07 570.09 386.61 C 567.7 397.8 567.28 401.44 568.05 404.23 C 569.21 408.41 573.29 412.78 576.91 413.7 C 587.44 416.4 610.96 420.75 613 420.38 C 614.38 420.13 616.66 418.68 618.07 417.15 Z M 699.23 366.03 C 702.36 363.57 703.39 360.93 705.95 348.77 C 708.52 336.56 708.54 331.4 706.04 327.3 C 702.96 322.25 699.74 320.82 684.65 317.84 C 667.51 314.45 663.15 314.31 659.71 317.02 C 656.61 319.46 655.75 321.93 652.51 337.89 C 647.92 360.54 647.64 360.13 670.58 364.56 C 690.9 368.48 695.8 368.74 699.23 366.03 Z M 631.34 352 C 633.11 349.9 634.43 345.42 636.88 333.16 C 639.78 318.6 639.95 316.81 638.65 314.28 C 636.05 309.27 633.95 308.35 618.5 305.48 C 600.63 302.16 596.86 302.16 591.83 305.5 C 586.76 308.85 585.7 311.26 582.5 326.75 C 579.37 341.88 579.81 345.04 585.41 347.59 C 589.28 349.36 624.88 355.84 627.26 355.22 C 628.23 354.97 630.07 353.52 631.34 352 Z"/>
+      <svg class="house" viewBox="335 140 515 545" aria-hidden="true">
+        <polyline class="leg bones rear" points="552 470 495 541 423 497 392 548"/>
+        <path class="leg toes rear" d="M392 548L380 605M392 548L342 572M392 548L350 520"/>
+        <polyline class="leg bones front" points="680 480 706 548 728 590 742 632"/>
+        <path class="leg toes front" d="M742 632L825 607M742 632L838 668M742 632L690 668"/>
+        <path class="body" fill-rule="evenodd" d="M 652.79 509.23 L 635.65 505.99 C 601.04 499.46 567.46 492.94 565.84 492.44 L 517.23 480.68 C 516.34 480.18 499.68 475.27 483.5 470.75 C 472.99 467.8 471.42 467.09 470.81 464.94 C 470.43 463.6 469.59 456.31 468.95 448.74 C 468.09 438.66 468.07 434.62 468.88 433.64 C 469.49 432.91 476.29 429.68 484 426.47 C 497.91 420.66 498 420.61 498 417.39 C 498 414.55 497.61 414.08 494.75 413.5 C 483.43 411.18 470.31 407.65 469.24 406.62 C 468.43 405.84 467.63 399.89 466.99 389.95 C 465.71 369.9 465.16 370.75 482.6 365.96 L 495.5 362.41 495.32 358.46 C 495.23 356.28 494.85 350.55 494.48 345.71 C 493.91 338.18 493.58 336.99 492.16 337.41 C 491.25 337.67 476.1 340.2 458.5 343.02 C 440.9 345.85 424.69 348.49 422.48 348.9 C 420.27 349.32 417.89 349.46 417.2 349.23 C 415.62 348.71 408.75 335.26 409.76 334.68 C 410.17 334.45 415.9 332.13 422.5 329.53 C 429.1 326.93 443.5 320.39 454.5 315 C 529.53 278.21 595.37 224.72 645.04 160.17 L 651.44 151.84 653.43 156.17 C 664.03 179.23 673.9 196.9 685.45 213.47 C 696.98 230 718.81 257.27 720.1 256.76 C 720.46 256.62 723.06 253.8 725.87 250.5 L 730.98 244.5 730.99 233.23 L 731 221.96 735.48 213.04 L 739.96 204.13 734.44 202.06 C 731.41 200.93 728.56 200 728.12 200 C 726.69 200 724 196.4 724 194.49 C 724 192.34 733.68 167.11 735.21 165.25 C 735.78 164.56 737.3 164 738.59 164 C 739.87 164 755.58 169.47 773.48 176.15 C 802.33 186.91 806.1 188.57 806.64 190.7 C 807.05 192.34 805.51 197.49 801.83 206.8 C 795.66 222.39 794.61 223.38 786.54 221.22 C 784.1 220.57 781.63 219.92 781.03 219.77 C 780.44 219.62 778.45 222.91 776.62 227.08 C 773.97 233.12 772.94 237.48 771.56 248.49 C 770.21 259.2 769.29 263.16 767.5 266 C 766.22 268.02 762.2 275 758.56 281.51 L 751.93 293.35 768.22 309.42 C 790.47 331.38 814.56 352.03 836.64 368.07 C 842.06 372.01 846.45 375.81 846.38 376.51 C 846.31 377.21 843.2 381.43 839.47 385.89 C 834.9 391.35 832 393.99 830.59 393.97 C 829.44 393.96 817.26 389.47 803.52 384 C 789.79 378.53 778.25 374.38 777.88 374.78 C 776.56 376.21 767.07 400.3 767.53 401.04 C 767.79 401.47 772.29 404.22 777.54 407.16 C 783.69 410.6 787.26 413.24 787.6 414.57 C 787.9 415.76 785.96 422.51 783.06 430.33 C 780.28 437.85 778 444.44 778 444.98 C 778 445.52 776.85 446.71 775.44 447.63 C 773.24 449.07 770.97 449.22 759.1 448.71 L 745.31 448.12 743.66 451.6 C 742.75 453.51 742 455.46 742 455.94 C 742 456.42 743.96 458.31 746.35 460.15 C 758.96 469.84 764 474.35 764 475.95 C 764 478.79 748.21 510.99 746.79 511.06 C 746.08 511.09 736.61 511.06 725.75 511 C 714.89 510.94 706 511.14 706 511.44 Z M 682.6 431.1 C 688.36 428.48 690.37 424.45 693.39 409.5 C 696.67 393.23 696.66 391.75 693.25 388.03 C 690.66 385.21 689.36 384.83 670.74 381.5 C 652.21 378.18 650.79 378.06 647.95 379.53 C 646.28 380.39 644.49 382.09 643.97 383.3 C 642.15 387.55 636.27 416.97 636.74 419.45 C 637.63 424.1 641.5 426.74 649.31 428.03 C 653.26 428.69 660.77 430.03 666 431.01 C 678.11 433.29 677.76 433.29 682.6 431.1 Z M 618.07 417.15 C 620.19 414.86 621.19 411.59 623.82 398.44 C 625.57 389.67 627 381.52 627 380.33 C 627 376.82 622.49 372.31 618.26 371.58 C 616.19 371.22 607.21 369.5 598.31 367.75 C 583.02 364.75 581.93 364.66 578.8 366.16 C 574.38 368.26 573.61 370.07 570.09 386.61 C 567.7 397.8 567.28 401.44 568.05 404.23 C 569.21 408.41 573.29 412.78 576.91 413.7 C 587.44 416.4 610.96 420.75 613 420.38 C 614.38 420.13 616.66 418.68 618.07 417.15 Z M 699.23 366.03 C 702.36 363.57 703.39 360.93 705.95 348.77 C 708.52 336.56 708.54 331.4 706.04 327.3 C 702.96 322.25 699.74 320.82 684.65 317.84 C 667.51 314.45 663.15 314.31 659.71 317.02 C 656.61 319.46 655.75 321.93 652.51 337.89 C 647.92 360.54 647.64 360.13 670.58 364.56 C 690.9 368.48 695.8 368.74 699.23 366.03 Z M 631.34 352 C 633.11 349.9 634.43 345.42 636.88 333.16 C 639.78 318.6 639.95 316.81 638.65 314.28 C 636.05 309.27 633.95 308.35 618.5 305.48 C 600.63 302.16 596.86 302.16 591.83 305.5 C 586.76 308.85 585.7 311.26 582.5 326.75 C 579.37 341.88 579.81 345.04 585.41 347.59 C 589.28 349.36 624.88 355.84 627.26 355.22 C 628.23 354.97 630.07 353.52 631.34 352 Z"/>
       </svg>
       <svg class="wordmark" viewBox="20 20 645 221" aria-hidden="true">
       <g transform="translate(-282.5 -697)">
@@ -467,7 +527,6 @@
       </g>
       </svg>
     </a>
-    <button id="motion" type="button" hidden>Pause</button>
     <nav class="links" aria-label="Main">
       <a href="https://github.com/tmarkovski/roga">GitHub</a>
       <a class="get" href="/download">Download</a>
@@ -508,7 +567,7 @@
   <section class="feature">
     <div class="wide">
       <h2>Review it like a pull request.</h2>
-      <p>Roga shows everything a branch changed since it left main: its commits and one combined diff, with the changed words highlighted. Claude Code or Codex can write the commit message for you.</p>
+      <p>Roga shows everything a branch changed since it left main: its commits and one combined diff, with the changed words highlighted.</p>
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="/shots/review-dark.webp">
         <img class="crop review" src="/shots/review-light.webp" width="1760" height="856" loading="lazy" alt="An agent’s branch under review: four commits since it left main, the three files it changed, and the combined diff of one of them.">
@@ -518,9 +577,40 @@
 
   <section class="feature">
     <div class="wide">
+      <h2>Stuck? Ask the agent you already have.</h2>
+      <p>Some Git clients charge extra for AI. Roga hands the hard parts to the Claude Code or Codex you’re already signed in to: a merge conflict, a commit message, or a command Git refused. They can only answer: what they write comes back to you, and nothing is marked resolved or run until you say so.</p>
+      <p class="points">No API keys · No AI add-on to pay for · No limits from Roga</p>
+      <ul class="frames pair">
+        <li>
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="/shots/conflict-before-dark.webp">
+            <img src="/shots/conflict-before-light.webp" width="1116" height="1470" loading="lazy" alt="A file stopped on three merge conflicts, each side named by its branch and commit, with a Resolve with Claude button at the top.">
+          </picture>
+        </li>
+        <li>
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="/shots/conflict-after-dark.webp">
+            <img src="/shots/conflict-after-light.webp" width="1116" height="1470" loading="lazy" alt="The same file after Claude Code resolved all three conflicts, with its explanation of what it kept and each answer marked for review.">
+          </picture>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="feature">
+    <div class="wide">
       <h2>A real Mac app.</h2>
       <p>Roga is written in Swift, with no web views standing in for the interface. It follows your Mac between light and dark, and keeps itself up to date.</p>
-      <img class="window" src="/shots/window-split.webp" width="2400" height="1492" loading="lazy" alt="One Roga window drawn half in the light appearance and half in the dark.">
+      <div class="compare">
+        <img class="base" src="/shots/window-dark.webp" width="2400" height="1492" loading="lazy" draggable="false" alt="The Roga window in the dark appearance.">
+        <img class="over" src="/shots/window-light.webp" width="2400" height="1492" loading="lazy" draggable="false" alt="The same window in the light appearance.">
+        <span class="line" aria-hidden="true"></span>
+        <span class="knob" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M9 7l-5 5 5 5M15 7l5 5-5 5"/></svg>
+        </span>
+        <input type="range" min="0" max="100" value="50" aria-label="How much of the window is shown in light" hidden>
+      </div>
+      <div class="compare-labels"><span>Light</span><span>Dark</span></div>
     </div>
   </section>
 

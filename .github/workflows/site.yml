@@ -42,7 +42,7 @@ jobs:
           node-version: 24
 
       - run: npx --yes html-validate@$HTML_VALIDATE_VERSION public/*.html
-      - run: node --check public/house.js
+      - run: node --check public/compare.js
       - run: npx --yes wrangler@$WRANGLER_VERSION deploy --dry-run
 
   preview:
