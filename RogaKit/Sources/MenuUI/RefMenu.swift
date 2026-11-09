@@ -141,6 +141,9 @@ public enum RefMenu {
 
     public static func make(_ entries: [Entry]) -> NSMenu {
         let menu = NSMenu()
+        // Otherwise macOS 27 puts Ask Siri above the heading of every context menu.
+        menu.allowsContextMenuPlugIns = false
+        menu.automaticallyInsertsWritingToolsItems = false
         menu.autoenablesItems = false
         menu.showsStateColumn = false
         // In a menu of choices, every title starts where the choices' titles do.

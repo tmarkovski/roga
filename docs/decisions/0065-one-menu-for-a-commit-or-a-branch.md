@@ -37,6 +37,8 @@ We read what other clients offer from their own sources, which are GitHub Deskto
 
 **Uncommitted changes in the way go aside and come back** for merging, fast-forwarding, rebasing and cherry-picking, as they do for a pull ([decision 59](0059-set-aside-changes-in-the-way-and-put-them-back.md)).
 
+**macOS's own rows stay out.** macOS 27 puts Ask Siri above the heading of every context menu, which pushes what was clicked down a row. `RefMenu` turns off `allowsContextMenuPlugIns` and `automaticallyInsertsWritingToolsItems`, and with both off macOS doesn't add it. Apple documents neither as being about Siri, so a later macOS could bring the row back.
+
 **Left out on purpose.** Interactive rebase, squash, reword and drop belong to the visual editor planned for release 3, and a menu of them would compete with it. Anything specific to GitHub needs its own decision.
 
 ## Consequences

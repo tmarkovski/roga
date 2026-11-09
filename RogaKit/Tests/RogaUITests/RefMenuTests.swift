@@ -27,6 +27,15 @@ struct RefMenuTests {
         menu.performActionForItem(at: index)
     }
 
+    @Test func macOSAddsNothingOfItsOwnToAMenu() throws {
+        let menu = RefMenu.make([.submenu("Create", entries: [.command("Branch Here…") {}])])
+        let inner = try #require(menu.items[0].submenu)
+        for level in [menu, inner] {
+            #expect(!level.allowsContextMenuPlugIns)
+            #expect(!level.automaticallyInsertsWritingToolsItems)
+        }
+    }
+
     @Test func aSubmenuHoldsItsRowsAndLeavesRoomForItsArrow() throws {
         var runs = 0
         let menu = RefMenu.make([
