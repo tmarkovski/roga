@@ -47,11 +47,11 @@ private func makeReplay(flat: Int = 8, branches: Int = 2, length: Double = 75) t
 }
 
 /// Draws a frame and returns its pixels.
-private func pixels(of map: MetroMap, at time: Double, colorScheme: ColorScheme = .light) throws -> Data {
+private func pixels(of map: MetroMap, at time: Double, colorScheme: ColorScheme = .light, size: CGSize = CGSize(width: 640, height: 360)) throws -> Data {
     let view = Canvas(opaque: true, rendersAsynchronously: false) { context, size in
         map.draw(in: context, size: size, at: time, colorScheme: colorScheme)
     }
-    .frame(width: 640, height: 360)
+    .frame(width: size.width, height: size.height)
     let image = try #require(ImageRenderer(content: view).cgImage)
     return try #require(image.dataProvider?.data as Data?)
 }
@@ -130,6 +130,25 @@ struct ReplayPlayerTests {
         player.togglePlaying(at: start.addingTimeInterval(5))
         player.changeDuration(to: 20, at: start.addingTimeInterval(5))
         #expect(player.time(at: start.addingTimeInterval(5)) == 10)
+    }
+
+    @Test func keepsItsMomentWhenTheEndMoves() {
+        let player = ReplayPlayer()
+        player.load(duration: 10, reducesMotion: false, at: start)
+        let later = start.addingTimeInterval(4)
+        player.moveEnd(to: 12, at: later)
+        #expect(player.duration == 12)
+        #expect(player.time(at: later) == 4)
+        #expect(player.time(at: later.addingTimeInterval(1)) == 5)
+    }
+
+    @Test func staysAtTheEndWhenTheEndMoves() {
+        let player = ReplayPlayer()
+        player.load(duration: 10, reducesMotion: false, at: start)
+        let after = start.addingTimeInterval(20)
+        player.stopIfFinished(at: after)
+        player.moveEnd(to: 12, at: after)
+        #expect(player.time(at: after) == 12)
     }
 
     @Test func namesTheSpeedsAndTheClock() {
@@ -268,13 +287,102 @@ struct MetroMapTests {
 
     @Test func holdsTheWholeHistoryAtTheEnd() throws {
         let map = MetroMap(replay: try makeReplay(), repositoryName: "app")
-        #expect(map.duration == map.replay.playEnd + MetroMap.finale + MetroMap.hold)
+        #expect(map.duration == map.posterStart + MetroMap.posterIn + MetroMap.hold)
         #expect(looksTheSame(try pixels(of: map, at: map.duration), try pixels(of: map, at: map.duration - 0.1)))
+    }
+
+    @Test func toursWhatStoodOutOnceTheLinesAreCounted() throws {
+        var replay = try makeReplay()
+        let without = MetroMap(replay: replay, repositoryName: "app")
+        #expect(!without.beats.contains { $0.eyebrow == "THE BIGGEST COMMIT" })
+        replay.countLines([replay.commits[3].id: .init(added: 2000, removed: 34)])
+        let with = MetroMap(replay: replay, repositoryName: "app")
+        #expect(with.beats.first?.eyebrow == "THE BIGGEST COMMIT")
+        #expect(with.beats.first?.value == "+\(2000.formatted()) −34")
+        #expect(with.duration == without.duration + MetroMap.beat)
+        #expect(with.flights == [3])
+    }
+
+    @Test func skipsTheTourWhenThereIsLittleToTour() throws {
+        let map = MetroMap(replay: try makeReplay(flat: 2, branches: 1), repositoryName: "app")
+        #expect(map.beats.isEmpty)
+        #expect(map.posterStart == map.replay.playEnd + MetroMap.finale * 0.7)
+    }
+
+    @Test func drawsTheTourAndThePosterDifferently() throws {
+        var replay = try makeReplay()
+        replay.countLines([replay.commits[3].id: .init(added: 2000, removed: 34)])
+        let map = MetroMap(replay: replay, repositoryName: "app")
+        let tour = try pixels(of: map, at: map.tourStart + 1)
+        #expect(!looksTheSame(tour, try pixels(of: map, at: map.zoomEnd - 0.2)))
+        #expect(!looksTheSame(tour, try pixels(of: map, at: map.duration)))
+    }
+
+    @Test func drawsTheHouseOnlyWhenAskedTo() throws {
+        let replay = try makeReplay()
+        var map = MetroMap(replay: replay, repositoryName: "app")
+        let time = replay.playEnd / 2
+        let without = try pixels(of: map, at: time)
+        map.showsHouse = true
+        #expect(!looksTheSame(without, try pixels(of: map, at: time)))
+        map.showsHouse = false
+        #expect(looksTheSame(without, try pixels(of: map, at: time)))
+    }
+
+    @Test(arguments: [CGSize(width: 520, height: 300), CGSize(width: 700, height: 420), CGSize(width: 1100, height: 640), CGSize(width: 1280, height: 720)])
+    func drawsEveryPartAtEverySize(size: CGSize) throws {
+        var replay = try makeReplay(flat: 40, branches: 6)
+        replay.countLines([replay.commits[3].id: .init(added: 2000, removed: 34)])
+        let map = MetroMap(replay: replay, repositoryName: "a-repository-with-quite-a-long-name-for-its-band", showsHouse: true)
+        for time in [0, replay.playEnd / 2, map.tourStart + 1, map.posterStart + 1, map.duration] {
+            _ = try pixels(of: map, at: time, size: size)
+        }
+    }
+
+    @Test func fitsTheBandToTheWidth() throws {
+        var replay = try makeReplay()
+        replay.countLines([replay.commits[3].id: .init(added: 2000, removed: 34)])
+        let map = MetroMap(replay: replay, repositoryName: "app")
+        #expect(map.bandFit(width: 1100)?.tiles.width == 26)
+        #expect(map.bandFit(width: 1100)?.showsDate == true)
+        #expect(map.bandFit(width: 300) == nil)
     }
 
     @Test func saysWhatItShowsForVoiceOver() throws {
         let map = MetroMap(replay: try makeReplay(), repositoryName: "app")
-        #expect(map.summary == "main in app: 15 commits, 2 branches, 1 day.")
+        #expect(map.summary.hasPrefix("main in app: 15 commits, 2 branches, 1 day."))
+    }
+
+    @Test func saysHowManyLinesChangedOnceTheyreCounted() throws {
+        var replay = try makeReplay()
+        replay.countLines([replay.commits[1].id: .init(added: 1200, removed: 34)])
+        let map = MetroMap(replay: replay, repositoryName: "app")
+        #expect(map.summary.hasPrefix("main in app: 15 commits, 2 branches, 1 day, \(1200.formatted()) lines added and 34 removed."))
+    }
+
+    @Test func drawsTheLinesOnceTheyreCounted() throws {
+        var replay = try makeReplay()
+        let without = MetroMap(replay: replay, repositoryName: "app")
+        replay.countLines([replay.commits[9].id: .init(added: 12, removed: 3)])
+        let with = MetroMap(replay: replay, repositoryName: "app")
+        let time = replay.commits[9].time + 0.5
+        #expect(!looksTheSame(try pixels(of: without, at: time), try pixels(of: with, at: time)))
+        #expect(!looksTheSame(try pixels(of: without, at: with.duration), try pixels(of: with, at: with.duration)))
+    }
+
+    @Test func givesEachNumberTheWindowsItsLastCountNeeds() {
+        #expect(RollingNumber.windows(for: 0) == 1)
+        #expect(RollingNumber.windows(for: 9) == 1)
+        #expect(RollingNumber.windows(for: 10) == 2)
+        #expect(RollingNumber.windows(for: 999) == 3)
+        #expect(RollingNumber.windows(for: 1000) == 4)
+        #expect(RollingNumber.windows(for: 1_234_567) == 7)
+    }
+
+    @Test func drawsTheSameFrameForTheSameMomentWhileANumberRolls() throws {
+        let map = MetroMap(replay: try makeReplay(), repositoryName: "app")
+        let time = map.replay.commits[9].time + MetroMap.roll * 0.4
+        #expect(looksTheSame(try pixels(of: map, at: time), try pixels(of: map, at: time)))
     }
 
     @Test func drawsEvenWithNoCommits() throws {
@@ -318,6 +426,18 @@ struct ReplayModelTests {
         let model = try await started()
         #expect(model.scope == .days(7))
         #expect(model.length == 45)
+    }
+
+    @Test func countsTheLinesOnceItsPlaying() async throws {
+        let model = try await started()
+        while model.isCountingLines {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        guard case .ready(let map) = model.phase else {
+            Issue.record("The replay isn't ready")
+            return
+        }
+        #expect(map.replay.hasLineCounts)
     }
 
     @Test func offersEveryRangeFromAWeekUp() {

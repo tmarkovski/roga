@@ -152,6 +152,29 @@ struct RepositorySessionTests {
         #expect(try await changedFiles(at: "empty") == [])
     }
 
+    @Test func countsTheLinesOfManyCommitsAtOnce() async throws {
+        let repository = try await Fixture.repository("changes")
+        let session = try await openSession(repository)
+        func commit(_ name: String) async throws -> ObjectID {
+            try #require(ObjectID(hex: try await runGit("rev-parse", name + "^{commit}", in: repository)))
+        }
+        let root = try await commit("root")
+        let everyWay = try await commit("every-way")
+        let side = try await commit("merge^2")
+        let merge = try await commit("merge")
+        let empty = try await commit("empty")
+
+        let counts = try await session.lineCounts(of: [root, everyWay, side, merge, empty])
+        // Binary files and files the attributes say not to diff add nothing.
+        #expect(counts[root] == .init(added: 14, removed: 0))
+        // A moved file counts only the line it gained.
+        #expect(counts[everyWay] == .init(added: 5, removed: 2))
+        #expect(counts[side] == .init(added: 1, removed: 0))
+        // The merge's line is its branch's, and an empty commit has none.
+        #expect(counts[merge] == nil)
+        #expect(counts[empty] == nil)
+    }
+
     @Test func failsOnACommitTheRepositoryDoesntHave() async throws {
         let session = try await openSession(try await Fixture.repository("basic"))
         let unknown = ObjectID(hex: String(repeating: "1", count: 40))!

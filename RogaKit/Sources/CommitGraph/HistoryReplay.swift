@@ -83,6 +83,10 @@ public struct HistoryReplay: Sendable {
         /// How many branches have started and merged, up to and including it.
         public var forksSoFar = 0
         public var mergesSoFar = 0
+        /// The lines it added and removed, and how many have been up to and
+        /// including it. They stay at 0 until `countLines(_:)` gives them.
+        public var lines = DiffFile.LineCounts(added: 0, removed: 0)
+        public var linesSoFar = DiffFile.LineCounts(added: 0, removed: 0)
         /// When it lands, in seconds into the replay, fitted to the length.
         public internal(set) var time = 0.0
         /// When it lands before the replay is fitted to a length.
@@ -119,6 +123,9 @@ public struct HistoryReplay: Sendable {
     /// When the last commit has landed and the replay is done playing.
     public private(set) var playEnd: Double
     private let unfittedEnd: Double
+    /// Whether the commits have their lines, which are counted after the
+    /// replay is worked out, since git has to make a diff for each commit.
+    public private(set) var hasLineCounts = false
 
     /// Lists the commits in `range` behind `tip`, newest first, for loading
     /// their messages before making a replay.
@@ -226,6 +233,23 @@ public struct HistoryReplay: Sendable {
             commits[index].time = commits[index].unfittedTime * pace
         }
         playEnd = unfittedEnd * pace + Self.tail
+    }
+
+    /// Gives each commit the lines it added and removed, from what git
+    /// counted by commit, and adds them up along the replay. A commit missing
+    /// from `counts`, such as a merge, adds none, since the commits on its
+    /// branch already count what it brought in.
+    public mutating func countLines(_ counts: [ObjectID: DiffFile.LineCounts]) {
+        let none = DiffFile.LineCounts(added: 0, removed: 0)
+        var soFar = none
+        for index in commits.indices {
+            let own = counts[commits[index].id] ?? none
+            soFar.added += own.added
+            soFar.removed += own.removed
+            commits[index].lines = own
+            commits[index].linesSoFar = soFar
+        }
+        hasLineCounts = true
     }
 }
 

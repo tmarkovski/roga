@@ -25,6 +25,35 @@ enum DiffLoader {
         }
     }
 
+    /// Counts the lines each of `commits` added and removed, with one
+    /// `git diff-tree` for all of them rather than one for each. Their IDs go
+    /// in on standard input, so there's no limit on how many. A commit with no
+    /// parents adds all of its lines. git says nothing about a merge, so a
+    /// merge is missing from the result, as is a commit that changed nothing.
+    @concurrent
+    static func lineCounts(of commits: [ObjectID], git: Git, directory: String) async throws -> [ObjectID: DiffFile.LineCounts] {
+        var command = GitCommand(
+            ["diff-tree", "--stdin", "-r", "-M", "--root"] + CommitLineCountsParser.arguments,
+            in: directory
+        )
+        command.priority = .utility
+        var input: [UInt8] = []
+        input.reserveCapacity(commits.count * 65)
+        for commit in commits {
+            input.append(contentsOf: commit.hex.utf8)
+            input.append(UInt8(ascii: "\n"))
+        }
+        var parser = CommitLineCountsParser()
+        do {
+            for try await line in git.stream(command, input: input).records(separatedBy: UInt8(ascii: "\n")) {
+                try parser.read(line)
+            }
+        } catch let error as ParseError {
+            throw RepositoryError.unexpectedOutput(command, error.description)
+        }
+        return parser.counts
+    }
+
     /// Loads what `commit` changed in `file`, comparing as `changedFiles` does.
     ///
     /// - Throws: `RepositoryError.patchTooLarge` when the patch has more than

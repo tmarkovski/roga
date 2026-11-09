@@ -20,13 +20,20 @@ struct MetroMap: ReplayPicture {
     /// The zoom out to the whole history at the end, and how long it holds there.
     static let finale = 2.4
     static let hold = 2.4
+    /// How long a number at the top takes to roll to a new count, unless
+    /// the next count comes sooner.
+    static let roll = 0.35
+    /// How long each highlight holds in the tour after the zoom out, and how
+    /// long the poster takes to arrive after it.
+    static let beat = 2.0
+    static let posterIn = 1.5
 
     /// Commit spacing in a window narrower than `smallWidth`, and in a wider one.
     private static let smallWidth = 640.0
     private static let smallSpacing = 26.0
     private static let largeSpacing = 34.0
 
-    private struct Marker {
+    struct Marker {
         var x: Double
         var time: Double
         var label: String
@@ -57,65 +64,93 @@ struct MetroMap: ReplayPicture {
 
     let replay: HistoryReplay
     let repositoryName: String
-    private let markers: [Marker]
-    private let days: Int
+    /// Whether the house walks along the line, in front of the newest commit.
+    var showsHouse: Bool
+    let markers: [Marker]
+    let days: Int
+    let highlights: HistoryReplay.Highlights
+    /// What the tour at the end stops at, in order.
+    let beats: [TourBeat]
+    /// What the poster at the end has a tile for, in order.
+    let tiles: [PosterTile]
+    /// The cards that come up as records are set.
+    let flares: [Flare]
+    /// The commits big enough for their lines to fly up to the count.
+    let flights: [Int]
+    /// The days that get their name across the picture, as indexes into `markers`.
+    let gates: [Int]
+    let pulse: Pulse
     /// How close commits are drawn, from how much the replay had to speed up.
     private let zoom: Double
     /// Every label, oldest first.
     private let labels: [Label]
     private let widestLabel: Double
     private let stacking = Stacking()
+    /// The steps whose commits change each number at the top, oldest first.
+    /// Every commit changes the count of commits.
+    private let forkSteps: [Int]
+    private let mergeSteps: [Int]
+    private let addedSteps: [Int]
+    private let removedSteps: [Int]
 
-    private static let dateFormatter = formatter("EEEMMMdjmm")
-    private static let dayFormatter = formatter("MMMd")
-    private static let rangeFormatter = formatter("MMMdyyyy")
+    static let dayFormatter = formatter("MMMd")
+    static let weekdayFormatter = formatter("EEEE")
+    static let narrowWeekdayFormatter = formatter("EEEEE")
+    static let weekdayAndDayFormatter = formatter("EEEMMMd")
+    static let timeFormatter = formatter("jmm")
+    static let rangeFormatter = formatter("MMMdyyyy")
 
-    private static func formatter(_ template: String) -> DateFormatter {
+    static func formatter(_ template: String) -> DateFormatter {
         let formatter = DateFormatter()
         formatter.setLocalizedDateFormatFromTemplate(template)
         return formatter
     }
 
-    init(replay: HistoryReplay, repositoryName: String) {
+    init(replay: HistoryReplay, repositoryName: String, showsHouse: Bool = false) {
         self.replay = replay
         self.repositoryName = repositoryName
+        self.showsHouse = showsHouse
         let zoom = max(0.35, min(1, replay.pace * 2))
         self.zoom = zoom
 
-        var markers: [Marker] = []
-        let calendar = Calendar.current
-        var dayStart = Double.infinity
-        var dayEnd = -Double.infinity
-        var dayCount = 0
-        for (step, commit) in replay.commits.enumerated() {
-            let date = Double(commit.commitTime)
-            // Most commits are on the same day as the one before.
-            if date < dayStart || date >= dayEnd {
-                let start = calendar.startOfDay(for: Date(timeIntervalSince1970: date))
-                dayStart = start.timeIntervalSince1970
-                dayEnd = (calendar.date(byAdding: .day, value: 1, to: start) ?? start.addingTimeInterval(86_400)).timeIntervalSince1970
-                markers.append(Marker(x: Double(step) - 0.5, time: commit.time, label: Self.dayFormatter.string(from: start)))
-                dayCount += 1
-            }
+        let highlights = replay.highlights()
+        self.highlights = highlights
+        let markers = highlights.days.map { day in
+            Marker(x: Double(day.first) - 0.5, time: replay.commits[day.first].time, label: Self.dayFormatter.string(from: day.start))
         }
         self.markers = markers
-        if let first = replay.commits.first, let last = replay.commits.last {
-            let firstDay = calendar.startOfDay(for: Date(timeIntervalSince1970: Double(first.commitTime)))
-            let lastDay = calendar.startOfDay(for: Date(timeIntervalSince1970: Double(last.commitTime)))
-            days = (calendar.dateComponents([.day], from: firstDay, to: lastDay).day ?? 0) + 1
-        } else {
-            days = 0
-        }
+        days = highlights.dayCount
+        beats = Self.beats(of: replay, highlights)
+        tiles = Self.tiles(of: replay, highlights)
+        flares = Self.flares(of: replay, highlights)
+        flights = Self.flights(of: replay)
+        gates = Self.gates(among: markers)
+        pulse = Pulse(of: replay)
         labels = Self.labels(of: replay)
         widestLabel = labels.map(\.width).max() ?? 0
+        let commits = replay.commits
+        forkSteps = commits.indices.filter { commits[$0].isFork }
+        mergeSteps = commits.indices.filter { commits[$0].isMerge }
+        addedSteps = commits.indices.filter { commits[$0].lines.added > 0 }
+        removedSteps = commits.indices.filter { commits[$0].lines.removed > 0 }
     }
 
-    var duration: Double { replay.playEnd + Self.finale + Self.hold }
+    /// When the camera has finished pulling back.
+    var zoomEnd: Double { replay.playEnd + Self.finale }
+    var tourStart: Double { zoomEnd - 0.1 }
+    var tourLength: Double { beats.isEmpty ? 0 : Double(beats.count) * Self.beat + 0.4 }
+    /// When the poster starts to come in: after the tour, or with nothing to
+    /// tour, as the camera finishes pulling back.
+    var posterStart: Double { beats.isEmpty ? replay.playEnd + Self.finale * 0.7 : tourStart + tourLength }
+    var duration: Double { posterStart + Self.posterIn + Self.hold }
 
     var summary: String {
         let commits = counted(replay.commits.count, "commit")
         let branches = counted(replay.branches.count - 1, "branch", plural: "branches")
-        return "\(replay.mainLineName) in \(repositoryName): \(commits), \(branches), \(counted(days, "day"))."
+        let summary = "\(replay.mainLineName) in \(repositoryName): \(commits), \(branches), \(counted(days, "day"))"
+        let highlighted = beats.map { " \($0.eyebrow.capitalized): \($0.value)." }.joined()
+        guard replay.hasLineCounts, let lines = replay.commits.last?.linesSoFar else { return summary + "." + highlighted }
+        return summary + ", \(lines.added.formatted()) lines added and \(lines.removed.formatted()) removed." + highlighted
     }
 
     private static let labelFont = NSFont.systemFont(ofSize: 11, weight: .medium)
@@ -132,8 +167,7 @@ struct MetroMap: ReplayPicture {
             let isAbove: Bool
             if commit.branch != 0 {
                 guard branch.first == step else { continue }
-                let name = branch.name == HistoryReplay.unnamedBranch ? commit.subject : branch.name
-                text = (branch.pullRequest.map { "#\($0)  " } ?? "") + (branch.title ?? name)
+                text = (branch.pullRequest.map { "#\($0)  " } ?? "") + title(ofBranch: commit.branch, in: replay)
                 isAbove = branch.lane < 0
             } else if let merged = commit.merged {
                 let mergedBranch = replay.branches[merged]
@@ -163,20 +197,27 @@ struct MetroMap: ReplayPicture {
         return labels
     }
 
+    /// What to call a branch: its pull request's title, its name, or, with
+    /// neither, the subject of its first commit.
+    static func title(ofBranch index: Int, in replay: HistoryReplay) -> String {
+        let branch = replay.branches[index]
+        return branch.title ?? (branch.name == HistoryReplay.unnamedBranch ? replay.commits[branch.first].subject : branch.name)
+    }
+
     /// Roughly how wide some text is, which is close enough for keeping it off
     /// other text, and costs nothing to work out for every frame.
     private static func estimatedWidth(_ text: String, size: Double) -> Double {
         Double(text.count) * size * 0.54
     }
 
-    private func counted(_ number: Int, _ singular: String, plural: String? = nil) -> String {
-        "\(number) \(number == 1 ? singular : plural ?? singular + "s")"
+    func counted(_ number: Int, _ singular: String, plural: String? = nil) -> String {
+        "\(number.formatted()) \(number == 1 ? singular : plural ?? singular + "s")"
     }
 
     // MARK: - Drawing
 
     /// Where things are at one moment, in the size being drawn.
-    private struct Frame {
+    struct Frame {
         var time: Double
         var width: Double
         var height: Double
@@ -185,6 +226,14 @@ struct MetroMap: ReplayPicture {
         var bottom: Double
         /// How far into the zoom out at the end, from 0 to 1.
         var finished: Double
+        /// How far the poster has come in, from 0 to 1.
+        var posterProgress: Double
+        /// How the numbers fit in the band at the top, or nil if they don't,
+        /// and go on a line instead.
+        var band: BandFit?
+        var showsPulse: Bool
+        /// How much the camera pulls back by the end.
+        var fitZoom: Double
         var kx: Double
         var ky: Double
         /// How far apart commits and lanes are while the replay plays, which
@@ -211,14 +260,39 @@ struct MetroMap: ReplayPicture {
         guard !replay.commits.isEmpty else { return }
         let frame = layout(time, size: size, theme: theme)
         let color = colorsByBranch(theme)
-        drawDays(context, frame)
-        drawLines(context, frame, color)
-        drawCommits(context, frame, color)
+        let tour = tourMoment(at: time)
+        // The tour turns the map down, so that what it stops at stands out.
+        withOpacity(1 - 0.8 * (tour?.dimming ?? 0), context) { map in
+            drawDays(map, frame)
+            drawLines(map, frame, color)
+            drawCommits(map, frame, color)
+        }
         drawLabels(context, frame, color)
-        drawMainLineName(context, frame)
-        drawHeader(context, frame)
-        drawCaption(context, frame, color)
-        drawSummary(context, frame)
+        if let tour { drawTourFocus(context, frame, color, tour) }
+
+        var addedCount: CGPoint?
+        withOpacity(1 - frame.posterProgress, context) { shell in
+            addedCount = drawBand(shell, frame)
+            drawStrip(shell, frame, color, tour)
+            if frame.showsPulse { drawPulse(shell, frame) }
+        }
+        drawFlares(context, frame)
+        if let addedCount { drawFlights(context, frame, to: addedCount) }
+        if showsHouse { drawHouse(context, frame) }
+        drawPoster(context, frame)
+    }
+
+    /// Draws something all at one opacity, so that where its pieces overlap
+    /// doesn't show.
+    func withOpacity(_ alpha: Double, _ context: GraphicsContext, _ body: (GraphicsContext) -> Void) {
+        guard alpha > 0 else { return }
+        guard alpha < 1 else {
+            body(context)
+            return
+        }
+        var layer = context
+        layer.opacity = alpha
+        layer.drawLayer { body($0) }
     }
 
     private func layout(_ time: Double, size: CGSize, theme: MetroTheme) -> Frame {
@@ -228,14 +302,24 @@ struct MetroMap: ReplayPicture {
         let isSmall = width < Self.smallWidth
         let spacing = (isSmall ? Self.smallSpacing : Self.largeSpacing) * zoom
         let laneGap = isSmall ? 34.0 : 46.0
-        let top = isSmall ? 96.0 : 84.0
-        let bottom = 60.0
+        let showsPulse = height >= Self.pulseLeastHeight
+        let playTop = Self.bandHeight + 8 + (showsPulse ? Self.pulseHeight : 0)
+        let playBottom = Self.stripHeight + 12
         let finished = easeInOut(clamp((time - replay.playEnd) / Self.finale))
+        let posterProgress = easeInOut(clamp((time - posterStart) / Self.posterIn))
         let fitZoom = min(1, (width - 48) / (Double(max(count - 1, 1)) * spacing))
-        let room = (height - top - bottom) / 2 - 30
-        let fitLanes = min(1, room / (Double(max(replay.farthestLane, 1)) * laneGap))
+        let room = (height - playTop - playBottom) / 2 - 30
+        let farthest = Double(max(replay.farthestLane, 1))
+        let fitLanes = min(1, room / (farthest * laneGap))
+        // The lanes stay well apart after the zoom out, because the tour and
+        // the poster are about the shape of the whole history.
+        let zoomedLanes = laneGap * fitLanes * lerp(1, 0.95, finished)
+        let posterTop = Self.posterTop
+        let posterBottom = posterBottom(width: width, height: height)
+        let posterLanes = min(zoomedLanes * 0.82, max(0, (height - posterTop - posterBottom) / 2 - 14) / farthest)
+        let top = lerp(playTop, posterTop, posterProgress)
+        let bottom = lerp(playBottom, posterBottom, posterProgress)
         let kx = spacing * lerp(1, fitZoom, finished)
-        let ky = laneGap * fitLanes * lerp(1, 0.6, finished)
         let focus = lerp(cameraX(min(time, replay.playEnd)), Double(count - 1) / 2, finished)
         let anchor = lerp(isSmall ? 0.7 : 0.66, 0.5, finished)
         return Frame(
@@ -246,20 +330,24 @@ struct MetroMap: ReplayPicture {
             top: top,
             bottom: bottom,
             finished: finished,
+            posterProgress: posterProgress,
+            band: bandFit(width: width),
+            showsPulse: showsPulse,
+            fitZoom: fitZoom,
             kx: kx,
-            ky: ky,
+            ky: lerp(zoomedLanes, posterLanes, posterProgress),
             spacing: spacing,
             lanesApart: laneGap * fitLanes,
             ox: width * anchor - focus * kx,
             oy: top + (height - top - bottom) / 2,
-            dot: lerp(1, 0.55, finished),
+            dot: lerp(1, 0.62, finished),
             theme: theme,
             head: headAt(time)
         )
     }
 
     /// The newest commit that has landed by `time`, or -1.
-    private func headAt(_ time: Double) -> Int {
+    func headAt(_ time: Double) -> Int {
         var low = 0
         var high = replay.commits.count - 1
         var found = -1
@@ -276,7 +364,7 @@ struct MetroMap: ReplayPicture {
     }
 
     /// Where the newest commit is, sliding toward the next one between them.
-    private func playheadX(_ time: Double) -> Double {
+    func playheadX(_ time: Double) -> Double {
         let index = headAt(time)
         guard index >= 0 else { return 0 }
         guard index < replay.commits.count - 1 else { return Double(replay.commits.count - 1) }
@@ -287,7 +375,7 @@ struct MetroMap: ReplayPicture {
 
     /// The average of where the newest commit was over the last half second,
     /// so that the camera glides rather than stepping from commit to commit.
-    private func cameraX(_ time: Double) -> Double {
+    func cameraX(_ time: Double) -> Double {
         let samples = 16
         var sum = 0.0
         for sample in 0 ..< samples {
@@ -297,11 +385,11 @@ struct MetroMap: ReplayPicture {
     }
 
     /// The colors to draw each branch in. The main line is last, in ink.
-    private func colorsByBranch(_ theme: MetroTheme) -> [Color] {
+    func colorsByBranch(_ theme: MetroTheme) -> [Color] {
         theme.lanes + [theme.ink]
     }
 
-    private func colorIndex(_ branch: Int) -> Int {
+    func colorIndex(_ branch: Int) -> Int {
         branch == 0 ? MetroTheme.laneCount : replay.branches[branch].color
     }
 
@@ -318,6 +406,7 @@ struct MetroMap: ReplayPicture {
                 lastLabel = x
             }
         }
+        drawGates(context, frame)
     }
 
     /// The range of steps worth drawing: from the left edge to the newest
@@ -329,12 +418,20 @@ struct MetroMap: ReplayPicture {
         return first <= frame.head ? first ... frame.head : nil
     }
 
-    private func drawLines(_ context: GraphicsContext, _ frame: Frame, _ color: [Color]) {
+    /// Draws the lines of the commits that `only` allows, or of them all.
+    func drawLines(
+        _ context: GraphicsContext,
+        _ frame: Frame,
+        _ color: [Color],
+        only: ((Int, HistoryReplay.Commit) -> Bool)? = nil,
+        lineWidth: Double? = nil
+    ) {
         guard let steps = visibleSteps(frame) else { return }
         var branchLines = [Path](repeating: Path(), count: color.count)
         var mainLines = [Path](repeating: Path(), count: color.count)
         for step in steps {
             let commit = replay.commits[step]
+            if let only, !only(step, commit) { continue }
             let progress = easeOut(clamp((frame.time - commit.time) / Self.grow))
             let branch = replay.branches[commit.branch]
             for parent in commit.parents where Double(parent) <= frame.xMax {
@@ -353,7 +450,7 @@ struct MetroMap: ReplayPicture {
                 }
             }
         }
-        let style = StrokeStyle(lineWidth: lerp(2.5, 1.6, frame.finished), lineCap: .round)
+        let style = StrokeStyle(lineWidth: lineWidth ?? lerp(2.5, 1.6, frame.finished), lineCap: .round)
         for lines in [branchLines, mainLines] {
             for (index, path) in lines.enumerated() where !path.isEmpty {
                 context.stroke(path, with: .color(color[index]), style: style)
@@ -432,7 +529,23 @@ struct MetroMap: ReplayPicture {
         return [points[0], ab, abc, at(abc, bcd)]
     }
 
-    private func drawCommits(_ context: GraphicsContext, _ frame: Frame, _ color: [Color]) {
+    /// How big a commit's stop is drawn, by how many lines it changed. Only
+    /// the really big ones are still big once the camera has pulled back, or
+    /// the stops would run together.
+    func stopRadius(of commit: HistoryReplay.Commit, _ frame: Frame) -> Double {
+        let lines = log10(Double(commit.lines.added + commit.lines.removed + 1))
+        let near = clamp((lines - 1.6) / 2.4) * 8
+        let far = clamp((lines - 3.1) / 0.9) * 7
+        return (commit.branch == 0 ? 5 : 4.5) + lerp(near, far, frame.finished)
+    }
+
+    /// Draws the stops of the commits that `only` allows, or of them all.
+    func drawCommits(
+        _ context: GraphicsContext,
+        _ frame: Frame,
+        _ color: [Color],
+        only: ((Int, HistoryReplay.Commit) -> Bool)? = nil
+    ) {
         guard let steps = visibleSteps(frame) else { return }
 
         // The newest commit glows softly while the replay plays, once its dot is in.
@@ -442,7 +555,7 @@ struct MetroMap: ReplayPicture {
             var glow = context
             glow.opacity = alpha
             let center = point(frame, step: frame.head)
-            let radius = 13 + 2 * sin(frame.time * 5)
+            let radius = 13 + 2 * sin(frame.time * 5) + stopRadius(of: commit, frame) - 5
             glow.fill(circle(center, radius), with: .color(color[colorIndex(commit.branch)]))
         }
 
@@ -451,11 +564,12 @@ struct MetroMap: ReplayPicture {
         var interchangeFill = Path()
         for step in steps where Double(step) <= frame.xMax {
             let commit = replay.commits[step]
+            if let only, !only(step, commit) { continue }
             let age = frame.time - commit.time
             let scale = easeOutBack(clamp((age - Self.grow * 0.5) / Self.pop))
             guard scale > 0 else { continue }
             let isOnMainLine = commit.branch == 0
-            let radius = (isOnMainLine ? 5 : 4.5) * frame.dot * scale
+            let radius = stopRadius(of: commit, frame) * frame.dot * scale
             let center = point(frame, step: step)
             let index = colorIndex(commit.branch)
 
@@ -620,108 +734,123 @@ struct MetroMap: ReplayPicture {
         return low
     }
 
-    /// The main line's name stays at the left edge once it scrolls past.
-    private func drawMainLineName(_ context: GraphicsContext, _ frame: Frame) {
-        drawPill(
-            context,
-            replay.mainLineName,
-            x: max(16, frame.x(0) - 7),
-            y: frame.y(0) - 19,
-            color: frame.theme.ink,
-            alpha: clamp(frame.time / 0.6),
-            size: frame.isSmall ? 11 : 12,
-            frame
+    /// The numbers at the top at one moment, each as it changes from one
+    /// count to the next.
+    struct Counts {
+        var commits = RollingNumber.Change.still(0)
+        var branches = RollingNumber.Change.still(0)
+        var merges = RollingNumber.Change.still(0)
+        var added = RollingNumber.Change.still(0)
+        var removed = RollingNumber.Change.still(0)
+    }
+
+    func counts(_ frame: Frame) -> Counts {
+        guard frame.head >= 0 else { return Counts() }
+        let commits = replay.commits
+        return Counts(
+            commits: change(in: nil, frame) { $0 + 1 },
+            branches: change(in: forkSteps, frame) { commits[$0].forksSoFar },
+            merges: change(in: mergeSteps, frame) { commits[$0].mergesSoFar },
+            added: change(in: addedSteps, frame) { commits[$0].linesSoFar.added },
+            removed: change(in: removedSteps, frame) { commits[$0].linesSoFar.removed }
         )
     }
 
-    private func drawHeader(_ context: GraphicsContext, _ frame: Frame) {
-        let alpha = frame.playing
-        guard alpha > 0 else { return }
-        let theme = frame.theme
-        let commit = frame.head >= 0 ? replay.commits[frame.head] : nil
-        drawText(context, repositoryName, size: 17, weight: .bold, color: theme.ink, x: 16, baseline: 32, alpha: alpha)
-
-        let date = commit.map { Self.dateFormatter.string(from: Date(timeIntervalSince1970: Double($0.commitTime))) } ?? ""
-        drawText(context, date, size: 13, color: theme.muted, x: 16, baseline: 52, alpha: alpha)
-
-        let stats = [
-            (commit == nil ? 0 : frame.head + 1, "commits"),
-            (commit?.forksSoFar ?? 0, "branches"),
-            (commit?.mergesSoFar ?? 0, "merges"),
-        ]
-        if frame.isSmall {
-            let line = stats.map { "\($0.0) \($0.1)" }.joined(separator: "  ·  ")
-            drawText(context, line, size: 13, color: theme.muted, x: 16, baseline: 74, alpha: alpha)
-        } else {
-            var x = frame.width - 16
-            for (number, label) in stats.reversed() {
-                drawText(context, String(number), size: 20, weight: .bold, color: theme.ink, x: x, baseline: 34, alignment: .trailing, alpha: alpha)
-                drawText(context, label.uppercased(), size: 10, weight: .semibold, color: theme.muted, x: x, baseline: 52, alignment: .trailing, alpha: alpha)
-                x -= 86
+    /// How a number is changing at the frame's time: from what it was to what
+    /// the newest commit that changed it made it, and how far through the
+    /// roll. A roll ends before the next change starts, so a number that
+    /// changes quickly rolls quickly.
+    ///
+    /// - Parameters:
+    ///   - steps: The steps whose commits change the number, or nil if every
+    ///     commit does.
+    ///   - value: The number once a step's commit has landed.
+    private func change(in steps: [Int]?, _ frame: Frame, value: (Int) -> Int) -> RollingNumber.Change {
+        let step: Int
+        let next: Int?
+        if let steps {
+            // The newest step at or before the newest commit.
+            var low = 0
+            var high = steps.count - 1
+            var found = -1
+            while low <= high {
+                let middle = (low + high) / 2
+                if steps[middle] <= frame.head {
+                    found = middle
+                    low = middle + 1
+                } else {
+                    high = middle - 1
+                }
             }
+            guard found >= 0 else { return .still(0) }
+            step = steps[found]
+            next = found + 1 < steps.count ? steps[found + 1] : nil
+        } else {
+            step = frame.head
+            next = step + 1 < replay.commits.count ? step + 1 : nil
         }
-    }
-
-    private func drawCaption(_ context: GraphicsContext, _ frame: Frame, _ color: [Color]) {
-        guard frame.head >= 0 else { return }
-        let commit = replay.commits[frame.head]
-        let alpha = clamp((frame.time - commit.time) / 0.2) * frame.playing
-        guard alpha > 0 else { return }
-        let y = frame.height - 26
-        let hash = drawText(
-            context,
-            String(commit.id.hex.prefix(7)),
-            size: 12,
-            design: .monospaced,
-            color: color[colorIndex(commit.branch)],
-            x: 16,
-            baseline: y,
-            alpha: alpha
-        )
-        let hashWidth = hash.width + 12
-        drawText(
-            context,
-            fitted(commit.subject, width: frame.width - 32 - hashWidth, size: 15),
-            size: 15,
-            color: frame.theme.ink,
-            x: 16 + hashWidth,
-            baseline: y,
-            alpha: alpha
+        let start = replay.commits[step].time
+        let room = next.map { replay.commits[$0].time - start } ?? .infinity
+        let length = min(Self.roll, room * 0.8)
+        return RollingNumber.Change(
+            from: step > 0 ? value(step - 1) : 0,
+            to: value(step),
+            progress: length > 0 ? easeOut(clamp((frame.time - start) / length)) : 1
         )
     }
 
-    private func drawSummary(_ context: GraphicsContext, _ frame: Frame) {
-        let alpha = clamp((frame.time - replay.playEnd - Self.finale * 0.7) / 0.6)
-        guard alpha > 0, let first = replay.commits.first, let last = replay.commits.last else { return }
+    /// The counts on one line under the date, in a narrow picture. Words after
+    /// a number move along smoothly as it gains a digit.
+    func drawStatLine(_ context: GraphicsContext, _ frame: Frame, _ counts: Counts, alpha: Double) {
         let theme = frame.theme
-        let center = frame.width / 2
-        let counts = [
-            counted(replay.commits.count, "commit"),
-            counted(replay.branches.count - 1, "branch", plural: "branches"),
-            counted(days, "day"),
-        ].joined(separator: "  ·  ")
-        drawText(context, counts, size: frame.isSmall ? 18 : 24, weight: .bold, color: theme.ink, x: center, baseline: frame.isSmall ? 40 : 42, alignment: .center, alpha: alpha)
+        let last = replay.commits.last
+        let size = 13.0
+        let baseline = 74.0
+        let numbers = RollingNumber(context, size: size, weight: .semibold, color: theme.ink)
+        var x = 16.0
 
-        let from = Self.rangeFormatter.string(from: Date(timeIntervalSince1970: Double(first.commitTime)))
-        let to = Self.rangeFormatter.string(from: Date(timeIntervalSince1970: Double(last.commitTime)))
-        drawText(context, "\(repositoryName), \(from) to \(to)", size: 13, color: theme.muted, x: center, baseline: frame.isSmall ? 62 : 66, alignment: .center, alpha: alpha)
-        drawText(context, "Replayed in Roga", size: 13, color: theme.muted, x: center, baseline: frame.height - 26, alignment: .center, alpha: alpha)
+        func separate() {
+            x += Double(drawText(context, "·", size: size, color: theme.muted, x: x + 7, baseline: baseline, alpha: alpha).width) + 14
+        }
+        func number(_ rolling: RollingNumber, _ change: RollingNumber.Change, most: Int) {
+            let windows = RollingNumber.windows(for: most)
+            let width = rolling.shownWidth(change, windows: windows)
+            rolling.draw(change, windows: windows, in: context, right: x + width, baseline: baseline, alpha: alpha)
+            x += width
+        }
+
+        let line = [
+            (counts.commits, replay.commits.count, "commits"),
+            (counts.branches, last?.forksSoFar ?? 0, "branches"),
+            (counts.merges, last?.mergesSoFar ?? 0, "merges"),
+        ]
+        for (index, (change, most, name)) in line.enumerated() {
+            if index > 0 { separate() }
+            number(numbers, change, most: most)
+            x += Double(drawText(context, name, size: size, color: theme.muted, x: x + 4, baseline: baseline, alpha: alpha).width) + 4
+        }
+        if replay.hasLineCounts, let total = last?.linesSoFar {
+            separate()
+            number(RollingNumber(context, size: size, weight: .semibold, color: theme.added, sign: "+"), counts.added, most: total.added)
+            x += 6
+            number(RollingNumber(context, size: size, weight: .semibold, color: theme.removed, sign: "−"), counts.removed, most: total.removed)
+        }
     }
 
     // MARK: - Pieces
 
-    private func point(_ frame: Frame, step: Int) -> CGPoint {
+    func point(_ frame: Frame, step: Int) -> CGPoint {
         let lane = Double(replay.branches[replay.commits[step].branch].lane)
         return CGPoint(x: frame.x(Double(step)), y: frame.y(lane))
     }
 
-    private func circle(_ center: CGPoint, _ radius: Double) -> Path {
+    func circle(_ center: CGPoint, _ radius: Double) -> Path {
         Path(ellipseIn: CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2))
     }
 
     /// Cuts text to about `width`, going by an estimate rather than measuring,
     /// since this happens for many labels on every frame.
-    private func fitted(_ text: String, width: Double, size: Double) -> String {
+    func fitted(_ text: String, width: Double, size: Double) -> String {
         guard Self.estimatedWidth(text, size: size) > width else { return text }
         let characters = max(1, Int(width / (size * 0.54)) - 1)
         return String(text.prefix(characters)) + "…"
@@ -729,7 +858,7 @@ struct MetroMap: ReplayPicture {
 
     /// Draws text whose baseline is at `baseline`, and returns its size.
     @discardableResult
-    private func drawText(
+    func drawText(
         _ context: GraphicsContext,
         _ string: String,
         size: Double,
@@ -739,11 +868,12 @@ struct MetroMap: ReplayPicture {
         x: Double,
         baseline: Double,
         alignment: HorizontalAlignment = .leading,
-        alpha: Double = 1
+        alpha: Double = 1,
+        tracking: Double = 0
     ) -> CGSize {
         var context = context
         context.opacity = alpha
-        let text = context.resolve(Text(string).font(.system(size: size, weight: weight, design: design)).foregroundStyle(color))
+        let text = context.resolve(Text(string).font(.system(size: size, weight: weight, design: design)).tracking(tracking).foregroundStyle(color))
         let measured = text.measure(in: CGSize(width: CGFloat.infinity, height: .infinity))
         let anchor: UnitPoint = alignment == .center ? .bottom : alignment == .trailing ? .bottomTrailing : .bottomLeading
         // The bottom of a line of text is below its baseline by its descent.
@@ -751,26 +881,327 @@ struct MetroMap: ReplayPicture {
         return measured
     }
 
-    private func drawPill(
+    /// Draws text, smaller if it wouldn't otherwise fit in `width`, and cut
+    /// short if it's still too wide at half the size. Returns how wide it is.
+    @discardableResult
+    func drawFittingText(
         _ context: GraphicsContext,
         _ string: String,
-        x: Double,
-        y: Double,
-        color: Color,
-        alpha: Double,
+        width: Double,
         size: Double,
-        _ frame: Frame
+        weight: Font.Weight = .regular,
+        design: Font.Design = .default,
+        color: Color,
+        x: Double,
+        baseline: Double,
+        alpha: Double = 1
+    ) -> Double {
+        let font = Font.system(size: size, weight: weight, design: design)
+        let measured = Double(context.resolve(Text(string).font(font)).measure(in: CGSize(width: CGFloat.infinity, height: .infinity)).width)
+        let fitting = measured > width ? max(size * width / measured, size * 0.5) : size
+        let text = measured * fitting / size > width ? fitted(string, width: width, size: fitting) : string
+        return Double(drawText(context, text, size: fitting, weight: weight, design: design, color: color, x: x, baseline: baseline, alpha: alpha).width)
+    }
+
+    /// Breaks text into at most `maxLines` lines that fit `width`, and ends
+    /// the last with an ellipsis if there's more.
+    func wrapped(_ text: String, width: Double, size: Double, weight: NSFont.Weight = .regular, maxLines: Int) -> [String] {
+        let attributes: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: size, weight: weight)]
+        func fits(_ line: String) -> Bool { (line as NSString).size(withAttributes: attributes).width <= width }
+        var lines: [String] = []
+        var line = ""
+        var words = text.split(whereSeparator: \.isWhitespace).map(String.init)[...]
+        while let word = words.first {
+            let longer = line.isEmpty ? word : line + " " + word
+            if fits(longer) || line.isEmpty {
+                line = longer
+                words = words.dropFirst()
+            } else {
+                lines.append(line)
+                line = ""
+                if lines.count == maxLines { break }
+            }
+        }
+        if lines.count < maxLines, !line.isEmpty { lines.append(line) }
+        guard var last = lines.last else { return [] }
+        if !words.isEmpty || !fits(last) {
+            while last.count > 1, !fits(last + "…") { last.removeLast() }
+            lines[lines.count - 1] = last.trimmingCharacters(in: .whitespaces) + "…"
+        }
+        return lines
+    }
+
+    /// Draws pieces of text in a row, each in its own color, and returns how
+    /// wide the row is.
+    @discardableResult
+    func drawRow(
+        _ context: GraphicsContext,
+        _ pieces: [(String, Color)],
+        size: Double,
+        weight: Font.Weight = .regular,
+        design: Font.Design = .default,
+        spacing: Double,
+        x: Double,
+        baseline: Double,
+        alignment: HorizontalAlignment = .leading,
+        alpha: Double = 1
+    ) -> Double {
+        var context = context
+        context.opacity = alpha
+        let font = Font.system(size: size, weight: weight, design: design)
+        let texts = pieces.map { piece in context.resolve(Text(piece.0).font(font).foregroundStyle(piece.1)) }
+        let widths = texts.map { Double($0.measure(in: CGSize(width: CGFloat.infinity, height: .infinity)).width) }
+        let total = widths.reduce(0, +) + spacing * Double(max(texts.count - 1, 0))
+        var left = alignment == .center ? x - total / 2 : alignment == .trailing ? x - total : x
+        for (text, width) in zip(texts, widths) {
+            context.draw(text, at: CGPoint(x: left, y: baseline + size * 0.24), anchor: .bottomLeading)
+            left += width + spacing
+        }
+        return total
+    }
+
+}
+
+/// A number in a row of digit windows, like an odometer's, that rolls from
+/// one count to the next. Each digit that changes rolls straight from its old
+/// value to its new one, up when the number grows and down when it shrinks,
+/// and the digits that stay the same hold still.
+///
+/// It has as many windows as its largest count needs, and leaves the ones to
+/// the left of the number blank, so a digit the number gains rolls in from
+/// blank.
+struct RollingNumber {
+    /// A number changing from one count to another, `progress` of the way
+    /// there, from 0 to 1.
+    struct Change {
+        var from: Int
+        var to: Int
+        var progress: Double
+
+        static func still(_ value: Int) -> Change {
+            Change(from: value, to: value, progress: 1)
+        }
+    }
+
+    /// The character between each group of three digits.
+    private static let groupSeparator = Locale.current.groupingSeparator ?? ","
+
+    private let digits: [GraphicsContext.ResolvedText]
+    private let separator: GraphicsContext.ResolvedText
+    private let sign: GraphicsContext.ResolvedText?
+    private let size: Double
+    private let digitWidth: Double
+    private let separatorWidth: Double
+    private let signWidth: Double
+
+    /// - Parameter sign: Text that goes just before the number, such as `+`.
+    init(_ context: GraphicsContext, size: Double, weight: Font.Weight, color: Color, sign: String? = nil) {
+        // Every digit is as wide as every other, so the windows line up.
+        let font = Font.system(size: size, weight: weight).monospacedDigit()
+        func resolve(_ string: String) -> GraphicsContext.ResolvedText {
+            context.resolve(Text(string).font(font).foregroundStyle(color))
+        }
+        func width(_ text: GraphicsContext.ResolvedText) -> Double {
+            Double(text.measure(in: CGSize(width: CGFloat.infinity, height: .infinity)).width)
+        }
+        let digits = (0 ... 9).map { resolve(String($0)) }
+        let separator = resolve(Self.groupSeparator)
+        let signText = sign.map(resolve)
+        self.digits = digits
+        self.separator = separator
+        self.sign = signText
+        self.size = size
+        digitWidth = digits.map(width).max() ?? size * 0.6
+        separatorWidth = width(separator)
+        signWidth = signText.map(width) ?? 0
+    }
+
+    /// How many windows it takes to show every count up to `most`.
+    static func windows(for most: Int) -> Int {
+        digitCount(most)
+    }
+
+    /// How wide the number is with every window showing, sign and all.
+    func width(windows: Int) -> Double {
+        Double(windows) * digitWidth + Double((windows - 1) / 3) * separatorWidth + signWidth
+    }
+
+    /// How wide the number is partway through a change, sign and all. It
+    /// grows smoothly as the number gains a digit.
+    func shownWidth(_ change: Change, windows: Int) -> Double {
+        signWidth - leftEdge(of: change, windows: windows, right: 0)
+    }
+
+    /// Draws a number partway through a change, with its right edge at
+    /// `right`, and returns how wide it is.
+    @discardableResult
+    func draw(_ change: Change, windows count: Int, in context: GraphicsContext, right: Double, baseline: Double, alpha: Double) -> Double {
+        let most = Self.largest(windows: count)
+        let from = min(max(change.from, 0), most)
+        let to = min(max(change.to, 0), most)
+        let progress = min(max(change.progress, 0), 1)
+        // How far a digit moves to make way for the next, which takes it out
+        // of its window. The old digit leaves upward when the number grows.
+        let travel = (to >= from ? -1.0 : 1.0) * size * 1.2
+        // The bottom of a line of text is below its baseline by its descent.
+        let bottom = baseline + size * 0.24
+        var place = 1
+        for index in 0 ..< max(Self.digitCount(from), Self.digitCount(to)) {
+            let old = Self.digit(of: from, at: index, place: place)
+            let new = Self.digit(of: to, at: index, place: place)
+            place *= 10
+            let edge = rightEdge(index, right)
+            if index > 0, index % 3 == 0 {
+                var faded = context
+                faded.opacity = alpha * ((old == nil ? 0 : 1) * (1 - progress) + (new == nil ? 0 : 1) * progress)
+                faded.draw(separator, at: CGPoint(x: edge, y: bottom), anchor: .bottomLeading)
+            }
+            let x = edge - digitWidth
+            if old == new || progress >= 1 {
+                guard let digit = progress >= 1 ? new : old else { continue }
+                var still = context
+                still.opacity = alpha
+                still.draw(digits[digit], at: CGPoint(x: x, y: bottom), anchor: .bottomLeading)
+                continue
+            }
+            var window = context
+            window.clip(to: Path(CGRect(x: x - 1, y: baseline - size * 0.98, width: digitWidth + 2, height: size * 1.22)))
+            if let old {
+                window.opacity = alpha * (1 - 0.6 * progress)
+                window.draw(digits[old], at: CGPoint(x: x, y: bottom + travel * progress), anchor: .bottomLeading)
+            }
+            if let new {
+                window.opacity = alpha * (1 - 0.6 * (1 - progress))
+                window.draw(digits[new], at: CGPoint(x: x, y: bottom - travel * (1 - progress)), anchor: .bottomLeading)
+            }
+        }
+        let left = leftEdge(of: Change(from: from, to: to, progress: progress), windows: count, right: right)
+        if let sign {
+            var signed = context
+            signed.opacity = alpha
+            signed.draw(sign, at: CGPoint(x: left - signWidth, y: bottom), anchor: .bottomLeading)
+        }
+        return right - left + signWidth
+    }
+
+    /// The size of a row of tiles with a number on them, one digit each, the
+    /// way a departure board shows them.
+    struct Tiles {
+        var width: Double
+        var height: Double
+        var fontSize: Double
+        var gap: Double
+        var separator: Double
+
+        /// How wide a row is, with its sign if it has one.
+        func rowWidth(windows: Int, isSigned: Bool) -> Double {
+            Double(windows) * width + Double(windows - 1) * gap + Double((windows - 1) / 3) * separator + (isSigned ? fontSize * 0.62 + 5 : 0)
+        }
+    }
+
+    /// Draws a number on a row of tiles partway through a change, with the
+    /// right edge of the row at `right`. Every tile shows from the start, so
+    /// the row doesn't change size, and one with no digit yet is blank.
+    func drawTiles(
+        _ change: Change,
+        windows count: Int,
+        tiles: Tiles,
+        back: Color,
+        edge: Color,
+        split: Color,
+        in context: GraphicsContext,
+        right: Double,
+        top: Double
     ) {
-        let width = max(context.resolve(Text(string).font(.system(size: size, weight: .semibold))).measure(in: CGSize(width: CGFloat.infinity, height: .infinity)).width, 0) + 14
-        let pill = Path(roundedRect: CGRect(x: x, y: y - 10, width: width, height: 20), cornerRadius: 6)
-        // Labels can pass under it.
-        var paper = context
-        paper.opacity = alpha
-        paper.fill(pill, with: .color(frame.theme.paper))
-        var background = context
-        background.opacity = alpha * (frame.theme.isDark ? 0.16 : 0.12)
-        background.fill(pill, with: .color(color))
-        drawText(context, string, size: size, weight: .semibold, color: color, x: x + 7, baseline: y + 4, alpha: alpha)
+        let most = Self.largest(windows: count)
+        let from = min(max(change.from, 0), most)
+        let to = min(max(change.to, 0), most)
+        let progress = min(max(change.progress, 0), 1)
+        let travel = (to >= from ? -1.0 : 1.0) * tiles.height
+        let bottom = top + tiles.height / 2 + size * 0.36 + size * 0.24
+
+        var lefts: [Double] = []
+        var backs = Path()
+        var splits = Path()
+        var x = right
+        for index in 0 ..< count {
+            if index > 0, index % 3 == 0 { x -= tiles.separator }
+            let left = x - tiles.width
+            lefts.append(left)
+            backs.addRoundedRect(in: CGRect(x: left, y: top, width: tiles.width, height: tiles.height), cornerSize: CGSize(width: 4, height: 4))
+            splits.addRect(CGRect(x: left + 0.5, y: top + tiles.height / 2 - 0.5, width: tiles.width - 1, height: 1))
+            x = left - tiles.gap
+        }
+        context.fill(backs, with: .color(back))
+        context.stroke(backs, with: .color(edge), lineWidth: 1)
+
+        var place = 1
+        for (index, left) in lefts.enumerated() {
+            let old = Self.digit(of: from, at: index, place: place)
+            let new = Self.digit(of: to, at: index, place: place)
+            place *= 10
+            if index > 0, index % 3 == 0 {
+                var faded = context
+                faded.opacity = (old == nil ? 0 : 1) * (1 - progress) + (new == nil ? 0 : 1) * progress
+                faded.draw(separator, at: CGPoint(x: left + tiles.width + tiles.separator / 2, y: bottom), anchor: .bottom)
+            }
+            let digitX = left + (tiles.width - digitWidth) / 2
+            if old == new || progress >= 1 {
+                if let digit = progress >= 1 ? new : old {
+                    context.draw(digits[digit], at: CGPoint(x: digitX, y: bottom), anchor: .bottomLeading)
+                }
+                continue
+            }
+            var window = context
+            window.clip(to: Path(CGRect(x: left, y: top, width: tiles.width, height: tiles.height)))
+            if let old { window.draw(digits[old], at: CGPoint(x: digitX, y: bottom + travel * progress), anchor: .bottomLeading) }
+            if let new { window.draw(digits[new], at: CGPoint(x: digitX, y: bottom - travel * (1 - progress)), anchor: .bottomLeading) }
+        }
+        context.fill(splits, with: .color(split))
+        if let sign, let leftmost = lefts.last {
+            context.draw(sign, at: CGPoint(x: leftmost - 5, y: bottom), anchor: .bottomTrailing)
+        }
+    }
+
+    /// How many digits a count has, which is 1 for 0.
+    private static func digitCount(_ value: Int) -> Int {
+        var count = 1
+        var place = 10
+        while place <= value {
+            count += 1
+            place *= 10
+        }
+        return count
+    }
+
+    /// The largest count that fits in `windows`.
+    private static func largest(windows: Int) -> Int {
+        var largest = 1
+        for _ in 0 ..< windows { largest *= 10 }
+        return largest - 1
+    }
+
+    /// A digit of a count, counting from the ones, or nil for a window to the
+    /// left of the count, which stays blank.
+    private static func digit(of value: Int, at index: Int, place: Int) -> Int? {
+        index > 0 && value < place ? nil : value / place % 10
+    }
+
+    /// The right edge of a window, counting from the ones, with a separator
+    /// to the left of every third one.
+    private func rightEdge(_ index: Int, _ right: Double) -> Double {
+        right - Double(index) * digitWidth - Double(index / 3) * separatorWidth
+    }
+
+    /// Where the number starts partway through a change, which moves smoothly
+    /// as it gains or loses a digit.
+    private func leftEdge(of change: Change, windows: Int, right: Double) -> Double {
+        let most = Self.largest(windows: windows)
+        func edge(_ value: Int) -> Double {
+            rightEdge(Self.digitCount(min(max(value, 0), most)) - 1, right) - digitWidth
+        }
+        let progress = min(max(change.progress, 0), 1)
+        return edge(change.from) + (edge(change.to) - edge(change.from)) * progress
     }
 }
 
@@ -785,38 +1216,54 @@ struct MetroTheme {
     var muted: Color
     var line: Color
     var accent: Color
+    /// The band at the top and the strip at the bottom, and what sits on them.
+    var band: Color
+    var tile: Color
+    var tileEdge: Color
+    var tileSplit: Color
+    /// The poster's tiles.
+    var card: Color
+    var house: Color
     var lanes: [Color]
+    /// Lines added and removed, in the colors the rest of Roga gives them.
+    var added: Color
+    var removed: Color
 
-    private static let light = MetroTheme(
-        isDark: false,
-        paper: Color(hex: 0xFAF6EE),
-        ink: Color(hex: 0x16150E),
-        muted: Color(hex: 0x6A665A),
-        line: Color(hex: 0xDCD5C6),
-        accent: Color(hex: 0xB53D00),
-        lanes: resolvedLanes(.aqua)
-    )
-    private static let dark = MetroTheme(
-        isDark: true,
-        paper: Color(hex: 0x16150E),
-        ink: Color(hex: 0xF5F0E6),
-        muted: Color(hex: 0xA9A394),
-        line: Color(hex: 0x3A372D),
-        accent: Color(hex: 0xF2702E),
-        lanes: resolvedLanes(.darkAqua)
-    )
+    private static let light = theme(isDark: false, appearance: .aqua)
+    private static let dark = theme(isDark: true, appearance: .darkAqua)
 
     static func of(_ scheme: ColorScheme) -> MetroTheme {
         scheme == .dark ? dark : light
     }
 
-    /// The graph's lane colors in one appearance, whatever the window's is.
-    private static func resolvedLanes(_ name: NSAppearance.Name) -> [Color] {
-        var colors: [Color] = []
+    private static func theme(isDark: Bool, appearance: NSAppearance.Name) -> MetroTheme {
+        let git = resolved(GitColors.lanes + [GitColors.green, GitColors.red], appearance)
+        return MetroTheme(
+            isDark: isDark,
+            paper: Color(hex: isDark ? 0x16150E : 0xFAF6EE),
+            ink: Color(hex: isDark ? 0xF5F0E6 : 0x16150E),
+            muted: Color(hex: isDark ? 0xA9A394 : 0x6A665A),
+            line: Color(hex: isDark ? 0x3A372D : 0xDCD5C6),
+            accent: Color(hex: isDark ? 0xF2702E : 0xB53D00),
+            band: Color(hex: isDark ? 0x1E1C14 : 0xF1EADC),
+            tile: Color(hex: isDark ? 0x0D0C08 : 0xFFFDF8),
+            tileEdge: Color(hex: isDark ? 0x34312A : 0xD6CEBC),
+            tileSplit: isDark ? Color.black.opacity(0.55) : Color(hex: 0x16150E).opacity(0.14),
+            card: Color(hex: isDark ? 0x1C1A12 : 0xFFFDF8),
+            house: Color(hex: 0xD54802),
+            lanes: Array(git.prefix(GitColors.lanes.count)),
+            added: git[GitColors.lanes.count],
+            removed: git[GitColors.lanes.count + 1]
+        )
+    }
+
+    /// The graph's colors in one appearance, whatever the window's is.
+    private static func resolved(_ colors: [NSColor], _ name: NSAppearance.Name) -> [Color] {
+        var resolved: [Color] = []
         NSAppearance(named: name)?.performAsCurrentDrawingAppearance {
-            colors = GitColors.lanes.map { Color(nsColor: $0.usingColorSpace(.sRGB) ?? $0) }
+            resolved = colors.map { Color(nsColor: $0.usingColorSpace(.sRGB) ?? $0) }
         }
-        return colors
+        return resolved
     }
 }
 
@@ -831,23 +1278,23 @@ private extension Color {
     }
 }
 
-private func clamp(_ value: Double, _ low: Double = 0, _ high: Double = 1) -> Double {
+func clamp(_ value: Double, _ low: Double = 0, _ high: Double = 1) -> Double {
     min(high, max(low, value))
 }
 
-private func lerp(_ a: Double, _ b: Double, _ t: Double) -> Double {
+func lerp(_ a: Double, _ b: Double, _ t: Double) -> Double {
     a + (b - a) * t
 }
 
-private func easeInOut(_ t: Double) -> Double {
+func easeInOut(_ t: Double) -> Double {
     t < 0.5 ? 4 * t * t * t : 1 - pow(-2 * t + 2, 3) / 2
 }
 
-private func easeOut(_ t: Double) -> Double {
+func easeOut(_ t: Double) -> Double {
     1 - pow(1 - t, 3)
 }
 
-private func easeOutBack(_ t: Double) -> Double {
+func easeOutBack(_ t: Double) -> Double {
     let c = 1.9
     return t <= 0 ? 0 : 1 + (c + 1) * pow(t - 1, 3) + c * pow(t - 1, 2)
 }

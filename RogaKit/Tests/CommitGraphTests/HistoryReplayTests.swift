@@ -1,3 +1,4 @@
+import Foundation
 import GitCore
 import GitRunner
 import TestSupport
@@ -47,6 +48,100 @@ private func revList(_ arguments: String..., in repository: String) async throws
 
 private func openGraph(_ repository: String) throws -> CommitGraph {
     try #require(try CommitGraph(objectsFolder: repository + "/.git/objects", format: .sha1))
+}
+
+/// A straight line of commits made at these times, in hours from midnight on
+/// 2026-01-01 in UTC.
+private func straightLine(atHours hours: [Double]) throws -> HistoryReplay {
+    var newer: [CommitGraph.NewerCommit] = []
+    var messages: [ObjectID: HistoryReplay.Message] = [:]
+    for (index, hour) in hours.enumerated() {
+        let id = try #require(ObjectID(hex: String(format: "%040x", index + 1)))
+        newer.append(CommitGraph.NewerCommit(id: id, parents: newer.last.map { [$0.id] } ?? [], commitTime: 1_767_225_600 + Int64(hour * 3600)))
+        messages[id] = HistoryReplay.Message(subject: "Commit \(index)")
+    }
+    let graph = try CommitGraph(format: .sha1).adding(newer)
+    let last = try #require(newer.last)
+    let tip = try #require(graph.position(of: last.id))
+    let positions = try HistoryReplay.commits(in: graph, from: tip, range: .all)
+    return try HistoryReplay(
+        graph: graph,
+        tip: tip,
+        positions: positions,
+        messages: positions.map { messages[graph.id(at: $0)]! },
+        mainLineName: "main",
+        length: 10_000
+    )
+}
+
+@Suite(.timeLimit(.minutes(1)))
+struct ReplayHighlightsTests {
+    private var utc: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        return calendar
+    }
+
+    @Test func findsTheDaysAndTheBusiestOne() throws {
+        let highlights = try straightLine(atHours: [10, 23.5, 27.6, 33, 36, 64]).highlights(in: utc)
+        #expect(highlights.days.map(\.commits) == [2, 3, 1])
+        #expect(highlights.days.map(\.first) == [0, 2, 5])
+        #expect(highlights.days.map(\.number) == [1, 2, 3])
+        #expect(highlights.days[1].last == 4)
+        #expect(highlights.dayCount == 3)
+        #expect(highlights.busiestDay == 1)
+    }
+
+    @Test func countsDaysWithoutACommit() throws {
+        let highlights = try straightLine(atHours: [10, 11, 80]).highlights(in: utc)
+        #expect(highlights.days.map(\.number) == [1, 4])
+        #expect(highlights.dayCount == 4)
+    }
+
+    /// 3:36 in the morning belongs to the evening before.
+    @Test func findsTheLatestCommitPastMidnight() throws {
+        let highlights = try straightLine(atHours: [10, 23.5, 27.6, 33]).highlights(in: utc)
+        #expect(highlights.latestCommit == 2)
+        #expect(highlights.latestIsAtNight)
+        #expect(highlights.commitsByHour[3] == 1)
+        #expect(highlights.commitsByHour[10] == 1)
+    }
+
+    @Test func saysWhenTheLatestCommitWasNotAtNight() throws {
+        let highlights = try straightLine(atHours: [9, 12, 18.25]).highlights(in: utc)
+        #expect(highlights.latestCommit == 2)
+        #expect(!highlights.latestIsAtNight)
+    }
+
+    @Test func findsTheBiggestCommitOnceTheLinesAreCounted() throws {
+        var replay = try straightLine(atHours: [1, 2, 3])
+        #expect(replay.highlights(in: utc).biggestCommit == nil)
+        replay.countLines([
+            replay.commits[0].id: .init(added: 5, removed: 1),
+            replay.commits[1].id: .init(added: 10, removed: 90),
+            replay.commits[2].id: .init(added: 80, removed: 0),
+        ])
+        #expect(replay.highlights(in: utc).biggestCommit == 1)
+    }
+
+    @Test func findsTheLongestBranch() async throws {
+        let repository = try await Fixture.repository("replay")
+        let replay = try await makeReplay(of: "main", in: repository, graph: try openGraph(repository))
+        let highlights = replay.highlights(in: utc)
+        let branch = try #require(highlights.longestBranch)
+        #expect(branch != 0)
+        let counts = replay.branches.indices.map { index in replay.commits.count { $0.branch == index } }
+        #expect(highlights.longestBranchCommits == counts.dropFirst().max())
+        #expect(counts[branch] == highlights.longestBranchCommits)
+    }
+
+    @Test func pointsOutNothingThatDoesNotStandOut() throws {
+        let highlights = try straightLine(atHours: [1]).highlights(in: utc)
+        #expect(highlights.busiestDay == nil)
+        #expect(highlights.biggestCommit == nil)
+        #expect(highlights.longestBranch == nil)
+        #expect(highlights.dayCount == 1)
+    }
 }
 
 @Suite(.timeLimit(.minutes(1)))
@@ -290,6 +385,30 @@ struct HistoryReplayTests {
         #expect(Set(onlyA) == (try await revList("topic-a", "^main~8", in: repository)))
         let onlyB = walk.visited.filter(walk.isOnlyBehindSecond).map(graph.id(at:))
         #expect(Set(onlyB) == (try await revList("main~8", "^topic-a", in: repository)))
+    }
+
+    @Test func addsUpTheLinesOfEachCommitOnceTheyreCounted() async throws {
+        var replay = try await replay()
+        #expect(!replay.hasLineCounts)
+        #expect(replay.commits.allSatisfy { $0.linesSoFar == .init(added: 0, removed: 0) })
+
+        let merge = try #require(replay.commits.firstIndex { $0.isMerge })
+        replay.countLines([
+            replay.commits[0].id: .init(added: 10, removed: 0),
+            replay.commits[3].id: .init(added: 5, removed: 2),
+            replay.commits[merge + 1].id: .init(added: 1, removed: 7),
+        ])
+        #expect(replay.hasLineCounts)
+        #expect(replay.commits[0].lines == .init(added: 10, removed: 0))
+        #expect(replay.commits[1].lines == .init(added: 0, removed: 0))
+        #expect(replay.commits[2].linesSoFar == .init(added: 10, removed: 0))
+        #expect(replay.commits[3].linesSoFar == .init(added: 15, removed: 2))
+        #expect(replay.commits[merge].lines == .init(added: 0, removed: 0))
+        #expect(replay.commits.last?.linesSoFar == .init(added: 16, removed: 9))
+
+        // Fitting another length keeps them.
+        replay.fit(to: 20)
+        #expect(replay.commits.last?.linesSoFar == .init(added: 16, removed: 9))
     }
 
     @Test func readsTheForgesMergeMessages() {

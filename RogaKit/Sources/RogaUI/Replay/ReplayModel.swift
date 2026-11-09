@@ -5,6 +5,10 @@ import RepositoryEngine
 import SwiftUI
 import UniformTypeIdentifiers
 
+extension UserDefaults {
+    static let replayShowsHouseKey = "replayShowsHouse"
+}
+
 /// One replay in its window: which commits it covers, how long it plays, and
 /// the replay worked out from those.
 @Observable
@@ -34,10 +38,11 @@ final class ReplayModel {
         case failed(String)
     }
 
-    /// What's being saved, and how far along it is, from 0 to 1.
+    /// What's being saved, and how far along it is, from 0 to 1, or nil
+    /// while it waits for something it can't measure.
     struct Saving: Equatable {
         var title: String
-        var progress: Double
+        var progress: Double?
     }
 
     struct Tag: Hashable {
@@ -65,10 +70,28 @@ final class ReplayModel {
     private(set) var scope: Scope?
     private(set) var length = startingLength
     private(set) var saving: Saving?
+    /// Whether the window offers the house at all. While it doesn't, the house
+    /// stays out of playback and saved videos, whatever was last chosen, and
+    /// the choice is kept for when the button comes back.
+    static let offersHouse = false
+
+    /// Whether the house walks along the line, which stays as it was left.
+    var showsHouse = offersHouse && UserDefaults.standard.bool(forKey: UserDefaults.replayShowsHouseKey) {
+        didSet {
+            UserDefaults.standard.set(showsHouse, forKey: UserDefaults.replayShowsHouseKey)
+            guard case .ready(var map) = phase else { return }
+            map.showsHouse = showsHouse
+            phase = .ready(map)
+        }
+    }
+    /// Whether git is still counting the lines of the replay on screen, which
+    /// plays without them until they're in.
+    private(set) var isCountingLines = false
 
     private var replay: HistoryReplay?
     private var reducesMotion = false
     private var loading: Task<Void, Never>?
+    private var counting: Task<Void, Never>?
     private var save: Task<Void, Never>?
 
     init(session: RepositorySession, graph: CommitGraph, tip: CommitGraph.Position, branchName: String, tags: [Tag]) {
@@ -107,13 +130,14 @@ final class ReplayModel {
         guard var replay else { return }
         replay.fit(to: length)
         self.replay = replay
-        let map = MetroMap(replay: replay, repositoryName: repositoryName)
+        let map = MetroMap(replay: replay, repositoryName: repositoryName, showsHouse: showsHouse)
         phase = .ready(map)
         player.changeDuration(to: map.duration)
     }
 
     func stop() {
         loading?.cancel()
+        counting?.cancel()
         save?.cancel()
     }
 
@@ -130,9 +154,11 @@ final class ReplayModel {
     private func load() {
         guard let scope else { return }
         loading?.cancel()
+        counting?.cancel()
+        isCountingLines = false
         phase = .loading
         let range = range(for: scope)
-        loading = Task { [session, graph, tip, branchName, length, repositoryName] in
+        loading = Task { [session, graph, tip, branchName, length, repositoryName, showsHouse] in
             do {
                 let replay = try await session.replay(of: tip, in: graph, range: range, mainLineName: branchName, length: length)
                 guard !Task.isCancelled else { return }
@@ -141,9 +167,10 @@ final class ReplayModel {
                     phase = .nothing
                     return
                 }
-                let map = MetroMap(replay: replay, repositoryName: repositoryName)
+                let map = MetroMap(replay: replay, repositoryName: repositoryName, showsHouse: showsHouse)
                 phase = .ready(map)
                 player.load(duration: map.duration, reducesMotion: reducesMotion)
+                countLines(of: replay)
             } catch is CancellationError {
                 return
             } catch {
@@ -153,19 +180,51 @@ final class ReplayModel {
         }
     }
 
+    /// Has git count each commit's lines in the background, and puts them in
+    /// the picture once they're in, at the same place in the replay. A replay
+    /// that can't have them plays on without them.
+    private func countLines(of replay: HistoryReplay) {
+        isCountingLines = true
+        let commits = replay.commits.map(\.id)
+        counting = Task { [session, repositoryName] in
+            let counts = try? await session.lineCounts(of: commits)
+            guard !Task.isCancelled else { return }
+            isCountingLines = false
+            // The length can change while git counts, so the counts go into
+            // the replay as it is now.
+            guard let counts, var replay = self.replay else { return }
+            replay.countLines(counts)
+            self.replay = replay
+            let map = MetroMap(replay: replay, repositoryName: repositoryName, showsHouse: showsHouse)
+            phase = .ready(map)
+            player.moveEnd(to: map.duration)
+        }
+    }
+
     // MARK: - Saving
 
+    /// Waits for git to finish counting lines, so that what's saved has them.
+    private func waitForLineCounts() async throws {
+        guard isCountingLines else { return }
+        saving = Saving(title: "Counting Lines…", progress: nil)
+        while isCountingLines {
+            try await Task.sleep(for: .milliseconds(100))
+        }
+    }
+
     func saveVideo(colorScheme: ColorScheme) {
-        guard case .ready(let map) = phase, saving == nil else { return }
+        guard case .ready = phase, saving == nil else { return }
         pauseIfPlaying()
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.mpeg4Movie]
         panel.nameFieldStringValue = "\(repositoryName)-\(fileSafeBranch).mp4"
         save = Task {
             guard await panel.begin() == .OK, let url = panel.url else { return }
-            saving = Saving(title: "Saving Video…", progress: 0)
             defer { saving = nil }
             do {
+                try await waitForLineCounts()
+                guard case .ready(let map) = phase else { return }
+                saving = Saving(title: "Saving Video…", progress: 0)
                 try await ReplaySaving.writeVideo(of: map, colorScheme: colorScheme, to: url) { [weak self] progress in
                     self?.saving?.progress = progress
                 }
@@ -178,15 +237,20 @@ final class ReplayModel {
     }
 
     func saveImage(colorScheme: ColorScheme) {
-        guard case .ready(let map) = phase, saving == nil else { return }
+        guard case .ready = phase, saving == nil else { return }
         pauseIfPlaying()
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.png]
         panel.nameFieldStringValue = "\(repositoryName)-\(fileSafeBranch).png"
         save = Task {
             guard await panel.begin() == .OK, let url = panel.url else { return }
+            defer { saving = nil }
             do {
+                try await waitForLineCounts()
+                guard case .ready(let map) = phase else { return }
                 try ReplaySaving.writeImage(of: map, colorScheme: colorScheme, to: url)
+            } catch is CancellationError {
+                return
             } catch {
                 showAlert("Couldn't save the image", error)
             }
@@ -243,6 +307,7 @@ struct ReplayView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .ready(let map):
             ReplayPlayerView(picture: map, player: model.player) {
+                if ReplayModel.offersHouse { houseToggle }
                 rangePicker.fixedSize()
                 lengthPicker.fixedSize()
                 Button("Save Video…") { model.saveVideo(colorScheme: colorScheme) }
@@ -254,6 +319,17 @@ struct ReplayView: View {
             }
             .disabled(model.saving != nil)
         }
+    }
+
+    private var houseToggle: some View {
+        Toggle(isOn: Binding(get: { model.showsHouse }, set: { model.showsHouse = $0 })) {
+            // White on the accent color that a button that's on is filled with.
+            HouseFigure(pose: .mark, color: model.showsHouse ? .white : .secondary)
+                .frame(width: 18, height: 16)
+        }
+        .toggleStyle(.button)
+        .help(model.showsHouse ? "Hide the House" : "Show the House Walking the Line")
+        .accessibilityLabel("Show the house walking the line")
     }
 
     private var rangePicker: some View {
