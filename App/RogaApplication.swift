@@ -13,7 +13,10 @@ struct RogaApplication: App {
     /// The git every window uses, which Roga finds once at launch.
     @State private var gitProvider = GitProvider()
     /// The repositories in the sidebar, which every window lists.
-    @State private var repositories = RepositoryList()
+    @State private var repositories: RepositoryList
+    /// Setup, which every window shows the first time Roga runs, in place
+    /// of the sidebar and a worktree.
+    @State private var setup: SetupModel
     /// Settings asked for with no window open, which the next window shows.
     @State private var settingsRequest = SettingsRequest()
     /// The agents' command-line tools, which every window uses, and which
@@ -28,6 +31,11 @@ struct RogaApplication: App {
         let updates = Updates()
         _updates = State(initialValue: updates)
         sparkle = SparkleUpdates(updates: updates)
+        let repositories = RepositoryList()
+        _repositories = State(initialValue: repositories)
+        // Anyone with repositories in the sidebar was using Roga before
+        // setup existed, and doesn't see it.
+        _setup = State(initialValue: SetupModel(hasRepositories: !repositories.repositories.isEmpty))
         // Before any window shows, so that a dark theme never starts light.
         AppTheme.applyStored()
     }
@@ -43,6 +51,7 @@ struct RogaApplication: App {
                 .environment(agents)
                 .environment(agentMonitor)
                 .environment(updates)
+                .environment(setup)
         }
         // Wide enough for the sidebar, the refs panel and the panels between
         // them.

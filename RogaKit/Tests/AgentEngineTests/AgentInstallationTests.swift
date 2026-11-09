@@ -63,6 +63,68 @@ struct AgentInstallationTests {
         #expect(installation.executable == first + "/codex")
     }
 
+    // MARK: Every copy
+
+    func survey(_ kind: AgentKind, searchPath: [String], wellKnown: [String] = []) async -> AgentSurvey {
+        await AgentInstallation.survey(
+            kind,
+            searchPath: searchPath.joined(separator: ":"),
+            programs: FakeAgent.programs,
+            home: "/nonexistent-home",
+            wellKnown: wellKnown,
+            timeLimit: .seconds(5)
+        )
+    }
+
+    @Test func theSurveyListsEveryCopyAndWhyRogaCantUseSome() async throws {
+        let old = try FakeAgent.folder(with: "claude", printing: "2.1.100 (Claude Code)")
+        let first = try FakeAgent.folder(with: "claude", printing: "2.1.286 (Claude Code)")
+        let silent = try FakeAgent.folder()
+        try FakeAgent.script("exit 0", named: "claude", in: silent)
+        let elsewhere = try FakeAgent.folder(with: "claude", printing: "2.1.318 (Claude Code)")
+        let survey = await survey(.claude, searchPath: [old, first, FakeAgent.path(silent)], wellKnown: [elsewhere + "/claude"])
+
+        #expect(survey.kind == .claude)
+        #expect(survey.copies.map(\.executable) == [old + "/claude", first + "/claude", FakeAgent.path(silent) + "/claude", elsewhere + "/claude"])
+        #expect(survey.copies.map(\.isUsable) == [false, true, false, true])
+        // A copy that's too old still says which version it is.
+        #expect(survey.copies[0].version == AgentVersion(major: 2, minor: 1, patch: 100))
+        #expect(survey.copies[0].skipped?.reason == .tooOld(AgentVersion(major: 2, minor: 1, patch: 100)))
+        #expect(survey.copies[2].version == nil)
+        #expect(survey.usable.map(\.executable) == [first + "/claude", elsewhere + "/claude"])
+        #expect(survey.skipped.map(\.executable) == [old + "/claude", FakeAgent.path(silent) + "/claude"])
+        #expect(survey.recommended?.executable == first + "/claude")
+        // A terminal runs the first one, whether or not Roga can use it.
+        #expect(survey.firstInPath == old + "/claude")
+        #expect(survey.searchPath == [old, first, FakeAgent.path(silent)].joined(separator: ":"))
+    }
+
+    @Test func theSurveyRecommendsTheCopyLocateFinds() async throws {
+        let homebrew = try FakeAgent.folder(with: "codex", printing: "codex-cli 0.137.0")
+        let release = try FakeAgent.folder(with: "codex", printing: "codex-cli 0.166.0")
+        let app = try FakeAgent.folder(with: "codex", printing: "codex-cli 0.166.0-alpha.6")
+        let survey = await survey(.codex, searchPath: [homebrew], wellKnown: [app + "/codex", release + "/codex"])
+        // The newest, not the first, and a release before its prerelease.
+        #expect(survey.recommended?.executable == release + "/codex")
+        #expect(survey.firstInPath == homebrew + "/codex")
+        #expect(survey.lookup == (await locate(.codex, searchPath: [homebrew], wellKnown: [app + "/codex", release + "/codex"])))
+    }
+
+    @Test func aSurveyOfNothingComesToNotFoundAndOneOfUnusableCopiesSaysWhy() async throws {
+        let empty = try FakeAgent.folder()
+        let none = await survey(.codex, searchPath: [FakeAgent.path(empty)])
+        #expect(none.copies.isEmpty)
+        #expect(none.recommended == nil)
+        #expect(none.lookup == .notFound)
+
+        let old = try FakeAgent.folder(with: "codex", printing: "codex-cli 0.100.0")
+        let onlyOld = await survey(.codex, searchPath: [old])
+        #expect(onlyOld.recommended == nil)
+        #expect(onlyOld.lookup == .unusable([
+            SkippedAgent(kind: .codex, executable: old + "/codex", reason: .tooOld(AgentVersion(major: 0, minor: 100))),
+        ]))
+    }
+
     @Test func searchesTheWellKnownPathsAfterThePath() async throws {
         let onPath = try FakeAgent.folder(with: "claude", printing: "2.1.200 (Claude Code)")
         let wellKnown = try FakeAgent.folder(with: "claude", printing: "2.1.300 (Claude Code)")

@@ -13,6 +13,10 @@ struct CommandBlock: View {
     /// Generate's, which the Settings boards draw in a smaller font with less
     /// room around it. Dialogs and Settings use the full size.
     var isCompact = false
+    /// A font size of its own, for a block in a column narrow enough that
+    /// the commands it usually shows would each wrap by a few letters at the
+    /// compact size, as on setup's screens.
+    var fontSize: CGFloat?
     @State private var isCopied = false
     @State private var clearing: Task<Void, Never>?
 
@@ -35,8 +39,15 @@ struct CommandBlock: View {
     /// wrap it onto several lines. Git's blocks keep the tighter lines they had.
     private var lineGap: (between: CGFloat, wrapped: CGFloat) {
         guard lines.contains(where: \.isProgram) else { return (2, 0) }
-        let gap = isCompact ? Self.compactLineGap : Self.boardLineGap
+        let gap = fontSize.map(Self.lineGap(forFontSize:)) ?? (isCompact ? Self.compactLineGap : Self.boardLineGap)
         return (gap, gap)
+    }
+
+    /// The room to add between lines so that they're 1.6 times a font's
+    /// size apart.
+    private static func lineGap(forFontSize size: CGFloat) -> CGFloat {
+        let font = NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
+        return max(0, size * 1.6 - NSLayoutManager().defaultLineHeight(for: font))
     }
 
     private static let boardLineGap: CGFloat = {
@@ -73,7 +84,7 @@ struct CommandBlock: View {
             }
             .scrollBounceBehavior(.basedOnSize)
         }
-        .font(.system(size: isCompact ? Self.compactFontSize : 12, design: .monospaced))
+        .font(.system(size: fontSize ?? (isCompact ? Self.compactFontSize : 12), design: .monospaced))
         .overlay(alignment: .topTrailing) {
             Button(action: copy) {
                 (isCopied ? Icon.check : Icon.copy).image

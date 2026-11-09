@@ -63,6 +63,7 @@ enum SettingsGroup: CaseIterable {
     case interface
     case motion
     case lists
+    case installation
     case fetching
     case generate
     case commandLineAgents
@@ -76,6 +77,7 @@ enum SettingsGroup: CaseIterable {
         case .interface: "Interface"
         case .motion: "Motion"
         case .lists: "Lists"
+        case .installation: "Installation"
         case .fetching: "Fetching"
         case .generate: "Generate messages with an agent"
         case .commandLineAgents: "Command-line agents"
@@ -88,7 +90,7 @@ enum SettingsGroup: CaseIterable {
         switch self {
         case .openIn, .updates: .general
         case .interface, .motion, .lists: .appearance
-        case .fetching: .git
+        case .installation, .fetching: .git
         case .generate: .commit
         case .commandLineAgents, .workingStatus: .agents
         case .largeRepositories: .advanced
@@ -100,6 +102,8 @@ enum SettingsGroup: CaseIterable {
         switch self {
         case .openIn:
             "Roga lists the terminals it finds on this Mac that can open a folder."
+        case .installation:
+            "Roga uses the first Git \(SetupWords.minimumGit) or newer in your login shell's PATH, unless you pick another from the menu."
         case .commandLineAgents:
             "Roga looks for these in your login shell's PATH, the way it finds git. Generating a commit message runs one on this Mac with its tools off."
         case .workingStatus:
@@ -132,6 +136,7 @@ enum SettingsItem: CaseIterable {
     case fileLayout
     case refsSort
     case foldsDescriptions
+    case gitProgram
     case fetchesByItself
     case showsGenerateButton
     case generateAgent
@@ -153,6 +158,7 @@ enum SettingsItem: CaseIterable {
         case .theme: .interface
         case .animationSpeed: .motion
         case .fileLayout, .refsSort, .foldsDescriptions: .lists
+        case .gitProgram: .installation
         case .fetchesByItself: .fetching
         case .showsGenerateButton, .generateAgent, .generateModel, .generateEffort, .matchesStyle, .instructions, .generateCommand: .generate
         case .agentList: .commandLineAgents
@@ -171,6 +177,7 @@ enum SettingsItem: CaseIterable {
         case .fileLayout: "Show files as"
         case .refsSort: "Sort branches by"
         case .foldsDescriptions: "Fold commit descriptions"
+        case .gitProgram: "Git"
         case .fetchesByItself: "Fetch when Roga becomes active"
         case .showsGenerateButton: "Show the Generate button"
         case .generateAgent: "Agent"
@@ -217,7 +224,7 @@ enum SettingsItem: CaseIterable {
             "It runs in the worktree's folder with its tools, hooks, plugins and MCP servers off, and without the repository's own agent settings, so it can't change anything. Agents are set up on the Agents page."
         case .showsMarks:
             "Marks each worktree an agent is working in, waiting in, or has finished in."
-        case .theme, .generateEffort, .instructions, .agentList, .hooks, .marksLegend:
+        case .theme, .gitProgram, .generateEffort, .instructions, .agentList, .hooks, .marksLegend:
             ""
         case .keepsCommitGraphCurrent:
             "Roga runs git commit-graph write in the background, so that large repositories open quickly. It writes to each repository's objects folder and never changes your git configuration."
@@ -231,6 +238,7 @@ enum SettingsItem: CaseIterable {
         case .checksForUpdates: ["Sparkle", "version"]
         case .downloadsUpdates: ["install", "Restart to Update", "version"]
         case .theme: AppTheme.allCases.map(\.title) + ["Dark mode", "Light mode"]
+        case .gitProgram: ["Look Again", "Choose Another", "program", "version", "PATH", "Xcode", "Command Line Tools", "Homebrew"]
         case .instructions: ["Reset to Roga's", "prompt"]
         case .agentList: ["Look Again", "Use", "program", "PATH"]
         case .hooks: ["Install", "Remove", "roga-hooks", "plugin", "Claude Code", "Codex"]
@@ -299,6 +307,9 @@ struct SettingsSheet: View {
         .frame(width: Self.size.width, height: Self.size.height)
         .background(SettingsColors.surface)
         .font(.system(size: 13))
+        // The menus of git's row and of an agent's program open over the
+        // whole sheet.
+        .programMenus()
         .presentationSizing(.fitted)
         .onChange(of: theme) { _, theme in
             theme.apply()
@@ -419,6 +430,8 @@ struct SettingsSheet: View {
         switch group {
         case .openIn, .updates:
             GeneralSection(group: group, items: items, namesPage: namesPage)
+        case .installation:
+            GitProgramSection(items: items, namesPage: namesPage)
         case .generate:
             CommitSection(items: items, namesPage: namesPage, show: show)
         case .commandLineAgents:
@@ -464,9 +477,9 @@ struct SettingsSheet: View {
             case .keepsCommitGraphCurrent:
                 Toggle(item.title, isOn: $keepsCommitGraphCurrent)
                     .toggleStyle(.settings)
-            case .terminal, .checksForUpdates, .downloadsUpdates, .showsGenerateButton, .generateAgent, .generateModel,
+            case .terminal, .checksForUpdates, .downloadsUpdates, .gitProgram, .showsGenerateButton, .generateAgent, .generateModel,
                  .generateEffort, .matchesStyle, .instructions, .generateCommand, .agentList, .hooks, .showsMarks, .marksLegend:
-                // The General, Commit and Agents pages draw their own.
+                // The General, Git, Commit and Agents pages draw their own.
                 EmptyView()
             }
         }

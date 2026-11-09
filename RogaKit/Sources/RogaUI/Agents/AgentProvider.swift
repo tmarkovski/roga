@@ -55,6 +55,10 @@ public final class AgentProvider {
     /// What looking for each agent came to. An agent is absent while Roga is
     /// still looking for it.
     private(set) var lookups: [AgentKind: AgentLookup] = [:]
+    /// Every copy of each agent that Roga found, which setup and Settings
+    /// list. An agent is absent until Roga has looked for it once, and what
+    /// it found stays while it looks again.
+    private(set) var surveys: [AgentKind: AgentSurvey] = [:]
     /// What's chosen for each agent, kept current as UserDefaults changes.
     private(set) var settings: [AgentKind: AgentSettings]
     /// The model Codex uses by default, from the top of its `config.toml`,
@@ -230,10 +234,18 @@ public final class AgentProvider {
             let wellKnown = wellKnown.map { $0[kind] ?? [] }
             let codexConfiguration = kind == .codex ? installer.map(Self.codexConfigurationFile) : nil
             Task {
-                let lookup = await AgentInstallation.locate(kind, configuredPath: program, searchPath: searchPath, programs: programs, wellKnown: wellKnown)
+                // Every copy is asked for its version, so that the menus can
+                // list them, and the one Roga runs comes out of that list
+                // unless someone chose a program that isn't on it.
+                let survey = await AgentInstallation.survey(kind, searchPath: searchPath, programs: programs, wellKnown: wellKnown)
+                var lookup = Self.lookup(kind, program: program, in: survey)
+                if lookup == nil {
+                    lookup = await AgentInstallation.locate(kind, configuredPath: program, searchPath: searchPath, programs: programs, wellKnown: wellKnown)
+                }
                 var text: String?
                 if let codexConfiguration { text = await Self.read(codexConfiguration) }
                 guard lookGeneration[kind] == generation else { return }
+                surveys[kind] = survey
                 lookups[kind] = lookup
                 if kind == .codex {
                     codexDefaultModel = text.flatMap(Self.codexDefaultModel(inConfiguration:))
@@ -323,7 +335,30 @@ public final class AgentProvider {
         guard read != settings else { return }
         let changedPrograms = AgentKind.allCases.filter { read[$0]?.program != settings[$0]?.program }
         settings = read
-        look(for: changedPrograms)
+        for kind in changedPrograms {
+            // A copy Roga already asked for its version needs no new look,
+            // so choosing one from a menu shows at once.
+            if let survey = surveys[kind], let lookup = Self.lookup(kind, program: read[kind]?.program, in: survey) {
+                lookGeneration[kind, default: 0] += 1
+                pathIsShown = [:]
+                lookups[kind] = lookup
+                refreshHookStatus(kind)
+            } else {
+                look(for: [kind])
+            }
+        }
+    }
+
+    /// What looking for an agent comes to, from the copies Roga already
+    /// asked: the one Roga would pick when nobody chose a program, and the
+    /// chosen one when it's among them. It's nil for a chosen program that
+    /// isn't, which has to be asked for its version.
+    nonisolated static func lookup(_ kind: AgentKind, program: String?, in survey: AgentSurvey) -> AgentLookup? {
+        guard let program else { return survey.lookup }
+        guard let copy = survey.copies.first(where: { $0.executable == program }) else { return nil }
+        if let skipped = copy.skipped { return .configuredUnusable(skipped) }
+        guard let version = copy.version else { return nil }
+        return .found(AgentInstallation(kind: kind, executable: program, version: version))
     }
 
     private static func readSettings(from defaults: UserDefaults) -> [AgentKind: AgentSettings] {
@@ -486,12 +521,14 @@ public final class AgentProvider {
     /// without finding or running anything.
     func setStateForTests(
         lookups: [AgentKind: AgentLookup]? = nil,
+        surveys: [AgentKind: AgentSurvey]? = nil,
         hookStatus: [AgentKind: HookStatus]? = nil,
         hookWork: [AgentKind: HookWork]? = nil,
         codexDefaultModel: String?? = nil,
         programs: Programs?? = nil
     ) {
         if let lookups { self.lookups = lookups }
+        if let surveys { self.surveys = surveys }
         if let hookStatus { self.hookStatus = hookStatus }
         if let hookWork { self.hookWork = hookWork }
         if let codexDefaultModel { self.codexDefaultModel = codexDefaultModel }

@@ -26,6 +26,7 @@ public enum Icon: String, CaseIterable, Sendable {
     case chevronLeft = "chevron-left"
     case chevronRight = "chevron-right"
     case chevronUp = "chevron-up"
+    case chevronsUpDown = "chevrons-up-down"
     case circleAlert = "circle-alert"
     case circleArrowRight = "circle-arrow-right"
     case circleArrowUp = "circle-arrow-up"
