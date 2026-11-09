@@ -182,9 +182,9 @@ struct RefsPanel: View {
         }
     }
 
-    /// A section, unless a filter left it with nothing to show.
+    /// A section, unless it has nothing to show and no reason to stay.
     @ViewBuilder private func section<Rows: View>(_ section: RefsModel.Section, count: Int, add: (() -> Void)? = nil, @ViewBuilder rows: () -> Rows) -> some View {
-        if refs.filter.isEmpty || count > 0 {
+        if section.isShown(count: count, isFiltering: !refs.filter.isEmpty) {
             let isCollapsed = isCollapsed(section)
             // Each section is a stack of its own, so that remotes and tags,
             // the sections that can have thousands of rows, have rows of one
