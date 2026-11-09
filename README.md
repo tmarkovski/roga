@@ -1,8 +1,4 @@
-<p align="center">
-  <img src="docs/design/branding/roga-mark.svg" width="96" height="96" alt="The Roga house on chicken legs">
-</p>
-
-<h1 align="center">Roga</h1>
+<h1 align="center"><img src="docs/design/branding/roga-mark.svg" width="96" height="96" alt=""><br>Roga</h1>
 
 <p align="center">
   <strong>Rather Opinionated Git App</strong><br>
