@@ -30,7 +30,14 @@ struct ChildProcessTests {
         let utility = try await running(at: .utility)
         let normal = try await running(at: .normal)
         #expect(background < utility)
-        #expect(utility < normal)
+        // A command at normal priority runs at the priority of whatever
+        // started it. That's above utility when the tests run from a terminal
+        // or Xcode. A CI runner's jobs run at utility already, 20 in ps, so
+        // there the two are the same.
+        #expect(utility <= normal)
+        if normal > 20 {
+            #expect(utility < normal)
+        }
     }
 
     @Test func reportsExitStatus() async throws {
