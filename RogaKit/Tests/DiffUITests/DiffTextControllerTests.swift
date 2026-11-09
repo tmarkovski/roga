@@ -76,8 +76,8 @@ struct DiffTextControllerTests {
     }
 
     /// While an agent works on a file's conflicts, each one in view has what its
-    /// owner made around it, from its band to its last side, in the text view so
-    /// that it scrolls with the text (decision 65).
+    /// owner made around the whole section, from its band to its last side and
+    /// from the line numbers to the far edge (decision 65).
     @Test func putsAnOutlineAroundEachConflictWhileAnAgentWorks() throws {
         let sides = ConflictSides(
             ours: .init(name: "main", detail: "a", keepTitle: "Keep main's", keptTitle: "Kept main's"),
@@ -89,19 +89,23 @@ struct DiffTextControllerTests {
         controller.view.layoutSubtreeIfNeeded()
         controller.show(DiffTextBuilder.build(file, choices: [:], sides: sides))
         let textView = text(of: controller)
-        let others = textView.subviews.count
+        let others = controller.view.subviews.count
 
         final class Outline: NSView {}
         controller.makeConflictOutline = { Outline() }
-        let outlines = textView.subviews.compactMap { $0 as? Outline }
+        let outlines = controller.view.subviews.compactMap { $0 as? Outline }
         #expect(outlines.count == 1)
         let outline = try #require(outlines.first)
         #expect(!outline.isHidden)
         #expect(outline.frame.height == 5 * DiffStyle.lineHeight)
-        #expect(outline.frame.minY == textView.textContainerOrigin.y + DiffStyle.lineHeight)
+        #expect(controller.view.convert(outline.frame, to: textView).minY == textView.textContainerOrigin.y + DiffStyle.lineHeight)
+        #expect(outline.frame.minX == DiffTextController.outlineInset)
+        #expect(outline.frame.maxX == controller.view.bounds.width - DiffTextController.outlineInset)
+        // The text starts after the line numbers, which the outline has to go around.
+        #expect(outline.frame.minX < controller.scrollView.frame.minX)
 
         controller.makeConflictOutline = nil
-        #expect(textView.subviews.count == others)
+        #expect(controller.view.subviews.count == others)
     }
 
     @Test func goesBackToADocumentItShowedBefore() throws {

@@ -91,23 +91,8 @@ struct DiffPanel: View {
                 // is what's next, so it's orange, as a button that runs now is.
                 let isNext = group == .conflicted && selection.shown?.conflicts?.left == 0 && selection.shown?.file.path == file.path
                 Button(group.stageTitle) { changes.toggle(file, in: group) }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 12, weight: isNext ? .medium : .regular))
-                    .foregroundStyle(isNext ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
-                    .padding(.horizontal, 8)
-                    .frame(height: 24)
-                    .background {
-                        if isNext {
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(Palette.actionFill)
-                        } else {
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .strokeBorder(Palette.separator)
-                        }
-                    }
-                    .contentShape(Rectangle())
+                    .buttonStyle(OutlinedButtonStyle(height: 24, cornerRadius: 6, isNext: isNext))
                     .help("\(group.stageTitle) (\(RepositoryCommands.stageShortcut.symbols))")
-                    .fixedSize()
             }
             if selection.isFindShown, hasRoomForMatchButtons {
                 Button("Previous Match", icon: .chevronUp, action: selection.findPrevious)
@@ -477,22 +462,14 @@ private struct AgentNote: View {
 
     private func noteButton(_ title: String, action: @escaping () -> Void) -> some View {
         Button(title, action: action)
-            .buttonStyle(.plain)
-            .font(.system(size: 12))
-            .padding(.horizontal, 8)
-            .frame(height: 22)
-            .background {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .strokeBorder(Palette.separator)
-            }
-            .contentShape(Rectangle())
-            .fixedSize()
+            .buttonStyle(.outlined)
     }
 
+    /// As tall as the button beside it.
     private var closeButton: some View {
         Button("Close", icon: .x) { close() }
             .labelStyle(.iconOnly)
-            .buttonStyle(.icon)
+            .buttonStyle(.icon(size: 22))
             .help("Close")
     }
 }

@@ -123,15 +123,7 @@ struct CommitBox: View {
                 Spacer(minLength: 4)
                 if composer.canSkipHooks {
                     Button("Skip Hooks") { composer.commit(skippingHooks: true) }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 12))
-                        .padding(.horizontal, 10)
-                        .frame(height: 26)
-                        .background {
-                            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                .strokeBorder(Palette.separator)
-                        }
-                        .contentShape(Rectangle())
+                        .buttonStyle(OutlinedButtonStyle(height: 26, horizontalPadding: 10))
                         .help("git commit --no-verify")
                 }
                 primaryButton

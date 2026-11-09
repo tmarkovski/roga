@@ -315,6 +315,67 @@ extension ButtonStyle where Self == IconButtonStyle {
     static func icon(isOn: Bool) -> IconButtonStyle { IconButtonStyle(isOn: isOn) }
 }
 
+/// A word in a thin outline that fills with gray while the pointer is over it,
+/// as an icon button does, for commands beside the words they're about.
+struct OutlinedButtonStyle: ButtonStyle {
+    var height: CGFloat = 22
+    /// The same as the corners of the icon button of the usual height beside it.
+    var cornerRadius: CGFloat = 7
+    var horizontalPadding: CGFloat = 8
+    /// Whether it's what comes next, which fills it with the brand's orange.
+    var isNext = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        HoverOutline(style: self, isPressed: configuration.isPressed) {
+            configuration.label
+        }
+    }
+}
+
+extension ButtonStyle where Self == OutlinedButtonStyle {
+    static var outlined: OutlinedButtonStyle { OutlinedButtonStyle() }
+}
+
+private struct HoverOutline<Label: View>: View {
+    let style: OutlinedButtonStyle
+    let isPressed: Bool
+    @ViewBuilder var label: Label
+    @State private var isHovering = false
+    @Environment(\.isEnabled) private var isEnabled
+
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous)
+    }
+
+    /// On orange, gray wouldn't show, so white lightens it instead.
+    private var fill: Color {
+        if style.isNext {
+            return isPressed ? .white.opacity(0.22) : isHovering ? .white.opacity(0.12) : .clear
+        }
+        return isPressed ? Palette.selection : isHovering ? Palette.hover : .clear
+    }
+
+    var body: some View {
+        label
+            .font(.system(size: 12, weight: style.isNext ? .medium : .regular))
+            .foregroundStyle(style.isNext ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+            .padding(.horizontal, style.horizontalPadding)
+            .frame(height: style.height)
+            .background { shape.fill(fill) }
+            .background {
+                if style.isNext {
+                    shape.fill(Palette.actionFill)
+                } else {
+                    shape.strokeBorder(Palette.separator)
+                }
+            }
+            .contentShape(Rectangle())
+            .opacity(isEnabled ? 1 : 0.4)
+            .onHover { isHovering = $0 && isEnabled }
+            .fixedSize()
+    }
+}
+
 /// The small chevron that says whether what's under it shows, at the size and
 /// weight of the one on the branch's chip. It turns a quarter of the way around
 /// between its two directions. The animation goes no further than the chevron,

@@ -47,6 +47,9 @@ public final class DiffTextController: NSObject {
 
     /// The space above and below the text.
     private static let inset: CGFloat = 4
+    /// How far a conflict's outline stays from the view's sides, so that the
+    /// light's glow isn't cut off along them.
+    static let outlineInset: CGFloat = 2
 
     override public init() {
         // Made this way, it uses TextKit 1, and it doesn't own its text system.
@@ -240,9 +243,9 @@ public final class DiffTextController: NSObject {
         }
     }
 
-    /// Puts an outline around each unresolved conflict in view. They're in the text
-    /// view so that they scroll with the text and the clip view cuts them off, and
-    /// as wide as what shows of it, so that the sides are always in sight.
+    /// Puts an outline around each unresolved conflict in view: the whole section,
+    /// line numbers included, as wide as the view whichever way the text is
+    /// scrolled sideways, and cut off where it runs past the view's top or bottom.
     private func updateConflictOutlines() {
         guard let make = makeConflictOutline, let document else {
             conflictOutlines.forEach { $0.isHidden = true }
@@ -255,7 +258,8 @@ public final class DiffTextController: NSObject {
         let blocks = document.unresolvedConflictRows.filter { $0.upperBound > firstRow && $0.lowerBound <= lastRow }
         while conflictOutlines.count < blocks.count {
             let outline = make()
-            textView.addSubview(outline)
+            // Under the bars and the hunk's button, which it mustn't draw across.
+            sides.addSubview(outline, positioned: .above, relativeTo: scrollView)
             conflictOutlines.append(outline)
         }
         for (index, outline) in conflictOutlines.enumerated() {
@@ -264,12 +268,11 @@ public final class DiffTextController: NSObject {
                 continue
             }
             let rows = blocks[index]
-            outline.frame = NSRect(
-                x: shown.minX + 3,
-                y: origin + CGFloat(rows.lowerBound) * DiffStyle.lineHeight,
-                width: max(shown.width - 6, 0),
-                height: CGFloat(rows.count) * DiffStyle.lineHeight
+            let block = view.convert(
+                NSRect(x: 0, y: origin + CGFloat(rows.lowerBound) * DiffStyle.lineHeight, width: 1, height: CGFloat(rows.count) * DiffStyle.lineHeight),
+                from: textView
             )
+            outline.frame = NSRect(x: Self.outlineInset, y: block.minY, width: max(view.bounds.width - 2 * Self.outlineInset, 0), height: block.height)
             outline.isHidden = false
         }
     }
