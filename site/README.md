@@ -44,3 +44,5 @@ Two settings on the `roga.sh` zone can't be set from this repository, and both a
 ## The images
 
 `favicon.svg` is the mark from [`docs/design/branding`](../docs/design/branding), and the PNGs were rendered from the same artwork. `index.html` holds its own copies of the house's body and the wordmark, and `house.js` holds the walk from `RogaKit/Sources/RogaUI/House/`. Nothing keeps these in step automatically.
+
+`public/shots/` holds screenshots of a real build of Roga, in light and dark, pointed at made-up repositories so that nobody's real work appears. The agents in them come from real hook events sent to that build. They're WebP files at twice the size they're shown, and they need retaking when the window has changed enough to look out of date.
