@@ -54,7 +54,14 @@ jobs:
 
       - run: git version
       - run: swift build --package-path RogaKit --build-tests
-      - run: swift test --package-path RogaKit --skip-build
+
+      # A few tests at a time, as many as the runner has cores, for the reason
+      # release.yml gives beside its own tests.
+      - name: Run the tests
+        run: |
+          export SWT_EXPERIMENTAL_MAXIMUM_PARALLELIZATION_WIDTH="$(sysctl -n hw.ncpu)"
+          echo "Running $SWT_EXPERIMENTAL_MAXIMUM_PARALLELIZATION_WIDTH tests at a time."
+          swift test --package-path RogaKit --skip-build
 
   app:
     name: App
