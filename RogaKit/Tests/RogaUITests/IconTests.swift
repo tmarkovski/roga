@@ -49,13 +49,14 @@ struct IconTests {
         }
         let narrowest = try #require(icons.keys.min())
         let widest = try #require(icons.keys.max())
-        // A failure names some icons of each width, and the display's scale,
-        // since the widths have differed on a CI runner.
+        // On a display at 2x they come out 15 or 16 points wide. At 1x, which
+        // is what a CI runner has, they come out 14, 15 or 16. A failure names
+        // some icons of each width.
+        let scale = NSScreen.main?.backingScaleFactor ?? 1
         let found = icons.sorted { $0.key < $1.key }
             .map { "\($0.key): \($0.value.prefix(6).joined(separator: ", "))" }
             .joined(separator: "; ")
-        let scale = NSScreen.main.map { "\($0.backingScaleFactor)" } ?? "no"
-        #expect(widest - narrowest <= 1, "\(found), with \(scale) display scale")
+        #expect(widest - narrowest <= (scale < 2 ? 2 : 1), "\(found), on a display at \(scale)x")
     }
 
     @Test func aLargerPointSizeDrawsALargerIcon() throws {

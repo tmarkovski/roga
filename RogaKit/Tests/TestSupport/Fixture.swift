@@ -107,7 +107,30 @@ public enum Fixture {
             let message = String(decoding: errors.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
             throw FixtureError(description: "\(name).sh exited with status \(status): \(message)")
         }
+        try refusePushes(in: folder)
         return folder
+    }
+
+    /// Has every repository of a fixture refuse a push. A test that clones a
+    /// fixture has it as `origin`, and a branch pushed there would be in every
+    /// clone made after it, so tests would pass or fail by the order they ran
+    /// in. A test that pushes needs a bare clone of the fixture to push to.
+    private static func refusePushes(in folder: String) throws {
+        let files = FileManager.default
+        let inside = try files.contentsOfDirectory(atPath: folder).map { folder + "/" + $0 }
+        for repository in [folder] + inside where files.fileExists(atPath: repository + "/.git/HEAD") {
+            let hooks = repository + "/.git/hooks"
+            try files.createDirectory(atPath: hooks, withIntermediateDirectories: true)
+            let hook = hooks + "/pre-receive"
+            let script = """
+                #!/bin/sh
+                echo "Tests share this fixture, so they mustn't push to it. Push to a bare clone of it." >&2
+                exit 1
+
+                """
+            try script.write(toFile: hook, atomically: true, encoding: .utf8)
+            try files.setAttributes([.posixPermissions: 0o755], ofItemAtPath: hook)
+        }
     }
 }
 

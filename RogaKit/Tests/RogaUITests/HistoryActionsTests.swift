@@ -486,6 +486,10 @@ struct HistoryActionsTests {
 
     @Test func aBranchThatsNeverBeenPushedGetsAnUpstream() async throws {
         let work = try await worktree()
+        // A remote of its own to push to, since every test clones the fixture.
+        let remote = try makeTemporaryFolder() + "/remote.git"
+        try await git("clone", "--quiet", "--bare", "--no-local", try await Fixture.repository("basic"), remote, in: work.path)
+        try await git("remote", "set-url", "origin", remote, in: work.path)
         try await git("branch", "--quiet", "other", addTheApp.hex, in: work.path)
         await changedBehindItsBack(work)
         work.branch.push(branch: "refs/heads/other", upstream: nil)
