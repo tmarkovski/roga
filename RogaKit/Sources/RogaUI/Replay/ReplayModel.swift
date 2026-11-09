@@ -70,8 +70,13 @@ final class ReplayModel {
     private(set) var scope: Scope?
     private(set) var length = startingLength
     private(set) var saving: Saving?
+    /// Whether the window offers the house at all. While it doesn't, the house
+    /// stays out of playback and saved videos, whatever was last chosen, and
+    /// the choice is kept for when the button comes back.
+    static let offersHouse = false
+
     /// Whether the house walks along the line, which stays as it was left.
-    var showsHouse = UserDefaults.standard.bool(forKey: UserDefaults.replayShowsHouseKey) {
+    var showsHouse = offersHouse && UserDefaults.standard.bool(forKey: UserDefaults.replayShowsHouseKey) {
         didSet {
             UserDefaults.standard.set(showsHouse, forKey: UserDefaults.replayShowsHouseKey)
             guard case .ready(var map) = phase else { return }
@@ -302,7 +307,7 @@ struct ReplayView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .ready(let map):
             ReplayPlayerView(picture: map, player: model.player) {
-                houseToggle
+                if ReplayModel.offersHouse { houseToggle }
                 rangePicker.fixedSize()
                 lengthPicker.fixedSize()
                 Button("Save Video…") { model.saveVideo(colorScheme: colorScheme) }
