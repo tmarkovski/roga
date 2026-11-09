@@ -292,6 +292,30 @@ struct HistoryReplayTests {
         #expect(Set(onlyB) == (try await revList("main~8", "^topic-a", in: repository)))
     }
 
+    @Test func addsUpTheLinesOfEachCommitOnceTheyreCounted() async throws {
+        var replay = try await replay()
+        #expect(!replay.hasLineCounts)
+        #expect(replay.commits.allSatisfy { $0.linesSoFar == .init(added: 0, removed: 0) })
+
+        let merge = try #require(replay.commits.firstIndex { $0.isMerge })
+        replay.countLines([
+            replay.commits[0].id: .init(added: 10, removed: 0),
+            replay.commits[3].id: .init(added: 5, removed: 2),
+            replay.commits[merge + 1].id: .init(added: 1, removed: 7),
+        ])
+        #expect(replay.hasLineCounts)
+        #expect(replay.commits[0].lines == .init(added: 10, removed: 0))
+        #expect(replay.commits[1].lines == .init(added: 0, removed: 0))
+        #expect(replay.commits[2].linesSoFar == .init(added: 10, removed: 0))
+        #expect(replay.commits[3].linesSoFar == .init(added: 15, removed: 2))
+        #expect(replay.commits[merge].lines == .init(added: 0, removed: 0))
+        #expect(replay.commits.last?.linesSoFar == .init(added: 16, removed: 9))
+
+        // Fitting another length keeps them.
+        replay.fit(to: 20)
+        #expect(replay.commits.last?.linesSoFar == .init(added: 16, removed: 9))
+    }
+
     @Test func readsTheForgesMergeMessages() {
         let github = MergeMessage(subject: "Merge pull request #52 from tmarkovski/tm/first-release", body: "Ship it")
         #expect(github == MergeMessage(name: "tm/first-release", pullRequest: 52, title: "Ship it"))

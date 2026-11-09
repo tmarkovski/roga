@@ -20,6 +20,11 @@ struct MetroMap: ReplayPicture {
     /// The zoom out to the whole history at the end, and how long it holds there.
     static let finale = 2.4
     static let hold = 2.4
+    /// How long the wheels of a number at the top take to turn to a new count:
+    /// a quick tick that settles for the counts that go up one at a time, and
+    /// a longer spin for lines, which go up by many at once.
+    static let tick = 0.4
+    static let spin = 0.75
 
     /// Commit spacing in a window narrower than `smallWidth`, and in a wider one.
     private static let smallWidth = 640.0
@@ -115,7 +120,9 @@ struct MetroMap: ReplayPicture {
     var summary: String {
         let commits = counted(replay.commits.count, "commit")
         let branches = counted(replay.branches.count - 1, "branch", plural: "branches")
-        return "\(replay.mainLineName) in \(repositoryName): \(commits), \(branches), \(counted(days, "day"))."
+        let summary = "\(replay.mainLineName) in \(repositoryName): \(commits), \(branches), \(counted(days, "day"))"
+        guard replay.hasLineCounts, let lines = replay.commits.last?.linesSoFar else { return summary + "." }
+        return summary + ", \(lines.added.formatted()) lines added and \(lines.removed.formatted()) removed."
     }
 
     private static let labelFont = NSFont.systemFont(ofSize: 11, weight: .medium)
@@ -639,26 +646,132 @@ struct MetroMap: ReplayPicture {
         guard alpha > 0 else { return }
         let theme = frame.theme
         let commit = frame.head >= 0 ? replay.commits[frame.head] : nil
-        drawText(context, repositoryName, size: 17, weight: .bold, color: theme.ink, x: 16, baseline: 32, alpha: alpha)
+        let tally = turningCounts(frame)
+        let statsStart = frame.isSmall ? frame.width : drawStatColumns(context, frame, tally, alpha: alpha)
+        let name = fitted(repositoryName, width: statsStart - 16 - 32, size: 17)
+        drawText(context, name, size: 17, weight: .bold, color: theme.ink, x: 16, baseline: 32, alpha: alpha)
 
         let date = commit.map { Self.dateFormatter.string(from: Date(timeIntervalSince1970: Double($0.commitTime))) } ?? ""
         drawText(context, date, size: 13, color: theme.muted, x: 16, baseline: 52, alpha: alpha)
+        if frame.isSmall { drawStatLine(context, frame, tally, alpha: alpha) }
+    }
 
-        let stats = [
-            (commit == nil ? 0 : frame.head + 1, "commits"),
-            (commit?.forksSoFar ?? 0, "branches"),
-            (commit?.mergesSoFar ?? 0, "merges"),
+    /// The numbers at the top at one moment. Each is where its wheels are,
+    /// which is between two counts while they turn.
+    private struct Tally {
+        var commits = 0.0
+        var branches = 0.0
+        var merges = 0.0
+        var added = 0.0
+        var removed = 0.0
+    }
+
+    /// The counts once the newest commit has landed, less what's left of the
+    /// turns still going, so that a frame still depends only on its time.
+    /// Commits that land closer together than a turn takes add their turns
+    /// up, so the wheels spin faster the faster the history goes.
+    private func turningCounts(_ frame: Frame) -> Tally {
+        guard frame.head >= 0 else { return Tally() }
+        let newest = replay.commits[frame.head]
+        var tally = Tally(
+            commits: Double(frame.head + 1),
+            branches: Double(newest.forksSoFar),
+            merges: Double(newest.mergesSoFar),
+            added: Double(newest.linesSoFar.added),
+            removed: Double(newest.linesSoFar.removed)
+        )
+        let longest = max(Self.tick, Self.spin)
+        var step = frame.head
+        // Past a few hundred turns at once, the wheels are a blur anyway.
+        while step >= 0, frame.head - step < 400 {
+            let commit = replay.commits[step]
+            let age = frame.time - commit.time
+            guard age < longest else { break }
+            let before = step > 0 ? replay.commits[step - 1] : nil
+            let tickLeft = 1 - settle(clamp(age / Self.tick))
+            let spinLeft = 1 - easeOut(clamp(age / Self.spin))
+            tally.commits -= tickLeft
+            tally.branches -= Double(commit.forksSoFar - (before?.forksSoFar ?? 0)) * tickLeft
+            tally.merges -= Double(commit.mergesSoFar - (before?.mergesSoFar ?? 0)) * tickLeft
+            tally.added -= Double(commit.lines.added) * spinLeft
+            tally.removed -= Double(commit.lines.removed) * spinLeft
+            step -= 1
+        }
+        return tally
+    }
+
+    /// The counts at the top right, each over its name, with the lines added
+    /// and removed to the left of them once they're counted, so that nothing
+    /// moves when they come in. Each takes the room its last count needs, so
+    /// nothing moves as the counts grow either. Returns where the leftmost
+    /// one starts.
+    private func drawStatColumns(_ context: GraphicsContext, _ frame: Frame, _ tally: Tally, alpha: Double) -> Double {
+        let theme = frame.theme
+        let last = replay.commits.last
+        let gap = 30.0
+        let numbers = Odometer(context, size: 20, weight: .bold, color: theme.ink)
+        let counts = [
+            (tally.merges, last?.mergesSoFar ?? 0, "MERGES"),
+            (tally.branches, last?.forksSoFar ?? 0, "BRANCHES"),
+            (tally.commits, replay.commits.count, "COMMITS"),
         ]
-        if frame.isSmall {
-            let line = stats.map { "\($0.0) \($0.1)" }.joined(separator: "  ·  ")
-            drawText(context, line, size: 13, color: theme.muted, x: 16, baseline: 74, alpha: alpha)
-        } else {
-            var x = frame.width - 16
-            for (number, label) in stats.reversed() {
-                drawText(context, String(number), size: 20, weight: .bold, color: theme.ink, x: x, baseline: 34, alignment: .trailing, alpha: alpha)
-                drawText(context, label.uppercased(), size: 10, weight: .semibold, color: theme.muted, x: x, baseline: 52, alignment: .trailing, alpha: alpha)
-                x -= 86
-            }
+        var x = frame.width - 16
+        for (value, most, name) in counts {
+            let wheels = Odometer.wheels(for: most)
+            numbers.draw(value, wheels: wheels, in: context, right: x, baseline: 34, alpha: alpha)
+            let label = drawText(context, name, size: 10, weight: .semibold, color: theme.muted, x: x, baseline: 52, alignment: .trailing, alpha: alpha)
+            x -= max(numbers.width(wheels: wheels), Double(label.width)) + gap
+        }
+
+        if replay.hasLineCounts, let total = last?.linesSoFar {
+            let added = Odometer(context, size: 20, weight: .bold, color: theme.added, sign: "+")
+            let removed = Odometer(context, size: 20, weight: .bold, color: theme.removed, sign: "−")
+            let addedWheels = Odometer.wheels(for: total.added)
+            let removedWheels = Odometer.wheels(for: total.removed)
+            // The two keep together at the right of their room.
+            let shown = removed.draw(tally.removed, wheels: removedWheels, in: context, right: x, baseline: 34, alpha: alpha)
+            added.draw(tally.added, wheels: addedWheels, in: context, right: x - shown - 10, baseline: 34, alpha: alpha)
+            let label = drawText(context, "LINES", size: 10, weight: .semibold, color: theme.muted, x: x, baseline: 52, alignment: .trailing, alpha: alpha)
+            x -= max(added.width(wheels: addedWheels) + 10 + removed.width(wheels: removedWheels), Double(label.width)) + gap
+        }
+        return x + gap
+    }
+
+    /// The counts on one line under the date, in a narrow picture. Words after
+    /// a number move along smoothly as it gains a digit.
+    private func drawStatLine(_ context: GraphicsContext, _ frame: Frame, _ tally: Tally, alpha: Double) {
+        let theme = frame.theme
+        let last = replay.commits.last
+        let size = 13.0
+        let baseline = 74.0
+        let numbers = Odometer(context, size: size, weight: .semibold, color: theme.ink)
+        var x = 16.0
+
+        func separate() {
+            x += Double(drawText(context, "·", size: size, color: theme.muted, x: x + 7, baseline: baseline, alpha: alpha).width) + 14
+        }
+        func number(_ odometer: Odometer, _ value: Double, most: Int) {
+            let wheels = Odometer.wheels(for: most)
+            let width = odometer.shownWidth(value, wheels: wheels)
+            odometer.draw(value, wheels: wheels, in: context, right: x + width, baseline: baseline, alpha: alpha)
+            x += width
+        }
+
+        let counts = [
+            (tally.commits, replay.commits.count, "commits"),
+            (tally.branches, last?.forksSoFar ?? 0, "branches"),
+            (tally.merges, last?.mergesSoFar ?? 0, "merges"),
+        ]
+        for (index, (value, most, name)) in counts.enumerated() {
+            if index > 0 { separate() }
+            number(numbers, value, most: most)
+            x += Double(drawText(context, name, size: size, color: theme.muted, x: x + 4, baseline: baseline, alpha: alpha).width) + 4
+        }
+        if replay.hasLineCounts, let total = last?.linesSoFar {
+            separate()
+            number(Odometer(context, size: size, weight: .semibold, color: theme.added, sign: "+"), tally.added, most: total.added)
+            x += 6
+            number(Odometer(context, size: size, weight: .semibold, color: theme.removed, sign: "−"), tally.removed, most: total.removed)
         }
     }
 
@@ -678,13 +791,27 @@ struct MetroMap: ReplayPicture {
             baseline: y,
             alpha: alpha
         )
-        let hashWidth = hash.width + 12
+        var x = 16 + Double(hash.width) + 12
+        // What the commit itself added and removed, as git log --stat says.
+        if replay.hasLineCounts, commit.lines.added + commit.lines.removed > 0 {
+            x += drawRow(
+                context,
+                [("+\(commit.lines.added.formatted())", frame.theme.added), ("−\(commit.lines.removed.formatted())", frame.theme.removed)],
+                size: 12,
+                weight: .medium,
+                design: .monospaced,
+                spacing: 6,
+                x: x,
+                baseline: y,
+                alpha: alpha
+            ) + 12
+        }
         drawText(
             context,
-            fitted(commit.subject, width: frame.width - 32 - hashWidth, size: 15),
+            fitted(commit.subject, width: frame.width - 16 - x, size: 15),
             size: 15,
             color: frame.theme.ink,
-            x: 16 + hashWidth,
+            x: x,
             baseline: y,
             alpha: alpha
         )
@@ -702,9 +829,25 @@ struct MetroMap: ReplayPicture {
         ].joined(separator: "  ·  ")
         drawText(context, counts, size: frame.isSmall ? 18 : 24, weight: .bold, color: theme.ink, x: center, baseline: frame.isSmall ? 40 : 42, alignment: .center, alpha: alpha)
 
+        var below = frame.isSmall ? 62.0 : 66.0
+        if replay.hasLineCounts {
+            let lines = last.linesSoFar
+            drawRow(
+                context,
+                [("+\(lines.added.formatted())", theme.added), ("−\(lines.removed.formatted())", theme.removed)],
+                size: frame.isSmall ? 14 : 16,
+                weight: .semibold,
+                spacing: 10,
+                x: center,
+                baseline: frame.isSmall ? 60 : 64,
+                alignment: .center,
+                alpha: alpha
+            )
+            below = frame.isSmall ? 79 : 84
+        }
         let from = Self.rangeFormatter.string(from: Date(timeIntervalSince1970: Double(first.commitTime)))
         let to = Self.rangeFormatter.string(from: Date(timeIntervalSince1970: Double(last.commitTime)))
-        drawText(context, "\(repositoryName), \(from) to \(to)", size: 13, color: theme.muted, x: center, baseline: frame.isSmall ? 62 : 66, alignment: .center, alpha: alpha)
+        drawText(context, "\(repositoryName), \(from) to \(to)", size: 13, color: theme.muted, x: center, baseline: below, alignment: .center, alpha: alpha)
         drawText(context, "Replayed in Roga", size: 13, color: theme.muted, x: center, baseline: frame.height - 26, alignment: .center, alpha: alpha)
     }
 
@@ -751,6 +894,35 @@ struct MetroMap: ReplayPicture {
         return measured
     }
 
+    /// Draws pieces of text in a row, each in its own color, and returns how
+    /// wide the row is.
+    @discardableResult
+    private func drawRow(
+        _ context: GraphicsContext,
+        _ pieces: [(String, Color)],
+        size: Double,
+        weight: Font.Weight = .regular,
+        design: Font.Design = .default,
+        spacing: Double,
+        x: Double,
+        baseline: Double,
+        alignment: HorizontalAlignment = .leading,
+        alpha: Double = 1
+    ) -> Double {
+        var context = context
+        context.opacity = alpha
+        let font = Font.system(size: size, weight: weight, design: design)
+        let texts = pieces.map { piece in context.resolve(Text(piece.0).font(font).foregroundStyle(piece.1)) }
+        let widths = texts.map { Double($0.measure(in: CGSize(width: CGFloat.infinity, height: .infinity)).width) }
+        let total = widths.reduce(0, +) + spacing * Double(max(texts.count - 1, 0))
+        var left = alignment == .center ? x - total / 2 : alignment == .trailing ? x - total : x
+        for (text, width) in zip(texts, widths) {
+            context.draw(text, at: CGPoint(x: left, y: baseline + size * 0.24), anchor: .bottomLeading)
+            left += width + spacing
+        }
+        return total
+    }
+
     private func drawPill(
         _ context: GraphicsContext,
         _ string: String,
@@ -774,6 +946,162 @@ struct MetroMap: ReplayPicture {
     }
 }
 
+/// A number drawn on wheels, like a car's odometer or a flip clock: each digit
+/// is a wheel that turns up to the next digit, and a wheel turns only while the
+/// one to its right goes from 9 to 0. A count between two whole numbers shows
+/// its wheels part of the way round, so a number that goes up by one ticks its
+/// last digit over, and one that goes up by hundreds spins.
+///
+/// It takes as many wheels as the number's largest count needs, and leaves the
+/// ones to the left of the number blank, so a number that gains a digit has
+/// it roll up into view.
+struct Odometer {
+    private struct Wheel {
+        var digit: Int
+        /// How far it has turned toward the next digit, from 0 to 1.
+        var turn: Double
+        /// Whether it's to the left of the number, where a 0 isn't shown.
+        var isBlank: Bool
+
+        /// How much of it shows: all of it, unless it's blank and turning up
+        /// to a 1.
+        var shown: Double { isBlank ? turn : 1 }
+    }
+
+    /// The character between each group of three digits.
+    private static let groupSeparator = Locale.current.groupingSeparator ?? ","
+
+    private let digits: [GraphicsContext.ResolvedText]
+    private let separator: GraphicsContext.ResolvedText
+    private let sign: GraphicsContext.ResolvedText?
+    private let size: Double
+    private let digitWidth: Double
+    private let separatorWidth: Double
+    private let signWidth: Double
+
+    /// - Parameter sign: Text that goes just before the number, such as `+`.
+    init(_ context: GraphicsContext, size: Double, weight: Font.Weight, color: Color, sign: String? = nil) {
+        // Every digit is as wide as every other, so the wheels line up.
+        let font = Font.system(size: size, weight: weight).monospacedDigit()
+        func resolve(_ string: String) -> GraphicsContext.ResolvedText {
+            context.resolve(Text(string).font(font).foregroundStyle(color))
+        }
+        func width(_ text: GraphicsContext.ResolvedText) -> Double {
+            Double(text.measure(in: CGSize(width: CGFloat.infinity, height: .infinity)).width)
+        }
+        let digits = (0 ... 9).map { resolve(String($0)) }
+        let separator = resolve(Self.groupSeparator)
+        let signText = sign.map(resolve)
+        self.digits = digits
+        self.separator = separator
+        self.sign = signText
+        self.size = size
+        digitWidth = digits.map(width).max() ?? size * 0.6
+        separatorWidth = width(separator)
+        signWidth = signText.map(width) ?? 0
+    }
+
+    /// How many wheels it takes to show every count up to `most`.
+    static func wheels(for most: Int) -> Int {
+        var wheels = 1
+        var place = 10
+        while place <= most {
+            wheels += 1
+            place *= 10
+        }
+        return wheels
+    }
+
+    /// How wide the number is with every wheel showing, sign and all.
+    func width(wheels: Int) -> Double {
+        Double(wheels) * digitWidth + Double((wheels - 1) / 3) * separatorWidth + signWidth
+    }
+
+    /// How wide the number is at `value`, sign and all. It grows smoothly as a
+    /// digit rolls up on its left.
+    func shownWidth(_ value: Double, wheels: Int) -> Double {
+        signWidth - leftEdge(turns(of: clamped(value, wheels: wheels), wheels: wheels), right: 0)
+    }
+
+    /// Draws the number at `value` with its right edge at `right`, and returns
+    /// how wide it is.
+    @discardableResult
+    func draw(_ value: Double, wheels count: Int, in context: GraphicsContext, right: Double, baseline: Double, alpha: Double) -> Double {
+        let wheels = turns(of: clamped(value, wheels: count), wheels: count)
+        // How far a digit moves to make way for the next, which takes it out
+        // of its window. The bottom of a line of text is below its baseline
+        // by its descent.
+        let travel = size * 1.2
+        let bottom = baseline + size * 0.24
+        for (index, wheel) in wheels.enumerated() where wheel.shown > 0 {
+            let edge = rightEdge(index, right)
+            if index > 0, index % 3 == 0 {
+                var faded = context
+                faded.opacity = alpha * wheel.shown
+                faded.draw(separator, at: CGPoint(x: edge, y: bottom), anchor: .bottomLeading)
+            }
+            var window = context
+            window.clip(to: Path(CGRect(x: edge - digitWidth - 1, y: baseline - size * 0.98, width: digitWidth + 2, height: size * 1.22)))
+            let offset = wheel.turn * travel
+            if !wheel.isBlank {
+                window.opacity = alpha * (1 - 0.6 * wheel.turn)
+                window.draw(digits[wheel.digit], at: CGPoint(x: edge - digitWidth, y: bottom - offset), anchor: .bottomLeading)
+            }
+            if wheel.turn > 0 {
+                window.opacity = alpha * (1 - 0.6 * (1 - wheel.turn))
+                window.draw(digits[(wheel.digit + 1) % 10], at: CGPoint(x: edge - digitWidth, y: bottom - offset + travel), anchor: .bottomLeading)
+            }
+        }
+        let left = leftEdge(wheels, right: right)
+        if let sign {
+            var signed = context
+            signed.opacity = alpha
+            signed.draw(sign, at: CGPoint(x: left - signWidth, y: bottom), anchor: .bottomLeading)
+        }
+        return right - left + signWidth
+    }
+
+    /// Keeps a value to what the wheels can show, so that a count that
+    /// settles past its last one can't turn up a wheel there isn't room for.
+    private func clamped(_ value: Double, wheels: Int) -> Double {
+        min(max(value, 0), pow(10, Double(wheels)) - 0.0001)
+    }
+
+    /// Where each wheel is at `value`, from the ones up.
+    private func turns(of value: Double, wheels count: Int) -> [Wheel] {
+        let whole = value.rounded(.down)
+        let fraction = value - whole
+        let number = Int(whole)
+        var wheels: [Wheel] = []
+        wheels.reserveCapacity(count)
+        var place = 1
+        for index in 0 ..< count {
+            let isTurning = index == 0 || number % place == place - 1
+            wheels.append(Wheel(digit: number / place % 10, turn: isTurning ? fraction : 0, isBlank: index > 0 && number / place == 0))
+            place *= 10
+        }
+        return wheels
+    }
+
+    /// The right edge of a wheel, counting from the ones, with a separator to
+    /// the left of every third one.
+    private func rightEdge(_ index: Int, _ right: Double) -> Double {
+        right - Double(index) * digitWidth - Double(index / 3) * separatorWidth
+    }
+
+    /// Where the number starts, which moves smoothly left as a wheel that was
+    /// blank turns up to a 1.
+    private func leftEdge(_ wheels: [Wheel], right: Double) -> Double {
+        var top = 0
+        while top + 1 < wheels.count, wheels[top + 1].shown >= 1 {
+            top += 1
+        }
+        let left = rightEdge(top, right) - digitWidth
+        guard top + 1 < wheels.count, wheels[top + 1].shown > 0 else { return left }
+        return left + (rightEdge(top + 1, right) - digitWidth - left) * wheels[top + 1].shown
+    }
+}
+
 /// The colors of the picture. They're fixed for each appearance rather than
 /// following the system, so that a saved video looks the same as the window.
 struct MetroTheme {
@@ -786,37 +1114,39 @@ struct MetroTheme {
     var line: Color
     var accent: Color
     var lanes: [Color]
+    /// Lines added and removed, in the colors the rest of Roga gives them.
+    var added: Color
+    var removed: Color
 
-    private static let light = MetroTheme(
-        isDark: false,
-        paper: Color(hex: 0xFAF6EE),
-        ink: Color(hex: 0x16150E),
-        muted: Color(hex: 0x6A665A),
-        line: Color(hex: 0xDCD5C6),
-        accent: Color(hex: 0xB53D00),
-        lanes: resolvedLanes(.aqua)
-    )
-    private static let dark = MetroTheme(
-        isDark: true,
-        paper: Color(hex: 0x16150E),
-        ink: Color(hex: 0xF5F0E6),
-        muted: Color(hex: 0xA9A394),
-        line: Color(hex: 0x3A372D),
-        accent: Color(hex: 0xF2702E),
-        lanes: resolvedLanes(.darkAqua)
-    )
+    private static let light = theme(isDark: false, appearance: .aqua)
+    private static let dark = theme(isDark: true, appearance: .darkAqua)
 
     static func of(_ scheme: ColorScheme) -> MetroTheme {
         scheme == .dark ? dark : light
     }
 
-    /// The graph's lane colors in one appearance, whatever the window's is.
-    private static func resolvedLanes(_ name: NSAppearance.Name) -> [Color] {
-        var colors: [Color] = []
+    private static func theme(isDark: Bool, appearance: NSAppearance.Name) -> MetroTheme {
+        let git = resolved(GitColors.lanes + [GitColors.green, GitColors.red], appearance)
+        return MetroTheme(
+            isDark: isDark,
+            paper: Color(hex: isDark ? 0x16150E : 0xFAF6EE),
+            ink: Color(hex: isDark ? 0xF5F0E6 : 0x16150E),
+            muted: Color(hex: isDark ? 0xA9A394 : 0x6A665A),
+            line: Color(hex: isDark ? 0x3A372D : 0xDCD5C6),
+            accent: Color(hex: isDark ? 0xF2702E : 0xB53D00),
+            lanes: Array(git.prefix(GitColors.lanes.count)),
+            added: git[GitColors.lanes.count],
+            removed: git[GitColors.lanes.count + 1]
+        )
+    }
+
+    /// The graph's colors in one appearance, whatever the window's is.
+    private static func resolved(_ colors: [NSColor], _ name: NSAppearance.Name) -> [Color] {
+        var resolved: [Color] = []
         NSAppearance(named: name)?.performAsCurrentDrawingAppearance {
-            colors = GitColors.lanes.map { Color(nsColor: $0.usingColorSpace(.sRGB) ?? $0) }
+            resolved = colors.map { Color(nsColor: $0.usingColorSpace(.sRGB) ?? $0) }
         }
-        return colors
+        return resolved
     }
 }
 
@@ -845,6 +1175,13 @@ private func easeInOut(_ t: Double) -> Double {
 
 private func easeOut(_ t: Double) -> Double {
     1 - pow(1 - t, 3)
+}
+
+/// Goes a little past the end and settles back, like a wheel clicking into
+/// place.
+private func settle(_ t: Double) -> Double {
+    let c = 1.8
+    return t <= 0 ? 0 : t >= 1 ? 1 : 1 + (c + 1) * pow(t - 1, 3) + c * pow(t - 1, 2)
 }
 
 private func easeOutBack(_ t: Double) -> Double {

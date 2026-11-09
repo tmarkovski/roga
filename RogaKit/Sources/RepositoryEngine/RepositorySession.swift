@@ -196,6 +196,16 @@ public actor RepositorySession {
         return messages
     }
 
+    /// Counts the lines each of a replay's commits added and removed, for the
+    /// replay to add up as it plays (decision 62). git works out a diff for
+    /// each commit, which takes about 2 seconds for 2,000 of Git's own commits
+    /// and 47 for all 82,000 of them, so a replay starts playing without them.
+    /// A merge is missing from the result, since the commits on its branch
+    /// already count the lines it brought in.
+    public nonisolated func lineCounts(of commits: [ObjectID]) async throws -> [ObjectID: DiffFile.LineCounts] {
+        try await DiffLoader.lineCounts(of: commits, git: git, directory: location.commonDirectory)
+    }
+
     /// Lists the files a commit changed, with the lines added and removed in
     /// each. A merge is compared with its first parent.
     public nonisolated func changedFiles(in commit: ObjectID) async throws -> [DiffFile] {

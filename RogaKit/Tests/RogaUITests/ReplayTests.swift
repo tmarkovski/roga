@@ -277,6 +277,32 @@ struct MetroMapTests {
         #expect(map.summary == "main in app: 15 commits, 2 branches, 1 day.")
     }
 
+    @Test func saysHowManyLinesChangedOnceTheyreCounted() throws {
+        var replay = try makeReplay()
+        replay.countLines([replay.commits[1].id: .init(added: 1200, removed: 34)])
+        let map = MetroMap(replay: replay, repositoryName: "app")
+        #expect(map.summary == "main in app: 15 commits, 2 branches, 1 day, \(1200.formatted()) lines added and 34 removed.")
+    }
+
+    @Test func drawsTheLinesOnceTheyreCounted() throws {
+        var replay = try makeReplay()
+        let without = MetroMap(replay: replay, repositoryName: "app")
+        replay.countLines([replay.commits[9].id: .init(added: 12, removed: 3)])
+        let with = MetroMap(replay: replay, repositoryName: "app")
+        let time = replay.commits[9].time + 0.5
+        #expect(!looksTheSame(try pixels(of: without, at: time), try pixels(of: with, at: time)))
+        #expect(!looksTheSame(try pixels(of: without, at: with.duration), try pixels(of: with, at: with.duration)))
+    }
+
+    @Test func givesEachNumberTheWheelsItsLastCountNeeds() {
+        #expect(Odometer.wheels(for: 0) == 1)
+        #expect(Odometer.wheels(for: 9) == 1)
+        #expect(Odometer.wheels(for: 10) == 2)
+        #expect(Odometer.wheels(for: 999) == 3)
+        #expect(Odometer.wheels(for: 1000) == 4)
+        #expect(Odometer.wheels(for: 1_234_567) == 7)
+    }
+
     @Test func drawsEvenWithNoCommits() throws {
         let replay = try HistoryReplay(
             graph: CommitGraph(format: .sha1),
@@ -318,6 +344,18 @@ struct ReplayModelTests {
         let model = try await started()
         #expect(model.scope == .days(7))
         #expect(model.length == 45)
+    }
+
+    @Test func countsTheLinesOnceItsPlaying() async throws {
+        let model = try await started()
+        while model.isCountingLines {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        guard case .ready(let map) = model.phase else {
+            Issue.record("The replay isn't ready")
+            return
+        }
+        #expect(map.replay.hasLineCounts)
     }
 
     @Test func offersEveryRangeFromAWeekUp() {
