@@ -31,7 +31,8 @@ The sparkles are gone from the icons, so that they aren't reached for again.
 - `DiffUI` knows nothing about agents. `DiffTextController` asks its owner to make what goes around a conflict, and places those views around the whole section, line numbers included.
 - A long way around keeps a short light that moves a little slower, up to four seconds a lap, or a conflict's outline would have a light as long as the window.
 - `Palette.action` still means what a click would run right now, which an agent's button does, so it stays orange rather than getting a hue of its own.
-- The light's front has a soft glow, which the render server draws for each frame while an agent works. Generating and resolving end within their time limits, so it isn't something that plays for hours as the ring can.
+- The light is sixteen overlapping strokes that all end at its front, because Core Animation can't draw a gradient along a path. Each stroke adds the same step of brightness, and they share one width, so nothing marks where the front ends and the tail starts. A conic gradient turned around the outline would be a single layer, but on something as long and thin as a button the light would race along the long sides and crawl around the ends.
+- The render server redraws those strokes and the soft glow at the front for each frame while an agent works. Generating and resolving end within their time limits, so it isn't something that plays for hours as the ring can.
 
 ## Alternatives considered
 

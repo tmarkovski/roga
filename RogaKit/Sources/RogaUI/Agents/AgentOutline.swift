@@ -55,15 +55,48 @@ final class AgentOutlineView: NSView {
     /// How far the light has to go and how much of its route it takes up, in
     /// shares of the path it's drawn along.
     struct Route: Equatable {
+        /// How long the light is, from the far end of its tail to its front.
         var trail: CGFloat
-        var head: CGFloat
         /// How much of the path one trip covers.
         var distance: CGFloat
         /// How long one trip takes while an agent works.
         var period: CFTimeInterval
     }
 
-    enum Part { case trail, head }
+    /// One of the strokes the light is stacked from. They all end at the front
+    /// of the light and each starts a little further forward than the one under
+    /// it, so the light gets brighter by small steps instead of changing at one
+    /// place, which a single stroke can't do because it has one color.
+    struct Band: Equatable {
+        /// Where along the light it starts, from 0 at the far end of the tail to
+        /// 1 at the front.
+        var start: CGFloat
+        var opacity: CGFloat
+        /// How far its color has gone from the brand's orange to the front's.
+        var warmth: CGFloat
+    }
+
+    private static let bandCount = 16
+    /// Above 1, the tail stays faint for longer and most of the light gathers
+    /// near the front.
+    private static let fadeCurve: CGFloat = 1.5
+    /// Wider than the still line. Every band has this width, so the light looks
+    /// thicker as it gets brighter, with no place where the width changes.
+    private static let lightWidth: CGFloat = 1.5
+
+    /// Each one adds the same step of brightness, so the bands are closer
+    /// together where the light brightens fastest. An opacity of 1 / (bands left)
+    /// is what makes those steps equal once they're stacked. The color arrives
+    /// well before the last band, or that band would stand out as a block.
+    static let bands: [Band] = (0..<bandCount).map { index in
+        let count = CGFloat(bandCount)
+        let reached = CGFloat(index + 1) / count
+        return Band(
+            start: pow(CGFloat(index) / count, 1 / fadeCurve),
+            opacity: 1 / (count - CGFloat(index)),
+            warmth: min(reached / 0.75, 1)
+        )
+    }
 
     var shape = Shape.outline(cornerRadius: 7) {
         didSet {
@@ -105,8 +138,7 @@ final class AgentOutlineView: NSView {
     }
 
     private let line = CAShapeLayer()
-    private let trail = CAShapeLayer()
-    private let head = CAShapeLayer()
+    private let lightBands = AgentOutlineView.bands.map { _ in CAShapeLayer() }
     private var route: Route?
     private var isLooping = false
 
@@ -117,22 +149,26 @@ final class AgentOutlineView: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        for shape in [line, trail, head] {
+        for shape in [line] + lightBands {
             shape.fillColor = nil
             shape.lineCap = .round
             shape.lineJoin = .round
             layer?.addSublayer(shape)
         }
         line.lineWidth = 1
-        trail.lineWidth = 1
-        head.lineWidth = 1.5
-        head.shadowOffset = .zero
-        head.shadowRadius = 2.5
-        head.shadowOpacity = 1
-        // The light is out of sight until an animation moves it.
-        trail.strokeEnd = 0
-        head.strokeEnd = 0
+        for shape in lightBands {
+            shape.lineWidth = Self.lightWidth
+            // The light is out of sight until an animation moves it.
+            shape.strokeEnd = 0
+        }
+        // Only the front glows, because the render server draws a shadow again
+        // for every frame.
+        front.shadowOffset = .zero
+        front.shadowRadius = 3.5
+        front.shadowOpacity = 1
     }
+
+    private var front: CAShapeLayer { lightBands[lightBands.count - 1] }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
@@ -149,7 +185,7 @@ final class AgentOutlineView: NSView {
 
     /// Whether the light is moving right now, which tests read.
     var isTraveling: Bool {
-        head.animation(forKey: Self.travelKey) != nil
+        front.animation(forKey: Self.travelKey) != nil
     }
 
     override func setFrameSize(_ newSize: NSSize) {
@@ -171,12 +207,13 @@ final class AgentOutlineView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         layer?.masksToBounds = shape == .topEdge
-        for shape in [line, trail, head] {
+        for shape in [line] + lightBands {
             shape.frame = bounds
         }
         line.path = drawn.line
-        trail.path = drawn.route
-        head.path = drawn.route
+        for shape in lightBands {
+            shape.path = drawn.route
+        }
         CATransaction.commit()
         // Its shares of the path change with the size, so a trip under way has
         // to start again with the new ones.
@@ -202,7 +239,7 @@ final class AgentOutlineView: NSView {
         case .topEdge:
             // From past the left side to past the right, so that it comes in
             // and goes out at the edges.
-            let reach = lengths(forTopEdgeOf: bounds.width).trail
+            let reach = trailLength(forTopEdgeOf: bounds.width)
             let along = CGMutablePath()
             along.move(to: CGPoint(x: bounds.minX - reach, y: bounds.minY + 0.75))
             along.addLine(to: CGPoint(x: bounds.maxX + reach, y: bounds.minY + 0.75))
@@ -210,36 +247,35 @@ final class AgentOutlineView: NSView {
         }
     }
 
-    /// The trail and head are shares of something small, and stop growing so that
-    /// a long way around doesn't get a light as long as a window.
-    private static func lengths(forTopEdgeOf width: CGFloat) -> (trail: CGFloat, head: CGFloat) {
-        (min(width * 0.28, 150), min(width * 0.09, 50))
+    /// The light is a share of something small, and stops growing so that a long
+    /// way around doesn't get a light as long as a window.
+    private static func trailLength(forTopEdgeOf width: CGFloat) -> CGFloat {
+        min(width * 0.34, 190)
     }
 
     static func route(for shape: Shape, size: CGSize) -> Route {
         switch shape {
         case .outline(let radius):
             let perimeter = 2 * (size.width + size.height) - 8 * radius + 2 * .pi * radius
-            let trail = min(perimeter * 0.26, 170)
-            let head = min(perimeter * 0.09, 56)
+            let trail = min(perimeter * 0.32, 210)
             // Slower around something bigger, so that it doesn't race.
             let period = min(max(perimeter / 450, 1.7), 4)
-            return Route(trail: trail / (2 * perimeter), head: head / (2 * perimeter), distance: 0.5, period: period)
+            return Route(trail: trail / (2 * perimeter), distance: 0.5, period: period)
         case .topEdge:
-            let (trail, head) = lengths(forTopEdgeOf: size.width)
+            let trail = trailLength(forTopEdgeOf: size.width)
             let path = size.width + 2 * trail
-            return Route(trail: trail / path, head: head / path, distance: 1 - trail / path, period: 1.7)
+            return Route(trail: trail / path, distance: 1 - trail / path, period: 1.7)
         }
     }
 
-    /// One trip along the route, or one after another for as long as `looping`.
+    /// One band's trip along the route, or one after another for as long as `looping`.
     /// A loop starts as far into a trip as the clock is, which keeps outlines of
     /// the same size in step when several show.
     static func trip(
-        of part: Part, on route: Route, looping: Bool, now: CFTimeInterval
+        of band: Band, on route: Route, looping: Bool, now: CFTimeInterval
     ) -> CAAnimationGroup {
         let duration = looping ? route.period : passDuration
-        let from = part == .head ? route.trail - route.head : 0
+        let from = route.trail * band.start
         let start = CABasicAnimation(keyPath: "strokeStart")
         start.fromValue = from
         start.toValue = from + route.distance
@@ -274,13 +310,15 @@ final class AgentOutlineView: NSView {
     private func addTravel(looping: Bool) {
         guard let route else { return }
         let now = CACurrentMediaTime()
-        trail.add(Self.trip(of: .trail, on: route, looping: looping, now: now), forKey: Self.travelKey)
-        head.add(Self.trip(of: .head, on: route, looping: looping, now: now), forKey: Self.travelKey)
+        for (shape, band) in zip(lightBands, Self.bands) {
+            shape.add(Self.trip(of: band, on: route, looping: looping, now: now), forKey: Self.travelKey)
+        }
     }
 
     private func removeTravel() {
-        trail.removeAnimation(forKey: Self.travelKey)
-        head.removeAnimation(forKey: Self.travelKey)
+        for shape in lightBands {
+            shape.removeAnimation(forKey: Self.travelKey)
+        }
         isLooping = false
     }
 
@@ -320,11 +358,20 @@ final class AgentOutlineView: NSView {
             // Someone who asked for less motion gets a brighter line for the
             // light that would have gone around it.
             line.isHidden = !showsLine && !(isWorking && reducesMotion)
-            trail.strokeColor = NSColor(AgentColors.outlineLit).cgColor
-            head.strokeColor = NSColor(AgentColors.light).cgColor
-            head.shadowColor = NSColor(AgentColors.glow).cgColor
+            for (shape, band) in zip(lightBands, Self.bands) {
+                shape.strokeColor = Self.color(of: band)
+            }
+            front.shadowColor = NSColor(AgentColors.glow).cgColor
             CATransaction.commit()
         }
+    }
+
+    /// For the current drawing appearance.
+    private static func color(of band: Band) -> CGColor {
+        let orange = NSColor(AgentColors.outlineLit).usingColorSpace(.sRGB)?.withAlphaComponent(1)
+        let light = NSColor(AgentColors.light).usingColorSpace(.sRGB) ?? NSColor(AgentColors.light)
+        let mixed = orange?.blended(withFraction: band.warmth, of: light) ?? light
+        return mixed.withAlphaComponent(band.opacity).cgColor
     }
 
     override func viewDidChangeEffectiveAppearance() {

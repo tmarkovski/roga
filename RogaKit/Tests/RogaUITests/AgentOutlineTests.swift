@@ -31,22 +31,43 @@ struct AgentOutlineTests {
         #expect(view.hitTest(CGPoint(x: 10, y: 10)) == nil)
     }
 
-    /// The head and tail of the light end at the same place, all the way along,
-    /// so that the head stays at the front.
-    @Test func theHeadLeadsTheTrail() throws {
+    /// Every band of the light ends at the front, all the way along, or the light
+    /// would come apart as it moves.
+    @Test func theBandsEndTogether() throws {
         let route = AgentOutlineView.route(for: .outline(cornerRadius: 7), size: Self.button)
-        func values(_ part: AgentOutlineView.Part) throws -> (start: Double, end: Double, endTo: Double) {
-            let group = AgentOutlineView.trip(of: part, on: route, looping: true, now: 0)
+        func values(_ band: AgentOutlineView.Band) throws -> (start: Double, end: Double, endTo: Double) {
+            let group = AgentOutlineView.trip(of: band, on: route, looping: true, now: 0)
             let animations = try #require(group.animations as? [CABasicAnimation])
             let start = try #require(animations.first { $0.keyPath == "strokeStart" })
             let end = try #require(animations.first { $0.keyPath == "strokeEnd" })
             return (try #require(start.fromValue as? CGFloat), try #require(end.fromValue as? CGFloat), try #require(end.toValue as? CGFloat))
         }
-        let trail = try values(.trail)
-        let head = try values(.head)
-        #expect(trail.end == head.end && trail.endTo == head.endTo)
-        #expect(trail.start == 0)
-        #expect(head.start > trail.start && head.start < head.end)
+        let bands = try AgentOutlineView.bands.map(values)
+        #expect(bands.first?.start == 0)
+        #expect(zip(bands, bands.dropFirst()).allSatisfy { $0.start < $1.start })
+        #expect(bands.allSatisfy { $0.end == route.trail && $0.endTo == route.trail + route.distance && $0.start < $0.end })
+    }
+
+    /// Stacked up, the bands climb from nothing to full strength in equal steps,
+    /// so no one place along the light reads as where it changes.
+    @Test func theLightBrightensInEvenSteps() {
+        var strength: CGFloat = 0
+        var steps: [CGFloat] = []
+        for band in AgentOutlineView.bands {
+            let next = band.opacity + (1 - band.opacity) * strength
+            steps.append(next - strength)
+            strength = next
+        }
+        #expect(abs(strength - 1) < 1e-9)
+        #expect(steps.allSatisfy { abs($0 - steps[0]) < 1e-9 })
+    }
+
+    /// The color warms up along the light and has arrived before the last band,
+    /// which would otherwise stand out from the ones behind it.
+    @Test func theColorChangesGradually() {
+        let warmth = AgentOutlineView.bands.map(\.warmth)
+        #expect(zip(warmth, warmth.dropFirst()).allSatisfy { $0 <= $1 && $1 - $0 < 0.1 })
+        #expect(warmth.suffix(3).allSatisfy { $0 == 1 })
     }
 
     /// Going around twice is what lets the light cross where the path starts, so
@@ -55,7 +76,7 @@ struct AgentOutlineTests {
         let route = AgentOutlineView.route(for: .outline(cornerRadius: 7), size: Self.button)
         #expect(route.distance == 0.5)
         let perimeter = 2 * (150 + 24) - 8 * 7 + 2 * CGFloat.pi * 7
-        #expect(abs(route.trail - perimeter * 0.26 / (2 * perimeter)) < 1e-9)
+        #expect(abs(route.trail - perimeter * 0.32 / (2 * perimeter)) < 1e-9)
         #expect(route.period == 1.7)
     }
 
@@ -64,8 +85,7 @@ struct AgentOutlineTests {
     @Test func aLongWayAroundKeepsTheLightShort() {
         let route = AgentOutlineView.route(for: .outline(cornerRadius: 6), size: CGSize(width: 900, height: 500))
         let perimeter = 2 * (900 + 500) - 8 * 6 + 2 * CGFloat.pi * 6
-        #expect(abs(route.trail * 2 * perimeter - 170) < 1e-6)
-        #expect(abs(route.head * 2 * perimeter - 56) < 1e-6)
+        #expect(abs(route.trail * 2 * perimeter - 210) < 1e-6)
         #expect(route.period == 4)
     }
 
@@ -79,12 +99,13 @@ struct AgentOutlineTests {
     /// goes on, in step with others that started at another moment.
     @Test func aPassEndsAndALoopDoesnt() {
         let route = AgentOutlineView.route(for: .outline(cornerRadius: 7), size: Self.button)
-        let pass = AgentOutlineView.trip(of: .head, on: route, looping: false, now: 1000)
+        let band = AgentOutlineView.bands[0]
+        let pass = AgentOutlineView.trip(of: band, on: route, looping: false, now: 1000)
         #expect(pass.duration == AgentOutlineView.passDuration && pass.repeatCount == 0 && pass.isRemovedOnCompletion)
         #expect(pass.animations?.contains { ($0 as? CAKeyframeAnimation)?.keyPath == "opacity" } == true)
 
-        let first = AgentOutlineView.trip(of: .head, on: route, looping: true, now: 1000.25)
-        let later = AgentOutlineView.trip(of: .head, on: route, looping: true, now: 1000.25 + 3 * route.period)
+        let first = AgentOutlineView.trip(of: band, on: route, looping: true, now: 1000.25)
+        let later = AgentOutlineView.trip(of: band, on: route, looping: true, now: 1000.25 + 3 * route.period)
         #expect(first.repeatCount == .infinity && !first.isRemovedOnCompletion)
         #expect(abs(first.timeOffset - later.timeOffset) < 1e-6)
     }
