@@ -9,6 +9,7 @@ enum RepositoryDialog: Identifiable {
     case pull(PullChoice, dismiss: () -> Void)
     case branchChoice(BranchModel.BranchChoice, dismiss: () -> Void)
     case reset(PendingReset, dismiss: () -> Void)
+    case addRemote(dismiss: () -> Void)
     case gitFix(DialogContent)
 
     var id: String {
@@ -17,13 +18,14 @@ enum RepositoryDialog: Identifiable {
         case .pull: "pull"
         case .branchChoice: "branchChoice"
         case .reset: "reset"
+        case .addRemote: "addRemote"
         }
     }
 
     func dismiss() {
         switch self {
         case .message(let content), .gitFix(let content): content.dismiss()
-        case .pull(_, let dismiss), .branchChoice(_, let dismiss), .reset(_, let dismiss): dismiss()
+        case .pull(_, let dismiss), .branchChoice(_, let dismiss), .reset(_, let dismiss), .addRemote(let dismiss): dismiss()
         }
     }
 }
@@ -55,6 +57,8 @@ struct RepositoryDialogs: ViewModifier {
                 BranchChoiceSheet(asked: choice, branch: model.branch)
             case .reset(let choice, _):
                 ResetChoiceSheet(asked: choice, model: model)
+            case .addRemote:
+                AddRemoteSheet(model: model)
             case .gitFix(let content):
                 GitFixSheet(model: model.gitFix, shown: content)
             }
@@ -71,6 +75,68 @@ private struct BranchChoiceSheet: View {
 
     var body: some View {
         DialogSheet(content: branch.dialog(for: branch.branchChoice ?? asked))
+    }
+}
+
+/// Asks for a remote's name and where it pulls from and pushes to, and shows the
+/// commands as they're typed (decision 29).
+private struct AddRemoteSheet: View {
+    let model: RepositoryModel
+    /// What's typed so far, for while the sheet closes and the draft has gone.
+    @State private var shown = BranchModel.RemoteDraft()
+    @FocusState private var focused: Field?
+
+    private enum Field {
+        case name, url, pushURL
+    }
+
+    private var draft: BranchModel.RemoteDraft {
+        model.branch.remoteDraft ?? shown
+    }
+
+    /// One of the draft's fields. Setting it only writes, because reading the draft
+    /// while it's being written is a crash.
+    private func binding(_ field: WritableKeyPath<BranchModel.RemoteDraft, String>) -> Binding<String> {
+        Binding {
+            draft[keyPath: field]
+        } set: { [branch = model.branch] text in
+            branch.remoteDraft?[keyPath: field] = text
+        }
+    }
+
+    var body: some View {
+        DialogSheet(content: model.branch.dialog(for: draft, among: model.remoteNames)) {
+            VStack(spacing: 6) {
+                row("Name", prompt: "upstream", text: binding(\.name), field: .name)
+                row("Pull URL", prompt: "https://github.com/owner/repository.git", text: binding(\.url), field: .url)
+                row("Push URL", prompt: "Optional", text: binding(\.pushURL), field: .pushURL)
+            }
+        }
+        .onAppear { focused = .name }
+        .onChange(of: model.branch.remoteDraft) { _, new in
+            if let new { shown = new }
+        }
+    }
+
+    private func row(_ title: String, prompt: String, text: Binding<String>, field: Field) -> some View {
+        HStack(spacing: 10) {
+            Text(title)
+                .fontWeight(.medium)
+                .frame(width: 64, alignment: .leading)
+            TextField(title, text: text, prompt: Text(prompt))
+                .labelsHidden()
+                .textFieldStyle(.plain)
+                .autocorrectionDisabled()
+                .focused($focused, equals: field)
+        }
+        .padding(EdgeInsets(top: 9, leading: 14, bottom: 9, trailing: 14))
+        .background(DialogColors.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay {
+            if focused == field {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(DialogColors.ink, lineWidth: 1.5)
+            }
+        }
     }
 }
 
@@ -277,6 +343,8 @@ extension BranchModel {
         if let forcePush { return .message(dialog(for: forcePush)) }
         if let pendingIntegration { return .message(dialog(for: pendingIntegration)) }
         if let pendingDeletion { return .message(dialog(for: pendingDeletion)) }
+        if let remoteRemoval { return .message(dialog(for: remoteRemoval)) }
+        if remoteDraft != nil { return .addRemote { [weak self] in self?.remoteDraft = nil } }
         if let branchChoice {
             return .branchChoice(branchChoice) { [weak self] in self?.branchChoice = nil }
         }
@@ -471,6 +539,72 @@ extension BranchModel {
             dismiss: cancel
         )
     }
+
+    /// What removing a remote takes with it. The remote itself doesn't change, and
+    /// nothing stops someone adding it back, but which branches used it would be gone.
+    func dialog(for removal: RemoteRemoval) -> DialogContent {
+        let cancel = { [weak self] in self?.remoteRemoval = nil; return () }
+        var sentences: [DialogText] = ["This removes \(code: removal.name) from this repository. Nothing changes on the remote itself."]
+        switch removal.branchCount {
+        case 0: break
+        case 1: sentences.append("Its remote branch goes from here too, and adding the remote back and fetching brings it again.")
+        default: sentences.append("Its \(removal.branchCount.formatted()) remote branches go from here too, and adding the remote back and fetching brings them again.")
+        }
+        var rows: [DialogRow] = []
+        if !removal.branches.isEmpty {
+            rows.append(.heading(removal.branches.count == 1 ? "This branch stops pushing and pulling there" : "These branches stop pushing and pulling there", isLost: false))
+            rows += removal.branches.prefix(DialogContent.listLimit).map(DialogRow.name)
+            if removal.branches.count > DialogContent.listLimit {
+                rows.append(.more("and \((removal.branches.count - DialogContent.listLimit).formatted()) more"))
+            }
+        }
+        return DialogContent(
+            id: "remoteRemoval",
+            title: "Remove \(removal.name)?",
+            message: .sentences(sentences),
+            cards: rows.isEmpty ? [] : [rows],
+            terminal: [.command(RepositorySession.removeRemoteArguments(removal.name))],
+            buttons: [
+                .cancel(cancel),
+                .init(title: "Remove", kind: .destructive) { [weak self] in self?.confirmRemoteRemoval() },
+            ],
+            dismiss: cancel
+        )
+    }
+
+    /// What adding a remote runs, which fills in as it's typed. Its note is always
+    /// there and its commands have a height of their own, because a sheet can't
+    /// change size and URLs can be long.
+    func dialog(for draft: RemoteDraft, among remotes: [String]) -> DialogContent {
+        let cancel = { [weak self] in self?.remoteDraft = nil; return () }
+        let remote = draft.remote
+        let note: DialogText = switch remote.problem(among: remotes) {
+        case .nameTaken: "\(code: remote.name) is already a remote."
+        case .badName: "A remote's name can't have spaces or start with a hyphen."
+        case .badURL: "A URL can't start with a hyphen."
+        case nil: "Without a push URL, pushes go to the pull URL."
+        }
+        let shown = NewRemote(name: remote.name.isEmpty ? "name" : remote.name, url: remote.url.isEmpty ? "url" : remote.url, pushURL: remote.pushURL)
+        let terminal = shown.commands.map(TerminalLine.command) + [.command(RepositorySession.fetchArguments(from: shown.name))]
+        return DialogContent(
+            id: "addRemote",
+            title: "Add a remote",
+            message: "This adds a remote to the repository and fetches its branches.",
+            note: note,
+            terminal: terminal,
+            terminalHeight: Self.addRemoteCommandsHeight,
+            buttons: [
+                .cancel(cancel),
+                .init(title: "Add remote", kind: .primary, isEnabled: remote.canBeAdded(among: remotes) && !isBusy) { [weak self] in
+                    self?.addDraftedRemote(among: remotes)
+                },
+            ],
+            dismiss: cancel
+        )
+    }
+
+    /// Five lines, which is both URLs wrapped once and the fetch. Longer ones scroll.
+    private static let addRemoteCommandsHeight: CGFloat = 120
 
     /// What a deletion loses, as the vision asks of destructive operations, and the
     /// command, since it can't be taken back from here.

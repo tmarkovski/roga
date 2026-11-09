@@ -143,9 +143,9 @@ struct RefsPanel: View {
                             }
                         }
                     }
-                    section(.remotes, count: details.remotes.count) {
+                    section(.remotes, count: details.remotes.count, add: { model.branch.remoteDraft = BranchModel.RemoteDraft() }) {
                         ForEach(details.remotes, id: \.name) { remote in
-                            RefRemoteRow(name: remote.name, detail: remote.address ?? "Not configured any more")
+                            RefRemoteRow(name: remote.name, detail: remote.address ?? "Not configured any more", menu: remoteMenu(remote))
                             ForEach(rows.remotes[remote.name] ?? []) { row in
                                 switch row.content {
                                 case .folder(let ref, let name, let count, let isCollapsed):
@@ -183,7 +183,7 @@ struct RefsPanel: View {
     }
 
     /// A section, unless a filter left it with nothing to show.
-    @ViewBuilder private func section<Rows: View>(_ section: RefsModel.Section, count: Int, @ViewBuilder rows: () -> Rows) -> some View {
+    @ViewBuilder private func section<Rows: View>(_ section: RefsModel.Section, count: Int, add: (() -> Void)? = nil, @ViewBuilder rows: () -> Rows) -> some View {
         if refs.filter.isEmpty || count > 0 {
             let isCollapsed = isCollapsed(section)
             // Each section is a stack of its own, so that remotes and tags,
@@ -197,7 +197,7 @@ struct RefsPanel: View {
                         rows()
                     }
                 } header: {
-                    RefSectionHeader(section: section, count: count, isCollapsed: isCollapsed) {
+                    RefSectionHeader(section: section, count: count, isCollapsed: isCollapsed, add: add) {
                         isListFocused = true
                         setCollapsed(!isCollapsed, section)
                     }
@@ -272,11 +272,24 @@ struct RefsPanel: View {
             otherWorktree: otherWorktree,
             review: { review(branch.name) },
             // git won't delete a branch that a worktree has checked out.
-            delete: HistoryMenu.Delete(title: "Delete Branch", isEnabled: !isCurrent && branch.worktree == nil && !model.branch.isBusy) {
+            delete: HistoryMenu.Delete(title: "Delete branch", isEnabled: !isCurrent && branch.worktree == nil && !model.branch.isBusy) {
                 model.branch.askToDelete(ref: branch.name)
             },
             showWorktree: showWorktree
         )
+    }
+
+    /// What right-clicking a remote offers. One that has branches left but isn't
+    /// configured any more is something git can't remove.
+    private func remoteMenu(_ remote: RemoteDetails) -> [RefMenu.Entry] {
+        var rows: [RefMenu.Entry] = [
+            .header(RefMenu.Title(remote.name)),
+            .command("Add remote…") { model.branch.remoteDraft = BranchModel.RemoteDraft() },
+        ]
+        if remote.address != nil {
+            rows += [.divider, .command("Remove…", isDestructive: true, isEnabled: !model.branch.isBusy) { model.askToRemove(remote: remote) }]
+        }
+        return rows
     }
 
     private func remoteBranchRow(_ branch: RemoteBranchDetails, title: String, depth: Int) -> some View {
@@ -287,7 +300,7 @@ struct RefsPanel: View {
             menu: model.menuEntries(
                 forBranch: branch.name,
                 tip: branch.tip,
-                delete: HistoryMenu.Delete(title: "Delete from Remote…", isEnabled: !model.branch.isBusy) {
+                delete: HistoryMenu.Delete(title: "Delete from remote…", isEnabled: !model.branch.isBusy) {
                     model.branch.askToDelete(ref: branch.name)
                 },
                 showWorktree: showWorktree
@@ -313,8 +326,8 @@ struct RefsPanel: View {
             title: tag.shortName,
             subtitle: tag.subject ?? "No commit to show",
             menu: [
-                .header(tag.shortName),
-                .command("Copy Name") { copy(tag.shortName) },
+                .header(RefMenu.Title(tag.shortName)),
+                .command("Copy name") { copy(tag.shortName) },
             ],
             isSelected: tag.commit.map { isSelected(tag.name, $0) } ?? false,
             action: tag.commit.map { commit in { select(tag.name, commit) } }
@@ -409,7 +422,7 @@ struct RefsPanel: View {
     }
 
     private var sortPicker: some View {
-        Picker("Sort By", selection: $sort) {
+        Picker("Sort by", selection: $sort) {
             ForEach(RefsModel.Sort.allCases, id: \.self) { sort in
                 Text(sort.title).tag(sort)
             }
@@ -420,14 +433,14 @@ struct RefsPanel: View {
     @ViewBuilder private var moreCommands: some View {
         sortPicker
         Divider()
-        Button("Filter Refs") { refs.showFilter() }
+        Button("Filter refs") { refs.showFilter() }
             .keyboardShortcut(RepositoryCommands.filterRefsShortcut)
-        Button("Collapse All Sections") {
+        Button("Collapse all sections") {
             collapsedSections = RefsModel.Section.allCases.map(\.rawValue).joined(separator: ",")
         }
-        Button("Expand All Sections") { collapsedSections = "" }
+        Button("Expand all sections") { collapsedSections = "" }
         Divider()
-        Button("Hide Refs") { isShown = false }
+        Button("Hide refs") { isShown = false }
             .keyboardShortcut(RepositoryCommands.refsPanelShortcut)
     }
 
@@ -512,6 +525,8 @@ private struct RefSectionHeader: View {
     let section: RefsModel.Section
     let count: Int
     let isCollapsed: Bool
+    /// What the plus before the count does, for a section that has one.
+    var add: (() -> Void)?
     let toggle: () -> Void
 
     var body: some View {
@@ -522,6 +537,13 @@ private struct RefSectionHeader: View {
                 Chevron(pointsDown: !isCollapsed)
             }
             Spacer(minLength: 8)
+            if let add {
+                Button(action: add) {
+                    HoverIcon(size: 22) { Icon.plus.image }
+                }
+                .buttonStyle(.plain)
+                .help("Add a remote")
+            }
             Text(count, format: .number)
                 .font(.system(size: 11.5))
         }
@@ -541,6 +563,9 @@ private struct RefSectionHeader: View {
         .accessibilityAddTraits(count > 0 ? [.isHeader, .isButton] : .isHeader)
         .accessibilityAction(.default) {
             if count > 0 { toggle() }
+        }
+        .accessibilityActions {
+            if let add { Button("Add a remote", action: add) }
         }
     }
 }
@@ -655,6 +680,8 @@ private struct RefRemoteRow: View {
     let name: String
     /// Its address, or what to say when it has none.
     let detail: String
+    /// What right-clicking it offers.
+    let menu: [RefMenu.Entry]
 
     var body: some View {
         HStack(spacing: 8) {
@@ -678,10 +705,13 @@ private struct RefRemoteRow: View {
         .padding(.horizontal, 8)
         .frame(height: 28)
         .padding(.horizontal, 6)
+        .contentShape(Rectangle())
+        .overlay { RefMenuArea(entries: menu) }
         .help(detail)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(name)
         .accessibilityValue(detail)
+        .accessibilityActions { refMenuActions(menu) }
     }
 }
 

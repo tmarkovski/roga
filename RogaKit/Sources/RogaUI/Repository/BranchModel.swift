@@ -56,6 +56,32 @@ final class BranchModel {
     }
 
     /// Something git refused, and what it said about that.
+    /// A remote as it's being typed. This lives with the question rather than in
+    /// the view, because a button that Return presses can keep the action it had
+    /// when it was first enabled, so its action has to read this when it runs.
+    struct RemoteDraft: Equatable {
+        var name = ""
+        var url = ""
+        var pushURL = ""
+
+        var remote: NewRemote {
+            NewRemote(
+                name: name.trimmingCharacters(in: .whitespacesAndNewlines),
+                url: url.trimmingCharacters(in: .whitespacesAndNewlines),
+                pushURL: pushURL.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+        }
+    }
+
+    /// What removing a remote takes with it.
+    struct RemoteRemoval: Equatable {
+        var name: String
+        /// How many of its remote branches Roga has.
+        var branchCount: Int
+        /// The short names of the local branches that push to it or pull from it.
+        var branches: [String]
+    }
+
     struct Failure: Equatable {
         var title: String
         var message: String
@@ -278,6 +304,13 @@ final class BranchModel {
     var pendingIntegration: PendingIntegration?
     /// A deletion that's waiting for someone to agree to it.
     var pendingDeletion: PendingDeletion?
+    /// What's been typed into the dialog for adding a remote, while it's open.
+    var remoteDraft: RemoteDraft?
+    /// The remote being asked about removing.
+    var remoteRemoval: RemoteRemoval?
+    /// Tells the menus to read the remotes again, since adding or choosing one
+    /// needn't move any ref.
+    @ObservationIgnored var remotesChanged: () -> Void = {}
     /// A deletion that's waiting for someone to choose what goes.
     var branchChoice: BranchChoice?
     /// Whether the popover for a new branch shows.
@@ -784,12 +817,14 @@ final class BranchModel {
     /// - Parameters:
     ///   - name: The branch's full name.
     ///   - upstream: What it tracks, or nil to push it for the first time.
-    func push(branch name: String, upstream: RefRelation.Upstream?) {
+    ///   - pushRemote: Where git's settings send this branch, if they say,
+    ///     which a first push goes to rather than where the current branch goes.
+    func push(branch name: String, upstream: RefRelation.Upstream?, pushRemote: String? = nil) {
         let short = Ref.shortName(name)
         let push: Push
         if let upstream, let remote = upstream.remote {
             push = .otherBranch(short, remote: remote, onRemote: upstream.branchOnRemote == short ? nil : upstream.branchOnRemote)
-        } else if upstream == nil, let remote = status?.pushRemote {
+        } else if upstream == nil, let remote = pushRemote ?? status?.pushRemote {
             push = .otherBranchFirstTime(short, remote: remote)
         } else {
             return
@@ -807,6 +842,55 @@ final class BranchModel {
         run(.pulling, failure: "Can't fast-forward \(short)", changesNothing: true) { [session, worktree] in
             try await session.fastForward(branch: name, to: upstream, in: worktree)
             return "Fast-forwarded \(Self.shortened(short))"
+        }
+    }
+
+    /// Makes a branch push to and pull from one of the remotes.
+    func setUpstream(_ choice: UpstreamChoice) {
+        let short = Self.shortened(choice.branch)
+        run(nil, failure: "Can't change the remote of \(choice.branch)", changesNothing: true) { [weak self, session, worktree] in
+            try await session.setUpstream(choice, in: worktree)
+            self?.remotesChanged()
+            return "\(short) now uses \(choice.remote)"
+        }
+    }
+
+    // MARK: Adding and removing remotes
+
+    /// Adds a remote and fetches from it, which shows its branches and says at once
+    /// whether the URL works. The remote stays if it doesn't, and the dialog says so.
+    func add(_ remote: NewRemote) {
+        remoteDraft = nil
+        run(.fetching, failure: "Can't add \(remote.name)", changesNothing: true) { [weak self, session, worktree] in
+            try await session.add(remote, in: worktree)
+            self?.remotesChanged()
+            do {
+                try await session.fetch(from: remote.name, in: worktree)
+            } catch {
+                self?.failure = Failure(title: "Added \(remote.name), but can't fetch from it", error: error)
+                return nil
+            }
+            self?.remotesChanged()
+            return "Added \(remote.name)"
+        }
+    }
+
+    /// Adds what's in the dialog, as it is now.
+    ///
+    /// - Parameter remotes: The names of the remotes there are.
+    func addDraftedRemote(among remotes: [String]) {
+        guard let remote = remoteDraft?.remote, remote.canBeAdded(among: remotes), !isBusy else { return }
+        add(remote)
+    }
+
+    /// Removes the remote that was asked about.
+    func confirmRemoteRemoval() {
+        guard let removal = remoteRemoval else { return }
+        remoteRemoval = nil
+        run(nil, failure: "Can't remove \(removal.name)", changesNothing: true) { [weak self, session, worktree] in
+            try await session.removeRemote(removal.name, in: worktree)
+            self?.remotesChanged()
+            return "Removed \(removal.name)"
         }
     }
 

@@ -177,7 +177,7 @@ public final class DiffTextController: NSObject {
     /// What right-clicking a hunk offers, if it can be discarded.
     func hunkMenuItem(atTextY y: CGFloat) -> NSMenuItem? {
         guard discardHunk != nil, let header = hunkHeader(atTextY: y) else { return nil }
-        let item = NSMenuItem(title: "Discard Hunk", action: #selector(hunkMenuItemChosen), keyEquivalent: "")
+        let item = NSMenuItem(title: "Discard hunk", action: #selector(hunkMenuItemChosen), keyEquivalent: "")
         item.target = self
         item.representedObject = header
         return item

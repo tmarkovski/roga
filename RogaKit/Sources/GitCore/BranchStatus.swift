@@ -181,6 +181,83 @@ public struct NewTag: Sendable, Hashable {
     }
 }
 
+/// A new remote, which pulls from one URL and can push to another.
+public struct NewRemote: Sendable, Hashable {
+    /// What's wrong with what's been typed, beside anything still being empty.
+    public enum Problem: Sendable, Hashable {
+        case nameTaken
+        /// Has a space, or starts with a hyphen, which git would take for an option.
+        case badName
+        /// Starts with a hyphen, which git would take for an option.
+        case badURL
+    }
+
+    public var name: String
+    public var url: String
+    /// Where it pushes, when that isn't `url`.
+    public var pushURL: String?
+
+    public init(name: String, url: String, pushURL: String? = nil) {
+        self.name = name
+        self.url = url
+        self.pushURL = pushURL == url || pushURL?.isEmpty == true ? nil : pushURL
+    }
+
+    /// - Parameter remotes: The names of the remotes there are.
+    public func problem(among remotes: [String]) -> Problem? {
+        if remotes.contains(name) { return .nameTaken }
+        if name.hasPrefix("-") || name.contains(where: \.isWhitespace) { return .badName }
+        if url.hasPrefix("-") || pushURL?.hasPrefix("-") == true { return .badURL }
+        return nil
+    }
+
+    /// Whether it's ready to add. git has the last word on the name.
+    public func canBeAdded(among remotes: [String]) -> Bool {
+        !name.isEmpty && !url.isEmpty && problem(among: remotes) == nil
+    }
+
+    /// What to run, in order, by their arguments after `git`.
+    public var commands: [[String]] {
+        [["remote", "add", name, url]] + (pushURL.map { [["remote", "set-url", "--push", name, $0]] } ?? [])
+    }
+}
+
+/// Making a branch push to and pull from one of the repository's remotes.
+public struct UpstreamChoice: Sendable, Hashable {
+    /// The branch's short name.
+    public var branch: String
+    public var remote: String
+    /// What the branch will track on the remote, or nil when the remote hasn't
+    /// got it yet, and its first push goes there and sets that up.
+    public var branchOnRemote: String?
+    /// Whether the branch tracks something now, which has to go when the remote
+    /// hasn't got it, or a pull would still come from the old remote.
+    public var hasUpstream: Bool
+
+    /// - Parameters:
+    ///   - upstream: What the branch tracks now. It keeps tracking that name on
+    ///     the new remote if the remote has it, and otherwise its own.
+    ///   - exists: Whether a ref exists, by its full name.
+    public init(branch: String, remote: String, upstream: RefRelation.Upstream?, exists: (String) -> Bool) {
+        self.branch = branch
+        self.remote = remote
+        branchOnRemote = [upstream?.branchOnRemote, branch].compactMap(\.self).first { exists("\(Ref.remoteBranchPrefix)\(remote)/\($0)") }
+        hasUpstream = upstream != nil
+    }
+
+    /// What to run, in order, by their arguments after `git`. Nothing here talks
+    /// to the remote. `branch.<name>.pushRemote` is set either way, because a
+    /// repository's `remote.pushDefault` would otherwise send the pushes elsewhere.
+    public var commands: [[String]] {
+        let pushRemote = ["config", "branch.\(branch).pushRemote", remote]
+        if let branchOnRemote {
+            // The full name, because a local branch could be called `fork/x` too.
+            return [["branch", "--set-upstream-to=\(Ref.remoteBranchPrefix)\(remote)/\(branchOnRemote)", branch], pushRemote]
+        }
+        return (hasUpstream ? [["branch", "--unset-upstream", branch]] : []) + [pushRemote]
+    }
+}
+
 /// A merge, a rebase, a revert or a cherry-pick that a worktree is partway
 /// through, and what undoes it.
 public enum StoppedWork: Sendable, Hashable {

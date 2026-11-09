@@ -204,6 +204,9 @@ struct DialogContent: Identifiable {
     /// A smaller gray line after the cards.
     var note: DialogText?
     var terminal: [TerminalLine] = []
+    /// How tall the terminal block is, for a dialog whose commands change as
+    /// someone types, since a sheet can't change size. Otherwise it fits them.
+    var terminalHeight: CGFloat? = nil
     var buttons: [DialogButton]
     /// What Escape, the × and clicking outside of a button mean.
     var dismiss: () -> Void

@@ -19,7 +19,7 @@ struct WorktreeMenuTests {
     }
 
     private func commands(_ entries: [RefMenu.Entry]) -> [(title: String, isEnabled: Bool, action: () -> Void)] {
-        entries.compactMap { if case let .command(title, _, isEnabled, _, action) = $0 { (title, isEnabled, action) } else { nil } }
+        entries.compactMap { if case let .command(title, _, isEnabled, _, action) = $0 { (title.plain, isEnabled, action) } else { nil } }
     }
 
     private func actions(shown: @escaping (String) -> Void = { _ in }, newWorktree: (() -> Void)? = {}) -> WorktreeMenu.Actions {
@@ -35,7 +35,7 @@ struct WorktreeMenuTests {
         )
         #expect(choices(entries).map(\.title) == ["main", "agent/fix-login", "detached at 86b3386a"])
         #expect(choices(entries).map(\.isCurrent) == [false, true, false])
-        #expect(commands(entries).map(\.title) == ["New Worktree…", "Show in Finder", "Open in Terminal"])
+        #expect(commands(entries).map(\.title) == ["New worktree…", "Show in Finder", "Open in Terminal"])
     }
 
     @Test func choosingAWorktreeShowsItAndChoosingTheCurrentOneDoesNothing() {

@@ -27,6 +27,22 @@ struct RefMenuTests {
         menu.performActionForItem(at: index)
     }
 
+    @Test func aRowThatSaysWhatsChosenMakesRoomForItAndVoiceOverHearsIt() throws {
+        let plain = RefMenu.make([.submenu("Sort by", entries: [.option("Name", isChecked: true) {}])])
+        let chosen = RefMenu.make([.submenu("Sort by", value: "Uncommitted changes", entries: [.option("Name", isChecked: true) {}])])
+        #expect(chosen.items[0].title == "Sort by, Uncommitted changes")
+        #expect(try #require(chosen.items[0].view).frame.width > (try #require(plain.items[0].view)).frame.width)
+    }
+
+    @Test func aBranchNameTakesRoomForItsIconAndIsReadWithoutIt() throws {
+        let title: RefMenu.Title = "Merge \(branch: "feature") into \(branch: "main")…"
+        #expect(title.plain == "Merge feature into main…")
+        let withIcons = RefMenu.make([.command(title) {}])
+        let withoutIcons = RefMenu.make([.command(RefMenu.Title(title.plain)) {}])
+        #expect(withIcons.items[0].title == "Merge feature into main…")
+        #expect(try #require(withIcons.items[0].view).frame.width > (try #require(withoutIcons.items[0].view)).frame.width)
+    }
+
     @Test func macOSAddsNothingOfItsOwnToAMenu() throws {
         let menu = RefMenu.make([.submenu("Create", entries: [.command("Branch Here…") {}])])
         let inner = try #require(menu.items[0].submenu)
@@ -97,12 +113,12 @@ struct RefMenuTests {
     }
 
     @Test func aLongNameWidensEveryRowUpToALimit() throws {
-        let medium = RefMenu.make([.header(String(repeating: "m", count: 30)), .command("Copy Name") {}])
+        let medium = RefMenu.make([.header(RefMenu.Title(String(repeating: "m", count: 30))), .command("Copy Name") {}])
         let width = try #require(widths(medium).first)
         #expect(widths(medium).count == 1)
         #expect(width > 120 && width < 480)
 
-        let long = RefMenu.make([.header(String(repeating: "m", count: 200)), .command("Copy Name") {}])
+        let long = RefMenu.make([.header(RefMenu.Title(String(repeating: "m", count: 200))), .command("Copy Name") {}])
         #expect(widths(long) == [480])
     }
 
@@ -164,7 +180,7 @@ struct RefMenuTests {
         let option = try #require(widths(RefMenu.make([.option("Uncommitted Changes", isChecked: true) {}])).first)
         #expect(option == command + 30)
         // A long option still leaves room for its checkmark after it.
-        let long = RefMenu.make([.option(String(repeating: "Uncommitted Changes ", count: 8), isChecked: true) {}])
+        let long = RefMenu.make([.option(RefMenu.Title(String(repeating: "Uncommitted Changes ", count: 8)), isChecked: true) {}])
         #expect(widths(long) == [480])
     }
 

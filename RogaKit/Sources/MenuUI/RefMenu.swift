@@ -12,21 +12,83 @@ import IconUI
 public enum RefMenu {
     public enum Entry {
         /// A dim line that names what the commands under it act on.
-        case header(String)
+        case header(Title)
         /// A command, with the shortcut that does the same with the menu
         /// closed, if it has one, at its right.
-        case command(String, isDestructive: Bool = false, isEnabled: Bool = true, shortcut: Shortcut? = nil, action: () -> Void)
+        case command(Title, isDestructive: Bool = false, isEnabled: Bool = true, shortcut: Shortcut? = nil, action: () -> Void)
         /// One of a set of ways to do something, such as how a list is sorted,
         /// with a checkmark at the right of the one that's chosen.
-        case option(String, isChecked: Bool, action: () -> Void)
+        case option(Title, isChecked: Bool, action: () -> Void)
         /// One of several places to go, such as a worktree, with what's going on
         /// there on a second line.
         case choice(Choice)
         /// A row that opens more rows beside it, for commands that belong together
         /// and are different things. Commands that differ only in how far they go
-        /// share one row and a dialog instead (decision 33).
-        case submenu(String, isEnabled: Bool = true, entries: [Entry])
+        /// share one row and a dialog instead (decision 33). When the rows are
+        /// options, `value` says which is chosen, dimly, before the arrow.
+        case submenu(Title, value: String? = nil, isEnabled: Bool = true, entries: [Entry])
         case divider
+    }
+
+    /// What a row says. A branch's name has the branch icon in front of it, so
+    /// that a row that names two branches shows at a glance which words are
+    /// branches. Write one as `"Merge \(branch: name) into \(branch: head)…"`.
+    public struct Title: ExpressibleByStringInterpolation {
+        public enum Part: Equatable {
+            case text(String)
+            case branch(String)
+        }
+
+        public var parts: [Part]
+
+        public init(_ text: String) {
+            parts = [.text(text)]
+        }
+
+        public init(stringLiteral value: String) {
+            self.init(value)
+        }
+
+        public init(stringInterpolation: StringInterpolation) {
+            parts = stringInterpolation.parts
+        }
+
+        /// Only a branch's name, with its icon.
+        public static func branch(_ name: String) -> Title {
+            "\(branch: name)"
+        }
+
+        /// The words without the icons, for VoiceOver and typing to select.
+        public var plain: String {
+            parts.map { part in
+                switch part {
+                case let .text(text): text
+                case let .branch(name): name
+                }
+            }.joined()
+        }
+
+        public struct StringInterpolation: StringInterpolationProtocol {
+            var parts: [Part] = []
+
+            public init(literalCapacity: Int, interpolationCount: Int) {}
+
+            public mutating func appendLiteral(_ literal: String) {
+                if !literal.isEmpty { parts.append(.text(literal)) }
+            }
+
+            public mutating func appendInterpolation(_ text: String) {
+                appendLiteral(text)
+            }
+
+            public mutating func appendInterpolation(branch name: String) {
+                parts.append(.branch(name))
+            }
+
+            public mutating func appendInterpolation(_ title: Title) {
+                parts += title.parts
+            }
+        }
     }
 
     /// The key that does what a row does with the menu closed, because a
@@ -155,17 +217,18 @@ public enum RefMenu {
         for entry in entries {
             switch entry {
             case let .header(title):
-                let item = NSMenuItem.sectionHeader(title: title)
+                let item = NSMenuItem.sectionHeader(title: title.plain)
                 item.view = RowView(
                     title: title,
                     font: Metrics.headerFont,
                     color: Colors.header,
                     inset: inset,
-                    size: NSSize(width: width, height: Metrics.headerHeight)
+                    size: NSSize(width: width, height: Metrics.headerHeight),
+                    iconColor: Colors.header
                 )
                 menu.addItem(item)
             case let .command(title, isDestructive, isEnabled, shortcut, action):
-                let item = item(title: title, isEnabled: isEnabled, shortcut: shortcut, action: action)
+                let item = item(title: title.plain, isEnabled: isEnabled, shortcut: shortcut, action: action)
                 item.view = RowView(
                     title: title,
                     font: Metrics.commandFont,
@@ -176,7 +239,7 @@ public enum RefMenu {
                 )
                 menu.addItem(item)
             case let .option(title, isChecked, action):
-                let item = item(title: title, isEnabled: true, shortcut: nil, action: action)
+                let item = item(title: title.plain, isEnabled: true, shortcut: nil, action: action)
                 // Drawn by the row, and read by VoiceOver from the item.
                 item.state = isChecked ? .on : .off
                 item.view = RowView(title: title, font: Metrics.commandFont, color: Colors.command, inset: inset, size: commandSize, isChecked: isChecked)
@@ -187,8 +250,9 @@ public enum RefMenu {
                 item.state = choice.isCurrent ? .on : .off
                 item.view = ChoiceView(choice: choice, shortcuts: shortcuts, size: NSSize(width: width, height: Metrics.choiceHeight))
                 menu.addItem(item)
-            case let .submenu(title, isEnabled, entries):
-                let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+            case let .submenu(title, value, isEnabled, entries):
+                // VoiceOver reads the item, so its title says what's chosen too.
+                let item = NSMenuItem(title: [title.plain, value].compactMap(\.self).joined(separator: ", "), action: nil, keyEquivalent: "")
                 item.submenu = make(entries)
                 item.isEnabled = isEnabled
                 item.view = RowView(
@@ -196,7 +260,8 @@ public enum RefMenu {
                     font: Metrics.commandFont,
                     color: Colors.row(isDestructive: false, isEnabled: isEnabled),
                     inset: inset,
-                    size: commandSize
+                    size: commandSize,
+                    value: value
                 )
                 menu.addItem(item)
             case .divider:
@@ -257,6 +322,10 @@ private enum Metrics {
     /// The arrow on a row that opens a submenu, and the room its title leaves for it.
     static let arrowSize = NSSize(width: 5, height: 10)
     static let arrowRoom = 16.0
+    /// The least room between a row's title and the value before its arrow.
+    static let valueGap = 24.0
+    /// The room after the branch icon in front of a branch's name.
+    static let branchIconGap = 4.0
     /// A longer name gets cut short in its middle, where branch names differ least.
     static let maximumWidth = 480.0
     /// What a choice's last part, such as a folder, keeps when the parts
@@ -277,11 +346,12 @@ private enum Metrics {
     static func width(fitting entries: [RefMenu.Entry], inset: Double, shortcuts: ShortcutColumn) -> Double {
         let widest = entries.map { entry -> Double in
             switch entry {
-            case let .header(title): inset + textWidth(title, font: headerFont)
-            case let .command(title, _, _, shortcut, _): inset + textWidth(title, font: commandFont) + (shortcut == nil ? 0 : shortcuts.room)
-            case let .option(title, _, _): inset + textWidth(title, font: commandFont) + optionCheckRoom
+            case let .header(title): inset + titleWidth(title, font: headerFont)
+            case let .command(title, _, _, shortcut, _): inset + titleWidth(title, font: commandFont) + (shortcut == nil ? 0 : shortcuts.room)
+            case let .option(title, _, _): inset + titleWidth(title, font: commandFont) + optionCheckRoom
             case let .choice(choice): choiceTextInset + choiceWidth(choice) + shortcuts.room
-            case let .submenu(title, _, _): inset + textWidth(title, font: commandFont) + arrowRoom
+            case let .submenu(title, value, _, _):
+                inset + titleWidth(title, font: commandFont) + arrowRoom + (value.map { valueGap + textWidth($0, font: commandFont) } ?? 0)
             case .divider: 0
             }
         }.max() ?? 0
@@ -302,6 +372,10 @@ private enum Metrics {
 
     static func textWidth(_ text: String, font: NSFont) -> Double {
         (text as NSString).size(withAttributes: [.font: font]).width
+    }
+
+    static func titleWidth(_ title: RefMenu.Title, font: NSFont) -> Double {
+        title.attributed(font: font, color: .labelColor, iconColor: .labelColor).size().width
     }
 
     static func lineHeight(_ font: NSFont) -> Double {
@@ -346,6 +420,8 @@ private enum Colors {
         light: NSColor(srgbRed: 192 / 255, green: 57 / 255, blue: 43 / 255, alpha: 1)
     )
     static let highlight = adaptive(dark: NSColor(white: 1, alpha: 0.15), light: NSColor(white: 0, alpha: 0.08))
+    /// The branch icon in a row's text, between the text's color and the dim one.
+    static let branchIcon = adaptive(dark: NSColor(white: 0.75, alpha: 1), light: NSColor(white: 0.32, alpha: 1))
 
     static func row(isDestructive: Bool, isEnabled: Bool) -> NSColor {
         !isEnabled ? disabled : isDestructive ? destructive : command
@@ -353,6 +429,43 @@ private enum Colors {
 
     private static func adaptive(dark: NSColor, light: NSColor) -> NSColor {
         NSColor(name: nil) { $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light }
+    }
+}
+
+extension RefMenu.Title {
+    /// The title to draw, with each branch's icon in the text, so that a name
+    /// too long for the row is cut short along with its icon.
+    func attributed(font: NSFont, color: NSColor, iconColor: NSColor) -> NSAttributedString {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineBreakMode = .byTruncatingMiddle
+        let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color, .paragraphStyle: paragraph]
+        let text = NSMutableAttributedString()
+        for part in parts {
+            switch part {
+            case let .text(words):
+                text.append(NSAttributedString(string: words, attributes: attributes))
+            case let .branch(name):
+                if let icon = Self.branchIcon(font: font, color: iconColor) {
+                    let attachment = NSMutableAttributedString(attachment: icon)
+                    attachment.addAttributes(attributes, range: NSRange(location: 0, length: attachment.length))
+                    attachment.addAttribute(.kern, value: Metrics.branchIconGap, range: NSRange(location: 0, length: attachment.length))
+                    text.append(attachment)
+                }
+                text.append(NSAttributedString(string: name, attributes: attributes))
+            }
+        }
+        return text
+    }
+
+    /// The icon, centered on the height of the capitals beside it.
+    private static func branchIcon(font: NSFont, color: NSColor) -> NSTextAttachment? {
+        let configuration = NSImage.SymbolConfiguration(pointSize: font.pointSize, weight: .regular)
+            .applying(NSImage.SymbolConfiguration(paletteColors: [color]))
+        guard let image = Icon.branch.nsImage?.withSymbolConfiguration(configuration) else { return nil }
+        let attachment = NSTextAttachment()
+        attachment.image = image
+        attachment.bounds = NSRect(x: 0, y: ((font.capHeight - image.size.height) / 2).rounded(), width: image.size.width, height: image.size.height)
+        return attachment
     }
 }
 
@@ -549,25 +662,39 @@ private class MenuRowView: NSView {
 }
 
 /// A row's text, and the fill under it while it's highlighted. An option that's
-/// chosen has a checkmark at the right, where its text would end, and a command
-/// with a shortcut has it there.
+/// chosen has a checkmark at the right, where its text would end, a command
+/// with a shortcut has it there, and a row that opens a submenu has an arrow,
+/// after what's chosen in the submenu if that's for saying.
 private final class RowView: MenuRowView {
-    private let title: String
+    private let title: RefMenu.Title
+    private let font: NSFont
     private let inset: Double
     private let isChecked: Bool
     private let shortcut: (RefMenu.Shortcut, ShortcutColumn)?
-    private let attributes: [NSAttributedString.Key: Any]
+    private let value: String?
     private let color: NSColor
+    /// For a heading, whose item macOS always marks as disabled.
+    private let iconColor: NSColor?
 
-    init(title: String, font: NSFont, color: NSColor, inset: Double, size: NSSize, isChecked: Bool = false, shortcut: (RefMenu.Shortcut, ShortcutColumn)? = nil) {
+    init(
+        title: RefMenu.Title,
+        font: NSFont,
+        color: NSColor,
+        inset: Double,
+        size: NSSize,
+        isChecked: Bool = false,
+        shortcut: (RefMenu.Shortcut, ShortcutColumn)? = nil,
+        value: String? = nil,
+        iconColor: NSColor? = nil
+    ) {
         self.title = title
+        self.font = font
         self.color = color
         self.inset = inset
         self.isChecked = isChecked
         self.shortcut = shortcut
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.lineBreakMode = .byTruncatingMiddle
-        attributes = [.font: font, .foregroundColor: color, .paragraphStyle: paragraph]
+        self.value = value
+        self.iconColor = iconColor
         super.init(size: size)
     }
 
@@ -575,18 +702,28 @@ private final class RowView: MenuRowView {
         fatalError("The rows are made in code.")
     }
 
+    private var isEnabled: Bool {
+        enclosingMenuItem?.isEnabled ?? true
+    }
+
+    /// The value and the arrow are dim beside the row's words.
+    private var dim: NSColor {
+        isEnabled ? Colors.header : Colors.disabled
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         drawHighlight()
         let hasArrow = enclosingMenuItem?.hasSubmenu == true
-        let height = (title as NSString).size(withAttributes: attributes).height
-        (title as NSString).draw(
+        let valueRoom = value.map { ceil(Metrics.textWidth($0, font: font)) + Metrics.valueGap } ?? 0
+        let text = title.attributed(font: font, color: color, iconColor: iconColor ?? (isEnabled ? Colors.branchIcon : Colors.disabled))
+        let height = Metrics.lineHeight(font)
+        text.draw(
             in: NSRect(
                 x: inset,
-                y: (bounds.height - height) / 2,
-                width: bounds.width - inset - Metrics.textInset - (isChecked ? Metrics.optionCheckRoom : 0) - (shortcut?.1.room ?? 0) - (hasArrow ? Metrics.arrowRoom : 0),
+                y: ((bounds.height - height) / 2).rounded(),
+                width: bounds.width - inset - Metrics.textInset - (isChecked ? Metrics.optionCheckRoom : 0) - (shortcut?.1.room ?? 0) - (hasArrow ? Metrics.arrowRoom : 0) - valueRoom,
                 height: height
-            ),
-            withAttributes: attributes
+            )
         )
         if let (shortcut, column) = shortcut {
             drawShortcut(shortcut, in: column, isEnabled: enclosingMenuItem?.isEnabled ?? true)
@@ -594,7 +731,17 @@ private final class RowView: MenuRowView {
         if isChecked {
             drawSymbol(Self.checkmark, size: 15, weight: .regular, color: Colors.command, centeredAt: NSPoint(x: bounds.width - Metrics.optionCheckCenter, y: bounds.midY))
         }
+        if let value { drawValue(value, endingAt: bounds.maxX - Metrics.textInset - Metrics.arrowRoom, height: height) }
         if hasArrow { drawArrow() }
+    }
+
+    private func drawValue(_ value: String, endingAt end: Double, height: Double) {
+        let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: dim]
+        let width = ceil(Metrics.textWidth(value, font: font))
+        (value as NSString).draw(
+            in: NSRect(x: end - width, y: ((bounds.height - height) / 2).rounded(), width: width, height: height),
+            withAttributes: attributes
+        )
     }
 
     private func drawArrow() {
@@ -606,7 +753,7 @@ private final class RowView: MenuRowView {
         arrow.lineWidth = 1.5
         arrow.lineCapStyle = .round
         arrow.lineJoinStyle = .round
-        color.setStroke()
+        dim.setStroke()
         arrow.stroke()
     }
 }

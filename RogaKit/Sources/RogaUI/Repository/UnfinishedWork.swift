@@ -80,10 +80,10 @@ extension StoppedWork {
     /// What a menu calls aborting it.
     var abortTitle: String {
         switch self {
-        case .merge: "Abort Merge…"
-        case .rebase: "Abort Rebase…"
-        case .revert: "Abort Revert…"
-        case .cherryPick: "Abort Cherry-Pick…"
+        case .merge: "Abort merge…"
+        case .rebase: "Abort rebase…"
+        case .revert: "Abort revert…"
+        case .cherryPick: "Abort cherry-pick…"
         }
     }
 

@@ -62,12 +62,12 @@ struct ConflictNaming {
 
     private func theirs(_ label: String) -> ConflictSides.Side {
         if label == "Stashed changes" {
-            return ConflictSides.Side(name: "Your changes", detail: "from the stash", keepTitle: "Keep Yours", keptTitle: "Kept yours")
+            return ConflictSides.Side(name: "Your changes", detail: "from the stash", keepTitle: "Keep yours", keptTitle: "Kept yours")
         }
         if label.hasPrefix("parent of ") {
             let reverted = String(label.dropFirst("parent of ".count))
             let commit = Self.commitLabel(reverted).map { "\($0.hash) · \($0.subject)" } ?? ObjectID(hex: reverted).map(describe) ?? reverted
-            return ConflictSides.Side(name: "The revert", detail: "taking out \(commit)", keepTitle: "Keep the Revert", keptTitle: "Kept the revert")
+            return ConflictSides.Side(name: "The revert", detail: "taking out \(commit)", keepTitle: "Keep the revert", keptTitle: "Kept the revert")
         }
         if let commit = Self.commitLabel(label) {
             let detail = if case .rebase = work { "your commit being rebased · \(commit.subject)" } else { commit.subject }

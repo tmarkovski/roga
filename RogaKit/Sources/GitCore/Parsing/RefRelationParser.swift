@@ -29,11 +29,20 @@ public struct RefRelation: Sendable, Hashable {
     /// How many commits `HEAD` has that it doesn't.
     public var behind: Int
     public var upstream: Upstream?
+    /// The remote git's settings send this branch's pushes to, when they say.
+    public var pushRemote: String?
 
-    public init(ahead: Int, behind: Int, upstream: Upstream? = nil) {
+    public init(ahead: Int, behind: Int, upstream: Upstream? = nil, pushRemote: String? = nil) {
         self.ahead = ahead
         self.behind = behind
         self.upstream = upstream
+        self.pushRemote = pushRemote
+    }
+
+    /// The remote the branch pushes to and pulls from: the one it tracks, or,
+    /// before it has been pushed, the one its first push will go to.
+    public var remote: String? {
+        upstream?.remote ?? pushRemote
     }
 }
 
@@ -46,7 +55,7 @@ public enum RefRelationParser {
     /// `head` is an object ID, because that's what stays true for as long as the
     /// answer is used, which a name like `HEAD` wouldn't say.
     public static func format(comparingWith head: ObjectID) -> String {
-        "%(refname)%00%(ahead-behind:\(head.hex))%00%(upstream)%00%(upstream:track,nobracket)%00%(upstream:remotename)%00%(upstream:remoteref)"
+        "%(refname)%00%(ahead-behind:\(head.hex))%00%(upstream)%00%(upstream:track,nobracket)%00%(upstream:remotename)%00%(upstream:remoteref)%00%(push:remotename)"
     }
 
     /// - Returns: Each ref's relation, by its full name.
@@ -54,8 +63,8 @@ public enum RefRelationParser {
         var relations: [String: RefRelation] = [:]
         for line in output.split(separator: UInt8(ascii: "\n")) {
             let fields = line.split(separator: 0, omittingEmptySubsequences: false)
-            guard fields.count == 6 else {
-                throw ParseError("git for-each-ref printed a line with \(fields.count) fields instead of 6.")
+            guard fields.count == 7 else {
+                throw ParseError("git for-each-ref printed a line with \(fields.count) fields instead of 7.")
             }
             let name = String(decoding: fields[0], as: UTF8.self)
             let numbers = String(decoding: fields[1], as: UTF8.self).split(separator: " ").map { Int($0) }
@@ -76,7 +85,8 @@ public enum RefRelationParser {
                     branchOnRemote: onRemote.isEmpty ? nil : Ref.shortName(onRemote)
                 )
             }
-            relations[name] = RefRelation(ahead: ahead, behind: behind, upstream: upstream)
+            let pushRemote = String(decoding: fields[6], as: UTF8.self)
+            relations[name] = RefRelation(ahead: ahead, behind: behind, upstream: upstream, pushRemote: pushRemote.isEmpty ? nil : pushRemote)
         }
         return relations
     }

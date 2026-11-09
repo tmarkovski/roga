@@ -170,10 +170,11 @@ private struct NewBranchButton: View {
 struct BranchMenuItems: View {
     let branch: BranchModel
     let switchBranch: (() -> Void)?
-    /// Whether New Worktree… follows New Branch…, which only the menu bar's
-    /// Branch menu has, since the branch's own menu leaves worktrees to the
-    /// menu of the repository's worktrees.
-    var listsNewWorktree = false
+    /// Whether this is the menu bar's Branch menu, which has New Worktree… after
+    /// New Branch…, since the branch's own menu leaves worktrees to the menu of
+    /// the repository's worktrees. Its rows are in title case, as macOS's own
+    /// are, where the menus in the window are in sentence case.
+    var isInMenuBar = false
     /// What New Worktree… does, or nil while it can't start.
     var newWorktree: (() -> Void)?
 
@@ -190,7 +191,7 @@ struct BranchMenuItems: View {
                 .keyboardShortcut(RepositoryCommands.pushShortcut)
                 .disabled(status.push == nil || branch.isBusy)
                 .modifierKeyAlternate(.option) {
-                    item("Force Push with Lease…", icon: .push, action: branch.askToForcePush)
+                    item(isInMenuBar ? "Force Push with Lease…" : "Force push with lease…", icon: .push, action: branch.askToForcePush)
                         .disabled(status.upstream == nil || branch.isBusy)
                 }
             item("Fetch", icon: .fetch, action: branch.fetch)
@@ -198,15 +199,15 @@ struct BranchMenuItems: View {
                 .disabled(status.remote == nil || branch.isBusy)
             Divider()
         }
-        item("New Branch…", icon: .newBranch) { branch.isCreatingBranch = true }
+        item(isInMenuBar ? "New Branch…" : "New branch…", icon: .newBranch) { branch.isCreatingBranch = true }
             .keyboardShortcut(RepositoryCommands.newBranchShortcut)
             .disabled(branch.isBusy)
-        if listsNewWorktree {
+        if isInMenuBar {
             item("New Worktree…", icon: .worktree) { newWorktree?() }
                 .keyboardShortcut(RepositoryCommands.newWorktreeShortcut)
                 .disabled(newWorktree == nil)
         }
-        item("Switch Branch…", icon: nil) { switchBranch?() }
+        item(isInMenuBar ? "Switch Branch…" : "Switch branch…", icon: nil) { switchBranch?() }
             .disabled(switchBranch == nil)
     }
 
@@ -441,7 +442,7 @@ private struct UnfinishedWorkControl: View {
     var body: some View {
         Menu {
             if unfinished.hasConflicts {
-                Button("Resolve Conflicts", action: branch.showConflicts)
+                Button("Resolve conflicts", action: branch.showConflicts)
             }
             if let work = unfinished.work {
                 if unfinished.hasConflicts { Divider() }

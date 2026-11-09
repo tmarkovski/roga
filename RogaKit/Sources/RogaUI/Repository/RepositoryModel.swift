@@ -193,6 +193,8 @@ final class RepositoryModel {
     /// How every branch stands against the commit `HEAD` was on, for the menus.
     @ObservationIgnored private var refRelations: (head: ObjectID, relations: [String: RefRelation])?
     @ObservationIgnored private(set) var refRelationsUpdate: Task<Void, Never>?
+    /// The repository's remotes, from A to Z, as of the last time history loaded.
+    @ObservationIgnored private(set) var remoteNames: [String] = []
 
     private struct RowText {
         var subject: String
@@ -248,6 +250,7 @@ final class RepositoryModel {
         composer.showChanges = { [weak self] in self?.selectChangesOnceTheyShow() }
         branch.isCheckingOut = { [weak self] in self?.checkout != nil }
         branch.lookAgain = { [weak self] in self?.lookAgain() }
+        branch.remotesChanged = { [weak self] in self?.updateRefRelations(head: self?.history?.refs.head) }
         branch.showConflicts = { [weak self] in
             guard let self, hasWorkingTreeRow else { return }
             selectRow(0)
@@ -769,9 +772,32 @@ final class RepositoryModel {
             return
         }
         refRelationsUpdate = Task {
+            async let remotes = session.remoteNames(in: worktree)
             guard let relations = try? await session.refRelations(to: head, in: worktree), !Task.isCancelled else { return }
             refRelations = (head, relations)
+            remoteNames = (try? await remotes) ?? remoteNames
         }
+    }
+
+    /// Makes a branch push to and pull from one of the remotes.
+    ///
+    /// - Parameter ref: The branch's full name.
+    func setUpstream(of ref: String, to remote: String) {
+        guard let current = relation(of: ref), current.remote != remote else { return }
+        let choice = UpstreamChoice(branch: Ref.shortName(ref), remote: remote, upstream: current.upstream) { relation(of: $0) != nil }
+        branch.setUpstream(choice)
+    }
+
+    /// Asks about removing a remote, saying what goes with it.
+    func askToRemove(remote: RemoteDetails) {
+        let using = (refRelations?.relations ?? [:]).filter { name, relation in
+            name.hasPrefix(Ref.branchPrefix) && (relation.upstream?.remote == remote.name || relation.pushRemote == remote.name)
+        }
+        branch.remoteRemoval = BranchModel.RemoteRemoval(
+            name: remote.name,
+            branchCount: remote.branches.count,
+            branches: using.keys.map(Ref.shortName).sorted()
+        )
     }
 
     /// How a branch stands against `HEAD`, unless `HEAD` has moved since that was read.

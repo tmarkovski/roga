@@ -142,7 +142,7 @@ struct AgentModelControl: View {
                 options: GenerateChoices.models(for: kind, stored: model).map { (value: $0, title: AgentKind.modelTitle($0)) },
                 detail: { model in model.isEmpty && kind == .codex ? agents.codexDefaultModel : nil },
                 // Codex's names come from the account, so they're typed on its page.
-                more: kind == .codex ? another.map { (title: "Another Model…", action: $0) } : nil
+                more: kind == .codex ? another.map { (title: "Another model…", action: $0) } : nil
             )
         }
     }

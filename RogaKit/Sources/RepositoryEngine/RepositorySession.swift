@@ -416,6 +416,47 @@ public actor RepositorySession {
         _ = try await Self.run(tag.arguments, in: worktree, git: git)
     }
 
+    /// Makes a branch push to and pull from one of the remotes. This only changes
+    /// git's settings for the branch, so it doesn't reach the network.
+    ///
+    /// - Throws: `GitError` when git refuses, which says why.
+    @concurrent
+    public nonisolated func setUpstream(_ choice: UpstreamChoice, in worktree: String) async throws {
+        for arguments in choice.commands {
+            _ = try await Self.run(arguments, in: worktree, git: git)
+        }
+    }
+
+    /// Adds a remote, without fetching from it.
+    ///
+    /// - Throws: `GitError` when git refuses, which says why.
+    @concurrent
+    public nonisolated func add(_ remote: NewRemote, in worktree: String) async throws {
+        for arguments in remote.commands {
+            _ = try await Self.run(arguments, in: worktree, git: git)
+        }
+    }
+
+    /// What removing a remote runs, by its arguments after `git`.
+    public nonisolated static func removeRemoteArguments(_ name: String) -> [String] {
+        ["remote", "remove", name]
+    }
+
+    /// Removes a remote, its remote branches, and the settings of the branches
+    /// that used it. git does all of that, and the remote itself doesn't change.
+    ///
+    /// - Throws: `GitError` when git refuses, which says why.
+    public func removeRemote(_ name: String, in worktree: String) async throws {
+        await clearTheWayForSomeone()
+        _ = try await Self.run(Self.removeRemoteArguments(name), in: worktree, git: git)
+    }
+
+    /// The names of the repository's remotes, from A to Z.
+    @concurrent
+    public nonisolated func remoteNames(in worktree: String) async throws -> [String] {
+        try await RefDetailsLoader.remoteURLs(git: git, in: worktree).keys.sorted()
+    }
+
     /// What fast-forwarding a branch that isn't checked out to its upstream runs,
     /// by its arguments after `git`. git refuses when that isn't a fast-forward, or
     /// when a worktree has the branch checked out.

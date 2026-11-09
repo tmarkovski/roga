@@ -42,7 +42,7 @@ enum SidebarSort: String, CaseIterable, Sendable {
     var title: String {
         switch self {
         case .name: "Name"
-        case .changes: "Uncommitted Changes"
+        case .changes: "Uncommitted changes"
         }
     }
 }

@@ -52,6 +52,8 @@ enum HistoryMenu {
         var reviewBase: String?
         /// Where the current branch stands against its upstream, for its own row.
         var status: BranchStatus?
+        /// The repository's remotes, which Set upstream chooses from.
+        var remotes: [String] = []
     }
 
     /// What the rows do. Each is about the target the menu was made for, because
@@ -76,6 +78,8 @@ enum HistoryMenu {
         var pushBranch: (() -> Void)?
         /// Fast-forwards the target's branch to its upstream.
         var fastForwardBranch: () -> Void = {}
+        /// Makes the target's branch push to and pull from a remote, by its name.
+        var setUpstream: (String) -> Void = { _ in }
         var copy: (String) -> Void = { _ in }
         var review: () -> Void = {}
         var replay: (() -> Void)?
@@ -96,12 +100,13 @@ enum HistoryMenu {
         let name = target.ref.map(Ref.shortName)
         let isCurrentBranch = target.ref != nil && target.ref == situation.currentBranch
         let sections: [[RefMenu.Entry]] = [
-            isCurrentBranch ? currentBranchRows(situation, actions) : goingAndBringingIn(target, name, situation, actions),
+            isCurrentBranch ? currentBranchRows(target, situation, actions) : goingAndBringingIn(target, name, situation, actions),
             isCurrentBranch ? [] : resettingAndReverting(target, situation, actions),
             moreRows(target, name, situation, actions),
-            actions.delete.map { [.command($0.title, isDestructive: true, isEnabled: $0.isEnabled, action: $0.action)] } ?? [],
+            actions.delete.map { [.command(RefMenu.Title($0.title), isDestructive: true, isEnabled: $0.isEnabled, action: $0.action)] } ?? [],
         ]
-        var entries: [RefMenu.Entry] = [.header(name ?? target.shortID)]
+        let heading: RefMenu.Title = target.refIsBranch ? .branch(name ?? target.shortID) : RefMenu.Title(name ?? target.shortID)
+        var entries: [RefMenu.Entry] = [.header(heading)]
         for (index, section) in sections.filter({ !$0.isEmpty }).enumerated() {
             if index > 0 { entries.append(.divider) }
             entries += section
@@ -109,19 +114,30 @@ enum HistoryMenu {
         return entries
     }
 
-    private static func headName(_ situation: Situation) -> String {
-        situation.currentBranch.map(Ref.shortName) ?? "HEAD"
+    /// What the rows call where `HEAD` is, which only has the branch icon on a branch.
+    private static func headName(_ situation: Situation) -> RefMenu.Title {
+        situation.currentBranch.map { .branch(Ref.shortName($0)) } ?? "HEAD"
+    }
+
+    /// Which remote the branch pushes to and pulls from, for a repository that
+    /// has more than one to choose from.
+    private static func upstreamRow(_ target: Target, _ situation: Situation, _ actions: Actions) -> RefMenu.Entry? {
+        guard target.refIsLocalBranch, situation.remotes.count > 1, let relation = situation.relation else { return nil }
+        let chosen = relation.remote.flatMap { situation.remotes.contains($0) ? $0 : nil }
+        return .submenu("Set upstream", value: chosen ?? "None", isEnabled: !situation.isBusy, entries: situation.remotes.map { remote in
+            .option(RefMenu.Title(remote), isChecked: remote == chosen) { actions.setUpstream(remote) }
+        })
     }
 
     /// Pull, Push and Fetch, as the title row's menu has them.
-    private static func currentBranchRows(_ situation: Situation, _ actions: Actions) -> [RefMenu.Entry] {
+    private static func currentBranchRows(_ target: Target, _ situation: Situation, _ actions: Actions) -> [RefMenu.Entry] {
         guard let status = situation.status else { return [] }
         let asks = status.pull == nil && status.hasDiverged
         return [
             .command(asks ? "Pull…" : "Pull", isEnabled: !situation.isBusy && (status.pull != nil || asks), action: actions.pull),
             .command("Push", isEnabled: !situation.isBusy && status.push != nil, action: actions.push),
             .command("Fetch", isEnabled: !situation.isBusy && status.remote != nil, action: actions.fetch),
-        ]
+        ] + [upstreamRow(target, situation, actions)].compactMap(\.self)
     }
 
     /// Going to what was clicked, and bringing it into the current branch.
@@ -130,16 +146,16 @@ enum HistoryMenu {
         let head = headName(situation)
         if target.refIsBranch, let name {
             if let show = actions.showOtherWorktree {
-                rows.append(.command("Show Worktree", action: show))
+                rows.append(.command("Show worktree", action: show))
             } else if !situation.isRemoteCopyOfCurrentBranch {
-                rows.append(.command("Check Out", isEnabled: situation.canChange, action: actions.checkOut))
+                rows.append(.command("Check out", isEnabled: situation.canChange, action: actions.checkOut))
             }
             if situation.head != nil { rows += bringingInBranch(name, head, situation, actions) }
         } else if target.commit != situation.head {
-            rows.append(.command("Check Out This Commit", isEnabled: situation.canChange, action: actions.checkOutCommit))
+            rows.append(.command("Check out this commit", isEnabled: situation.canChange, action: actions.checkOutCommit))
         }
         if situation.head != nil, target.commit != situation.head, situation.headContains != true {
-            rows.append(.command("Cherry-Pick into \(head)", isEnabled: situation.canChange, action: actions.cherryPick))
+            rows.append(.command("Cherry-pick into \(head)", isEnabled: situation.canChange, action: actions.cherryPick))
         }
         return rows
     }
@@ -147,24 +163,24 @@ enum HistoryMenu {
     /// Fast-forward when that's all it takes, nothing when `HEAD` has it all, and
     /// otherwise the two ways of combining them. Until the relation has been read,
     /// the dialogs say what's what.
-    private static func bringingInBranch(_ name: String, _ head: String, _ situation: Situation, _ actions: Actions) -> [RefMenu.Entry] {
+    private static func bringingInBranch(_ name: String, _ head: RefMenu.Title, _ situation: Situation, _ actions: Actions) -> [RefMenu.Entry] {
         let isEnabled = situation.canChange
         if let relation = situation.relation {
             if relation.ahead == 0 { return [] }
             if relation.behind == 0 {
-                return [.command("Fast-Forward \(head) to \(name)", isEnabled: isEnabled) { actions.integrate(.fastForward) }]
+                return [.command("Fast-forward \(head) to \(branch: name)", isEnabled: isEnabled) { actions.integrate(.fastForward) }]
             }
         }
         return [
-            .command("Merge \(name) into \(head)…", isEnabled: isEnabled) { actions.integrate(.merge) },
-            .command("Rebase \(head) onto \(name)…", isEnabled: isEnabled) { actions.integrate(.rebase) },
+            .command("Merge \(branch: name) into \(head)…", isEnabled: isEnabled) { actions.integrate(.merge) },
+            .command("Rebase \(head) onto \(branch: name)…", isEnabled: isEnabled) { actions.integrate(.rebase) },
         ]
     }
 
     private static func resettingAndReverting(_ target: Target, _ situation: Situation, _ actions: Actions) -> [RefMenu.Entry] {
         var rows: [RefMenu.Entry] = []
         if let current = situation.currentBranch, target.commit != situation.head {
-            rows.append(.command("Reset \(Ref.shortName(current)) to Here…", isEnabled: situation.canChange, action: actions.reset))
+            rows.append(.command("Reset \(branch: Ref.shortName(current)) to here…", isEnabled: situation.canChange, action: actions.reset))
         }
         rows.append(.command("Revert…", isEnabled: situation.canChange, action: actions.revert))
         return rows
@@ -173,19 +189,20 @@ enum HistoryMenu {
     private static func moreRows(_ target: Target, _ name: String?, _ situation: Situation, _ actions: Actions) -> [RefMenu.Entry] {
         var rows: [RefMenu.Entry] = [
             .submenu("Create", isEnabled: !situation.isBusy, entries: [
-                .command("Branch Here…", action: actions.newBranch),
-                .command("Worktree Here…", action: actions.newWorktree),
-                .command("Tag Here…", action: actions.newTag),
+                .command("Branch here…", action: actions.newBranch),
+                .command("Worktree here…", action: actions.newWorktree),
+                .command("Tag here…", action: actions.newTag),
             ]),
         ]
         let remote = remoteRows(target, name, situation, actions)
         if !remote.isEmpty { rows.append(.submenu("Remote", isEnabled: !situation.isBusy, entries: remote)) }
+        if target.ref != situation.currentBranch, let upstream = upstreamRow(target, situation, actions) { rows.append(upstream) }
         rows.append(.submenu("Copy", entries: copyRows(target, name, actions)))
         if let reviewBase = situation.reviewBase {
-            rows.append(.command("Review Against \(reviewBase)", action: actions.review))
+            rows.append(.command("Review against \(branch: reviewBase)", action: actions.review))
         }
         if let replay = actions.replay {
-            rows.append(.command("Replay History", action: replay))
+            rows.append(.command("Replay history", action: replay))
         }
         return rows
     }
@@ -199,11 +216,11 @@ enum HistoryMenu {
         if let push = actions.pushBranch {
             // git rejects a push from a branch that's behind.
             let isEnabled = upstream.map { $0.ahead > 0 && $0.behind == 0 } ?? true
-            rows.append(.command("Push \(name)", isEnabled: isEnabled, action: push))
+            rows.append(.command("Push \(branch: name)", isEnabled: isEnabled, action: push))
         }
         if let upstream {
             rows.append(.command(
-                "Fast-Forward from \(Ref.shortName(upstream.name))",
+                "Fast-forward from \(branch: Ref.shortName(upstream.name))",
                 isEnabled: upstream.behind > 0 && upstream.ahead == 0,
                 action: actions.fastForwardBranch
             ))
@@ -217,7 +234,7 @@ enum HistoryMenu {
             rows.append(.command("Subject") { actions.copy(subject) })
         }
         if let name {
-            rows.append(.command(target.refIsBranch ? "Branch Name" : "Tag Name") { actions.copy(name) })
+            rows.append(.command(target.refIsBranch ? "Branch name" : "Tag name") { actions.copy(name) })
         }
         return rows
     }
@@ -238,7 +255,7 @@ extension RepositoryModel {
         let content = rowContent(row)
         if content.isWorkingTree {
             return [
-                .command("Discard All Changes…", isDestructive: true, isEnabled: selectedChanges.canDiscardEverything()) { [selectedChanges] in
+                .command("Discard all changes…", isDestructive: true, isEnabled: selectedChanges.canDiscardEverything()) { [selectedChanges] in
                     selectedChanges.askToDiscardEverything()
                 },
             ]
@@ -297,7 +314,8 @@ extension RepositoryModel {
             relation: target.ref.flatMap(relation),
             isRemoteCopyOfCurrentBranch: target.ref.map(isRemoteCopyOfCurrentBranch) ?? false,
             reviewBase: target.refIsBranch ? target.ref.flatMap(reviewBase(for:))?.title : nil,
-            status: branch.status
+            status: branch.status,
+            remotes: remoteNames
         )
     }
 
@@ -330,8 +348,9 @@ extension RepositoryModel {
         actions.fetch = { [weak self] in self?.branch.fetch() }
         if let ref = target.ref, target.refIsLocalBranch, ref != history?.refs.currentBranch {
             let upstream = relation(of: ref)?.upstream
-            if upstream?.remote != nil || (upstream == nil && branch.status?.pushRemote != nil) {
-                actions.pushBranch = { [weak self] in self?.branch.push(branch: ref, upstream: upstream) }
+            let pushRemote = relation(of: ref)?.pushRemote
+            if upstream?.remote != nil || (upstream == nil && (pushRemote ?? branch.status?.pushRemote) != nil) {
+                actions.pushBranch = { [weak self] in self?.branch.push(branch: ref, upstream: upstream, pushRemote: pushRemote) }
             }
             if let upstream {
                 actions.fastForwardBranch = { [weak self] in self?.branch.fastForward(branch: ref, toUpstream: upstream.name) }
@@ -343,6 +362,7 @@ extension RepositoryModel {
         }
         if let ref = target.ref {
             actions.review = { [weak self] in self?.review(branch: ref) }
+            actions.setUpstream = { [weak self] remote in self?.setUpstream(of: ref, to: remote) }
         }
         return actions
     }

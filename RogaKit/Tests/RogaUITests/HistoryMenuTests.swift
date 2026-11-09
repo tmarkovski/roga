@@ -16,25 +16,107 @@ struct HistoryMenuTests {
     func titles(_ entries: [RefMenu.Entry]) -> [String] {
         entries.map { entry in
             switch entry {
-            case let .header(title): "# " + title
-            case let .command(title, _, _, _, _): title
-            case let .option(title, _, _): title
+            case let .header(title): "# " + title.plain
+            case let .command(title, _, _, _, _): title.plain
+            case let .option(title, _, _): title.plain
             case let .choice(choice): choice.title
-            case let .submenu(title, _, _): title + " ▸"
+            case let .submenu(title, _, _, _): title.plain + " ▸"
             case .divider: "-"
             }
         }
     }
 
     func submenu(_ title: String, in entries: [RefMenu.Entry]) -> [RefMenu.Entry]? {
-        for case let .submenu(name, _, inner) in entries where name == title { return inner }
+        for case let .submenu(name, _, _, inner) in entries where name.plain == title { return inner }
         return nil
     }
 
     func isEnabled(_ title: String, in entries: [RefMenu.Entry]) -> Bool? {
-        for case let .command(name, _, enabled, _, _) in entries where name == title { return enabled }
+        for case let .command(name, _, enabled, _, _) in entries where name.plain == title { return enabled }
         return nil
     }
+
+    // MARK: Set upstream
+
+    func upstreamRow(_ entries: [RefMenu.Entry]) -> (value: String?, isEnabled: Bool, inner: [RefMenu.Entry])? {
+        for case let .submenu(name, value, enabled, inner) in entries where name.plain == "Set upstream" { return (value, enabled, inner) }
+        return nil
+    }
+
+    func upstream(on remote: String) -> RefRelation.Upstream {
+        .init(name: "refs/remotes/\(remote)/feature", remote: remote, branchOnRemote: "feature")
+    }
+
+    @Test func aBranchChoosesFromTheRemotesAndSaysWhichItUses() throws {
+        var situation = situation
+        situation.remotes = ["fork", "origin"]
+        situation.relation = RefRelation(ahead: 1, behind: 1, upstream: upstream(on: "origin"))
+        var chosen: [String] = []
+        var actions = HistoryMenu.Actions()
+        actions.setUpstream = { chosen.append($0) }
+        let row = try #require(upstreamRow(HistoryMenu.entries(for: target(ref: feature), in: situation, actions: actions)))
+        #expect(row.value == "origin")
+        #expect(titles(row.inner) == ["fork", "origin"])
+        for case let .option(title, isChecked, action) in row.inner {
+            #expect(isChecked == (title.plain == "origin"))
+            action()
+        }
+        #expect(chosen == ["fork", "origin"])
+    }
+
+    @Test func theCurrentBranchHasTheRowWithItsPullAndPush() throws {
+        var situation = situation
+        situation.status = BranchStatus(branch: main, remote: "origin", pushRemote: "origin")
+        situation.remotes = ["fork", "origin"]
+        situation.relation = RefRelation(ahead: 0, behind: 0)
+        let rows = titles(entries(target(ref: main), situation))
+        #expect(Array(rows.prefix(5)) == ["# main", "Pull", "Push", "Fetch", "Set upstream ▸"])
+    }
+
+    @Test func aBranchThatIsntSetUpYetSaysSoOrWhereItsFirstPushGoes() throws {
+        var situation = situation
+        situation.remotes = ["fork", "origin"]
+        situation.relation = RefRelation(ahead: 1, behind: 0)
+        #expect(upstreamRow(entries(target(ref: feature), situation))?.value == "None")
+        situation.relation = RefRelation(ahead: 1, behind: 0, pushRemote: "fork")
+        #expect(upstreamRow(entries(target(ref: feature), situation))?.value == "fork")
+    }
+
+    @Test func thereIsNoChoiceWithOneRemoteOrForWhatIsntALocalBranch() {
+        var situation = situation
+        situation.relation = RefRelation(ahead: 1, behind: 0)
+        situation.remotes = ["origin"]
+        #expect(upstreamRow(entries(target(ref: feature), situation)) == nil)
+        situation.remotes = ["fork", "origin"]
+        #expect(upstreamRow(entries(target(ref: "refs/remotes/origin/feature"), situation)) == nil)
+        #expect(upstreamRow(entries(target(ref: "refs/tags/v1"), situation)) == nil)
+        #expect(upstreamRow(entries(target(), situation)) == nil)
+    }
+
+    @Test func aBranchNameInARowCarriesTheBranchIcon() throws {
+        var situation = situation
+        situation.relation = RefRelation(ahead: 1, behind: 1)
+        let all = entries(target(ref: feature), situation)
+        guard case let .header(heading) = try #require(all.first) else { throw TestFailure() }
+        #expect(heading.parts == [.branch("feature")])
+        let merge = try #require(all.compactMap { entry -> RefMenu.Title? in
+            if case let .command(title, _, _, _, _) = entry, title.plain.hasPrefix("Merge") { title } else { nil }
+        }.first)
+        #expect(merge.parts == [.text("Merge "), .branch("feature"), .text(" into "), .branch("main"), .text("…")])
+    }
+
+    @Test func hEADIsntABranchSoItHasNoIcon() throws {
+        var situation = situation
+        situation.currentBranch = nil
+        let all = entries(target(), situation)
+        let pick = try #require(all.compactMap { entry -> RefMenu.Title? in
+            if case let .command(title, _, _, _, _) = entry, title.plain.hasPrefix("Cherry") { title } else { nil }
+        }.first)
+        #expect(pick.plain == "Cherry-pick into HEAD")
+        #expect(!pick.parts.contains { if case .branch = $0 { true } else { false } })
+    }
+
+    struct TestFailure: Error {}
 
     var situation: HistoryMenu.Situation {
         HistoryMenu.Situation(currentBranch: main, head: head)
@@ -56,12 +138,12 @@ struct HistoryMenuTests {
         situation.headContains = false
         #expect(titles(entries(target(ref: feature), situation)) == [
             "# feature",
-            "Check Out",
+            "Check out",
             "Merge feature into main…",
             "Rebase main onto feature…",
-            "Cherry-Pick into main",
+            "Cherry-pick into main",
             "-",
-            "Reset main to Here…",
+            "Reset main to here…",
             "Revert…",
             "-",
             "Create ▸",
@@ -73,7 +155,7 @@ struct HistoryMenuTests {
         var situation = situation
         situation.relation = RefRelation(ahead: 2, behind: 0)
         let rows = titles(entries(target(ref: feature), situation))
-        #expect(rows.contains("Fast-Forward main to feature"))
+        #expect(rows.contains("Fast-forward main to feature"))
         #expect(!rows.contains { $0.hasPrefix("Merge") || $0.hasPrefix("Rebase") })
     }
 
@@ -82,8 +164,8 @@ struct HistoryMenuTests {
         situation.relation = RefRelation(ahead: 0, behind: 4)
         situation.headContains = true
         let rows = titles(entries(target(ref: feature), situation))
-        #expect(!rows.contains { $0.hasPrefix("Merge") || $0.hasPrefix("Rebase") || $0.hasPrefix("Fast-Forward") || $0.hasPrefix("Cherry-Pick") })
-        #expect(rows.contains("Reset main to Here…"))
+        #expect(!rows.contains { $0.hasPrefix("Merge") || $0.hasPrefix("Rebase") || $0.hasPrefix("Fast-forward") || $0.hasPrefix("Cherry-Pick") })
+        #expect(rows.contains("Reset main to here…"))
     }
 
     @Test func untilTheRelationIsReadItOffersBothWays() {
@@ -98,16 +180,16 @@ struct HistoryMenuTests {
         situation.relation = RefRelation(ahead: 1, behind: 0)
         let rows = titles(entries(target(ref: "refs/remotes/origin/main"), situation))
         #expect(rows[0] == "# origin/main")
-        #expect(!rows.contains("Check Out"))
-        #expect(rows.contains("Fast-Forward main to origin/main"))
+        #expect(!rows.contains("Check out"))
+        #expect(rows.contains("Fast-forward main to origin/main"))
     }
 
     @Test func aBranchInAnotherWorktreeGoesThere() {
         var actions = HistoryMenu.Actions()
         actions.showOtherWorktree = {}
         let rows = titles(entries(target(ref: feature), situation, actions: actions))
-        #expect(rows.contains("Show Worktree"))
-        #expect(!rows.contains("Check Out"))
+        #expect(rows.contains("Show worktree"))
+        #expect(!rows.contains("Check out"))
     }
 
     @Test func aBranchCanBePushedOrFastForwardedFromItsUpstream() throws {
@@ -117,10 +199,10 @@ struct HistoryMenuTests {
         actions.pushBranch = {}
         let all = entries(target(ref: feature), situation, actions: actions)
         let remote = try #require(submenu("Remote", in: all))
-        #expect(titles(remote) == ["Push feature", "Fast-Forward from origin/feature"])
+        #expect(titles(remote) == ["Push feature", "Fast-forward from origin/feature"])
         // It's behind, so git would reject a push.
         #expect(isEnabled("Push feature", in: remote) == false)
-        #expect(isEnabled("Fast-Forward from origin/feature", in: remote) == true)
+        #expect(isEnabled("Fast-forward from origin/feature", in: remote) == true)
     }
 
     @Test func aRemoteBranchHasNothingToPush() {
@@ -157,10 +239,10 @@ struct HistoryMenuTests {
         situation.headContains = false
         #expect(titles(entries(target(), situation)) == [
             "# 11111111",
-            "Check Out This Commit",
-            "Cherry-Pick into main",
+            "Check out this commit",
+            "Cherry-pick into main",
             "-",
-            "Reset main to Here…",
+            "Reset main to here…",
             "Revert…",
             "-",
             "Create ▸",
@@ -171,13 +253,13 @@ struct HistoryMenuTests {
     @Test func aCommitHeadHasHasNothingToCherryPick() {
         var situation = situation
         situation.headContains = true
-        #expect(!titles(entries(target(), situation)).contains("Cherry-Pick into main"))
+        #expect(!titles(entries(target(), situation)).contains("Cherry-pick into main"))
     }
 
     @Test func theCommitHeadIsOnHasNowhereToGo() {
         let rows = titles(entries(target(commit: head), situation))
-        #expect(!rows.contains("Check Out This Commit"))
-        #expect(!rows.contains("Reset main to Here…"))
+        #expect(!rows.contains("Check out this commit"))
+        #expect(!rows.contains("Reset main to here…"))
         #expect(rows.contains("Revert…"))
     }
 
@@ -186,7 +268,7 @@ struct HistoryMenuTests {
         situation.currentBranch = nil
         situation.headContains = false
         let rows = titles(entries(target(), situation))
-        #expect(rows.contains("Cherry-Pick into HEAD"))
+        #expect(rows.contains("Cherry-pick into HEAD"))
         #expect(!rows.contains { $0.hasPrefix("Reset") })
     }
 
@@ -195,16 +277,16 @@ struct HistoryMenuTests {
         situation.headContains = false
         let all = entries(target(ref: "refs/tags/v1"), situation)
         #expect(titles(all).first == "# v1")
-        #expect(titles(all).contains("Check Out This Commit"))
+        #expect(titles(all).contains("Check out this commit"))
         #expect(!titles(all).contains { $0.hasPrefix("Merge") })
-        #expect(titles(try #require(submenu("Copy", in: all))) == ["Hash", "Subject", "Tag Name"])
+        #expect(titles(try #require(submenu("Copy", in: all))) == ["Hash", "Subject", "Tag name"])
     }
 
     // MARK: What's in the groups
 
     @Test func createOffersABranchAWorktreeAndATag() throws {
         let all = entries(target(), situation)
-        #expect(titles(try #require(submenu("Create", in: all))) == ["Branch Here…", "Worktree Here…", "Tag Here…"])
+        #expect(titles(try #require(submenu("Create", in: all))) == ["Branch here…", "Worktree here…", "Tag here…"])
     }
 
     @Test func copyHasTheFullHash() throws {
@@ -213,7 +295,7 @@ struct HistoryMenuTests {
         actions.copy = { copied.append($0) }
         let all = entries(target(ref: feature), situation, actions: actions)
         let copy = try #require(submenu("Copy", in: all))
-        #expect(titles(copy) == ["Hash", "Subject", "Branch Name"])
+        #expect(titles(copy) == ["Hash", "Subject", "Branch name"])
         for case let .command(_, _, _, _, action) in copy { action() }
         #expect(copied == [commit.hex, "A subject", "feature"])
     }
@@ -225,7 +307,7 @@ struct HistoryMenuTests {
         actions.replay = {}
         actions.delete = HistoryMenu.Delete(title: "Delete…", isEnabled: true) {}
         let rows = titles(entries(target(ref: feature), situation, actions: actions))
-        #expect(rows.suffix(6) == ["Create ▸", "Copy ▸", "Review Against main", "Replay History", "-", "Delete…"])
+        #expect(rows.suffix(6) == ["Create ▸", "Copy ▸", "Review against main", "Replay history", "-", "Delete…"])
     }
 
     @Test func whatMovesHeadWaitsForWhatsRunningButCopyDoesnt() {
@@ -234,11 +316,11 @@ struct HistoryMenuTests {
         situation.isBusy = true
         situation.headContains = false
         let all = entries(target(ref: feature), situation)
-        for title in ["Check Out", "Merge feature into main…", "Rebase main onto feature…", "Cherry-Pick into main", "Reset main to Here…", "Revert…"] {
+        for title in ["Check out", "Merge feature into main…", "Rebase main onto feature…", "Cherry-pick into main", "Reset main to here…", "Revert…"] {
             #expect(isEnabled(title, in: all) == false, "\(title)")
         }
         var copyIsEnabled = false
-        for case let .submenu(name, enabled, _) in all where name == "Copy" { copyIsEnabled = enabled }
+        for case let .submenu(name, _, enabled, _) in all where name.plain == "Copy" { copyIsEnabled = enabled }
         #expect(copyIsEnabled)
     }
 
@@ -247,9 +329,9 @@ struct HistoryMenuTests {
         situation.canChange = false
         situation.headContains = false
         let all = entries(target(), situation)
-        #expect(isEnabled("Cherry-Pick into main", in: all) == false)
+        #expect(isEnabled("Cherry-pick into main", in: all) == false)
         var createIsEnabled = false
-        for case let .submenu(name, enabled, _) in all where name == "Create" { createIsEnabled = enabled }
+        for case let .submenu(name, _, enabled, _) in all where name.plain == "Create" { createIsEnabled = enabled }
         #expect(createIsEnabled)
     }
 }

@@ -494,13 +494,138 @@ struct HistoryActionsTests {
         #expect(try await git("config", "branch.other.remote", in: work.path) == "origin")
     }
 
+    // MARK: Choosing a remote
+
+    @Test func aBranchFollowsTheRemoteThatsChosen() async throws {
+        let work = try await worktree()
+        let main = "refs/heads/main"
+        let onFork = "refs/remotes/fork/main"
+        try await git("remote", "add", "fork", "https://example.com/fork.git", in: work.path)
+        try await git("remote", "add", "empty", "https://example.com/empty.git", in: work.path)
+        try await git("update-ref", onFork, changeTheApp.hex, in: work.path)
+        await changedBehindItsBack(work)
+        #expect(work.model.remoteNames == ["empty", "fork", "origin"])
+        #expect(work.model.relation(of: main)?.remote == "origin")
+
+        work.model.setUpstream(of: main, to: "fork")
+        await settled(work)
+        await work.model.refRelationsUpdate?.value
+        #expect(try await git("config", "branch.main.remote", in: work.path) == "fork")
+        #expect(try await git("config", "branch.main.pushRemote", in: work.path) == "fork")
+        #expect(work.model.relation(of: main)?.upstream?.name == onFork)
+        #expect(work.branch.status?.upstream == onFork)
+
+        // That remote hasn't got the branch, so its first push goes there.
+        work.model.setUpstream(of: main, to: "empty")
+        await settled(work)
+        await work.model.refRelationsUpdate?.value
+        #expect(try await git("config", "branch.main.pushRemote", in: work.path) == "empty")
+        #expect(work.model.relation(of: main)?.upstream == nil)
+        #expect(work.model.relation(of: main)?.remote == "empty")
+        #expect(work.branch.status?.push == .firstTime(remote: "empty"))
+    }
+
+    // MARK: Adding and removing remotes
+
+    @Test func aNewRemoteKeepsBothURLsAndShowsItsBranches() async throws {
+        let work = try await worktree()
+        let source = try await Fixture.repository("basic")
+        work.branch.add(NewRemote(name: "fork", url: source, pushURL: "https://example.com/push.git"))
+        #expect(work.branch.remoteDraft == nil)
+        await settled(work)
+        await work.model.refRelationsUpdate?.value
+        #expect(work.branch.failure == nil)
+        #expect(try await git("config", "remote.fork.url", in: work.path) == source)
+        #expect(try await git("config", "remote.fork.pushurl", in: work.path) == "https://example.com/push.git")
+        #expect(try await head(work, "refs/remotes/fork/main") == changeTheApp)
+        #expect(work.model.remoteNames == ["fork", "origin"])
+    }
+
+    @Test func aRemoteThatCantBeFetchedStaysAndTheDialogSaysSo() async throws {
+        let work = try await worktree()
+        work.branch.add(NewRemote(name: "fork", url: try makeTemporaryFolder() + "/nothing-here.git"))
+        await settled(work)
+        await work.model.refRelationsUpdate?.value
+        #expect(work.branch.failure?.title == "Added fork, but can't fetch from it")
+        #expect(work.model.remoteNames == ["fork", "origin"])
+    }
+
+    @Test func gitsRefusalToAddARemoteChangesNothing() async throws {
+        let work = try await worktree()
+        work.branch.add(NewRemote(name: "a..b", url: "https://example.com/a.git"))
+        await settled(work)
+        #expect(work.branch.failure?.title == "Can't add a..b")
+        #expect(work.branch.failure?.changedNothing == true)
+    }
+
+    @Test func removingARemoteSaysWhoUsesItAndTakesItsBranches() async throws {
+        let work = try await worktree()
+        let main = "refs/heads/main"
+        let remote = RemoteDetails(name: "origin", address: "example.com", branches: [
+            RemoteBranchDetails(name: "refs/remotes/origin/main", tip: changeTheApp),
+            RemoteBranchDetails(name: originFeature, tip: addNotes),
+        ])
+        #expect(work.model.relation(of: main)?.remote == "origin")
+        work.model.askToRemove(remote: remote)
+        let removal = try #require(work.branch.remoteRemoval)
+        #expect(removal.name == "origin")
+        #expect(removal.branchCount == 2)
+        #expect(removal.branches == ["main"])
+
+        let dialog = work.branch.dialog(for: removal)
+        #expect(dialog.title == "Remove origin?")
+        #expect(dialog.terminal == [.command(["remote", "remove", "origin"])])
+        #expect(dialog.cards == [[.heading("This branch stops pushing and pulling there", isLost: false), .name("main")]])
+
+        work.branch.confirmRemoteRemoval()
+        await settled(work)
+        await work.model.refRelationsUpdate?.value
+        #expect(work.branch.remoteRemoval == nil)
+        #expect(work.branch.failure == nil)
+        #expect(try await git("remote", in: work.path) == "")
+        #expect(work.model.remoteNames == [])
+        #expect(work.model.relation(of: main)?.upstream == nil)
+    }
+
+    @Test func theAddDialogFillsInItsCommandsAndHoldsBackUntilItsRight() async throws {
+        let work = try await worktree()
+        let empty = work.branch.dialog(for: .init(), among: ["origin"])
+        #expect(empty.buttons.last?.isEnabled == false)
+        #expect(empty.terminal.first == .command(["remote", "add", "name", "url"]))
+
+        let taken = work.branch.dialog(for: .init(name: "origin", url: "a"), among: ["origin"])
+        #expect(taken.buttons.last?.isEnabled == false)
+        #expect(taken.note?.plain == "origin is already a remote.")
+
+        let ready = work.branch.dialog(for: .init(name: " fork ", url: "a", pushURL: "b"), among: ["origin"])
+        #expect(ready.buttons.last?.isEnabled == true)
+        #expect(ready.terminal == [
+            .command(["remote", "add", "fork", "a"]),
+            .command(["remote", "set-url", "--push", "fork", "b"]),
+            .command(["fetch", "fork"]),
+        ])
+    }
+
+    @Test func theAddButtonUsesWhatsTypedWhenItsPressedNotWhenItWasMade() async throws {
+        let work = try await worktree()
+        let source = try await Fixture.repository("basic")
+        work.branch.remoteDraft = .init(name: "fork", url: "/")
+        let draft = try #require(work.branch.remoteDraft)
+        let early = try #require(work.branch.dialog(for: draft, among: ["origin"]).buttons.last)
+        #expect(early.isEnabled)
+        work.branch.remoteDraft?.url = source
+        early.action()
+        await settled(work)
+        #expect(try await git("config", "remote.fork.url", in: work.path) == source)
+    }
+
     // MARK: The menu in place
 
     func titles(_ entries: [RefMenu.Entry]) -> [String] {
         entries.compactMap { entry in
             switch entry {
-            case let .command(title, _, _, _, _): title
-            case let .submenu(title, _, _): title
+            case let .command(title, _, _, _, _): title.plain
+            case let .submenu(title, _, _, _): title.plain
             default: nil
             }
         }
@@ -519,22 +644,22 @@ struct HistoryActionsTests {
         let work = try await worktree()
         let row = try #require((0..<work.model.rowCount).first { work.model.commit(atRow: $0) == addNotes })
         let entries = work.model.menuEntries(forRow: row, badge: nil) { _, _ in }
-        #expect(titles(entries).prefix(3) == ["Check Out", "Merge origin/feature into main…", "Rebase main onto origin/feature…"])
-        #expect(titles(entries).contains("Cherry-Pick into main"))
+        #expect(titles(entries).prefix(3) == ["Check out", "Merge origin/feature into main…", "Rebase main onto origin/feature…"])
+        #expect(titles(entries).contains("Cherry-pick into main"))
     }
 
     @Test func aCommitOnHeadsLineHasNothingToCherryPick() async throws {
         let work = try await worktree()
         let row = try #require((0..<work.model.rowCount).first { work.model.commit(atRow: $0) == addTheApp })
         #expect(work.model.headContains(row: row) == true)
-        #expect(!titles(work.model.menuEntries(forRow: row, badge: nil) { _, _ in }).contains("Cherry-Pick into main"))
+        #expect(!titles(work.model.menuEntries(forRow: row, badge: nil) { _, _ in }).contains("Cherry-pick into main"))
     }
 
     @Test func theRowForUncommittedChangesOffersToDiscardThem() async throws {
         let work = try await worktree()
         try write("mine\n", to: "README.md", in: work)
         await changedBehindItsBack(work)
-        #expect(titles(work.model.menuEntries(forRow: 0, badge: nil) { _, _ in }) == ["Discard All Changes…"])
+        #expect(titles(work.model.menuEntries(forRow: 0, badge: nil) { _, _ in }) == ["Discard all changes…"])
     }
 
     @Test func aBranchInTheRefsPanelHasTheSameRows() async throws {
@@ -542,9 +667,9 @@ struct HistoryActionsTests {
         let entries = work.model.menuEntries(
             forBranch: originFeature,
             tip: addNotes,
-            delete: HistoryMenu.Delete(title: "Delete from Remote…", isEnabled: true) {}
+            delete: HistoryMenu.Delete(title: "Delete from remote…", isEnabled: true) {}
         ) { _, _ in }
-        #expect(titles(entries).prefix(3) == ["Check Out", "Merge origin/feature into main…", "Rebase main onto origin/feature…"])
-        #expect(titles(entries).last == "Delete from Remote…")
+        #expect(titles(entries).prefix(3) == ["Check out", "Merge origin/feature into main…", "Rebase main onto origin/feature…"])
+        #expect(titles(entries).last == "Delete from remote…")
     }
 }

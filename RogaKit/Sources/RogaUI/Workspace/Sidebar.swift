@@ -105,13 +105,12 @@ struct Sidebar: View {
     }
 
     private var arrangementEntries: [RefMenu.Entry] {
-        let grouping: [RefMenu.Entry] = [(true, "Organization"), (false, "None")].map { value, title in
-            .option(title, isChecked: groupsByOrganization == value) { groupsByOrganization = value }
-        }
-        let order: [RefMenu.Entry] = SidebarSort.allCases.map { option in
-            .option(option.title, isChecked: sort == option) { sort = option }
-        }
-        return [.header("Group By")] + grouping + [.divider, .header("Sort By")] + order
+        SidebarMenus.arrangement(
+            groupsByOrganization: groupsByOrganization,
+            sort: sort,
+            setGrouping: { groupsByOrganization = $0 },
+            setSort: { sort = $0 }
+        )
     }
 
     /// Closes the popover while the open panel is up, because a popover can
