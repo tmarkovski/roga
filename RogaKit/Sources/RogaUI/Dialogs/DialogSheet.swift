@@ -84,7 +84,7 @@ struct DialogSheet<Extra: View>: View {
             .frame(maxWidth: .infinity, alignment: .trailing)
             .padding(EdgeInsets(top: 0, leading: 18, bottom: content.terminal.isEmpty ? 16 : 14, trailing: 18))
             if !content.terminal.isEmpty {
-                CommandBlock(lines: content.terminal(pointingAt: pointedAt))
+                CommandBlock(lines: content.terminal(pointingAt: pointedAt), fixedHeight: content.terminalHeight)
             }
         }
         .frame(width: Self.width)

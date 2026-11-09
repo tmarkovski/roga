@@ -145,7 +145,7 @@ public struct CommitRowContent: Hashable {
     /// The full name of every branch that points to the commit, for the dialog that
     /// the row's menu opens: local ones first, then remote ones from A to Z. That
     /// includes those that share a badge, which stand for a branch each here.
-    var branches: [String] {
+    public var branches: [String] {
         let branches = badges.filter(\.isBranch)
         let local = branches.filter { $0.kind != .remoteBranch }
         let remote = branches.filter { $0.kind == .remoteBranch }.compactMap(\.refName)
@@ -156,7 +156,7 @@ public struct CommitRowContent: Hashable {
     /// Whether the row's menu has anything to offer. git won't delete the current
     /// branch, so a commit with nothing else has nothing to choose from. Only the
     /// dialog can tell about a branch that another worktree has checked out.
-    var hasBranchThatCanGo: Bool {
+    public var hasBranchThatCanGo: Bool {
         let current = badges.first { $0.kind == .currentBranch }?.refName
         return branches.contains { $0 != current }
     }

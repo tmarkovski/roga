@@ -62,7 +62,7 @@ struct ConflictNamingTests {
 
     @Test func aRevertNamesTheRevert() {
         let sides = naming.sides(oursLabel: "HEAD", theirsLabel: "parent of 86b3386 (Show the error)")
-        #expect(sides.theirs == .init(name: "The revert", detail: "taking out 86b3386 · Show the error", keepTitle: "Keep the Revert", keptTitle: "Kept the revert"))
+        #expect(sides.theirs == .init(name: "The revert", detail: "taking out 86b3386 · Show the error", keepTitle: "Keep the revert", keptTitle: "Kept the revert"))
         #expect(naming.sides(oursLabel: "HEAD", theirsLabel: "parent of " + theirs.hex).theirs.detail == "taking out 86b3386 · Show the error")
     }
 
@@ -70,7 +70,7 @@ struct ConflictNamingTests {
         let sides = naming.sides(oursLabel: "Updated upstream", theirsLabel: "Stashed changes")
         #expect(sides.ours.name == "main")
         #expect(sides.ours.detail == "as committed, a17f9d3 · Add a retry button")
-        #expect(sides.theirs.keepTitle == "Keep Yours")
+        #expect(sides.theirs.keepTitle == "Keep yours")
     }
 
     @Test func aCherryPickNamesTheCommit() {

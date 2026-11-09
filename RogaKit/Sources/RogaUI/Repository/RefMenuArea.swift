@@ -65,19 +65,43 @@ final class RefMenuAreaView: NSView {
 
 /// A menu's commands as actions for assistive apps.
 @ViewBuilder func refMenuActions(_ entries: [RefMenu.Entry]) -> some View {
+    let entries = withoutSubmenus(entries)
     ForEach(entries.indices, id: \.self) { index in
         switch entries[index] {
         case let .command(title, _, isEnabled, _, action):
-            Button(title, action: action)
+            Button(title.plain, action: action)
                 .disabled(!isEnabled)
         case let .choice(choice):
             Button(choice.title, action: choice.action)
                 .disabled(!choice.isEnabled || choice.isCurrent)
         case let .option(title, isChecked, action):
-            Button(title, action: action)
+            Button(title.plain, action: action)
                 .disabled(isChecked)
-        case .header, .divider:
+        case .header, .divider, .submenu:
             EmptyView()
+        }
+    }
+}
+
+/// A submenu's commands in its place, each with the submenu's name in front, since
+/// a list of actions has no levels.
+private func withoutSubmenus(_ entries: [RefMenu.Entry]) -> [RefMenu.Entry] {
+    entries.flatMap { entry -> [RefMenu.Entry] in
+        guard case let .submenu(group, _, isGroupEnabled, inner) = entry else { return [entry] }
+        let named = { (row: RefMenu.Title) -> RefMenu.Title in
+            let words = row.plain
+            return "\(group) \(words.prefix(1).lowercased() + words.dropFirst())"
+        }
+        return withoutSubmenus(inner).compactMap { row -> RefMenu.Entry? in
+            switch row {
+            case let .command(title, isDestructive, isEnabled, shortcut, action):
+                .command(named(title), isDestructive: isDestructive, isEnabled: isEnabled && isGroupEnabled, shortcut: shortcut, action: action)
+            case let .option(title, isChecked, action):
+                // An option has no way of saying it can't be picked.
+                isGroupEnabled ? .option(named(title), isChecked: isChecked, action: action) : nil
+            default:
+                row
+            }
         }
     }
 }

@@ -121,26 +121,37 @@ public enum Push: Sendable, Hashable {
     /// (decision 20): a lease alone trusts the remote branch as it was last
     /// fetched, which may have brought in commits nobody has seen.
     case forceWithLease
+    /// A branch other than the one checked out, to the remote branch it tracks.
+    /// `onRemote` is what that's called there, when it isn't called the same.
+    case otherBranch(String, remote: String, onRemote: String?)
+    /// A branch other than the one checked out, to a remote that doesn't have it
+    /// yet, which becomes its upstream.
+    case otherBranchFirstTime(String, remote: String)
 
     public var arguments: [String] {
         switch self {
         case .toUpstream: ["push"]
         case .firstTime(let remote): ["push", "--set-upstream", remote, "HEAD"]
         case .forceWithLease: ["push", "--force-with-lease", "--force-if-includes"]
+        case .otherBranch(let branch, let remote, let onRemote): ["push", remote, onRemote.map { "\(branch):\($0)" } ?? branch]
+        case .otherBranchFirstTime(let branch, let remote): ["push", "--set-upstream", remote, branch]
         }
     }
 }
 
-/// A new branch, on the commit a worktree is on.
+/// A new branch, on the commit a worktree is on, or on another one.
 public struct NewBranch: Sendable, Hashable {
     public var name: String
     /// Whether it gets a new worktree of its own, rather than the worktree
     /// switching to it.
     public var inNewWorktree: Bool
+    /// The commit it starts from, when that isn't the one the worktree is on.
+    public var startPoint: ObjectID?
 
-    public init(name: String, inNewWorktree: Bool = false) {
+    public init(name: String, inNewWorktree: Bool = false, startPoint: ObjectID? = nil) {
         self.name = name
         self.inNewWorktree = inNewWorktree
+        self.startPoint = startPoint
     }
 
     /// Where its worktree goes: next to the worktree it's made from, named
@@ -151,12 +162,104 @@ public struct NewBranch: Sendable, Hashable {
     }
 
     public var arguments: [String] {
-        inNewWorktree ? ["worktree", "add", "-b", name, folder] : ["switch", "-c", name]
+        (inNewWorktree ? ["worktree", "add", "-b", name, folder] : ["switch", "-c", name]) + (startPoint.map { [$0.hex] } ?? [])
     }
 }
 
-/// A merge, a rebase or a revert that a worktree is partway through, and what
-/// undoes it.
+/// A new lightweight tag on a commit.
+public struct NewTag: Sendable, Hashable {
+    public var name: String
+    public var commit: ObjectID
+
+    public init(name: String, commit: ObjectID) {
+        self.name = name
+        self.commit = commit
+    }
+
+    public var arguments: [String] {
+        ["tag", name, commit.hex]
+    }
+}
+
+/// A new remote, which pulls from one URL and can push to another.
+public struct NewRemote: Sendable, Hashable {
+    /// What's wrong with what's been typed, beside anything still being empty.
+    public enum Problem: Sendable, Hashable {
+        case nameTaken
+        /// Has a space, or starts with a hyphen, which git would take for an option.
+        case badName
+        /// Starts with a hyphen, which git would take for an option.
+        case badURL
+    }
+
+    public var name: String
+    public var url: String
+    /// Where it pushes, when that isn't `url`.
+    public var pushURL: String?
+
+    public init(name: String, url: String, pushURL: String? = nil) {
+        self.name = name
+        self.url = url
+        self.pushURL = pushURL == url || pushURL?.isEmpty == true ? nil : pushURL
+    }
+
+    /// - Parameter remotes: The names of the remotes there are.
+    public func problem(among remotes: [String]) -> Problem? {
+        if remotes.contains(name) { return .nameTaken }
+        if name.hasPrefix("-") || name.contains(where: \.isWhitespace) { return .badName }
+        if url.hasPrefix("-") || pushURL?.hasPrefix("-") == true { return .badURL }
+        return nil
+    }
+
+    /// Whether it's ready to add. git has the last word on the name.
+    public func canBeAdded(among remotes: [String]) -> Bool {
+        !name.isEmpty && !url.isEmpty && problem(among: remotes) == nil
+    }
+
+    /// What to run, in order, by their arguments after `git`.
+    public var commands: [[String]] {
+        [["remote", "add", name, url]] + (pushURL.map { [["remote", "set-url", "--push", name, $0]] } ?? [])
+    }
+}
+
+/// Making a branch push to and pull from one of the repository's remotes.
+public struct UpstreamChoice: Sendable, Hashable {
+    /// The branch's short name.
+    public var branch: String
+    public var remote: String
+    /// What the branch will track on the remote, or nil when the remote hasn't
+    /// got it yet, and its first push goes there and sets that up.
+    public var branchOnRemote: String?
+    /// Whether the branch tracks something now, which has to go when the remote
+    /// hasn't got it, or a pull would still come from the old remote.
+    public var hasUpstream: Bool
+
+    /// - Parameters:
+    ///   - upstream: What the branch tracks now. It keeps tracking that name on
+    ///     the new remote if the remote has it, and otherwise its own.
+    ///   - exists: Whether a ref exists, by its full name.
+    public init(branch: String, remote: String, upstream: RefRelation.Upstream?, exists: (String) -> Bool) {
+        self.branch = branch
+        self.remote = remote
+        branchOnRemote = [upstream?.branchOnRemote, branch].compactMap(\.self).first { exists("\(Ref.remoteBranchPrefix)\(remote)/\($0)") }
+        hasUpstream = upstream != nil
+    }
+
+    /// What to run, in order, by their arguments after `git`. Nothing here talks
+    /// to the remote. `branch.<name>.pushRemote` is set either way, because a
+    /// repository's `remote.pushDefault` would otherwise send the pushes elsewhere.
+    public var commands: [[String]] {
+        let pushRemote = ["config", "branch.\(branch).pushRemote", remote]
+        if let branchOnRemote {
+            // The full name, because a local branch could be called `fork/x` too.
+            return [["branch", "--set-upstream-to=\(Ref.remoteBranchPrefix)\(remote)/\(branchOnRemote)", branch], pushRemote]
+        }
+        return (hasUpstream ? [["branch", "--unset-upstream", branch]] : []) + [pushRemote]
+    }
+}
+
+/// A merge, a rebase, a revert or a cherry-pick that a worktree is partway
+/// through, and what undoes it.
 public enum StoppedWork: Sendable, Hashable {
     case merge
     /// `branch` is the full name of the branch being rebased, when it's on one.
@@ -164,12 +267,16 @@ public enum StoppedWork: Sendable, Hashable {
     /// `commit` is the one being reverted, from `REVERT_HEAD`, unless that file
     /// doesn't hold a commit's ID.
     case revert(commit: ObjectID?)
+    /// `commit` is the one being applied, from `CHERRY_PICK_HEAD`, unless that
+    /// file doesn't hold a commit's ID.
+    case cherryPick(commit: ObjectID?)
 
     public var abortArguments: [String] {
         switch self {
         case .merge: ["merge", "--abort"]
         case .rebase: ["rebase", "--abort"]
         case .revert: ["revert", "--abort"]
+        case .cherryPick: ["cherry-pick", "--abort"]
         }
     }
 }

@@ -24,6 +24,10 @@ final class BranchModel {
         case committing
         case continuingRebase
         case reverting
+        case merging
+        case fastForwarding
+        case rebasing
+        case cherryPicking
 
         var title: String {
             switch self {
@@ -37,6 +41,10 @@ final class BranchModel {
             case .committing: "Committing…"
             case .continuingRebase: "Continuing…"
             case .reverting: "Reverting…"
+            case .merging: "Merging…"
+            case .fastForwarding: "Fast-forwarding…"
+            case .rebasing: "Rebasing…"
+            case .cherryPicking: "Cherry-picking…"
             }
         }
     }
@@ -48,6 +56,32 @@ final class BranchModel {
     }
 
     /// Something git refused, and what it said about that.
+    /// A remote as it's being typed. This lives with the question rather than in
+    /// the view, because a button that Return presses can keep the action it had
+    /// when it was first enabled, so its action has to read this when it runs.
+    struct RemoteDraft: Equatable {
+        var name = ""
+        var url = ""
+        var pushURL = ""
+
+        var remote: NewRemote {
+            NewRemote(
+                name: name.trimmingCharacters(in: .whitespacesAndNewlines),
+                url: url.trimmingCharacters(in: .whitespacesAndNewlines),
+                pushURL: pushURL.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+        }
+    }
+
+    /// What removing a remote takes with it.
+    struct RemoteRemoval: Equatable {
+        var name: String
+        /// How many of its remote branches Roga has.
+        var branchCount: Int
+        /// The short names of the local branches that push to it or pull from it.
+        var branches: [String]
+    }
+
     struct Failure: Equatable {
         var title: String
         var message: String
@@ -80,8 +114,8 @@ final class BranchModel {
         }
     }
 
-    /// A pull or a revert that hit a conflict, which Roga can't resolve, so it asks
-    /// whether to undo it or leave it for the command line.
+    /// A pull, a merge, a rebase, a revert or a cherry-pick that hit a conflict, which
+    /// Roga can't resolve, so it asks whether to undo it or leave it for the command line.
     struct Conflict: Equatable {
         /// The merge or rebase a pull stopped partway through, or the revert.
         var work: StoppedWork
@@ -96,10 +130,16 @@ final class BranchModel {
         /// The uncommitted changes that were set aside for the pull, which undoing
         /// it puts back (decision 59).
         var aside: ChangesAside? = nil
+        /// Whether someone asked for this merge or rebase by name, rather than a pull
+        /// turning into one.
+        var isOwnWork = false
 
-        /// Whether a pull stopped, rather than a revert.
+        /// Whether a pull stopped, rather than something asked for by name.
         var startedByPull: Bool {
-            if case .revert = work { false } else { true }
+            switch work {
+            case .revert, .cherryPick: false
+            case .merge, .rebase: !isOwnWork
+            }
         }
     }
 
@@ -119,6 +159,9 @@ final class BranchModel {
             case .pull: "pull"
             case .reset: "reset"
             case .detach: "switch"
+            case .merge: "merge"
+            case .rebase: "rebase"
+            case .cherryPick: "cherry-pick"
             }
         }
     }
@@ -137,6 +180,20 @@ final class BranchModel {
         /// How many commits it overwrites, and the first few.
         var count: Int
         var commits: [ListedCommit]
+    }
+
+    /// A merge or a rebase that's waiting for someone to agree to it.
+    struct PendingIntegration: Equatable {
+        var integration: BranchIntegration
+        /// The newest commits it's about.
+        var commits: [ListedCommit]
+    }
+
+    /// Where a new branch or tag starts, when that isn't where the worktree is.
+    struct NewRefStart: Equatable {
+        var commit: ObjectID
+        /// What to call it, such as a branch's name or a short hash.
+        var label: String
     }
 
     /// A deletion that's waiting for someone to agree to it.
@@ -243,8 +300,17 @@ final class BranchModel {
     var pendingAbort: StoppedWork?
     /// A force push that's waiting for someone to agree to it.
     var forcePush: ForcePush?
+    /// A merge or a rebase that's waiting for someone to agree to it.
+    var pendingIntegration: PendingIntegration?
     /// A deletion that's waiting for someone to agree to it.
     var pendingDeletion: PendingDeletion?
+    /// What's been typed into the dialog for adding a remote, while it's open.
+    var remoteDraft: RemoteDraft?
+    /// The remote being asked about removing.
+    var remoteRemoval: RemoteRemoval?
+    /// Tells the menus to read the remotes again, since adding or choosing one
+    /// needn't move any ref.
+    @ObservationIgnored var remotesChanged: () -> Void = {}
     /// A deletion that's waiting for someone to choose what goes.
     var branchChoice: BranchChoice?
     /// Whether the popover for a new branch shows.
@@ -252,12 +318,30 @@ final class BranchModel {
     /// Whether that popover starts with In a new worktree checked, as it does
     /// from the menu of the repository's worktrees.
     var startsInNewWorktree = false
+    /// The commit that popover starts the branch from, when someone chose one.
+    var newBranchStart: NewRefStart?
+    /// The commit that the popover for a new tag puts it on, while that shows.
+    var newTagStart: NewRefStart?
 
     /// Shows the popover for a new branch, ready to make it in a new worktree.
     func startNewWorktree() {
         guard !isBusy else { return }
         startsInNewWorktree = true
         isCreatingBranch = true
+    }
+
+    /// Shows the popover for a new branch, starting from a commit.
+    func startNewBranch(at commit: ObjectID, named label: String, inNewWorktree: Bool = false) {
+        guard !isBusy else { return }
+        newBranchStart = NewRefStart(commit: commit, label: label)
+        startsInNewWorktree = inNewWorktree
+        isCreatingBranch = true
+    }
+
+    /// Shows the popover for a new tag on a commit.
+    func startNewTag(at commit: ObjectID, named label: String) {
+        guard !isBusy else { return }
+        newTagStart = NewRefStart(commit: commit, label: label)
     }
 
     /// Whether the user wants Roga to fetch by itself.
@@ -286,6 +370,8 @@ final class BranchModel {
     @ObservationIgnored private(set) var running: Task<Void, Never>?
     /// Finding out what deleting a branch would come to.
     @ObservationIgnored private(set) var preparingDeletion: Task<Void, Never>?
+    /// Finding out what a merge or a rebase would come to.
+    @ObservationIgnored private(set) var preparingIntegration: Task<Void, Never>?
     @ObservationIgnored private(set) var quietFetch: Task<Void, Never>?
     @ObservationIgnored private(set) var previewing: Task<Void, Never>?
     @ObservationIgnored private var finishedNote: Task<Void, Never>?
@@ -381,31 +467,142 @@ final class BranchModel {
     func pull(_ pull: Pull, remembering: Bool = false) {
         let move = status?.upstream.map { ChangesAside.Move.pull(upstream: $0, rebases: rebases(pull)) }
         let message = "Roga: before pulling \(branchName)"
-        run(.pulling, failure: "Can't pull \(branchName)", changesNothing: true) { [session, worktree] in
-            if remembering { try await session.remember(pull, in: worktree) }
+        runMove(
+            .pulling,
+            failure: "Can't pull \(branchName)",
+            move: move,
+            message: message,
+            arguments: pull.arguments,
+            done: "Pulled",
+            before: { [session, worktree] in if remembering { try await session.remember(pull, in: worktree) } },
+            work: { [session, worktree] in try await session.pull(pull, in: worktree) }
+        )
+    }
+
+    /// Runs something that moves `HEAD` and can stop on a conflict. Uncommitted changes
+    /// that git would refuse to overwrite go aside and come back afterward (decision 59).
+    ///
+    /// - Parameters:
+    ///   - move: What it means for uncommitted changes, or nil to leave them to git.
+    ///   - message: The stash's message, if they go aside.
+    ///   - arguments: What it runs, for the dialog when they come back with conflicts.
+    ///   - done: What the title row says afterward.
+    ///   - isOwnWork: Whether someone asked for this by name, rather than a pull.
+    ///   - before: What has to happen first, and can stop it.
+    private func runMove(
+        _ action: Action,
+        failure title: String,
+        move: ChangesAside.Move?,
+        message: String,
+        arguments: [String],
+        done: String,
+        isOwnWork: Bool = false,
+        before: @escaping () async throws -> Void = {},
+        work: @escaping () async throws -> Void
+    ) {
+        run(action, failure: title, changesNothing: true) { [session, worktree] in
+            try await before()
             let wasStopped = (try? await session.stoppedWork(in: worktree)) != nil
-            // Uncommitted changes that git would refuse to overwrite go aside and
-            // come back afterward (decision 59).
             var aside: ChangesAside?
             if let move, !wasStopped {
                 aside = try await session.setAsideChanges(inTheWayOf: move, message: message, in: worktree)
             }
             do {
-                try await session.pull(pull, in: worktree)
+                try await work()
             } catch {
-                // git hit a conflict just now, so this is the pull's own mess to
-                // clean up, rather than one that was there already.
+                // git hit a conflict just now, so this is its own mess to clean up,
+                // rather than one that was there already.
                 if !wasStopped, let stopped = try? await session.stoppedWork(in: worktree) {
                     let status = try? await session.status(in: worktree)
-                    self.conflict = Conflict(work: stopped, files: status?.conflicted.map(\.path) ?? [], ran: error.gitArguments, aside: aside)
+                    self.conflict = Conflict(work: stopped, files: status?.conflicted.map(\.path) ?? [], ran: error.gitArguments, aside: aside, isOwnWork: isOwnWork)
                     return nil
                 }
                 try await self.putBack(afterRefusing: error, aside)
                 throw error
             }
-            guard let aside else { return "Pulled" }
-            return try await self.putBack(aside, ran: [ChangesAside.arguments(message: message), pull.arguments], done: "Pulled")
+            guard let aside else { return done }
+            return try await self.putBack(aside, ran: [ChangesAside.arguments(message: message), arguments], done: done)
         }
+    }
+
+    // MARK: Merging and rebasing
+
+    /// Finds out what bringing in a branch would come to. A fast-forward goes
+    /// straight away, because it can't lose or rewrite anything, and a merge or a
+    /// rebase asks, which is where it says what comes in.
+    ///
+    /// - Parameter ref: The other branch's full name.
+    func askToIntegrate(_ way: BranchIntegration.Way, ref: String) {
+        guard !isBusy, preparingIntegration == nil else { return }
+        let name = Self.shortened(Ref.shortName(ref))
+        preparingIntegration = Task {
+            do {
+                let integration = try await session.prepareToIntegrate(way, ref: ref, limit: Self.overwrittenLimit, in: worktree)
+                if integration.incomingCount == 0 {
+                    let here = integration.branch.map(Ref.shortName) ?? "HEAD"
+                    failure = Failure(title: "Nothing to bring in", message: "\(here) already has everything on \(name).", changedNothing: true)
+                } else if way == .fastForward {
+                    integrate(integration)
+                } else {
+                    pendingIntegration = PendingIntegration(integration: integration, commits: await listed(integration.listed))
+                }
+            } catch {
+                failure = Failure(title: "Can't bring in \(name)", error: error, changedNothing: true)
+            }
+            preparingIntegration = nil
+        }
+    }
+
+    /// Runs the merge or the rebase that was asked about.
+    func confirmIntegration() {
+        guard let pendingIntegration else { return }
+        self.pendingIntegration = nil
+        integrate(pendingIntegration.integration)
+    }
+
+    private func integrate(_ integration: BranchIntegration) {
+        let other = Self.shortened(Ref.shortName(integration.ref))
+        let here = integration.branch.map { Self.shortened(Ref.shortName($0)) } ?? "HEAD"
+        let action: Action
+        let title: String
+        let message: String
+        let done: String
+        switch integration.way {
+        case .merge:
+            (action, title, message, done) = (.merging, "Can't merge \(other) into \(here)", "Roga: before merging \(other) into \(here)", "Merged \(other)")
+        case .fastForward:
+            (action, title, message, done) = (.fastForwarding, "Can't fast-forward \(here)", "Roga: before fast-forwarding \(here) to \(other)", "Fast-forwarded to \(other)")
+        case .rebase:
+            (action, title, message, done) = (.rebasing, "Can't rebase \(here) onto \(other)", "Roga: before rebasing \(here) onto \(other)", "Rebased onto \(other)")
+        }
+        runMove(
+            action,
+            failure: title,
+            move: integration.move,
+            message: message,
+            arguments: integration.arguments,
+            done: done,
+            isOwnWork: true,
+            before: { [session, worktree] in try await session.checkHead(of: integration, in: worktree) },
+            work: { [session, worktree] in try await session.integrate(integration, in: worktree) }
+        )
+    }
+
+    /// Applies a commit to the branch.
+    ///
+    /// - Parameter select: Hears the new commit.
+    func cherryPick(_ pick: CommitCherryPick, select: @escaping (ObjectID) -> Void) {
+        let short = String(pick.commit.hex.prefix(8))
+        runMove(
+            .cherryPicking,
+            failure: "Can't cherry-pick \(short)",
+            move: .cherryPick(pick.commit),
+            message: "Roga: before cherry-picking \(short)",
+            arguments: pick.arguments,
+            done: "Cherry-picked \(short)",
+            isOwnWork: true,
+            work: { [session, worktree] in select(try await session.cherryPick(pick, in: worktree)) }
+        )
     }
 
     /// Whether git will rebase for this pull, which makes it refuse any uncommitted
@@ -430,11 +627,12 @@ final class BranchModel {
         var move: ChangesAside.Move?
         var message = ""
         switch commitSwitch.way {
-        case .movingBranch(let name) where !commitSwitch.keepsChanges:
+        case .movingBranch(let name) where commitSwitch.mode == .keep:
             move = .reset(to: commitSwitch.commit)
             message = "Roga: before resetting \(Ref.shortName(name)) to \(commitSwitch.shortCommit)"
         case .movingBranch:
-            // `--soft` leaves the files alone, so nothing can be in the way.
+            // `--soft` and `--mixed` leave the files alone, and `--hard` overwrites
+            // them because someone said to, so nothing can be in the way.
             break
         case .detaching:
             move = .detach(at: commitSwitch.commit)
@@ -614,6 +812,88 @@ final class BranchModel {
         }
     }
 
+    /// Pushes a branch other than the one checked out.
+    ///
+    /// - Parameters:
+    ///   - name: The branch's full name.
+    ///   - upstream: What it tracks, or nil to push it for the first time.
+    ///   - pushRemote: Where git's settings send this branch, if they say,
+    ///     which a first push goes to rather than where the current branch goes.
+    func push(branch name: String, upstream: RefRelation.Upstream?, pushRemote: String? = nil) {
+        let short = Ref.shortName(name)
+        let push: Push
+        if let upstream, let remote = upstream.remote {
+            push = .otherBranch(short, remote: remote, onRemote: upstream.branchOnRemote == short ? nil : upstream.branchOnRemote)
+        } else if upstream == nil, let remote = pushRemote ?? status?.pushRemote {
+            push = .otherBranchFirstTime(short, remote: remote)
+        } else {
+            return
+        }
+        run(.pushing, failure: "Can't push \(short)", changesNothing: true, fetchesAfterFailing: true) { [session, worktree] in
+            try await session.push(push, in: worktree)
+            return "Pushed \(Self.shortened(short))"
+        }
+    }
+
+    /// Fast-forwards a branch other than the one checked out to its upstream, by
+    /// their full names.
+    func fastForward(branch name: String, toUpstream upstream: String) {
+        let short = Ref.shortName(name)
+        run(.pulling, failure: "Can't fast-forward \(short)", changesNothing: true) { [session, worktree] in
+            try await session.fastForward(branch: name, to: upstream, in: worktree)
+            return "Fast-forwarded \(Self.shortened(short))"
+        }
+    }
+
+    /// Makes a branch push to and pull from one of the remotes.
+    func setUpstream(_ choice: UpstreamChoice) {
+        let short = Self.shortened(choice.branch)
+        run(nil, failure: "Can't change the remote of \(choice.branch)", changesNothing: true) { [weak self, session, worktree] in
+            try await session.setUpstream(choice, in: worktree)
+            self?.remotesChanged()
+            return "\(short) now uses \(choice.remote)"
+        }
+    }
+
+    // MARK: Adding and removing remotes
+
+    /// Adds a remote and fetches from it, which shows its branches and says at once
+    /// whether the URL works. The remote stays if it doesn't, and the dialog says so.
+    func add(_ remote: NewRemote) {
+        remoteDraft = nil
+        run(.fetching, failure: "Can't add \(remote.name)", changesNothing: true) { [weak self, session, worktree] in
+            try await session.add(remote, in: worktree)
+            self?.remotesChanged()
+            do {
+                try await session.fetch(from: remote.name, in: worktree)
+            } catch {
+                self?.failure = Failure(title: "Added \(remote.name), but can't fetch from it", error: error)
+                return nil
+            }
+            self?.remotesChanged()
+            return "Added \(remote.name)"
+        }
+    }
+
+    /// Adds what's in the dialog, as it is now.
+    ///
+    /// - Parameter remotes: The names of the remotes there are.
+    func addDraftedRemote(among remotes: [String]) {
+        guard let remote = remoteDraft?.remote, remote.canBeAdded(among: remotes), !isBusy else { return }
+        add(remote)
+    }
+
+    /// Removes the remote that was asked about.
+    func confirmRemoteRemoval() {
+        guard let removal = remoteRemoval else { return }
+        remoteRemoval = nil
+        run(nil, failure: "Can't remove \(removal.name)", changesNothing: true) { [weak self, session, worktree] in
+            try await session.removeRemote(removal.name, in: worktree)
+            self?.remotesChanged()
+            return "Removed \(removal.name)"
+        }
+    }
+
     // MARK: Deleting branches
 
     /// Deletes a branch or remote branch straight away when that loses nothing,
@@ -748,6 +1028,21 @@ final class BranchModel {
            let created = try? await session.worktrees().first(where: { $0.branch == Ref.branchPrefix + branch.name }) {
             showWorktree(created.path, created.head)
         }
+        return nil
+    }
+
+    /// Makes a tag.
+    ///
+    /// - Returns: What git said if it refused, which the popover shows.
+    func create(_ tag: NewTag) async -> String? {
+        guard !isBusy else { return nil }
+        do {
+            try await session.create(tag, in: worktree)
+        } catch {
+            return (error as? GitError)?.message ?? String(describing: error)
+        }
+        newTagStart = nil
+        lookAgain()
         return nil
     }
 

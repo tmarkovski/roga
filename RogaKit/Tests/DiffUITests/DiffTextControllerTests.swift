@@ -256,7 +256,7 @@ struct DiffTextControllerTests {
         controller.discardHunk = { discarded.append($0) }
         let y = text(of: controller).textContainerOrigin.y + DiffStyle.lineHeight * 30
         let item = try #require(controller.hunkMenuItem(atTextY: y))
-        #expect(item.title == "Discard Hunk")
+        #expect(item.title == "Discard hunk")
         _ = (item.target as? NSObject)?.perform(item.action, with: item)
         #expect(discarded == [21])
     }

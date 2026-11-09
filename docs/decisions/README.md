@@ -72,3 +72,6 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [62](0062-replay-a-repositorys-history.md) | Replay a repository's history, drawn in Swift | Partly superseded by [64](0064-dress-the-replay-as-a-departure-board-and-end-it-on-a-poster.md) |
 | [63](0063-ask-an-agent-to-fix-what-git-refused.md) | Ask an agent to fix what git refused | Accepted |
 | [64](0064-dress-the-replay-as-a-departure-board-and-end-it-on-a-poster.md) | Dress the replay as a departure board, and end it on a poster | Accepted |
+| [65](0065-one-menu-for-a-commit-or-a-branch.md) | One menu for a commit or a branch | Rows reworded by [66](0066-sentence-case-branch-icons-and-the-value-on-a-row.md) |
+| [66](0066-sentence-case-branch-icons-and-the-value-on-a-row.md) | Sentence case, branch icons and the value on a row | Accepted |
+| [67](0067-add-and-remove-remotes-in-the-refs-panel.md) | Add and remove remotes in the refs panel | Accepted |

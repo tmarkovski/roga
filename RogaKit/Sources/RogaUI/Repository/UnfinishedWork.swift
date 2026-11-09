@@ -4,7 +4,7 @@ import GitCore
 /// What a worktree is stuck partway through, whoever started it: Roga, the
 /// command line or an agent (decisions 28 and 44).
 struct UnfinishedWork: Equatable {
-    /// The merge, rebase or revert, or nil for conflicts from something else,
+    /// The merge, rebase, revert or cherry-pick, or nil for conflicts from something else,
     /// such as `git stash pop`, which has nothing to abort.
     var work: StoppedWork?
     /// How many files have conflicts.
@@ -44,6 +44,8 @@ struct UnfinishedWork: Equatable {
         case .rebase(nil): "Rebasing"
         case .revert(let commit?): "Reverting \(commit.hex.prefix(8))"
         case .revert(nil): "Reverting"
+        case .cherryPick(let commit?): "Cherry-picking \(commit.hex.prefix(8))"
+        case .cherryPick(nil): "Cherry-picking"
         case nil: nil
         }
     }
@@ -67,7 +69,7 @@ struct UnfinishedWork: Equatable {
     var state: String {
         switch (conflicts, work) {
         case (1, _): "1 conflict"
-        case (0, .merge), (0, .revert): "ready to commit"
+        case (0, .merge), (0, .revert), (0, .cherryPick): "ready to commit"
         case (0, _): "ready to continue"
         default: "\(conflicts.formatted()) conflicts"
         }
@@ -78,9 +80,10 @@ extension StoppedWork {
     /// What a menu calls aborting it.
     var abortTitle: String {
         switch self {
-        case .merge: "Abort Merge…"
-        case .rebase: "Abort Rebase…"
-        case .revert: "Abort Revert…"
+        case .merge: "Abort merge…"
+        case .rebase: "Abort rebase…"
+        case .revert: "Abort revert…"
+        case .cherryPick: "Abort cherry-pick…"
         }
     }
 
@@ -90,6 +93,7 @@ extension StoppedWork {
         case .merge: "Aborted the merge"
         case .rebase: "Aborted the rebase"
         case .revert: "Aborted the revert"
+        case .cherryPick: "Aborted the cherry-pick"
         }
     }
 
@@ -99,6 +103,7 @@ extension StoppedWork {
         case .merge: "merge"
         case .rebase: "rebase"
         case .revert: "revert"
+        case .cherryPick: "cherry-pick"
         }
     }
 
@@ -106,7 +111,7 @@ extension StoppedWork {
     /// `MERGE_MSG`, which the commit box starts with and can change.
     var leavesAMessage: Bool {
         switch self {
-        case .merge, .revert: true
+        case .merge, .revert, .cherryPick: true
         case .rebase: false
         }
     }

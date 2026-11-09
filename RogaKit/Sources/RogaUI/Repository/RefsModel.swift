@@ -42,6 +42,14 @@ final class RefsModel {
             case .stashes: "Stashes"
             }
         }
+
+        /// Whether the section has a place in the panel with `count` rows. A section
+        /// with none says only that there are none, as a list with no files would
+        /// (decision 61), so Tags and Stashes go. Remotes has to stay for its plus,
+        /// which adds the first one. A filter that leaves any of them empty hides it.
+        func isShown(count: Int, isFiltering: Bool) -> Bool {
+            count > 0 || (!isFiltering && (self == .branches || self == .remotes))
+        }
     }
 
     private(set) var content = Content.loading

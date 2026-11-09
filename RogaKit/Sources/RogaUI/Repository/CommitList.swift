@@ -50,14 +50,9 @@ struct CommitList: NSViewRepresentable {
             controller.source.goToRow = { [unowned self] row in
                 model.goToRow(row) { [unowned self] in showWorktree($0, $1) }
             }
-            controller.source.deleteBranches = { model.askToDeleteBranches($0) }
-            controller.source.replayHistory = { model.replayHistory(ofBranch: $0) }
-            controller.source.commitOfRow = { model.commit(atRow: $0) }
-            controller.source.revert = { model.askToRevert(commit: $0) }
-            controller.source.canRevert = { model.canRevert }
-            controller.source.isBusy = { model.branch.isBusy }
-            controller.source.discardChanges = { model.selectedChanges.askToDiscardEverything() }
-            controller.source.canDiscardChanges = { model.selectedChanges.canDiscardEverything() }
+            controller.source.menuEntries = { [unowned self] row, badge in
+                model.menuEntries(forRow: row, badge: badge) { [unowned self] in showWorktree($0, $1) }
+            }
         }
 
         func show(_ version: Int, selecting rows: IndexSet) {
