@@ -39,12 +39,12 @@ enum RemoteCommands {
     static func stoppedWork(in worktree: String, git: Git) async throws -> StoppedWork? {
         let command = GitCommand(
             "rev-parse", "--path-format=absolute",
-            "--git-path", "MERGE_HEAD", "--git-path", "rebase-merge", "--git-path", "rebase-apply", "--git-path", "REVERT_HEAD",
+            "--git-path", "MERGE_HEAD", "--git-path", "rebase-merge", "--git-path", "rebase-apply", "--git-path", "REVERT_HEAD", "--git-path", "CHERRY_PICK_HEAD",
             in: worktree
         )
         let paths = try await git.text(command).split(separator: "\n").map(String.init)
-        guard paths.count == 4 else { return nil }
-        return stoppedWork(mergeHead: paths[0], rebaseFolders: [paths[1], paths[2]], revertHead: paths[3])
+        guard paths.count == 5 else { return nil }
+        return stoppedWork(mergeHead: paths[0], rebaseFolders: [paths[1], paths[2]], revertHead: paths[3], cherryPickHead: paths[4])
     }
 
     /// Says the same by reading the worktree's own git directory, without git,
@@ -55,11 +55,13 @@ enum RemoteCommands {
         return stoppedWork(
             mergeHead: directory + "/MERGE_HEAD",
             rebaseFolders: [directory + "/rebase-merge", directory + "/rebase-apply"],
-            revertHead: directory + "/REVERT_HEAD"
+            revertHead: directory + "/REVERT_HEAD",
+            cherryPickHead: directory + "/CHERRY_PICK_HEAD"
         )
     }
 
-    private static func stoppedWork(mergeHead: String, rebaseFolders: [String], revertHead: String) -> StoppedWork? {
+    /// A rebase that stopped has a `CHERRY_PICK_HEAD` too, so its folders come first.
+    private static func stoppedWork(mergeHead: String, rebaseFolders: [String], revertHead: String, cherryPickHead: String) -> StoppedWork? {
         if FileManager.default.fileExists(atPath: mergeHead) { return .merge }
         for folder in rebaseFolders where FileManager.default.fileExists(atPath: folder) {
             // `git am` uses this folder too, and `git rebase --abort` won't undo it.
@@ -69,6 +71,9 @@ enum RemoteCommands {
         }
         if let text = try? String(contentsOfFile: revertHead, encoding: .utf8) {
             return .revert(commit: ObjectID(hex: text.trimmingCharacters(in: .whitespacesAndNewlines)))
+        }
+        if let text = try? String(contentsOfFile: cherryPickHead, encoding: .utf8) {
+            return .cherryPick(commit: ObjectID(hex: text.trimmingCharacters(in: .whitespacesAndNewlines)))
         }
         return nil
     }

@@ -27,6 +27,34 @@ struct RefMenuTests {
         menu.performActionForItem(at: index)
     }
 
+    @Test func aSubmenuHoldsItsRowsAndLeavesRoomForItsArrow() throws {
+        var runs = 0
+        let menu = RefMenu.make([
+            .command("Revert…") {},
+            .submenu("Create", entries: [.command("Branch Here…") { runs += 1 }, .command("Tag Here…") {}]),
+        ])
+        let item = menu.items[1]
+        let inner = try #require(item.submenu)
+        #expect(item.title == "Create")
+        #expect(inner.items.map(\.title) == ["Branch Here…", "Tag Here…"])
+        inner.performActionForItem(at: 0)
+        #expect(runs == 1)
+    }
+
+    @Test func aSubmenuCanBeDisabled() {
+        let menu = RefMenu.make([.submenu("Create", isEnabled: false, entries: [.command("Branch Here…") {}])])
+        #expect(!menu.items[0].isEnabled)
+    }
+
+    @Test func returnLeavesARowWithASubmenuToOpen() throws {
+        let menu = RefMenu.make([.submenu("Create", entries: [.command("Branch Here…") {}])])
+        let event = try #require(NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil,
+            characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36
+        ))
+        #expect(RefMenu.itemToChoose(after: event, highlighted: menu.items[0]) == nil)
+    }
+
     @Test func aHeaderIsShorterThanTheCommandsUnderIt() {
         let menu = RefMenu.make([.header("main"), .command("Copy Name") {}, .divider, .command("Delete Branch") {}])
         #expect(heights(menu) == [24, 28, nil, 28])

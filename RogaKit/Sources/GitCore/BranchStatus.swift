@@ -121,26 +121,37 @@ public enum Push: Sendable, Hashable {
     /// (decision 20): a lease alone trusts the remote branch as it was last
     /// fetched, which may have brought in commits nobody has seen.
     case forceWithLease
+    /// A branch other than the one checked out, to the remote branch it tracks.
+    /// `onRemote` is what that's called there, when it isn't called the same.
+    case otherBranch(String, remote: String, onRemote: String?)
+    /// A branch other than the one checked out, to a remote that doesn't have it
+    /// yet, which becomes its upstream.
+    case otherBranchFirstTime(String, remote: String)
 
     public var arguments: [String] {
         switch self {
         case .toUpstream: ["push"]
         case .firstTime(let remote): ["push", "--set-upstream", remote, "HEAD"]
         case .forceWithLease: ["push", "--force-with-lease", "--force-if-includes"]
+        case .otherBranch(let branch, let remote, let onRemote): ["push", remote, onRemote.map { "\(branch):\($0)" } ?? branch]
+        case .otherBranchFirstTime(let branch, let remote): ["push", "--set-upstream", remote, branch]
         }
     }
 }
 
-/// A new branch, on the commit a worktree is on.
+/// A new branch, on the commit a worktree is on, or on another one.
 public struct NewBranch: Sendable, Hashable {
     public var name: String
     /// Whether it gets a new worktree of its own, rather than the worktree
     /// switching to it.
     public var inNewWorktree: Bool
+    /// The commit it starts from, when that isn't the one the worktree is on.
+    public var startPoint: ObjectID?
 
-    public init(name: String, inNewWorktree: Bool = false) {
+    public init(name: String, inNewWorktree: Bool = false, startPoint: ObjectID? = nil) {
         self.name = name
         self.inNewWorktree = inNewWorktree
+        self.startPoint = startPoint
     }
 
     /// Where its worktree goes: next to the worktree it's made from, named
@@ -151,12 +162,27 @@ public struct NewBranch: Sendable, Hashable {
     }
 
     public var arguments: [String] {
-        inNewWorktree ? ["worktree", "add", "-b", name, folder] : ["switch", "-c", name]
+        (inNewWorktree ? ["worktree", "add", "-b", name, folder] : ["switch", "-c", name]) + (startPoint.map { [$0.hex] } ?? [])
     }
 }
 
-/// A merge, a rebase or a revert that a worktree is partway through, and what
-/// undoes it.
+/// A new lightweight tag on a commit.
+public struct NewTag: Sendable, Hashable {
+    public var name: String
+    public var commit: ObjectID
+
+    public init(name: String, commit: ObjectID) {
+        self.name = name
+        self.commit = commit
+    }
+
+    public var arguments: [String] {
+        ["tag", name, commit.hex]
+    }
+}
+
+/// A merge, a rebase, a revert or a cherry-pick that a worktree is partway
+/// through, and what undoes it.
 public enum StoppedWork: Sendable, Hashable {
     case merge
     /// `branch` is the full name of the branch being rebased, when it's on one.
@@ -164,12 +190,16 @@ public enum StoppedWork: Sendable, Hashable {
     /// `commit` is the one being reverted, from `REVERT_HEAD`, unless that file
     /// doesn't hold a commit's ID.
     case revert(commit: ObjectID?)
+    /// `commit` is the one being applied, from `CHERRY_PICK_HEAD`, unless that
+    /// file doesn't hold a commit's ID.
+    case cherryPick(commit: ObjectID?)
 
     public var abortArguments: [String] {
         switch self {
         case .merge: ["merge", "--abort"]
         case .rebase: ["rebase", "--abort"]
         case .revert: ["revert", "--abort"]
+        case .cherryPick: ["cherry-pick", "--abort"]
         }
     }
 }

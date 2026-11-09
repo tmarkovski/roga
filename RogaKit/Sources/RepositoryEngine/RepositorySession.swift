@@ -348,6 +348,111 @@ public actor RepositorySession {
         try await CommitSwitch.prepare(to: commit, limit: limit, in: worktree, worktrees: try await worktrees(), git: git)
     }
 
+    /// Finds out what moving the worktree's branch to a commit would come to, wherever
+    /// the commit is, without changing anything.
+    ///
+    /// - Parameters:
+    ///   - commit: The commit to move it to.
+    ///   - limit: The most commits to list of those it would lose.
+    ///   - worktree: The worktree's folder.
+    @concurrent
+    public nonisolated func prepareToReset(to commit: ObjectID, limit: Int, in worktree: String) async throws -> CommitSwitch {
+        try await CommitSwitch.prepare(to: commit, limit: limit, in: worktree, worktrees: try await worktrees(), movingTheBranch: true, git: git)
+    }
+
+    /// Finds out what bringing another branch into a worktree's branch would come
+    /// to, without changing anything.
+    ///
+    /// - Parameters:
+    ///   - way: How it comes in.
+    ///   - ref: The other branch's full name.
+    ///   - limit: The most commits to list.
+    ///   - worktree: The worktree's folder.
+    @concurrent
+    public nonisolated func prepareToIntegrate(_ way: BranchIntegration.Way, ref: String, limit: Int, in worktree: String) async throws -> BranchIntegration {
+        try await BranchIntegration.prepare(way, ref: ref, limit: limit, in: worktree, git: git)
+    }
+
+    /// Says whether `HEAD` is still where it was when something was worked out.
+    ///
+    /// - Throws: `BranchIntegration.Outdated` when it isn't.
+    @concurrent
+    public nonisolated func checkHead(of integration: BranchIntegration, in worktree: String) async throws {
+        try await integration.checkHead(in: worktree, git: git)
+    }
+
+    /// Merges, fast-forwards or rebases, once any fetch that's running has stopped.
+    ///
+    /// - Throws: `GitError` when git refuses or stops on a conflict, which says why.
+    public func integrate(_ integration: BranchIntegration, in worktree: String) async throws {
+        await clearTheWayForSomeone()
+        try await integration.run(in: worktree, git: git)
+    }
+
+    /// Finds out what's worth knowing before applying a commit to a worktree's
+    /// branch, without changing anything.
+    ///
+    /// - Throws: `CommitRevert.Missing` when the repository doesn't have the commit.
+    @concurrent
+    public nonisolated func prepareToCherryPick(_ commit: ObjectID, in worktree: String) async throws -> CommitCherryPick {
+        guard let info = try await commits([commit]).first ?? nil else { throw CommitRevert.Missing(commit: commit) }
+        return try await CommitCherryPick.prepare(info, in: worktree, git: git)
+    }
+
+    /// Applies a commit to a worktree's branch, and returns the new commit.
+    ///
+    /// - Throws: `GitError` when git refuses or stops on a conflict, or
+    ///   `CommitCherryPick.AlreadyThere`.
+    @concurrent
+    public nonisolated func cherryPick(_ cherryPick: CommitCherryPick, in worktree: String) async throws -> ObjectID {
+        try await cherryPick.run(in: worktree, git: git)
+    }
+
+    /// Makes a lightweight tag on a commit.
+    ///
+    /// - Throws: `GitError` when git refuses, which says why.
+    @concurrent
+    public nonisolated func create(_ tag: NewTag, in worktree: String) async throws {
+        _ = try await Self.run(tag.arguments, in: worktree, git: git)
+    }
+
+    /// What fast-forwarding a branch that isn't checked out to its upstream runs,
+    /// by its arguments after `git`. git refuses when that isn't a fast-forward, or
+    /// when a worktree has the branch checked out.
+    public nonisolated static func fastForwardArguments(branch: String, upstream: String) -> [String] {
+        ["fetch", ".", "\(upstream):\(branch)"]
+    }
+
+    /// Fast-forwards a branch that isn't checked out to its upstream, by their full
+    /// names, without a worktree having to go there.
+    ///
+    /// - Throws: `GitError` when git refuses, which says why.
+    public func fastForward(branch: String, to upstream: String, in worktree: String) async throws {
+        await clearTheWayForSomeone()
+        _ = try await Self.run(Self.fastForwardArguments(branch: branch, upstream: upstream), in: worktree, git: git)
+    }
+
+    /// Says how every branch and remote branch stands against a commit, which a
+    /// menu reads without running git, and which nobody is waiting for.
+    ///
+    /// - Parameters:
+    ///   - head: The commit that `HEAD` is on.
+    ///   - worktree: Any of the repository's worktrees.
+    @concurrent
+    public nonisolated func refRelations(to head: ObjectID, in worktree: String) async throws -> [String: RefRelation] {
+        var command = GitCommand(
+            "for-each-ref", "--format=" + RefRelationParser.format(comparingWith: head), Ref.branchPrefix, Ref.remoteBranchPrefix,
+            in: worktree
+        )
+        command.environment["GIT_NO_LAZY_FETCH"] = "1"
+        let output = try await git.run(command).output
+        do {
+            return try RefRelationParser.parse(output)
+        } catch {
+            throw RepositoryError.unexpectedOutput(command, error.description)
+        }
+    }
+
     /// Goes to a commit. git refuses when the worktree's uncommitted changes are in
     /// the way, and nothing changes. Like a checkout, this is best left to finish.
     ///

@@ -225,7 +225,7 @@ struct RefsPanel: View {
             imageColor: isCurrent ? Palette.current : .secondary,
             title: title,
             subtitle: branch.subtitle(isCurrent: isCurrent),
-            menu: branchMenu(branch, isCurrent: isCurrent, otherWorktree: otherWorktree, reviewBase: reviewBase),
+            menu: branchMenu(branch, isCurrent: isCurrent, otherWorktree: otherWorktree),
             isSelected: isSelected(branch.name, branch.tip) || model.reviewedBranch == branch.name,
             indent: RefIndent.of(depth),
             hasCommands: otherWorktree != nil || reviewBase != nil,
@@ -265,47 +265,33 @@ struct RefsPanel: View {
         model.review(branch: name)
     }
 
-    private func branchMenu(_ branch: BranchDetails, isCurrent: Bool, otherWorktree: String?, reviewBase: String?) -> [RefMenu.Entry] {
-        var entries: [RefMenu.Entry] = [.header(branch.shortName)]
-        if let reviewBase {
-            entries.append(.command("Review Against \(reviewBase)") { review(branch.name) })
-        }
-        if let otherWorktree {
-            entries.append(.command("Show Worktree") { showWorktree(otherWorktree, branch.tip) })
-        }
-        if reviewBase != nil || otherWorktree != nil {
-            entries.append(.divider)
-        }
-        entries += [
-            .command("Replay History") { model.replayHistory(ofBranch: branch.name) },
-            .command("Copy Name") { copy(branch.shortName) },
-            .divider,
+    private func branchMenu(_ branch: BranchDetails, isCurrent: Bool, otherWorktree: String?) -> [RefMenu.Entry] {
+        model.menuEntries(
+            forBranch: branch.name,
+            tip: branch.tip,
+            otherWorktree: otherWorktree,
+            review: { review(branch.name) },
             // git won't delete a branch that a worktree has checked out.
-            .command(
-                "Delete Branch",
-                isDestructive: true,
-                isEnabled: !isCurrent && branch.worktree == nil && !model.branch.isBusy
-            ) {
+            delete: HistoryMenu.Delete(title: "Delete Branch", isEnabled: !isCurrent && branch.worktree == nil && !model.branch.isBusy) {
                 model.branch.askToDelete(ref: branch.name)
             },
-        ]
-        return entries
+            showWorktree: showWorktree
+        )
     }
 
     private func remoteBranchRow(_ branch: RemoteBranchDetails, title: String, depth: Int) -> some View {
         RefRow(
             icon: .branch,
             title: title,
-            menu: [
-                // Its full name, because the row's title leaves out the remote.
-                .header(Ref.shortName(branch.name)),
-                .command("Replay History") { model.replayHistory(ofBranch: branch.name) },
-                .command("Copy Name") { copy(Ref.shortName(branch.name)) },
-                .divider,
-                .command("Delete from Remote…", isDestructive: true, isEnabled: !model.branch.isBusy) {
+            // Its heading has the full name, because the row's title leaves out the remote.
+            menu: model.menuEntries(
+                forBranch: branch.name,
+                tip: branch.tip,
+                delete: HistoryMenu.Delete(title: "Delete from Remote…", isEnabled: !model.branch.isBusy) {
                     model.branch.askToDelete(ref: branch.name)
                 },
-            ],
+                showWorktree: showWorktree
+            ),
             isSelected: isSelected(branch.name, branch.tip),
             indent: RefIndent.of(depth, isOnRemote: true),
             action: { select(branch.name, branch.tip) },

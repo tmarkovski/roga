@@ -38,6 +38,7 @@ struct UnfinishedWorkTests {
     @Test func abortingARevertHasItsOwnWords() {
         let work = StoppedWork.revert(commit: nil)
         #expect(work.abortTitle == "Abort Revert…")
+        #expect(StoppedWork.cherryPick(commit: nil).abortTitle == "Abort Cherry-Pick…")
         #expect(work.abortedNote == "Aborted the revert")
         #expect(work.abortArguments == ["revert", "--abort"])
         #expect(work.leavesAMessage)

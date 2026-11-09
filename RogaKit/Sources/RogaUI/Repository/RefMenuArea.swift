@@ -65,6 +65,7 @@ final class RefMenuAreaView: NSView {
 
 /// A menu's commands as actions for assistive apps.
 @ViewBuilder func refMenuActions(_ entries: [RefMenu.Entry]) -> some View {
+    let entries = withoutSubmenus(entries)
     ForEach(entries.indices, id: \.self) { index in
         switch entries[index] {
         case let .command(title, _, isEnabled, _, action):
@@ -76,8 +77,20 @@ final class RefMenuAreaView: NSView {
         case let .option(title, isChecked, action):
             Button(title, action: action)
                 .disabled(isChecked)
-        case .header, .divider:
+        case .header, .divider, .submenu:
             EmptyView()
+        }
+    }
+}
+
+/// A submenu's commands in its place, each with the submenu's name in front, since
+/// a list of actions has no levels.
+private func withoutSubmenus(_ entries: [RefMenu.Entry]) -> [RefMenu.Entry] {
+    entries.flatMap { entry -> [RefMenu.Entry] in
+        guard case let .submenu(group, isGroupEnabled, inner) = entry else { return [entry] }
+        return withoutSubmenus(inner).map { row in
+            guard case let .command(title, isDestructive, isEnabled, shortcut, action) = row else { return row }
+            return .command("\(group) \(title)", isDestructive: isDestructive, isEnabled: isEnabled && isGroupEnabled, shortcut: shortcut, action: action)
         }
     }
 }

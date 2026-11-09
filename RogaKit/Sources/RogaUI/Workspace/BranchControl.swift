@@ -143,6 +143,18 @@ private struct NewBranchButton: View {
         .popover(isPresented: $branch.isCreatingBranch, arrowEdge: .bottom) {
             NewBranchPopover(branch: branch, showWorktree: showWorktree)
         }
+        // On a view of its own, because a view is only sure of showing one popover.
+        .background {
+            Color.clear.popover(isPresented: Binding {
+                branch.newTagStart != nil
+            } set: { isShown in
+                if !isShown { branch.newTagStart = nil }
+            }, arrowEdge: .bottom) {
+                if let start = branch.newTagStart {
+                    NewTagPopover(branch: branch, start: start)
+                }
+            }
+        }
     }
 
     /// Where the new branch starts, as in `New Branch from main`.
@@ -589,13 +601,15 @@ private struct NewBranchPopover: View {
     @FocusState private var isNameFocused: Bool
 
     private var newBranch: NewBranch {
-        NewBranch(name: name.trimmingCharacters(in: .whitespaces), inNewWorktree: inNewWorktree)
+        NewBranch(name: name.trimmingCharacters(in: .whitespaces), inNewWorktree: inNewWorktree, startPoint: branch.newBranchStart?.commit)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("New Branch")
+            Text(branch.newBranchStart.map { "New Branch from \($0.label)" } ?? "New Branch")
                 .font(.system(size: 13, weight: .medium))
+                .lineLimit(1)
+                .truncationMode(.middle)
             TextField("Name", text: $name)
                 .textFieldStyle(.roundedBorder)
                 .focused($isNameFocused)
@@ -626,6 +640,9 @@ private struct NewBranchPopover: View {
                 branch.startsInNewWorktree = false
             }
         }
+        // Only here, because this is what tells it to start from where the worktree
+        // is again, once it has gone.
+        .onDisappear { branch.newBranchStart = nil }
     }
 
     private func create() {
@@ -633,6 +650,59 @@ private struct NewBranchPopover: View {
         isCreating = true
         Task {
             refusal = await branch.create(newBranch, showWorktree: showWorktree)
+            isCreating = false
+        }
+    }
+}
+
+/// Puts a new tag on a commit someone chose in a menu, and shows the exact command
+/// as it's typed.
+private struct NewTagPopover: View {
+    let branch: BranchModel
+    let start: BranchModel.NewRefStart
+    @State private var name = ""
+    @State private var refusal: String?
+    @State private var isCreating = false
+    @FocusState private var isNameFocused: Bool
+
+    private var newTag: NewTag {
+        NewTag(name: name.trimmingCharacters(in: .whitespaces), commit: start.commit)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("New Tag on \(start.label)")
+                .font(.system(size: 13, weight: .medium))
+                .lineLimit(1)
+                .truncationMode(.middle)
+            TextField("Name", text: $name)
+                .textFieldStyle(.roundedBorder)
+                .focused($isNameFocused)
+                .onSubmit(create)
+                .onChange(of: name) { refusal = nil }
+            Text(BranchModel.command(newTag.arguments))
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
+            if let refusal {
+                Text(refusal)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(12)
+        .frame(width: 320)
+        .onAppear { isNameFocused = true }
+    }
+
+    private func create() {
+        guard !newTag.name.isEmpty, !isCreating else { return }
+        isCreating = true
+        Task {
+            refusal = await branch.create(newTag)
             isCreating = false
         }
     }

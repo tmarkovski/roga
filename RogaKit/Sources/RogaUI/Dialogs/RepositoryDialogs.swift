@@ -8,6 +8,7 @@ enum RepositoryDialog: Identifiable {
     case message(DialogContent)
     case pull(PullChoice, dismiss: () -> Void)
     case branchChoice(BranchModel.BranchChoice, dismiss: () -> Void)
+    case reset(PendingReset, dismiss: () -> Void)
     case gitFix(DialogContent)
 
     var id: String {
@@ -15,13 +16,14 @@ enum RepositoryDialog: Identifiable {
         case .message(let content), .gitFix(let content): content.id
         case .pull: "pull"
         case .branchChoice: "branchChoice"
+        case .reset: "reset"
         }
     }
 
     func dismiss() {
         switch self {
         case .message(let content), .gitFix(let content): content.dismiss()
-        case .pull(_, let dismiss), .branchChoice(_, let dismiss): dismiss()
+        case .pull(_, let dismiss), .branchChoice(_, let dismiss), .reset(_, let dismiss): dismiss()
         }
     }
 }
@@ -51,6 +53,8 @@ struct RepositoryDialogs: ViewModifier {
                 PullChoiceSheet(asked: choice, branch: model.branch)
             case .branchChoice(let choice, _):
                 BranchChoiceSheet(asked: choice, branch: model.branch)
+            case .reset(let choice, _):
+                ResetChoiceSheet(asked: choice, model: model)
             case .gitFix(let content):
                 GitFixSheet(model: model.gitFix, shown: content)
             }
@@ -84,6 +88,8 @@ extension RepositoryModel {
         if let checkoutFailure { return .message(dialog(for: checkoutFailure, offering: fix)) }
         if let pendingCommitSwitch { return .message(dialog(for: pendingCommitSwitch)) }
         if let pendingRevert { return .message(dialog(for: pendingRevert)) }
+        if let pendingReset { return .reset(pendingReset) { [weak self] in self?.pendingReset = nil } }
+        if let pendingCherryPick { return .message(dialog(for: pendingCherryPick)) }
         if let pendingDiscard = selectedChanges.pendingDiscard { return .message(selectedChanges.dialog(for: pendingDiscard)) }
         return branch.dialog(offering: fix)
     }
@@ -269,6 +275,7 @@ extension BranchModel {
         }
         if let pendingAbort { return .message(dialog(forAborting: pendingAbort)) }
         if let forcePush { return .message(dialog(for: forcePush)) }
+        if let pendingIntegration { return .message(dialog(for: pendingIntegration)) }
         if let pendingDeletion { return .message(dialog(for: pendingDeletion)) }
         if let branchChoice {
             return .branchChoice(branchChoice) { [weak self] in self?.branchChoice = nil }
@@ -297,7 +304,7 @@ extension BranchModel {
         // A rebase that stopped has detached `HEAD`, so only it can name the branch.
         let name = switch conflict.work {
         case .rebase(let branch): branch.map(Ref.shortName) ?? status.map { Ref.shortName($0.branch) }
-        case .merge, .revert: status.map { Ref.shortName($0.branch) }
+        case .merge, .revert, .cherryPick: status.map { Ref.shortName($0.branch) }
         }
         let what = conflict.work.noun
         let started = conflict.startedByPull ? "pull" : what
@@ -353,6 +360,9 @@ extension BranchModel {
         let branch = aside.branch.map(Ref.shortName) ?? "HEAD"
         let (did, against): (DialogText, String) = switch aside.move {
         case .pull: ("Roga pulled into \(code: branch)", "what came in")
+        case .merge(let other): ("Roga merged \(code: other) into \(code: branch)", "what came in")
+        case .rebase(let other): ("Roga rebased \(code: branch) onto \(code: other)", "what's there")
+        case .cherryPick(let commit): ("Roga applied \(code: String(commit.hex.prefix(8))) to \(code: branch)", "what it changed")
         case .reset(let commit): ("Roga moved \(code: branch) to \(code: String(commit.hex.prefix(8)))", "what's there")
         case .detach(let commit): ("Roga switched to \(code: String(commit.hex.prefix(8)))", "what's there")
         }

@@ -22,6 +22,10 @@ public enum RefMenu {
         /// One of several places to go, such as a worktree, with what's going on
         /// there on a second line.
         case choice(Choice)
+        /// A row that opens more rows beside it, for commands that belong together
+        /// and are different things. Commands that differ only in how far they go
+        /// share one row and a dialog instead (decision 33).
+        case submenu(String, isEnabled: Bool = true, entries: [Entry])
         case divider
     }
 
@@ -180,6 +184,18 @@ public enum RefMenu {
                 item.state = choice.isCurrent ? .on : .off
                 item.view = ChoiceView(choice: choice, shortcuts: shortcuts, size: NSSize(width: width, height: Metrics.choiceHeight))
                 menu.addItem(item)
+            case let .submenu(title, isEnabled, entries):
+                let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+                item.submenu = make(entries)
+                item.isEnabled = isEnabled
+                item.view = RowView(
+                    title: title,
+                    font: Metrics.commandFont,
+                    color: Colors.row(isDestructive: false, isEnabled: isEnabled),
+                    inset: inset,
+                    size: commandSize
+                )
+                menu.addItem(item)
             case .divider:
                 menu.addItem(.separator())
             }
@@ -235,6 +251,9 @@ private enum Metrics {
     /// title.
     static let optionCheckCenter = textInset + 7
     static let optionCheckRoom = 30.0
+    /// The arrow on a row that opens a submenu, and the room its title leaves for it.
+    static let arrowSize = NSSize(width: 5, height: 10)
+    static let arrowRoom = 16.0
     /// A longer name gets cut short in its middle, where branch names differ least.
     static let maximumWidth = 480.0
     /// What a choice's last part, such as a folder, keeps when the parts
@@ -259,6 +278,7 @@ private enum Metrics {
             case let .command(title, _, _, shortcut, _): inset + textWidth(title, font: commandFont) + (shortcut == nil ? 0 : shortcuts.room)
             case let .option(title, _, _): inset + textWidth(title, font: commandFont) + optionCheckRoom
             case let .choice(choice): choiceTextInset + choiceWidth(choice) + shortcuts.room
+            case let .submenu(title, _, _): inset + textWidth(title, font: commandFont) + arrowRoom
             case .divider: 0
             }
         }.max() ?? 0
@@ -298,7 +318,7 @@ struct ShortcutColumn {
             switch entry {
             case let .command(_, _, _, shortcut, _): shortcut
             case let .choice(choice): choice.shortcut
-            case .header, .option, .divider: nil
+            case .header, .option, .submenu, .divider: nil
             }
         }
         modifiers = ceil(shortcuts.map { Metrics.textWidth($0.modifierSymbols, font: Metrics.shortcutFont) }.max() ?? 0)
@@ -452,7 +472,7 @@ private class MenuRowView: NSView {
             super.keyDown(with: event)
             return
         }
-        menu.cancelTracking()
+        Self.closeEveryLevel(from: menu)
         // Once the menu has closed, as after a click.
         DispatchQueue.main.async {
             let index = menu.index(of: item)
@@ -511,10 +531,17 @@ private class MenuRowView: NSView {
 
     private func choose(_ event: NSEvent) {
         guard event.timestamp - openedAt > Self.openingClickDuration,
-              let item = enclosingMenuItem, item.isEnabled, let menu = item.menu
+              let item = enclosingMenuItem, item.isEnabled, !item.hasSubmenu, let menu = item.menu
         else { return }
-        menu.cancelTracking()
+        Self.closeEveryLevel(from: menu)
         menu.performActionForItem(at: menu.index(of: item))
+    }
+
+    /// A row in a submenu closes the menu it came from too.
+    private static func closeEveryLevel(from menu: NSMenu) {
+        var outermost = menu
+        while let parent = outermost.supermenu { outermost = parent }
+        outermost.cancelTracking()
     }
 }
 
@@ -527,9 +554,11 @@ private final class RowView: MenuRowView {
     private let isChecked: Bool
     private let shortcut: (RefMenu.Shortcut, ShortcutColumn)?
     private let attributes: [NSAttributedString.Key: Any]
+    private let color: NSColor
 
     init(title: String, font: NSFont, color: NSColor, inset: Double, size: NSSize, isChecked: Bool = false, shortcut: (RefMenu.Shortcut, ShortcutColumn)? = nil) {
         self.title = title
+        self.color = color
         self.inset = inset
         self.isChecked = isChecked
         self.shortcut = shortcut
@@ -545,12 +574,13 @@ private final class RowView: MenuRowView {
 
     override func draw(_ dirtyRect: NSRect) {
         drawHighlight()
+        let hasArrow = enclosingMenuItem?.hasSubmenu == true
         let height = (title as NSString).size(withAttributes: attributes).height
         (title as NSString).draw(
             in: NSRect(
                 x: inset,
                 y: (bounds.height - height) / 2,
-                width: bounds.width - inset - Metrics.textInset - (isChecked ? Metrics.optionCheckRoom : 0) - (shortcut?.1.room ?? 0),
+                width: bounds.width - inset - Metrics.textInset - (isChecked ? Metrics.optionCheckRoom : 0) - (shortcut?.1.room ?? 0) - (hasArrow ? Metrics.arrowRoom : 0),
                 height: height
             ),
             withAttributes: attributes
@@ -561,6 +591,20 @@ private final class RowView: MenuRowView {
         if isChecked {
             drawSymbol(Self.checkmark, size: 15, weight: .regular, color: Colors.command, centeredAt: NSPoint(x: bounds.width - Metrics.optionCheckCenter, y: bounds.midY))
         }
+        if hasArrow { drawArrow() }
+    }
+
+    private func drawArrow() {
+        let tip = NSPoint(x: bounds.maxX - Metrics.textInset, y: bounds.midY)
+        let arrow = NSBezierPath()
+        arrow.move(to: NSPoint(x: tip.x - Metrics.arrowSize.width, y: tip.y + Metrics.arrowSize.height / 2))
+        arrow.line(to: tip)
+        arrow.line(to: NSPoint(x: tip.x - Metrics.arrowSize.width, y: tip.y - Metrics.arrowSize.height / 2))
+        arrow.lineWidth = 1.5
+        arrow.lineCapStyle = .round
+        arrow.lineJoinStyle = .round
+        color.setStroke()
+        arrow.stroke()
     }
 }
 

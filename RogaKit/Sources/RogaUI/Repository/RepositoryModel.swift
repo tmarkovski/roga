@@ -117,6 +117,10 @@ final class RepositoryModel {
     var pendingCommitSwitch: PendingCommitSwitch?
     /// Reverting a commit, while someone chooses whether to commit it.
     var pendingRevert: CommitRevert?
+    /// Moving the branch to a commit, while someone chooses how far that goes.
+    var pendingReset: PendingReset?
+    /// Applying a commit that's waiting for someone to agree to it.
+    var pendingCherryPick: CommitCherryPick?
 
     /// The request whose history has loaded completely.
     @ObservationIgnored private var loaded: LoadRequest?
@@ -184,6 +188,11 @@ final class RepositoryModel {
     @ObservationIgnored private(set) var checkout: Task<Void, Never>?
     /// Finding out what reverting a commit would come to.
     @ObservationIgnored private(set) var preparingRevert: Task<Void, Never>?
+    /// Finding out what resetting to a commit or applying one would come to.
+    @ObservationIgnored private(set) var preparingAction: Task<Void, Never>?
+    /// How every branch stands against the commit `HEAD` was on, for the menus.
+    @ObservationIgnored private var refRelations: (head: ObjectID, relations: [String: RefRelation])?
+    @ObservationIgnored private(set) var refRelationsUpdate: Task<Void, Never>?
 
     private struct RowText {
         var subject: String
@@ -528,7 +537,7 @@ final class RepositoryModel {
 
     /// Whether a ref is what the current branch tracks, or another remote's branch
     /// of the same name.
-    private func isRemoteCopyOfCurrentBranch(_ name: String) -> Bool {
+    func isRemoteCopyOfCurrentBranch(_ name: String) -> Bool {
         guard let refs = history?.refs, let current = refs.currentBranch, name.hasPrefix(Ref.remoteBranchPrefix) else { return false }
         return name == refs.refs.first { $0.name == current }?.upstream || Ref.nameOnItsRemote(name) == Ref.shortName(current)
     }
@@ -606,11 +615,15 @@ final class RepositoryModel {
 
     // MARK: Reverting
 
-    /// Whether a commit can be reverted now. git won't start one while the worktree
-    /// is partway through something, and nothing runs alongside what's running.
-    var canRevert: Bool {
-        !branch.isBusy && branch.unfinished == nil && checkout == nil && preparingRevert == nil
+    /// Whether something that moves `HEAD` can start now. git won't start one while
+    /// the worktree is partway through something, and nothing runs alongside what's
+    /// running.
+    var canChangeHistory: Bool {
+        !branch.isBusy && branch.unfinished == nil && checkout == nil && preparingRevert == nil && preparingAction == nil && branch.preparingIntegration == nil
     }
+
+    /// Whether a commit can be reverted now.
+    var canRevert: Bool { canChangeHistory }
 
     /// The commit of a row, or nil for the row for uncommitted changes.
     func commit(atRow row: Int) -> ObjectID? {
@@ -659,6 +672,118 @@ final class RepositoryModel {
                 return nil
             }
         }
+    }
+
+    // MARK: Resetting, checking out and cherry-picking from a menu
+
+    /// Finds out what moving the branch to a commit would come to, and asks how far
+    /// to go. It always asks, because that's where the choice is (decision 33).
+    func askToReset(to id: ObjectID, subject: String?) {
+        guard canChangeHistory else { return }
+        preparingAction = Task {
+            do {
+                let commitSwitch = try await session.prepareToReset(to: id, limit: DialogContent.listLimit, in: worktree)
+                pendingReset = PendingReset(
+                    commitSwitch: commitSwitch,
+                    subject: subject,
+                    commits: await branch.listed(commitSwitch.lost),
+                    uncommittedFiles: uncommittedFiles
+                )
+            } catch {
+                branch.failure = BranchModel.Failure(title: "Can't reset to \(id.hex.prefix(8))", error: error, changedNothing: true)
+            }
+            preparingAction = nil
+        }
+    }
+
+    /// Moves the branch the way someone chose.
+    func confirmReset() {
+        guard let pending = pendingReset, !branch.isBusy else { return }
+        pendingReset = nil
+        checkout = Task {
+            await run(pending.commitSwitch.resetting(pending.mode))
+            checkout = nil
+        }
+    }
+
+    /// Puts `HEAD` on a commit, away from any branch, which leaves every branch
+    /// where it is.
+    func checkOutDetached(commit id: ObjectID) {
+        guard canChangeHistory, id != history?.refs.head else { return }
+        checkout = Task {
+            do {
+                var commitSwitch = try await session.prepareToSwitch(to: id, limit: DialogContent.listLimit, in: worktree)
+                commitSwitch.way = .detaching
+                if commitSwitch.asksFirst, history?.refs.currentBranch == nil {
+                    // Only a detached `HEAD` can leave commits behind this way.
+                    pendingCommitSwitch = PendingCommitSwitch(commitSwitch: commitSwitch, commits: await branch.listed(commitSwitch.lost))
+                } else {
+                    commitSwitch.lostCount = 0
+                    await run(commitSwitch)
+                }
+            } catch {
+                branch.failure = BranchModel.Failure(title: "Can't check out \(id.hex.prefix(8))", error: error, changedNothing: true)
+            }
+            checkout = nil
+        }
+    }
+
+    /// Finds out what's worth knowing before applying a commit. It goes straight away
+    /// unless there's something to say, as with a merge.
+    func askToCherryPick(commit id: ObjectID) {
+        guard canChangeHistory else { return }
+        preparingAction = Task {
+            do {
+                let pick = try await session.prepareToCherryPick(id, in: worktree)
+                if pick.asksFirst {
+                    pendingCherryPick = pick
+                } else {
+                    run(pick)
+                }
+            } catch {
+                branch.failure = BranchModel.Failure(title: "Can't cherry-pick \(id.hex.prefix(8))", error: error, changedNothing: true)
+            }
+            preparingAction = nil
+        }
+    }
+
+    /// Applies the commit that was asked about.
+    func confirmCherryPick() {
+        guard let pick = pendingCherryPick, !branch.isBusy else { return }
+        pendingCherryPick = nil
+        run(pick)
+    }
+
+    private func run(_ pick: CommitCherryPick) {
+        branch.cherryPick(pick) { [weak self] in self?.selectNewCommit($0) }
+    }
+
+    // MARK: What the menus know
+
+    /// Reads how every branch stands against `HEAD`, for the menus, which can't wait
+    /// for git as they open.
+    private func updateRefRelations(head: ObjectID?) {
+        refRelationsUpdate?.cancel()
+        guard let head else {
+            refRelations = nil
+            return
+        }
+        refRelationsUpdate = Task {
+            guard let relations = try? await session.refRelations(to: head, in: worktree), !Task.isCancelled else { return }
+            refRelations = (head, relations)
+        }
+    }
+
+    /// How a branch stands against `HEAD`, unless `HEAD` has moved since that was read.
+    func relation(of ref: String) -> RefRelation? {
+        guard let refRelations, refRelations.head == history?.refs.head else { return nil }
+        return refRelations.relations[ref]
+    }
+
+    /// Whether `HEAD` has a row's commit, when that doesn't take long to find out.
+    func headContains(row: Int) -> Bool? {
+        guard let history, let head = history.head, row >= rowOffset, row - rowOffset < history.rows.count else { return nil }
+        return history.graph.reaches(history.rows[row - rowOffset], from: head, visitLimit: 20_000)
     }
 
     private func run(_ commitSwitch: CommitSwitch) async {
@@ -723,6 +848,7 @@ final class RepositoryModel {
         // The tooltip names the commit being reverted.
         var subject: String?
         if case .revert(let commit?) = stopped { subject = (try? await session.commits([commit]))?.first??.subject }
+        if case .cherryPick(let commit?) = stopped { subject = (try? await session.commits([commit]))?.first??.subject }
         guard !Task.isCancelled else { return }
         show(uncommittedFiles: status?.fileCount ?? 0, staged: status?.staged.count ?? 0)
         show(unfinished: UnfinishedWork(work: stopped, conflicts: status?.conflicted.count ?? 0, subject: subject))
@@ -798,6 +924,7 @@ final class RepositoryModel {
                     badges = Self.badges(history)
                     previewedCommits = []
                     reviewMain = Self.reviewMain(history.refs)
+                    updateRefRelations(head: history.refs.head)
                 }
                 self.history = history
                 if hasWorkingTreeRow { workingTreeLine = WorkingTreeLine(layout: history.lanes, head: history.head) }
