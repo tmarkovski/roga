@@ -1,6 +1,6 @@
 # 62. Replay a repository's history, drawn in Swift
 
-Accepted on 2026-11-08, and built the same day. Lines added and removed, and counts that roll like an odometer, were added on 2026-11-09.
+Accepted on 2026-11-08, and built the same day. Lines added and removed, and counts that roll, were added on 2026-11-09.
 
 ## Context
 
@@ -32,7 +32,7 @@ We considered drawing the replay as a web page in a web view, since the prototyp
 - Labels stack in tiers and show the whole subject. A new label sits nearest the line and pushes up only what it overlaps. Once no later label can reach a label, it falls as soon as there's room below it, taking three times as long to come down as to go up, and from then on it stays where it fell. How tall a stack gets comes only from how much its labels overlap, and a label pushed past the edge of the picture fades until it can come back.
 - A stretch where no branch is open moves a little quicker than one with branches, but slowly enough to read what each commit leaves behind. A squashed pull request gets as long as a merge.
 - The date and how many commits, branches and merges have landed so far are at the top, with how many lines have been added and removed, in green and red as everywhere else in Roga. The newest commit's hash, the lines it added and removed, and its subject are at the bottom.
-- The counts at the top roll like an odometer's wheels. Each digit turns up to the next one, and a digit turns only while the one to its right goes from 9 to 0. A count that goes up by one ticks over and settles with a little bounce, and lines, which go up by hundreds at once, spin. Commits that land faster than a turn takes add their turns together, so the wheels spin faster as the history speeds up. Each count takes the room its last value needs, so nothing beside it moves as it grows, and a new digit rolls up from blank on its left.
+- Each count at the top sits in a row of digit windows. When it changes, each digit that's different rolls straight from its old value to its new one, and the rest hold still, so 142 to 143 rolls only the last digit, and 1,200 to 1,750 rolls the hundreds and the tens once each. A roll takes 0.35 seconds, or less when the next change comes sooner, so a number that changes quickly rolls quickly. Each count takes the room its last value needs, so nothing beside it moves as it grows, and a digit it gains rolls in from blank.
 - At the end, the camera pulls back to show the whole range at once, with a summary over it such as **209 commits · 27 branches · 8 days**, and the lines added and removed under it.
 
 **Roga works out the branches from the history, because git doesn't record them.**

@@ -294,13 +294,19 @@ struct MetroMapTests {
         #expect(!looksTheSame(try pixels(of: without, at: with.duration), try pixels(of: with, at: with.duration)))
     }
 
-    @Test func givesEachNumberTheWheelsItsLastCountNeeds() {
-        #expect(Odometer.wheels(for: 0) == 1)
-        #expect(Odometer.wheels(for: 9) == 1)
-        #expect(Odometer.wheels(for: 10) == 2)
-        #expect(Odometer.wheels(for: 999) == 3)
-        #expect(Odometer.wheels(for: 1000) == 4)
-        #expect(Odometer.wheels(for: 1_234_567) == 7)
+    @Test func givesEachNumberTheWindowsItsLastCountNeeds() {
+        #expect(RollingNumber.windows(for: 0) == 1)
+        #expect(RollingNumber.windows(for: 9) == 1)
+        #expect(RollingNumber.windows(for: 10) == 2)
+        #expect(RollingNumber.windows(for: 999) == 3)
+        #expect(RollingNumber.windows(for: 1000) == 4)
+        #expect(RollingNumber.windows(for: 1_234_567) == 7)
+    }
+
+    @Test func drawsTheSameFrameForTheSameMomentWhileANumberRolls() throws {
+        let map = MetroMap(replay: try makeReplay(), repositoryName: "app")
+        let time = map.replay.commits[9].time + MetroMap.roll * 0.4
+        #expect(looksTheSame(try pixels(of: map, at: time), try pixels(of: map, at: time)))
     }
 
     @Test func drawsEvenWithNoCommits() throws {
