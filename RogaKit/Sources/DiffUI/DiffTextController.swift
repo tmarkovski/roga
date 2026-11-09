@@ -26,9 +26,22 @@ public final class DiffTextController: NSObject {
         didSet { updateConflictBars() }
     }
 
+    /// Makes what goes around each unresolved conflict in view, while an agent is
+    /// working on them, or nil while none is (decision 65). The view that's made
+    /// shouldn't take clicks, since it sits over the conflict's buttons.
+    public var makeConflictOutline: (() -> NSView)? {
+        didSet {
+            conflictOutlines.forEach { $0.removeFromSuperview() }
+            conflictOutlines = []
+            updateConflictOutlines()
+        }
+    }
+
     /// The bars on the conflicts' bands in view, and spare ones, which stay
     /// rather than being made again as the text scrolls.
     private var conflictBars: [ConflictBar] = []
+    /// What's around the unresolved conflicts in view, and spare ones.
+    private var conflictOutlines: [NSView] = []
     /// Where someone is writing the lines that resolve a conflict.
     private var editor: NSPopover?
 
@@ -193,6 +206,7 @@ public final class DiffTextController: NSObject {
     /// Puts a bar on each conflict's band in view, at the edge of the view, so that
     /// the buttons stay put as the text scrolls sideways.
     func updateConflictBars() {
+        updateConflictOutlines()
         guard let document, let conflicts = document.conflicts, resolveConflict != nil, !document.conflictBands.isEmpty else {
             conflictBars.forEach { $0.isHidden = true }
             return
@@ -223,6 +237,40 @@ public final class DiffTextController: NSObject {
             let size = bar.size
             bar.frame = NSRect(x: visible.maxX - size.width - 6, y: (row.midY - size.height / 2).rounded(), width: size.width, height: size.height)
             bar.isHidden = !(visible.minY...visible.maxY ~= row.midY)
+        }
+    }
+
+    /// Puts an outline around each unresolved conflict in view. They're in the text
+    /// view so that they scroll with the text and the clip view cuts them off, and
+    /// as wide as what shows of it, so that the sides are always in sight.
+    private func updateConflictOutlines() {
+        guard let make = makeConflictOutline, let document else {
+            conflictOutlines.forEach { $0.isHidden = true }
+            return
+        }
+        let origin = textView.textContainerOrigin.y
+        let shown = textView.visibleRect
+        let firstRow = Int(((shown.minY - origin) / DiffStyle.lineHeight).rounded(.down))
+        let lastRow = Int(((shown.maxY - origin) / DiffStyle.lineHeight).rounded(.up))
+        let blocks = document.unresolvedConflictRows.filter { $0.upperBound > firstRow && $0.lowerBound <= lastRow }
+        while conflictOutlines.count < blocks.count {
+            let outline = make()
+            textView.addSubview(outline)
+            conflictOutlines.append(outline)
+        }
+        for (index, outline) in conflictOutlines.enumerated() {
+            guard index < blocks.count else {
+                outline.isHidden = true
+                continue
+            }
+            let rows = blocks[index]
+            outline.frame = NSRect(
+                x: shown.minX + 3,
+                y: origin + CGFloat(rows.lowerBound) * DiffStyle.lineHeight,
+                width: max(shown.width - 6, 0),
+                height: CGFloat(rows.count) * DiffStyle.lineHeight
+            )
+            outline.isHidden = false
         }
     }
 

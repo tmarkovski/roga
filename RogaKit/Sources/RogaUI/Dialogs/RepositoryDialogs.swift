@@ -91,7 +91,7 @@ extension RepositoryModel {
     private func gitFixOffer(_ setup: GenerationSetup?) -> GitFixOffer {
         { [weak self] command, said, close in
             guard let setup, let command else { return nil }
-            return DialogButton(title: "Fix with \(setup.kind.shortName)", kind: .secondary) { [weak self] in
+            return DialogButton(title: "Fix with \(setup.kind.shortName)", kind: .agent) { [weak self] in
                 close()
                 self?.gitFix.start(command: command, said: said, with: setup)
             }

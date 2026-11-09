@@ -214,6 +214,27 @@ nonisolated struct ConflictLayout: Sendable {
     var edits: [Int: String]
     var sides: ConflictSides
 
+    /// Which rows each unresolved conflict takes up: its band, and everything up to
+    /// the next line of the file or the next conflict's band.
+    var unresolvedRows: [Range<Int>] {
+        var blocks: [Range<Int>] = []
+        var row = 0
+        while row < rows.count {
+            guard case .band(_, isResolved: false, _) = rows[row] else {
+                row += 1
+                continue
+            }
+            var end = row + 1
+            while end < rows.count, let next = rows[end] {
+                if case .band = next { break }
+                end += 1
+            }
+            blocks.append(row..<end)
+            row = end
+        }
+        return blocks
+    }
+
     /// The bands, in order.
     var bands: [ConflictBand] {
         rows.indices.compactMap { row in

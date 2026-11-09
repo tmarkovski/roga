@@ -85,6 +85,12 @@ struct DialogSheet<Extra: View>: View {
             .padding(EdgeInsets(top: 0, leading: 18, bottom: content.terminal.isEmpty ? 16 : 14, trailing: 18))
             if !content.terminal.isEmpty {
                 CommandBlock(lines: content.terminal(pointingAt: pointedAt))
+                    .overlay(alignment: .top) {
+                        if content.isWaitingForAgent {
+                            AgentOutline(shape: .topEdge, showsLine: false, isWorking: true)
+                                .frame(height: 3)
+                        }
+                    }
             }
         }
         .frame(width: Self.width)
@@ -242,10 +248,11 @@ private struct DialogSwitchRow: View {
 
 private struct DialogActionButton: View {
     let button: DialogButton
+    @State private var isHovering = false
 
     var body: some View {
         switch button.kind {
-        case .secondary, .partlyDestructive:
+        case .secondary, .partlyDestructive, .agent:
             base
         case .primary where button.pressesWithReturn:
             base.keyboardShortcut(.defaultAction)
@@ -258,14 +265,16 @@ private struct DialogActionButton: View {
 
     private var base: some View {
         Button(button.title, action: button.action)
-            .buttonStyle(DialogButtonStyle(kind: button.kind))
+            .buttonStyle(DialogButtonStyle(kind: button.kind, isHovering: isHovering))
             .disabled(!button.isEnabled)
+            .onHover { isHovering = $0 }
     }
 }
 
 /// The soft rectangles along the bottom of a dialog.
 private struct DialogButtonStyle: ButtonStyle {
     let kind: DialogButton.Kind
+    let isHovering: Bool
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
@@ -280,6 +289,8 @@ private struct DialogButtonStyle: ButtonStyle {
                 if kind == .partlyDestructive {
                     RoundedRectangle(cornerRadius: 9, style: .continuous)
                         .strokeBorder(DialogColors.danger, lineWidth: 1)
+                } else if kind == .agent {
+                    AgentOutline(shape: .outline(cornerRadius: 9), isEnabled: isEnabled, isHovering: isHovering)
                 }
             }
             .opacity(!isEnabled ? 0.45 : configuration.isPressed ? 0.75 : 1)
@@ -288,7 +299,7 @@ private struct DialogButtonStyle: ButtonStyle {
 
     private var foreground: Color {
         switch kind {
-        case .secondary: .primary
+        case .secondary, .agent: .primary
         case .primary: DialogColors.onInk
         case .destructive: DialogColors.onDanger
         case .partlyDestructive: DialogColors.danger
@@ -297,7 +308,7 @@ private struct DialogButtonStyle: ButtonStyle {
 
     private var background: Color {
         switch kind {
-        case .secondary: DialogColors.secondaryButton
+        case .secondary, .agent: DialogColors.secondaryButton
         case .primary: DialogColors.ink
         case .destructive: DialogColors.danger
         case .partlyDestructive: .clear

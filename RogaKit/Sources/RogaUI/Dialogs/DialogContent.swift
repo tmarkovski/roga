@@ -166,6 +166,9 @@ struct DialogButton {
         /// Gives up what can't be brought back, but saves part of it. It's outlined
         /// in red rather than filled, and takes a click.
         case partlyDestructive
+        /// Has an agent do it. It's a secondary button with the orange line that
+        /// marks an agent's command (decision 65).
+        case agent
     }
 
     var title: String
@@ -204,6 +207,9 @@ struct DialogContent: Identifiable {
     /// A smaller gray line after the cards.
     var note: DialogText?
     var terminal: [TerminalLine] = []
+    /// Whether the terminal block shows an agent that hasn't answered yet, which a
+    /// light moving along its top says (decision 65).
+    var isWaitingForAgent = false
     var buttons: [DialogButton]
     /// What Escape, the × and clicking outside of a button mean.
     var dismiss: () -> Void

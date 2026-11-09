@@ -32,6 +32,7 @@ extension GitFixModel {
             title: "Asking \(kind.name)…",
             message: "Roga is sending it what git said and what read-only commands show about this worktree. It has no tools, so it can only answer, and nothing runs until you say so.",
             terminal: [.program(program, showsPath: showsPath)],
+            isWaitingForAgent: true,
             buttons: [DialogButton(title: "Stop", kind: .secondary) { [weak self] in self?.dismiss() }],
             dismiss: { [weak self] in self?.dismiss() }
         )

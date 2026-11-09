@@ -46,6 +46,7 @@ struct GenerateButtonTests {
     @Test func theWordNamesTheAgentAClickRuns() {
         #expect(GenerateButton<EmptyView>.title(agent: .claude) == "Generate with Claude")
         #expect(GenerateButton<EmptyView>.title(agent: .codex) == "Generate with Codex")
+        #expect(GenerateButton<EmptyView>.rewriteTitle == "Rewrite")
     }
 
     @Test func showsTheIconAloneToRewriteYourWords() {
@@ -175,7 +176,24 @@ struct GenerateButtonTests {
         renderer.scale = 2
         var drawn: CGImage?
         try #require(NSAppearance(named: .aqua)).performAsCurrentDrawingAppearance { drawn = renderer.cgImage }
-        let image = try #require(drawn)
+        return try darkestGray(in: try #require(drawn))
+    }
+
+    /// The same for a view with an `NSView` in it, which `ImageRenderer` can't
+    /// draw, in a window that's never shown.
+    private static func darkestGrayInAWindow(_ view: some View) throws -> Int {
+        let hosting = NSHostingView(rootView: view.environment(\.colorScheme, .light))
+        let window = NSWindow(contentRect: CGRect(origin: .zero, size: hosting.fittingSize), styleMask: .borderless, backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.appearance = NSAppearance(named: .aqua)
+        window.contentView = hosting
+        hosting.layoutSubtreeIfNeeded()
+        let bitmap = try #require(hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds))
+        hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
+        return try darkestGray(in: try #require(bitmap.cgImage))
+    }
+
+    private static func darkestGray(in image: CGImage) throws -> Int {
         let (width, height) = (image.width, image.height)
         var pixels = [UInt8](repeating: 0, count: width * height * 4)
         let context = try #require(CGContext(
@@ -196,9 +214,9 @@ struct GenerateButtonTests {
     /// The canvas draws a Generate that can't be pressed in its secondary gray,
     /// `DialogColors.note`, #6b6b6b in light, which is dimmed no further.
     @Test func aGenerateThatCantRunIsTheSecondaryGray() throws {
-        let gray = try Self.darkestGray(Self.button(.nothingStaged))
+        let gray = try Self.darkestGrayInAWindow(Self.button(.nothingStaged))
         #expect((0x55...0x80).contains(gray), "The darkest gray is \(String(gray, radix: 16))")
-        #expect(try Self.darkestGray(Self.button(.ready)) < 0x40)
+        #expect(try Self.darkestGrayInAWindow(Self.button(.ready)) < 0x40)
     }
 
     /// An agent that can't be picked says why in the same gray, so it can be read.

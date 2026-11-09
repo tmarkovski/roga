@@ -113,7 +113,7 @@ struct GitFixTests {
         let work = try await broken()
         work.model.branch.failure = .init(title: "Can't pull main", message: "fatal: no", command: ["pull"])
         #expect(try work.offered(setup())?.title == "Fix with Claude")
-        #expect(try work.offered(setup())?.kind == .secondary)
+        #expect(try work.offered(setup())?.kind == .agent)
     }
 
     @Test func aCheckoutThatFailedOffersItToo() async throws {
@@ -147,6 +147,7 @@ struct GitFixTests {
         try #require(try work.offered(setup())).action()
         #expect(work.model.branch.failure == nil)
         #expect(work.fix.dialog?.title == "Asking Claude Code…")
+        #expect(work.fix.dialog?.isWaitingForAgent == true)
 
         let answer = try await work.settledDialog()
         #expect(answer.id == "gitFix-answer")

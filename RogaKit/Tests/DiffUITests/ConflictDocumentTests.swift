@@ -57,6 +57,7 @@ struct ConflictDocumentTests {
             ConflictBand(row: 1, conflict: 0, isResolved: false),
             ConflictBand(row: 7, conflict: 1, isResolved: false),
         ])
+        #expect(document.unresolvedConflictRows == [1..<6, 7..<12])
         #expect(document.conflicts?.edits == [0: "ours\ntheirs", 1: "added"])
         #expect(document.hasConflicts)
         #expect(document.hunkHeaders.isEmpty)
@@ -76,6 +77,7 @@ struct ConflictDocumentTests {
         ])
         #expect(numbers(document) == [1, nil, 2, 3, 4, nil, nil, 5])
         #expect(document.conflictBands.map(\.isResolved) == [true, true])
+        #expect(document.unresolvedConflictRows.isEmpty)
         #expect(document.conflicts?.edits.isEmpty == true)
     }
 

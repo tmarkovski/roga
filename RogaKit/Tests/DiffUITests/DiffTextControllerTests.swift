@@ -75,6 +75,35 @@ struct DiffTextControllerTests {
         #expect(text(of: second).string == "@@ -1 +1 @@\nold\nnew\n")
     }
 
+    /// While an agent works on a file's conflicts, each one in view has what its
+    /// owner made around it, from its band to its last side, in the text view so
+    /// that it scrolls with the text (decision 65).
+    @Test func putsAnOutlineAroundEachConflictWhileAnAgentWorks() throws {
+        let sides = ConflictSides(
+            ours: .init(name: "main", detail: "a", keepTitle: "Keep main's", keptTitle: "Kept main's"),
+            theirs: .init(name: "origin/main", detail: "b", keepTitle: "Keep theirs", keptTitle: "Kept theirs")
+        )
+        let file = ConflictedFile.parse(Array("top\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> origin/main\nend\n".utf8))
+        let controller = DiffTextController()
+        controller.view.frame = NSRect(x: 0, y: 0, width: 400, height: 200)
+        controller.view.layoutSubtreeIfNeeded()
+        controller.show(DiffTextBuilder.build(file, choices: [:], sides: sides))
+        let textView = text(of: controller)
+        let others = textView.subviews.count
+
+        final class Outline: NSView {}
+        controller.makeConflictOutline = { Outline() }
+        let outlines = textView.subviews.compactMap { $0 as? Outline }
+        #expect(outlines.count == 1)
+        let outline = try #require(outlines.first)
+        #expect(!outline.isHidden)
+        #expect(outline.frame.height == 5 * DiffStyle.lineHeight)
+        #expect(outline.frame.minY == textView.textContainerOrigin.y + DiffStyle.lineHeight)
+
+        controller.makeConflictOutline = nil
+        #expect(textView.subviews.count == others)
+    }
+
     @Test func goesBackToADocumentItShowedBefore() throws {
         let one = try document()
         let two = try document("@@ -1 +1,2 @@\n a\n+b\n")

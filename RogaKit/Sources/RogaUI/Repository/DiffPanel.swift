@@ -73,22 +73,10 @@ struct DiffPanel: View {
                 if group == .conflicted, let conflicts = selection.shown?.conflicts, selection.shown?.file.path == file.path {
                     let setup = conflicts.left > 0 && changes.agentWork[file.path]?.isWorking != true ? agents?.generation() : nil
                     if let setup, let worktree {
-                        Button {
+                        ResolveWithAgentButton(title: "Resolve with \(setup.kind.shortName)") {
                             changes.askAgent(setup)
-                        } label: {
-                            Label("Resolve with \(setup.kind.shortName)", icon: .sparkles)
                         }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 12))
-                        .padding(.horizontal, 8)
-                        .frame(height: 24)
-                        .background {
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .strokeBorder(Palette.separator)
-                        }
-                        .contentShape(Rectangle())
                         .help(Self.agentHelp(setup, worktree: worktree, left: conflicts.left))
-                        .fixedSize()
                     }
                     ConflictFileMenu(
                         file: file,
@@ -160,7 +148,8 @@ struct DiffPanel: View {
                         matchSteps: selection.matchSteps,
                         findCloses: selection.findCloses,
                         discardHunk: changes?.hunkDiscard,
-                        resolveConflict: changes?.conflictResolve
+                        resolveConflict: changes?.conflictResolve,
+                        agentIsResolving: selection.file.flatMap { changes?.agentWork[$0.path]?.isWorking } == true
                     )
                 case .note(let text):
                     note(text)
@@ -273,6 +262,8 @@ private struct DiffText: NSViewRepresentable {
     let findCloses: Int
     let discardHunk: ((Int) -> Void)?
     let resolveConflict: ((ConflictRequest) -> Void)?
+    /// Whether an agent is working on the conflicts showing.
+    let agentIsResolving: Bool
 
     func makeCoordinator() -> Coordinator {
         Coordinator(matchSteps: matchSteps, findCloses: findCloses)
@@ -287,6 +278,9 @@ private struct DiffText: NSViewRepresentable {
         controller.show(document, keepingPosition: isUpdate)
         controller.discardHunk = discardHunk
         controller.resolveConflict = resolveConflict
+        if (controller.makeConflictOutline != nil) != agentIsResolving {
+            controller.makeConflictOutline = agentIsResolving ? { AgentOutlineView.aroundWork(cornerRadius: 6) } : nil
+        }
         // Before the marks go away, since closing selects the current one.
         context.coordinator.update(findCloses: findCloses)
         // What's marked can be from the document before this one, until the
@@ -369,6 +363,28 @@ private struct ConflictFileMenu: View {
     }
 }
 
+/// The button in the header for asking an agent to resolve a file's conflicts,
+/// with the orange line that marks an agent's command (decision 65).
+private struct ResolveWithAgentButton: View {
+    let title: String
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(title, action: action)
+            .buttonStyle(.plain)
+            .font(.system(size: 12))
+            .padding(.horizontal, 8)
+            .frame(height: 24)
+            .contentShape(Rectangle())
+            .overlay {
+                AgentOutline(shape: .outline(cornerRadius: 6), isHovering: isHovering)
+            }
+            .onHover { isHovering = $0 }
+            .fixedSize()
+    }
+}
+
 /// What an agent asked to resolve a file's conflicts is doing, or what came of it,
 /// in a strip above the file (decision 60).
 private struct AgentNote: View {
@@ -413,8 +429,8 @@ private struct AgentNote: View {
 
     @ViewBuilder private var icon: some View {
         switch work.phase {
-        case .working: ProgressView().controlSize(.small)
-        case .done: Icon.sparkles.image.foregroundStyle(Palette.action)
+        case .working: AgentMark(state: .working)
+        case .done: AgentMark(state: .finished)
         case .failed: Icon.warning.image.foregroundStyle(Palette.red)
         }
     }
