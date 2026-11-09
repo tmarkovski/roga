@@ -5,6 +5,10 @@ import RepositoryEngine
 import SwiftUI
 import UniformTypeIdentifiers
 
+extension UserDefaults {
+    static let replayShowsHouseKey = "replayShowsHouse"
+}
+
 /// One replay in its window: which commits it covers, how long it plays, and
 /// the replay worked out from those.
 @Observable
@@ -66,6 +70,15 @@ final class ReplayModel {
     private(set) var scope: Scope?
     private(set) var length = startingLength
     private(set) var saving: Saving?
+    /// Whether the house walks along the line, which stays as it was left.
+    var showsHouse = UserDefaults.standard.bool(forKey: UserDefaults.replayShowsHouseKey) {
+        didSet {
+            UserDefaults.standard.set(showsHouse, forKey: UserDefaults.replayShowsHouseKey)
+            guard case .ready(var map) = phase else { return }
+            map.showsHouse = showsHouse
+            phase = .ready(map)
+        }
+    }
     /// Whether git is still counting the lines of the replay on screen, which
     /// plays without them until they're in.
     private(set) var isCountingLines = false
@@ -112,7 +125,7 @@ final class ReplayModel {
         guard var replay else { return }
         replay.fit(to: length)
         self.replay = replay
-        let map = MetroMap(replay: replay, repositoryName: repositoryName)
+        let map = MetroMap(replay: replay, repositoryName: repositoryName, showsHouse: showsHouse)
         phase = .ready(map)
         player.changeDuration(to: map.duration)
     }
@@ -140,7 +153,7 @@ final class ReplayModel {
         isCountingLines = false
         phase = .loading
         let range = range(for: scope)
-        loading = Task { [session, graph, tip, branchName, length, repositoryName] in
+        loading = Task { [session, graph, tip, branchName, length, repositoryName, showsHouse] in
             do {
                 let replay = try await session.replay(of: tip, in: graph, range: range, mainLineName: branchName, length: length)
                 guard !Task.isCancelled else { return }
@@ -149,7 +162,7 @@ final class ReplayModel {
                     phase = .nothing
                     return
                 }
-                let map = MetroMap(replay: replay, repositoryName: repositoryName)
+                let map = MetroMap(replay: replay, repositoryName: repositoryName, showsHouse: showsHouse)
                 phase = .ready(map)
                 player.load(duration: map.duration, reducesMotion: reducesMotion)
                 countLines(of: replay)
@@ -177,7 +190,9 @@ final class ReplayModel {
             guard let counts, var replay = self.replay else { return }
             replay.countLines(counts)
             self.replay = replay
-            phase = .ready(MetroMap(replay: replay, repositoryName: repositoryName))
+            let map = MetroMap(replay: replay, repositoryName: repositoryName, showsHouse: showsHouse)
+            phase = .ready(map)
+            player.moveEnd(to: map.duration)
         }
     }
 
@@ -287,6 +302,7 @@ struct ReplayView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .ready(let map):
             ReplayPlayerView(picture: map, player: model.player) {
+                houseToggle
                 rangePicker.fixedSize()
                 lengthPicker.fixedSize()
                 Button("Save Video…") { model.saveVideo(colorScheme: colorScheme) }
@@ -298,6 +314,17 @@ struct ReplayView: View {
             }
             .disabled(model.saving != nil)
         }
+    }
+
+    private var houseToggle: some View {
+        Toggle(isOn: Binding(get: { model.showsHouse }, set: { model.showsHouse = $0 })) {
+            // White on the accent color that a button that's on is filled with.
+            HouseFigure(pose: .mark, color: model.showsHouse ? .white : .secondary)
+                .frame(width: 18, height: 16)
+        }
+        .toggleStyle(.button)
+        .help(model.showsHouse ? "Hide the House" : "Show the House Walking the Line")
+        .accessibilityLabel("Show the house walking the line")
     }
 
     private var rangePicker: some View {

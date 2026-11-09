@@ -49,6 +49,17 @@ final class ReplayPlayer {
         seek(to: fraction * newDuration, at: date)
     }
 
+    /// Keeps the same moment in a picture whose end has moved, as when lines
+    /// are counted and add a stop to the tour at the end. One that had got to
+    /// the end stays at the end.
+    func moveEnd(to newDuration: Double, at date: Date = .now) {
+        guard newDuration != duration else { return }
+        let current = time(at: date)
+        let wasAtEnd = current >= duration
+        duration = newDuration
+        seek(to: wasAtEnd ? newDuration : current, at: date)
+    }
+
     func time(at date: Date) -> Double {
         guard let anchorDate else { return anchorTime }
         return min(duration, anchorTime + date.timeIntervalSince(anchorDate) * speed)

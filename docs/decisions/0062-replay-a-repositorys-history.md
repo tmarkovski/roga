@@ -1,6 +1,6 @@
 # 62. Replay a repository's history, drawn in Swift
 
-Accepted on 2026-11-08, and built the same day. Lines added and removed, and counts that roll, were added on 2026-11-09.
+Accepted on 2026-11-08, and built the same day. Lines added and removed, and counts that roll, were added on 2026-11-09. [Decision 64](0064-dress-the-replay-as-a-departure-board-and-end-it-on-a-poster.md) replaces how the numbers at the top are shown and how a replay ends, and adds the house.
 
 ## Context
 
