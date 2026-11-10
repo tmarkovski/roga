@@ -95,10 +95,17 @@ final class SelectedCommit {
     /// commit is selected, as `SelectedFile`'s does.
     @ObservationIgnored private var patience: Task<Void, any Error>?
     @ObservationIgnored private let session: RepositorySession
+    @ObservationIgnored private let worktree: String?
+    /// Reading what the rows of the submodules among the files say, which
+    /// starts once the files are listed (decision 75).
+    @ObservationIgnored private(set) var readingSubmodules: Task<Void, Never>?
 
-    init(session: RepositorySession) {
+    /// - Parameter worktree: The worktree the window shows, which submodules'
+    ///   commits are read from the checkouts in, or nil when there's none.
+    init(session: RepositorySession, worktree: String? = nil) {
         self.session = session
-        selectedFile = SelectedFile(session: session)
+        self.worktree = worktree
+        selectedFile = SelectedFile(session: session, worktree: worktree)
     }
 
     /// The commit selected, when it's one commit.
@@ -139,6 +146,8 @@ final class SelectedCommit {
         self.subject = subject
         loading?.cancel()
         loading = nil
+        readingSubmodules?.cancel()
+        readingSubmodules = nil
         patience?.cancel()
         selectedFile.cancelLoading()
         guard let subject else {
@@ -247,6 +256,31 @@ final class SelectedCommit {
         }
     }
 
+    /// Reads what the rows of the submodules among some files say, such as how
+    /// many commits each one's pointer moves over, and adds that to the rows
+    /// (decision 75). It reads each submodule's own repository, in the copy
+    /// checked out in the window's worktree, so it waits until the files are
+    /// listed. Without a worktree, the rows stay as they are.
+    private func readSubmodules(in groups: [FileGroup]) {
+        guard let worktree, groups.contains(where: { $0.files.contains { $0.isSubmodule } }) else { return }
+        readingSubmodules = Task { [session] in
+            for group in groups {
+                let submodules = group.files.filter(\.isSubmodule)
+                guard !submodules.isEmpty,
+                      let read = try? await session.submoduleChanges(of: submodules, from: group.source, in: worktree),
+                      !Task.isCancelled, case .loaded(var current) = files,
+                      let index = current.firstIndex(where: { $0.group == group.group && $0.source == group.source })
+                else { continue }
+                current[index].files = current[index].files.map { file in
+                    var file = file
+                    if let change = read[file.path], file.isSubmodule { file.submodule = change }
+                    return file
+                }
+                files = .loaded(current)
+            }
+        }
+    }
+
     /// Loads the files and selects the first that shows.
     private func loadFiles(_ list: @escaping () async throws -> [FileGroup]) async {
         patience = Task {
@@ -260,6 +294,7 @@ final class SelectedCommit {
             try Task.checkCancellation()
             patience?.cancel()
             files = .loaded(groups)
+            readSubmodules(in: groups)
             // A filter that leaves none of them leaves the diff panel its first.
             if let row = rows(of: groups).firstFile, let file = row.file {
                 select(file, in: row.group)

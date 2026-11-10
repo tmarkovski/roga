@@ -64,6 +64,7 @@ public enum RawDiffParser {
         case .renamed, .copied: oldPath = try path(&fields)
         default: break
         }
+        let isSubmodule = oldMode == DiffFile.submoduleMode || newMode == DiffFile.submoduleMode
         return DiffFile(
             status: status,
             path: try path(&fields),
@@ -71,7 +72,8 @@ public enum RawDiffParser {
             oldMode: oldMode,
             newMode: newMode,
             oldID: isZero(parts[2]) ? nil : oldID,
-            newID: isZero(parts[3]) ? nil : newID
+            newID: isZero(parts[3]) ? nil : newID,
+            submodule: isSubmodule ? SubmoduleChange() : nil
         )
     }
 
@@ -102,7 +104,9 @@ public enum RawDiffParser {
         guard let added = Int(text(parts[0])), let removed = Int(text(parts[1])) else {
             throw ParseError("git diff-tree printed line counts Roga can't read: \(text(record).debugDescription)")
         }
-        file.lines = DiffFile.LineCounts(added: added, removed: removed)
+        // git counts the `Subproject commit` lines of a submodule's patch, which
+        // aren't lines of any file, and would add to a folder's counts.
+        file.lines = file.isSubmodule ? DiffFile.LineCounts(added: 0, removed: 0) : DiffFile.LineCounts(added: added, removed: removed)
     }
 
     private static func path(_ fields: inout ArraySlice<ArraySlice<UInt8>>) throws(ParseError) -> String {

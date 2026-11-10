@@ -189,7 +189,18 @@ struct ChangesPanel: View {
                     guard NSApp.currentEvent?.isRepeatedClick != true else { return }
                     selection.discard(file, in: group)
                 }
-            }),
+            }, instead: group == .unstaged ? { file in
+                // A submodule's row has the button that's right for it, which
+                // staging isn't unless it records new commits (decision 75).
+                switch file.submoduleStaging {
+                case nil, .recordsNewCommits:
+                    return nil
+                case .takesCommitsAway:
+                    return .button(title: "Update", help: SubmoduleWords.updateHelp(file)) { selection.updateSubmodule(file) }
+                case .takesSomeAndAddsSome, .nothingToStage, .unknown:
+                    return .nothing
+                }
+            } : nil),
             folderAction: group == .conflicted ? nil : { path in selection.toggleFolder(path, in: group) },
             folderDiscard: group.folderDiscard.map { way in { path in
                 RowDiscard(icon: way.icon, title: way.folderTitle) {

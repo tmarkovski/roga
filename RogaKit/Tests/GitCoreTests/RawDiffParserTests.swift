@@ -38,6 +38,24 @@ struct RawDiffParserTests {
         ])
     }
 
+    @Test func countsNoLinesForASubmodule() throws {
+        // git counts the `Subproject commit` lines of a submodule's patch.
+        let files = try RawDiffParser.parse(output([
+            ":160000 160000 \(one) \(two) M", "vendor/parser",
+            ":000000 160000 \(none) \(one) A", "vendor/new",
+            ":160000 000000 \(one) \(none) D", "vendor/old",
+            ":100644 100644 \(one) \(two) M", "file.txt",
+            "1\t1\tvendor/parser",
+            "1\t0\tvendor/new",
+            "0\t1\tvendor/old",
+            "1\t1\tfile.txt",
+        ]))
+        let none = DiffFile.LineCounts(added: 0, removed: 0)
+        #expect(files.map(\.lines) == [none, none, none, DiffFile.LineCounts(added: 1, removed: 1)])
+        #expect(files.map(\.isSubmodule) == [true, true, true, false])
+        #expect(files.map(\.submodule) == [SubmoduleChange(), SubmoduleChange(), SubmoduleChange(), nil])
+    }
+
     @Test func leavesOutTheLinesOfABinaryFile() throws {
         let files = try RawDiffParser.parse(output([
             ":100644 100644 \(one) \(two) M", "image.bin",

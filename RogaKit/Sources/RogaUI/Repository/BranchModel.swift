@@ -28,6 +28,8 @@ final class BranchModel {
         case fastForwarding
         case rebasing
         case cherryPicking
+        /// Checking out the commit that's recorded for a submodule (decision 75).
+        case updatingSubmodule
 
         var title: String {
             switch self {
@@ -45,6 +47,7 @@ final class BranchModel {
             case .fastForwarding: "Fast-forwarding…"
             case .rebasing: "Rebasing…"
             case .cherryPicking: "Cherry-picking…"
+            case .updatingSubmodule: "Updating…"
             }
         }
     }
@@ -1129,15 +1132,19 @@ final class BranchModel {
     }
 
     /// Says in the title row what just happened, when it didn't go through `run`.
-    func announce(_ message: String, undo: FinishedUndo?) {
+    ///
+    /// - Parameter lingers: Whether the words stay as long as ones with a button
+    ///   do, for a sentence that takes a moment to read, such as which
+    ///   submodule staging left out and why (decision 75).
+    func announce(_ message: String, undo: FinishedUndo?, lingers: Bool = false) {
         undoFinished = undo
-        show(finished: message)
+        show(finished: message, lingers: lingers)
     }
 
-    private func show(finished message: String) {
+    private func show(finished message: String, lingers: Bool = false) {
         finished = message
         finishedNote?.cancel()
-        let duration = timeToShowFinished(undoFinished != nil)
+        let duration = timeToShowFinished(undoFinished != nil || lingers)
         finishedNote = Task {
             guard (try? await Task.sleep(for: duration)) != nil else { return }
             finished = nil

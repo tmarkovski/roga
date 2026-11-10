@@ -62,9 +62,25 @@ enum IndexCommands {
         try await run(["add", "--all", "--pathspec-from-file=-", "--pathspec-file-nul"], paths: paths, in: worktree, git: git)
     }
 
-    /// Puts everything in the worktree into the index.
-    static func stageEverything(in worktree: String, git: Git) async throws {
-        try await run(["add", "--all"], paths: nil, in: worktree, git: git)
+    /// Puts everything in the worktree into the index, except what's at
+    /// `paths`, which are submodules that staging would take commits away from
+    /// (decision 75).
+    ///
+    /// Leaving a path out takes a pathspec that says so, and git reads none of
+    /// those while `GIT_LITERAL_PATHSPECS` is set. Each path says for itself
+    /// that it's a name rather than a pattern, and that it's from the top of
+    /// the worktree.
+    static func stageEverything(in worktree: String, leavingOut paths: [String] = [], git: Git) async throws {
+        guard !paths.isEmpty else {
+            try await run(["add", "--all"], paths: nil, in: worktree, git: git)
+            return
+        }
+        let command = RemoteCommands.asked(stageEverythingArguments(leavingOut: paths), in: worktree)
+        _ = try await runningThroughLocks(command, input: nil, git: git)
+    }
+
+    static func stageEverythingArguments(leavingOut paths: [String]) -> [String] {
+        ["add", "--all", "--", ":(top)"] + paths.map { ":(top,exclude,literal)" + $0 }
     }
 
     /// Takes files back out of the index, leaving them as they are on disk.

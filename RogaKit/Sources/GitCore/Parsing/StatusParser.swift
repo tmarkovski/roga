@@ -23,6 +23,11 @@ public enum StatusParser {
     ///
     /// The record for a renamed file is followed by a field with its old path.
     /// A path can hold any character but NUL, including spaces.
+    ///
+    /// `<submodule>` is `N...` for anything else, and for a submodule it's `S`
+    /// and then a `C` when its checkout is on another commit than the index
+    /// records, an `M` when it has changes to tracked files and a `U` when it
+    /// has untracked ones, with `.` for each that it hasn't (decision 75).
     public static func parse(_ output: [UInt8]) throws(ParseError) -> WorktreeChanges {
         var fields = output.split(separator: 0, omittingEmptySubsequences: false)[...]
         guard fields.removeLast().isEmpty else {
@@ -87,13 +92,23 @@ public enum StatusParser {
         let staged = parts[1].first!
         let unstaged = parts[1].last!
 
-        func file(_ letter: UInt8, oldMode: UInt32, newMode: UInt32, oldID: ArraySlice<UInt8>, newID: ArraySlice<UInt8>?) -> DiffFile {
+        /// - Parameter checkout: What git says about the submodule's checkout,
+        ///   which is about the worktree's side, so only an unstaged change has it.
+        func file(
+            _ letter: UInt8,
+            oldMode: UInt32,
+            newMode: UInt32,
+            oldID: ArraySlice<UInt8>,
+            newID: ArraySlice<UInt8>?,
+            checkout: SubmoduleChange.Checkout? = nil
+        ) -> DiffFile {
             let status = status(letter, similarity: similarity)
             var isMove = false
             switch status {
             case .renamed, .copied: isMove = true
             default: break
             }
+            let isSubmodule = oldMode == DiffFile.submoduleMode || newMode == DiffFile.submoduleMode
             return DiffFile(
                 status: status,
                 path: path,
@@ -102,16 +117,31 @@ public enum StatusParser {
                 newMode: newMode,
                 oldID: id(oldID),
                 newID: newID.flatMap(id),
-                lines: DiffFile.LineCounts(added: 0, removed: 0)
+                lines: DiffFile.LineCounts(added: 0, removed: 0),
+                submodule: isSubmodule ? SubmoduleChange(checkout: checkout) : nil
             )
         }
         if staged != UInt8(ascii: ".") {
             changes.staged.append(file(staged, oldMode: headMode, newMode: indexMode, oldID: parts[6], newID: parts[7]))
         }
         if unstaged != UInt8(ascii: ".") {
-            changes.unstaged.append(file(unstaged, oldMode: indexMode, newMode: worktreeMode, oldID: parts[7], newID: nil))
+            changes.unstaged.append(
+                file(unstaged, oldMode: indexMode, newMode: worktreeMode, oldID: parts[7], newID: nil, checkout: checkout(parts[2]))
+            )
         }
         changes.fileCount += 1
+    }
+
+    /// What the `<submodule>` field says about a submodule's checkout, or nil
+    /// for something that isn't a submodule.
+    private static func checkout(_ field: ArraySlice<UInt8>) -> SubmoduleChange.Checkout? {
+        let letters = Array(field)
+        guard letters.count == 4, letters[0] == UInt8(ascii: "S") else { return nil }
+        var checkout: SubmoduleChange.Checkout = []
+        if letters[1] == UInt8(ascii: "C") { checkout.insert(.commitChanged) }
+        if letters[2] == UInt8(ascii: "M") { checkout.insert(.modifiedFiles) }
+        if letters[3] == UInt8(ascii: "U") { checkout.insert(.untrackedFiles) }
+        return checkout
     }
 
     /// An untracked or conflicted file, whose lines aren't counted. It has

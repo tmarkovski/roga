@@ -828,12 +828,20 @@ public actor RepositorySession {
         try await IndexCommands.stage(files.map(\.path), in: worktree, git: git)
     }
 
-    /// Puts everything in a worktree into its index.
+    /// Puts everything in a worktree into its index, except a submodule that
+    /// staging would take commits away from: one whose checkout is behind the
+    /// commit that's recorded, or has commits of its own and is missing some
+    /// too (decision 75). `git add --all` would record the older commit, which
+    /// is how a branch loses an update someone else made.
     ///
+    /// - Returns: The submodules it left out, with what was read about each.
     /// - Throws: `GitError` when git refuses, which says why.
     @concurrent
-    public nonisolated func stageEverything(in worktree: String) async throws {
-        try await IndexCommands.stageEverything(in: worktree, git: git)
+    @discardableResult
+    public nonisolated func stageEverything(in worktree: String) async throws -> [DiffFile] {
+        let leftOut = try await SubmoduleLoader.leftOutOfStagingAll(in: worktree, git: git)
+        try await IndexCommands.stageEverything(in: worktree, leavingOut: leftOut.map(\.path), git: git)
+        return leftOut
     }
 
     /// Takes files back out of a worktree's index, leaving them as they are on
@@ -1035,9 +1043,77 @@ public enum PatchSource: Sendable, Hashable {
         case .worktree(_, let group, _): group
         }
     }
+
+    /// Whether a submodule's row from here compares what's recorded with the
+    /// commit checked out, which only a worktree's unstaged changes do. Every
+    /// other row compares two commits that are recorded.
+    public var comparesSubmoduleCheckout: Bool {
+        if case .worktree(_, .unstaged, _) = self { true } else { false }
+    }
+
+    /// The worktree whose uncommitted files these are, if they're a worktree's.
+    public var worktree: String? {
+        if case .worktree(let path, _, _) = self { path } else { nil }
+    }
     /// A group of a worktree's uncommitted files. `head` is the commit that
     /// the worktree's staged changes compare with, or nil when there's none yet.
     case worktree(path: String, group: WorktreeChanges.Group, head: ObjectID?)
+}
+
+// MARK: - Submodules
+
+extension RepositorySession {
+    /// Reads what the rows of some submodules say: how each one's two commits
+    /// stand, and how many uncommitted files a checkout has (decision 75). It
+    /// reads each submodule's own repository in the copy checked out in a
+    /// worktree, so it runs after the list of files shows.
+    ///
+    /// - Parameters:
+    ///   - files: The submodules' rows, all from `source`.
+    ///   - worktree: The worktree to read the submodules in, which the source
+    ///     says for itself when it's a worktree's uncommitted files.
+    /// - Returns: What each row says, by its path. A submodule that isn't
+    ///   checked out says so, and one that couldn't be read is missing.
+    @concurrent
+    public nonisolated func submoduleChanges(of files: [DiffFile], from source: PatchSource, in worktree: String) async throws -> [String: SubmoduleChange] {
+        try await SubmoduleLoader.changes(
+            of: files, comparingCheckout: source.comparesSubmoduleCheckout, in: source.worktree ?? worktree, git: git
+        )
+    }
+
+    /// Reads what the diff panel shows of a submodule's row: its own commits
+    /// between the two the row compares, and for a row under Unstaged, the
+    /// checkout's uncommitted files (decision 75).
+    ///
+    /// - Parameter worktree: The worktree to read the submodule in, or nil when
+    ///   there's none, which shows only the two commits.
+    @concurrent
+    public nonisolated func submoduleDetails(of file: DiffFile, from source: PatchSource, in worktree: String?) async throws -> SubmoduleDetails {
+        try await SubmoduleLoader.details(
+            of: file,
+            comparingCheckout: source.comparesSubmoduleCheckout,
+            countsUnpushed: source.worktree != nil,
+            in: source.worktree ?? worktree,
+            git: git
+        )
+    }
+
+    /// What `updateSubmodule` runs, for a tooltip that says so.
+    public nonisolated static func updateSubmoduleArguments(_ path: String) -> [String] {
+        SubmoduleLoader.updateArguments(path)
+    }
+
+    /// Checks out the commit a worktree records for a submodule, with `git
+    /// submodule update --init`, which fetches the commit when the checkout
+    /// hasn't got it. Cancelling it stops git, which may be partway through
+    /// writing files, so it's best left to finish.
+    ///
+    /// - Throws: `GitError` when git refuses, as it does when the submodule's
+    ///   own uncommitted changes are in the way, which says why.
+    @concurrent
+    public nonisolated func updateSubmodule(_ path: String, in worktree: String) async throws {
+        try await SubmoduleLoader.update(path, in: worktree, git: git)
+    }
 }
 
 // MARK: - Writing commit messages

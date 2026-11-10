@@ -54,6 +54,21 @@ final class SelectedChanges {
     @ObservationIgnored var lookAgain: () -> Void = {}
     /// Asks the worktree's model to select the row for uncommitted changes.
     @ObservationIgnored var showChanges: () -> Void = {}
+    /// Says in the title row which submodules staging left out, and why
+    /// (decision 75).
+    @ObservationIgnored var onLeftOut: (_ words: String) -> Void = { _ in }
+    /// Asks the worktree's model to check out the commit that's recorded for a
+    /// submodule, which runs as its other commands do, one at a time.
+    @ObservationIgnored var runSubmoduleUpdate: (DiffFile) -> Void = { _ in }
+    /// Reading what the rows of the submodules among the files say, which
+    /// starts once the files are listed, and nil once they've been read.
+    @ObservationIgnored private(set) var readingSubmodules: Task<Void, Never>?
+    /// Counts those readings, so that one a newer list has replaced doesn't
+    /// say the newer one is done.
+    @ObservationIgnored private var submoduleReads = 0
+    /// Staging that's waiting for the submodules to be read, because until
+    /// then nothing says which of them it would take commits away from.
+    @ObservationIgnored private(set) var waitingToStage: Task<Void, Never>?
     /// Finding out what's uncommitted before asking whether all of it should go.
     @ObservationIgnored private(set) var preparingDiscard: Task<Void, Never>?
     /// The patch that a hunk was last taken from, because its button stays until the
@@ -152,6 +167,9 @@ final class SelectedChanges {
     /// Stages a file, or takes it back out if it's a staged one. Staging a conflict
     /// says it's resolved.
     func toggle(_ file: DiffFile, in group: WorktreeChanges.Group) {
+        // The row as it's listed now, which has what's been read about a
+        // submodule since the file was selected, for the row it moves to.
+        let file = listed(file, in: group)
         if group == .conflicted {
             conflicts.forget(file.path)
             agentWork[file.path] = nil
@@ -160,25 +178,71 @@ final class SelectedChanges {
     }
 
     /// Stages or takes back out the file selected, the way Space and the menu do.
+    /// A submodule's row does nothing unless staging it records new commits,
+    /// because Space is pressed down a list without reading each row, and its
+    /// own buttons say what's right for it (decision 75).
     func toggleSelectedFile() {
         guard let file = selectedFile.file, let group = selectedFile.group else { return }
+        if group == .unstaged, let staging = listed(file, in: group).submoduleStaging, staging != .recordsNewCommits { return }
         toggle(file, in: group)
+    }
+
+    /// The file as the list has it now, which says more about a submodule than
+    /// the file did when it was selected, once the submodule has been read.
+    func listed(_ file: DiffFile, in group: WorktreeChanges.Group) -> DiffFile {
+        loaded?[group].first { $0.path == file.path } ?? file
     }
 
     /// Stages or takes back out every file in a group that the filter leaves.
     func toggleAll(in group: WorktreeChanges.Group) {
-        guard let loaded else { return }
-        let files = fileList.matching(loaded[group], in: group)
-        guard !files.isEmpty else { return }
-        apply(group == .staged ? .unstage(files) : .stage(files), from: group)
+        toggle(in: group) { [fileList] changes in fileList.matching(changes[group], in: group) }
     }
 
     /// Stages or takes back out every file under a folder of a group.
     func toggleFolder(_ path: String, in group: WorktreeChanges.Group) {
+        toggle(in: group) { changes in changes[group].filter { $0.path.hasPrefix(path + "/") } }
+    }
+
+    /// Stages several files of a group, or takes them back out.
+    ///
+    /// Staging leaves out a submodule that it would take commits away from, and
+    /// the title row says which and why, because nobody staging everything has
+    /// looked at each row, and recording a checkout that's behind is how a
+    /// branch loses an update someone else made (decision 75). It also leaves
+    /// out a submodule with nothing of its own to stage. While the submodules
+    /// are still being read, which takes a moment after the list shows, it
+    /// waits for that.
+    ///
+    /// - Parameter pick: Picks the files from the list, which is the newer
+    ///   one after a wait.
+    private func toggle(in group: WorktreeChanges.Group, afterReading: Bool = false, _ pick: @escaping (WorktreeChanges) -> [DiffFile]) {
         guard let loaded else { return }
-        let files = loaded[group].filter { $0.path.hasPrefix(path + "/") }
-        guard !files.isEmpty else { return }
-        apply(group == .staged ? .unstage(files) : .stage(files), from: group)
+        let files = pick(loaded)
+        guard group == .unstaged else {
+            if !files.isEmpty { apply(group == .staged ? .unstage(files) : .stage(files), from: group) }
+            return
+        }
+        // A row can still say what was read the time before, which a newer
+        // reading may be about to change, so this waits for one that's running.
+        let hasSubmoduleToRead = files.contains { file in file.submoduleStaging.map { $0 != .nothingToStage } ?? false }
+        if !afterReading, let reading = readingSubmodules, hasSubmoduleToRead {
+            waitingToStage = Task {
+                await reading.value
+                toggle(in: group, afterReading: true, pick)
+            }
+            return
+        }
+        let staged = files.filter { $0.submoduleStaging.map { $0 == .recordsNewCommits } ?? true }
+        if !staged.isEmpty { apply(.stage(staged), from: group) }
+        if let words = SubmoduleWords.leftOutSentence(files.filter { $0.submoduleStaging?.isLeftOutOfStagingAll == true }) {
+            onLeftOut(words)
+        }
+    }
+
+    /// Checks out the commit that's recorded for a submodule, which is what's
+    /// wanted for one that's behind (decision 75).
+    func updateSubmodule(_ file: DiffFile) {
+        runSubmoduleUpdate(file)
     }
 
     // MARK: Resolving conflicts
@@ -647,13 +711,17 @@ final class SelectedChanges {
 
     private func load(selectingFirstFile: Bool) async {
         do {
-            let changes = try await session.changes(in: worktree)
+            var changes = try await session.changes(in: worktree)
             try Task.checkCancellation()
             patience?.cancel()
             // It's out of date already. A new list follows once git has them all.
             guard applyingIndexChanges == nil, indexChanges.isEmpty else { return }
+            // What was read about a submodule stays on its row until it's been
+            // read again, so that the row doesn't lose its words on every look.
+            if let loaded { changes.keepSubmodules(readIn: loaded) }
             files = .loaded(changes)
             onLoad?(changes)
+            readSubmodules(in: changes)
 
             if !selectingFirstFile, let group = selectedFile.group, let path = selectedFile.file?.path,
                let file = changes[group].first(where: { $0.path == path })
@@ -676,6 +744,36 @@ final class SelectedChanges {
             patience?.cancel()
             files = .failed(String(describing: error))
             selectedFile.show(nil, from: nil)
+        }
+    }
+
+    /// Reads what the rows of the submodules among the files say, such as how
+    /// far a checkout is behind what's recorded, and adds that to the rows
+    /// (decision 75). It reads each submodule's own repository, so it starts
+    /// once the list shows, and listing a worktree's files takes no longer than
+    /// it did. A row that has changed since it was listed keeps what it has.
+    private func readSubmodules(in changes: WorktreeChanges) {
+        readingSubmodules?.cancel()
+        let groups: [WorktreeChanges.Group] = [.unstaged, .staged]
+        guard groups.contains(where: { changes[$0].contains { $0.isSubmodule } }) else {
+            readingSubmodules = nil
+            return
+        }
+        submoduleReads += 1
+        let number = submoduleReads
+        readingSubmodules = Task { [session, worktree] in
+            for group in groups {
+                let submodules = changes[group].filter(\.isSubmodule)
+                guard !submodules.isEmpty,
+                      let read = try? await session.submoduleChanges(of: submodules, from: source(group, changes), in: worktree),
+                      !Task.isCancelled, var current = loaded
+                else { continue }
+                current.setSubmodules(read, in: group, asListed: submodules)
+                if current != loaded { files = .loaded(current) }
+            }
+            // Nothing is being read any more, unless a newer list has started
+            // reading its own.
+            if number == submoduleReads { readingSubmodules = nil }
         }
     }
 }
@@ -765,9 +863,24 @@ extension WorktreeChanges {
             case .conflicted: file.status = .modified
             default: break
             }
+            if let checkout = file.submodule?.checkout {
+                // A submodule's uncommitted files stay behind under Unstaged,
+                // since staging records only its commit (decision 75).
+                if checkout.hasFilesInside, file.newMode == DiffFile.submoduleMode {
+                    var left = file
+                    left.submodule = SubmoduleChange(
+                        checkout: checkout.subtracting(.commitChanged), distance: .counted(ahead: 0, behind: 0), filesInside: file.submodule?.filesInside
+                    )
+                    changes.unstaged.append(left)
+                }
+                // Under Staged, both of its commits are recorded ones.
+                file.submodule?.checkout = nil
+                file.submodule?.filesInside = nil
+            }
             Self.add(file, to: &changes.staged)
         }
         changes.staged.sort { $0.path < $1.path }
+        changes.unstaged.sort { $0.path < $1.path }
         return changes
     }
 
@@ -794,6 +907,9 @@ extension WorktreeChanges {
                 file.oldPath = nil
                 changes.untracked.append(file)
             default:
+                // A submodule's row under Unstaged compares what's recorded
+                // with its checkout, which is on the commit that was staged.
+                if file.submodule != nil, file.newMode == DiffFile.submoduleMode { file.submodule?.checkout = [.commitChanged] }
                 Self.add(file, to: &changes.unstaged)
             }
         }
@@ -830,6 +946,57 @@ extension WorktreeChanges {
             || unstaged.contains { Group.unstaged.discarding($0) != nil }
             || untracked.contains { Group.untracked.discarding($0) != nil }
     }
+
+    /// Gives each submodule's row what was read about it when it was last
+    /// listed, as long as the row is the same: its commits, and what status says
+    /// about its checkout. A newer reading replaces it.
+    mutating func keepSubmodules(readIn previous: WorktreeChanges) {
+        for group in [Group.unstaged, .staged] {
+            let read = previous[group].filter { $0.submodule?.distance != nil }
+            guard !read.isEmpty else { continue }
+            update(group) { files in
+                for index in files.indices where files[index].isSubmodule {
+                    let file = files[index]
+                    guard let before = read.first(where: { $0.path == file.path }), before.isSameRow(as: file) else { continue }
+                    files[index].submodule = before.submodule
+                }
+            }
+        }
+    }
+
+    /// Adds what was read about some submodules to their rows in a group, for
+    /// the rows that are still as they were listed.
+    mutating func setSubmodules(_ read: [String: SubmoduleChange], in group: Group, asListed listed: [DiffFile]) {
+        update(group) { files in
+            for index in files.indices where files[index].isSubmodule {
+                let file = files[index]
+                guard let change = read[file.path], let before = listed.first(where: { $0.path == file.path }), before.isSameRow(as: file) else { continue }
+                files[index].submodule = change
+            }
+        }
+    }
+
+    private mutating func update(_ group: Group, _ change: (inout [DiffFile]) -> Void) {
+        switch group {
+        case .conflicted: change(&conflicted)
+        case .unstaged: change(&unstaged)
+        case .untracked: change(&untracked)
+        case .staged: change(&staged)
+        }
+    }
+}
+
+private extension DiffFile {
+    /// Whether another listing's row is this one unchanged, as far as a list
+    /// of files can tell: the same change between the same two objects, and for
+    /// a submodule, the same said about its checkout.
+    func isSameRow(as other: DiffFile) -> Bool {
+        status == other.status && oldMode == other.oldMode && newMode == other.newMode && oldID == other.oldID && newID == other.newID
+            && submodule?.checkout == other.submodule?.checkout
+    }
+}
+
+extension WorktreeChanges {
 
     private static func add(_ file: DiffFile, to list: inout [DiffFile]) {
         guard let index = list.firstIndex(where: { $0.path == file.path }) else {
