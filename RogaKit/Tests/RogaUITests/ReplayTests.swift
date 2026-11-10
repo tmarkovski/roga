@@ -440,8 +440,15 @@ struct ReplayModelTests {
         #expect(map.replay.hasLineCounts)
     }
 
-    @Test func offersEveryRangeFromAWeekUp() {
-        #expect(ReplayModel.dayRanges == [7, 14, 30, 90, 365])
+    @Test func offersRangesByDaysAndByCommits() {
+        #expect(ReplayModel.dayRanges == [3, 7, 14, 30, 90, 365])
+        #expect(ReplayModel.commitRanges == [10, 25, 50, 100, 200])
+        #expect(ReplayModel.scopeGroups.map { $0.map(\.title) } == [
+            ["Last 3 days", "Last 7 days", "Last 14 days", "Last 30 days", "Last 90 days", "Last 365 days"],
+            ["Last 10 commits", "Last 25 commits", "Last 50 commits", "Last 100 commits", "Last 200 commits"],
+            ["Whole history"],
+        ])
+        #expect(ReplayModel.scopeGroups[0].contains(.days(ReplayModel.startingDays)))
         #expect(ReplayModel.lengths.contains(ReplayModel.startingLength))
     }
 }
