@@ -398,7 +398,7 @@ struct BranchModelTests {
         await model.branch.running?.value
         let dialog = try dialogContent(model)
         #expect(dialog.title == "Can't pull main")
-        #expect(dialog.message?.plain == "Nothing changed. What git said is below.")
+        #expect(dialog.message?.plain == "Nothing changed. Git output is shown below.")
         #expect(dialog.terminal.first == .ran(["pull", "--ff-only"]))
         guard case .output(let said) = dialog.terminal.last else {
             Issue.record("Expected what git said")
@@ -718,7 +718,7 @@ struct BranchModelTests {
 
         let dialog = try dialogContent(model)
         #expect(dialog.title == "Can't reset main to \(target.prefix(8))")
-        #expect(dialog.message?.plain == "The push went through, but main is still where it was. What git said is below.")
+        #expect(dialog.message?.plain == "The push went through, but main is still where it was. Git output is shown below.")
         #expect(dialog.terminal.first == .ran(["reset", "--keep", target]))
         #expect(try await git("rev-parse", "HEAD", in: clones.work) == tip)
         #expect(try await git("rev-parse", "main", in: clones.remote) == tip)
@@ -1316,7 +1316,7 @@ struct BranchModelTests {
         await model.branch.running?.value
         let dialog = try dialogContent(model)
         #expect(dialog.title == "Can't push v0.0.1")
-        #expect(dialog.message?.plain == "Nothing changed. What git said is below.")
+        #expect(dialog.message?.plain == "Nothing changed. Git output is shown below.")
         #expect(dialog.terminal.first == .ran(["push", "origin", "refs/tags/v0.0.1"]))
         guard case .output(let said) = dialog.terminal.last else {
             Issue.record("Expected what git said")
@@ -1364,7 +1364,7 @@ struct BranchModelTests {
         await model.branch.running?.value
         let dialog = try dialogContent(model)
         #expect(dialog.title == "Made v0.0.1, but can't push it")
-        #expect(dialog.message?.plain == "What git said is below.")
+        #expect(dialog.message?.plain == "Git output is shown below.")
         #expect(try await git("rev-parse", "refs/tags/v0.0.1", in: clones.work) == tip)
     }
 
@@ -1878,7 +1878,7 @@ struct BranchModelTests {
         await model.branch.running?.value
         let failure = try #require(model.branch.failure)
         #expect(failure.title == "Can't delete origin/feature")
-        #expect(failure.summary?.plain == "feature and copy are gone, but origin/feature isn't. What git said is below.")
+        #expect(failure.summary?.plain == "feature and copy are gone, but origin/feature isn't. Git output is shown below.")
         #expect(model.branch.finished == nil)
         #expect(try await !exists("refs/heads/feature", in: clones.work))
         #expect(try await !exists("refs/heads/copy", in: clones.work))
@@ -1897,7 +1897,7 @@ struct BranchModelTests {
         await model.branch.running?.value
         let failure = try #require(model.branch.failure)
         #expect(failure.title == "Can't delete origin/feature")
-        #expect(failure.summary?.plain == "feature is gone, but origin/feature isn't. What git said is below.")
+        #expect(failure.summary?.plain == "feature is gone, but origin/feature isn't. Git output is shown below.")
         #expect(model.branch.finished == nil)
     }
 

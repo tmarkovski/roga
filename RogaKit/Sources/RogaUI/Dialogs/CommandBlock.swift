@@ -21,6 +21,11 @@ struct CommandBlock: View {
     /// How tall it always is, for commands that change while a sheet can't. What
     /// doesn't fit scrolls.
     var fixedHeight: CGFloat? = nil
+    /// Other lines it may show in place of `lines`, whose room it keeps, hidden,
+    /// so that it's as tall as the longest of them. Generate's popover keeps
+    /// every agent's command this way, so that it doesn't change size, and
+    /// move its rows, when another agent is picked.
+    var reserving: [[TerminalLine]] = []
     @State private var isCopied = false
     @State private var clearing: Task<Void, Never>?
 
@@ -41,7 +46,7 @@ struct CommandBlock: View {
     /// onto. A block with an agent's command is drawn as the Settings boards draw
     /// one, with lines 1.6 times the font's size apart, since its long arguments
     /// wrap it onto several lines. Git's blocks keep the tighter lines they had.
-    private var lineGap: (between: CGFloat, wrapped: CGFloat) {
+    private func lineGap(_ lines: [TerminalLine]) -> (between: CGFloat, wrapped: CGFloat) {
         guard lines.contains(where: \.isProgram) else { return (2, 0) }
         let gap = fontSize.map(Self.lineGap(forFontSize:)) ?? (isCompact ? Self.compactLineGap : Self.boardLineGap)
         return (gap, gap)
@@ -77,12 +82,14 @@ struct CommandBlock: View {
     var body: some View {
         ClampedHeight(maximum: fixedHeight ?? maximumHeight) {
             ScrollView(.vertical) {
-                VStack(alignment: .leading, spacing: lineGap.between) {
-                    ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
-                        row(line)
+                ZStack(alignment: .topLeading) {
+                    ForEach(Array(reserving.enumerated()), id: \.offset) { _, lines in
+                        rows(lines)
+                            .hidden()
+                            .accessibilityHidden(true)
                     }
+                    rows(lines)
                 }
-                .lineSpacing(lineGap.wrapped)
                 .padding(padding)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -103,6 +110,16 @@ struct CommandBlock: View {
         }
         .background(DialogColors.terminal)
         .environment(\.colorScheme, .dark)
+    }
+
+    private func rows(_ lines: [TerminalLine]) -> some View {
+        let gap = lineGap(lines)
+        return VStack(alignment: .leading, spacing: gap.between) {
+            ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                row(line)
+            }
+        }
+        .lineSpacing(gap.wrapped)
     }
 
     @ViewBuilder private func row(_ line: TerminalLine) -> some View {

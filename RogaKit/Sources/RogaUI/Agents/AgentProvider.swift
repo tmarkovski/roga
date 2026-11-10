@@ -573,7 +573,7 @@ struct GenerationSetup: Sendable {
     /// staged changes go, since the command reads them from standard input,
     /// and then the command.
     func terminal(worktree: String, hasDraft: Bool) -> [TerminalLine] {
-        [.comment("The staged changes go to its standard input"), .program(command(worktree: worktree, hasDraft: hasDraft), showsPath: showsPath)]
+        [.comment("Staged diff supplied via standard input"), .program(command(worktree: worktree, hasDraft: hasDraft), showsPath: showsPath)]
     }
 
     /// The exact command the run starts, for the popover and the Commit page

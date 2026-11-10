@@ -201,7 +201,7 @@ struct GitProviderTests {
         var chosen: [String?] = []
         var skipped = 0
         let menu = try #require(ProgramMenu.agent(.codex, agents: agents, isOn: true, choose: { chosen.append($0) }, skip: { skipped += 1 }))
-        #expect(menu.label == "Every Codex Roga found")
+        #expect(menu.label == "Codex installations")
         #expect(menu.checked == app)
         #expect(menu.skip?.title == "Don't use Codex")
         #expect(menu.skip?.isOn == false)
@@ -260,7 +260,7 @@ struct GitProviderTests {
         // Before any repository is opened, there's nothing to wait for.
         #expect(GitProgramSection.restartNotice(running: nil, chosen: chosen) == nil)
         #expect(GitProgramSection.restartNotice(running: running, chosen: nil) == nil)
-        #expect(GitProgramSection.restartNotice(running: running, chosen: chosen) == "Roga goes over to this Git the next time it opens. Until then it runs /usr/bin/git, which is 2.54.0.")
+        #expect(GitProgramSection.restartNotice(running: running, chosen: chosen) == "Restart Roga to use the selected Git installation. Currently using /usr/bin/git (2.54.0).")
     }
 
     @Test func anAgentsProgramButtonSaysWhereItsCopyIsFrom() {

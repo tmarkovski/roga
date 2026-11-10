@@ -236,7 +236,7 @@ struct WorktreeMenuTests {
         #expect(working.map(\.text) == ["Claude Code: Run the test suite", "6 min", "Rebasing main · 2 conflicts", "~/agents/fix-login"])
         #expect(working.first?.color == nil)
         let waiting = details(.waiting(.permission), .codex, "git push")
-        #expect(waiting.map(\.text) == ["Codex needs your OK: git push", "6 min", "Rebasing main · 2 conflicts", "~/agents/fix-login"])
+        #expect(waiting.map(\.text) == ["Codex: approval required: git push", "6 min", "Rebasing main · 2 conflicts", "~/agents/fix-login"])
         #expect(waiting.prefix(2).allSatisfy { $0.color == WorktreeMenu.agentWaitingColor })
         let question = details(.waiting(.question), .claude, "Wants a plan approved")
         #expect(question.prefix(2).map(\.text) == ["Claude Code: Wants a plan approved", "6 min"])

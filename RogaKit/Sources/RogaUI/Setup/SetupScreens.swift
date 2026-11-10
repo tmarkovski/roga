@@ -15,7 +15,7 @@ extension ProgramMenu {
         let recommended = survey.recommended?.executable
         return ProgramMenu(
             id: "git",
-            label: "Every Git Roga found",
+            label: "Git installations",
             choices: ProgramChoices.git(
                 survey,
                 chosenPath: provider.chosenPath,
@@ -52,7 +52,7 @@ extension ProgramMenu {
         let recommended = survey.recommended?.executable
         return ProgramMenu(
             id: "agent-\(kind.rawValue)",
-            label: "Every \(kind.name) Roga found",
+            label: "\(kind.name) installations",
             choices: ProgramChoices.agent(survey, program: program, lookup: agents.lookups[kind]),
             checked: program ?? recommended,
             choose: { choose($0.executable == recommended ? nil : $0.executable) },
@@ -93,7 +93,7 @@ struct SetupWelcome: View {
                 .tracking(1.8)
                 .foregroundStyle(SetupColors.note)
                 .setupEntrance(isIn, order: 2)
-            Text("A fast Git app for your Mac, made for keeping an eye on your agents and reviewing what they did.")
+            Text("A native Git client for reviewing code and monitoring coding agents.")
                 .font(.system(size: 17))
                 .lineSpacing(5)
                 .multilineTextAlignment(.center)
@@ -106,7 +106,7 @@ struct SetupWelcome: View {
                 .keyboardShortcut(.defaultAction)
                 .padding(.top, 8)
                 .setupEntrance(isIn, order: 4)
-            Text("Setup takes about a minute. You can change all of it later in Settings.")
+            Text("Configure Git and optional coding agents. You can change these preferences in Settings.")
                 .font(.system(size: 12.5))
                 .foregroundStyle(SetupColors.note)
                 .setupEntrance(isIn, order: 5)
@@ -133,8 +133,8 @@ struct SetupLooking: View {
         VStack(spacing: SetupLayout.gap) {
             SetupHead(
                 eyebrow: "Your Mac",
-                title: isDone ? "Roga looked around your Mac" : "Looking around your Mac",
-                sub: "Roga reads your PATH the way your terminal does, then asks each program it finds for its version. Nothing is installed or changed."
+                title: isDone ? "Scan complete" : "Detecting installed tools",
+                sub: "Check your login shell's PATH and installed tool versions. This scan makes no changes."
             )
             SetupCard {
                 ForEach(looks) { look in
@@ -305,7 +305,7 @@ struct SetupGit: View {
             SetupActions(back: back) {
                 Button("Choose Another…", action: chooseAnother)
                     .buttonStyle(.setup(.secondary))
-                Button(gitProvider.isLooking ? "Looking…" : "Look Again") { gitProvider.lookAgain() }
+                Button(gitProvider.isLooking ? "Scanning…" : "Rescan") { gitProvider.lookAgain() }
                     .buttonStyle(.setup(words.offersTools ? .secondary : .primary))
                     .disabled(gitProvider.isLooking)
                 if words.offersTools {
@@ -368,7 +368,7 @@ struct SetupAgents: View {
                 }
             } else if found.isEmpty {
                 SetupActions(back: back) {
-                    Button("Look Again") { agents.lookAgain() }
+                    Button("Rescan") { agents.lookAgain() }
                         .buttonStyle(.setup(.secondary))
                     Button("Continue") { setup.continueWithoutAgents() }
                         .buttonStyle(.setup(.primary))
@@ -400,15 +400,15 @@ struct SetupAgents: View {
     }
 
     private func heading(on: [AgentKind]) -> String {
-        if agents.isLooking { return "Looking for your agents" }
-        if foundOnlyUnusable { return "Roga can't use the agents it found" }
+        if agents.isLooking { return "Detecting coding agents" }
+        if foundOnlyUnusable { return "No compatible coding agents" }
         return SetupWords.agentsHeading(found: found, on: on)
     }
 
     private var sub: String {
         if agents.isLooking || !found.isEmpty { return SetupWords.agentsSub }
         if foundOnlyUnusable {
-            return "Each copy is too old or didn't say its version. Update one or choose another, then Look Again. Roga works without one too."
+            return "Detected installations are outdated or could not report a version. Update an agent or select another executable, then Rescan. Agents are optional."
         }
         return SetupWords.noAgentsSub
     }
@@ -450,7 +450,7 @@ struct SetupHooks: View {
             if !commandKinds.isEmpty {
                 SetupSay(
                     button: "Install Hooks",
-                    words: "adds a small plugin, roga-hooks, to \(SetupWords.and(commandKinds.map(\.name))), with the commands below. It only reports what a session is doing, and never changes what the agent does."
+                    words: "installs the roga-hooks plugin in \(SetupWords.and(commandKinds.map(\.name))) using the commands below. Hooks report session activity without changing agent behavior."
                 )
             } else if usable.contains(where: { agents.hookStatus[$0] == .installed || agents.hookStatus[$0] == .needsTrust }) {
                 SetupSay(words: SetupWords.hooksInstalled)
@@ -467,7 +467,7 @@ struct SetupHooks: View {
                     } else {
                         HookStatusRow(
                             kind: kind,
-                            row: SetupWords.HookRow(status: found.contains(kind) ? "Not used, so nothing to install" : "Not found, so nothing to install"),
+                            row: SetupWords.HookRow(status: found.contains(kind) ? "Disabled" : "Not found"),
                             isDimmed: true
                         ) {}
                     }
@@ -646,11 +646,11 @@ private struct MarksFigure: View {
 
     private static let rows = [
         Row(name: "agent/fix-login", words: "Editing LoginView.swift", howLong: "2 min", count: "3", state: .working,
-            title: "Working", meaning: "An agent is busy in this worktree."),
-        Row(name: "agent/billing", words: "Needs your OK: git push", howLong: "1 min", count: "1", state: .waiting(.permission),
-            title: "Waiting for you", meaning: "It asked a question, or needs your OK."),
+            title: "Working", meaning: "Agent active in this worktree."),
+        Row(name: "agent/billing", words: "Approval required: git push", howLong: "1 min", count: "1", state: .waiting(.permission),
+            title: "Waiting", meaning: "Approval or response required."),
         Row(name: "agent/search-index", words: "Finished", howLong: "4 min", count: "7", state: .finished,
-            title: "Finished", meaning: "It's done, and you haven't looked yet."),
+            title: "Finished", meaning: "Session finished, changes not yet reviewed."),
     ]
 
     private static let rowHeight: CGFloat = 52
@@ -679,7 +679,7 @@ private struct MarksFigure: View {
         }
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("The sidebar marks each worktree an agent is in: a ring while it works, an amber circle while it waits for you, and a blue dot once it has finished and you haven't looked.")
+        .accessibilityLabel("Worktree status indicators. Ring: working. Amber circle: waiting for approval or a response. Blue dot: finished, unread.")
     }
 
     /// A worktree's row with a second line, as the sidebar draws one
@@ -763,8 +763,8 @@ struct SetupReady: View {
     var body: some View {
         let usable = setup.usable(found: found)
         VStack(spacing: SetupLayout.gap) {
-            SetupHead(eyebrow: "Ready", title: "You're all set", sub: "Here's what you chose. Change anything now, or later in Settings.")
-            section("What you chose") {
+            SetupHead(eyebrow: "Ready", title: "Setup complete", sub: "Review your configuration. You can change these preferences in Settings.")
+            section("Configuration") {
                 SetupCard {
                     ChosenRow(
                         name: "Git",
@@ -795,11 +795,11 @@ struct SetupReady: View {
                     }
                 }
             }
-            section("One more thing") {
+            section("Updates") {
                 SetupCard {
                     updateRow(
                         "Check for updates automatically",
-                        help: "A new version shows in the sidebar. Nothing installs until you say so.",
+                        help: SettingsItem.checksForUpdates.help,
                         isOn: Binding {
                             updates?.checksAutomatically ?? false
                         } set: {

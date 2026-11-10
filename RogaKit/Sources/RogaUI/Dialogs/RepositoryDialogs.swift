@@ -303,7 +303,7 @@ extension RepositoryModel {
         return .refusal(
             id: "checkout",
             title: "Can't check out \(failure.branch)",
-            summary: failure.command == nil ? nil : "Nothing changed. What git said is below.",
+            summary: failure.command == nil ? nil : "Nothing changed. Git output is shown below.",
             command: failure.command,
             said: failure.message,
             fix: fix(failure.command, failure.message, close),
@@ -354,7 +354,7 @@ extension BranchModel {
     private func dialog(for failure: Failure, offering fix: GitFixOffer?) -> DialogContent {
         let summary: DialogText? = failure.summary ?? (failure.command == nil
             ? nil
-            : failure.changedNothing ? "Nothing changed. What git said is below." : "What git said is below.")
+            : failure.changedNothing ? "Nothing changed. Git output is shown below." : "Git output is shown below.")
         let close = { [weak self] in self?.failure = nil; return () }
         return .refusal(
             id: "failure",

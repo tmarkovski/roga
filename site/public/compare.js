@@ -1,4 +1,4 @@
-// Lets the window under "A real Mac app" be dragged between light and dark.
+// Lets the window under "Built for macOS" be dragged between light and dark.
 // Without this script the page shows it half and half, and nothing moves.
 
 const compare = document.querySelector(".compare");

@@ -4,24 +4,27 @@ import SwiftUI
 /// What the Generate button's chevron opens: which agent writes the message,
 /// with which model and effort, and the exact command that runs (decision 41).
 ///
-/// Each agent is a row with its model and effort on a second line. On the
-/// picked agent's row those two words are menus, so what's changed is plainly
-/// that agent's, and the other rows say theirs in gray. It's laid out as Roga's
+/// Each agent is a row with its model and effort on a second line, and a check
+/// before the picked one, as setup's menus mark a choice. On the picked
+/// agent's row those two words are menus, so what's changed is plainly that
+/// agent's, and the other rows say theirs in gray. It's laid out as Roga's
 /// dialogs are (decision 29), with the command along its bottom edge. Every
 /// pick is stored as it's made, the same values the Commit page in Settings
-/// shows, so the next click of Generate uses them.
+/// shows, so the next click of Generate uses them. It has no Generate of its
+/// own: the button it hangs from runs what's picked, and says which agent.
+///
+/// It's the same size whichever agent is picked. The popover hangs from the
+/// button under it, so a change in its height would move every row above the
+/// command, and the row about to be clicked with it.
 struct GeneratePopover: View {
     let agents: AgentProvider
     /// The worktree's folder and whether the box has words in it, which the
     /// command shows.
     let worktree: String
     let hasDraft: Bool
-    /// Whether Generate can run now, which it can't with nothing staged.
-    let canGenerate: Bool
     /// Shows an agent's page in Settings, where a model the menu doesn't offer
     /// can be typed, as Codex's are.
     let openAgentSettings: (AgentKind) -> Void
-    let generate: (AgentKind) -> Void
     let close: () -> Void
 
     /// Wide enough for the command to take fewer lines.
@@ -31,7 +34,7 @@ struct GeneratePopover: View {
         let picked = agents.generateAgent
         let setup = picked.flatMap { agents.generation(with: $0) }
         VStack(alignment: .leading, spacing: 0) {
-            Text("Write the message with")
+            Text("Agent")
                 .font(.system(size: 13, weight: .semibold))
                 .padding(EdgeInsets(top: 13, leading: 16, bottom: 8, trailing: 16))
                 .accessibilityAddTraits(.isHeader)
@@ -43,21 +46,22 @@ struct GeneratePopover: View {
                 }
             }
             .padding(.horizontal, 6)
-            HStack(spacing: 8) {
-                Text("Remembered for next time")
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(DialogColors.note)
-                Spacer(minLength: 8)
-                Button("Generate") {
-                    if let picked { generate(picked) }
-                }
-                .buttonStyle(GeneratePopoverButtonStyle())
-                .keyboardShortcut(.defaultAction)
-                .disabled(setup == nil || !canGenerate)
-            }
-            .padding(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
+            // Picking is all there is to do here, so this says there's
+            // nothing to confirm.
+            Text("Selection saved automatically")
+                .font(.system(size: 12.5))
+                .foregroundStyle(DialogColors.note)
+                .padding(EdgeInsets(top: 10, leading: 16, bottom: 12, trailing: 16))
             if let setup {
-                CommandBlock(lines: setup.terminal(worktree: worktree, hasDraft: hasDraft), isCompact: true)
+                CommandBlock(
+                    lines: setup.terminal(worktree: worktree, hasDraft: hasDraft),
+                    isCompact: true,
+                    // Room for the other agents' commands, which wrap onto
+                    // more or fewer lines.
+                    reserving: AgentKind.allCases.filter { $0 != setup.kind }.compactMap {
+                        agents.generation(with: $0)?.terminal(worktree: worktree, hasDraft: hasDraft)
+                    }
+                )
             }
         }
         .frame(width: Self.width)
@@ -92,10 +96,10 @@ extension GeneratePopover {
     /// Why an agent can't be picked, for the second line of its row, or nil
     /// when it can.
     static func unusableReason(_ kind: AgentKind, in agents: AgentProvider) -> String? {
-        guard let lookup = agents.lookups[kind] else { return "Looking for it…" }
+        guard let lookup = agents.lookups[kind] else { return "Searching…" }
         switch lookup {
         case .found:
-            return agents.settings[kind]?.isEnabled == false ? "Turned off" : nil
+            return agents.settings[kind]?.isEnabled == false ? "Disabled" : nil
         case .notFound, .configuredMissing:
             return "Not found"
         case .unusable(let skipped):
@@ -107,7 +111,7 @@ extension GeneratePopover {
 
     private static func reason(_ skipped: [SkippedAgent]) -> String {
         let isTooOld = skipped.contains { if case .tooOld = $0.reason { true } else { false } }
-        return isTooOld ? "Too old to use" : "Couldn't run it"
+        return isTooOld ? "Unsupported version" : "Unable to run"
     }
 
     /// The second line of a usable agent's row: its model and its effort, as in
@@ -138,6 +142,8 @@ extension GeneratePopover {
 
 /// One agent in the popover, with its model and effort under its name, or why
 /// it can't be used, dimmed. The picked agent's model and effort are menus.
+/// That second line is as tall as the menus on every row, so that picking
+/// another agent moves nothing.
 struct GeneratePopoverAgentRow: View {
     let kind: AgentKind
     let agents: AgentProvider
@@ -146,6 +152,10 @@ struct GeneratePopoverAgentRow: View {
     var openSettings: () -> Void = {}
     @AppStorage private var model: String
     @AppStorage private var effort: String
+    @State private var isHovering = false
+
+    /// How tall the second line is, which is how tall its menus are.
+    static let secondLineHeight: CGFloat = 22
 
     init(kind: AgentKind, agents: AgentProvider, isPicked: Bool, openSettings: @escaping () -> Void = {}) {
         self.kind = kind
@@ -158,51 +168,63 @@ struct GeneratePopoverAgentRow: View {
 
     var body: some View {
         let reason = GeneratePopover.unusableReason(kind, in: agents)
-        if isPicked {
-            // It's picked already, so the row itself does nothing, and the
-            // menus in it can be clicked, which they can't inside a button.
-            row(reason: reason)
-                .accessibilityElement(children: .contain)
-                .accessibilityLabel(kind.name)
-                .accessibilityAddTraits(.isSelected)
-        } else {
-            Button {
-                agents.setGenerateAgent(kind)
-            } label: {
+        Group {
+            if isPicked {
+                // It's picked already, so the row itself does nothing, and the
+                // menus in it can be clicked, which they can't inside a button.
                 row(reason: reason)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityLabel(kind.name)
+                    .accessibilityAddTraits(.isSelected)
+            } else {
+                Button {
+                    agents.setGenerateAgent(kind)
+                } label: {
+                    row(reason: reason)
+                }
+                .buttonStyle(GeneratePopoverRowStyle())
+                .disabled(reason != nil)
+                // As in setup's menus, the pointer over a row that can be
+                // picked shades it, which says it can be clicked.
+                .onHover { isHovering = $0 && reason == nil }
             }
-            .buttonStyle(GeneratePopoverRowStyle())
-            .disabled(reason != nil)
         }
+        // The button that tracks the pointer goes once the row is picked, and
+        // with it the pointer's leaving, so a row starts unshaded each time.
+        .onChange(of: isPicked) { isHovering = false }
     }
 
     private func row(reason: String?) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            GeneratePopoverRadio(isOn: isPicked)
-                .opacity(reason == nil ? 1 : 0.5)
-                .padding(.top, 2)
-            VStack(alignment: .leading, spacing: isPicked && reason == nil ? 4 : 1) {
+        let shape = RoundedRectangle(cornerRadius: 9, style: .continuous)
+        return HStack(alignment: .top, spacing: 6) {
+            ChoiceCheck(isChecked: isPicked)
+            VStack(alignment: .leading, spacing: 4) {
                 Text(kind.name)
                     .foregroundStyle(reason == nil ? Color.primary : DialogColors.note)
-                if isPicked, reason == nil {
-                    choices
-                } else {
-                    Text(reason ?? GeneratePopover.detail(kind, model: model, effort: effort, codexDefaultModel: agents.codexDefaultModel))
-                        .font(.system(size: 12))
-                        .foregroundStyle(DialogColors.note)
+                Group {
+                    if isPicked, reason == nil {
+                        choices
+                    } else {
+                        Text(reason ?? GeneratePopover.detail(kind, model: model, effort: effort, codexDefaultModel: agents.codexDefaultModel))
+                            .font(.system(size: 12))
+                            .foregroundStyle(DialogColors.note)
+                    }
                 }
+                .frame(height: Self.secondLineHeight)
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 10)
+        .padding(.leading, 6)
+        .padding(.trailing, 10)
         .padding(.vertical, 7)
         .background {
             if isPicked {
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(DialogColors.card)
+                shape.fill(DialogColors.card)
+            } else if isHovering {
+                shape.fill(SettingsColors.hover)
             }
         }
-        .contentShape(Rectangle())
+        .contentShape(shape)
     }
 
     /// The picked agent's second line, where its model and effort open menus.
@@ -224,7 +246,7 @@ struct GeneratePopoverAgentRow: View {
                 .accessibilityHidden(true)
             GeneratePopoverMenu(
                 title: GeneratePopover.effortWords(effort),
-                name: "Effort",
+                name: "Reasoning effort",
                 selection: $effort,
                 options: GenerateChoices.efforts(stored: effort).map { (value: $0, title: AgentKind.effortTitle($0)) }
             )
@@ -289,34 +311,5 @@ private struct GeneratePopoverRowStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .opacity(configuration.isPressed ? 0.7 : 1)
-    }
-}
-
-/// The ring of a choice of one: hollow, or filled in ink with a white middle
-/// once it's picked.
-private struct GeneratePopoverRadio: View {
-    let isOn: Bool
-
-    var body: some View {
-        Circle()
-            .strokeBorder(isOn ? DialogColors.ink : DialogColors.note, lineWidth: isOn ? 4.5 : 1)
-            .frame(width: 14, height: 14)
-    }
-}
-
-/// The popover's Generate, in ink like a dialog's main button.
-private struct GeneratePopoverButtonStyle: ButtonStyle {
-    @Environment(\.isEnabled) private var isEnabled
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 13, weight: .medium))
-            .lineLimit(1)
-            .foregroundStyle(DialogColors.onInk)
-            .padding(.horizontal, 12)
-            .frame(height: 28)
-            .background(DialogColors.ink, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-            .opacity(!isEnabled ? 0.45 : configuration.isPressed ? 0.75 : 1)
-            .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
     }
 }

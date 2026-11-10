@@ -46,12 +46,12 @@ struct AgentListSection: View {
                     HStack(spacing: 6) {
                         Self.lookAgainIcon.image
                             .font(.system(size: 11))
-                        Text("Look Again")
+                        Text("Rescan")
                     }
                 }
                 .buttonStyle(.settings(small: true))
                 .disabled(agents.isLooking)
-                .help("Look for Claude Code and Codex again, after installing or updating one")
+                .help("Scan for Claude Code and Codex installations")
             }
         } content: {
             if items.contains(.agentList) {
@@ -98,9 +98,9 @@ private struct AgentRow: View {
             .accessibilityHint("Shows \(kind.name)'s settings")
             HStack(spacing: 8) {
                 if isFound {
-                    Toggle("Use \(kind.name)", isOn: $isEnabled)
+                    Toggle("Enable \(kind.name)", isOn: $isEnabled)
                         .toggleStyle(.settings)
-                        .help("Whether Generate can use \(kind.name)")
+                        .help("Enable \(kind.name) for commit message generation")
                 }
                 Button {
                     show(.agent(kind))
@@ -320,14 +320,14 @@ private struct MarksLegend: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             row(.working, "agent/fix-login", "Working")
-            row(.finished, "agent/search-index", "Finished, and you haven't looked yet")
-            row(.waiting(.question), "agent/billing", "Waiting for you to answer it")
+            row(.finished, "agent/search-index", "Finished, unread")
+            row(.waiting(.question), "agent/billing", "Waiting for a response")
         }
         .padding(EdgeInsets(top: 6, leading: 8, bottom: 6, trailing: 8))
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(SettingsColors.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("A ring means an agent is working, a blue dot that it finished and you haven't looked yet, and an amber circle that it's waiting for you.")
+        .accessibilityLabel("Ring: working. Blue dot: finished, unread. Amber circle: waiting for approval or a response.")
     }
 
     private func row(_ state: AgentSummary.State, _ worktree: String, _ meaning: String) -> some View {
@@ -416,7 +416,7 @@ enum AgentSummaries {
     static func programLine(_ lookup: AgentLookup?) -> ProgramLine {
         switch lookup {
         case nil:
-            ProgramLine(text: "Looking…", tone: .plain)
+            ProgramLine(text: "Searching…", tone: .plain)
         case .found(let installation)?:
             ProgramLine(text: "\(abbreviated(installation.executable)) · \(installation.version)", tone: .path)
         case .notFound?:
@@ -424,7 +424,7 @@ enum AgentSummaries {
         case .unusable(let skipped)?:
             ProgramLine(text: sentence(skipped.map(\.description).joined(separator: "; ")), tone: .warn)
         case .configuredMissing(let path)?:
-            ProgramLine(text: "Roga can't find or run \(abbreviated(path)), which you chose.", tone: .warn)
+            ProgramLine(text: "Custom executable not found or cannot be run: \(abbreviated(path)).", tone: .warn)
         case .configuredUnusable(let skipped)?:
             ProgramLine(text: sentence(skipped.description), tone: .warn)
         }
@@ -450,7 +450,7 @@ enum AgentSummaries {
             // Once it can't find the agent, the line says what it needs
             // instead.
             let isLooking = agents.lookups[kind] == nil
-            let text = isLooking ? "Checking…" : "Roga needs to find \(kind.name) before it can install its hooks."
+            let text = isLooking ? "Checking…" : "Install or select \(kind.name) to enable hook installation."
             return HookLine(tone: .plain, text: text, problems: (isLooking ? failure.map { [$0] } ?? [] : []) + filesError)
         }
 
@@ -464,11 +464,11 @@ enum AgentSummaries {
             (tone, text) = (.plain, "Not installed.\(trust)")
         case .installed?:
             let last = heardSentence(heard, now: now, place: place).map { " " + $0 } ?? ""
-            (tone, text) = (.installed, "\(HookLine.installed), as the roga-hooks plugin.\(last)")
+            (tone, text) = (.installed, "\(HookLine.installed) (roga-hooks plugin).\(last)")
         case .needsTrust?:
             (tone, text) = (.warn, "Installed, but Codex hasn't trusted it yet. Open /hooks in Codex to trust it.")
         case .disabled?:
-            (tone, text) = (.warn, "Installed, but turned off in \(kind.name).")
+            (tone, text) = (.warn, "Installed, but disabled in \(kind.name).")
         case .anotherCopy(let folder)?:
             (tone, text) = (.warn, "Installed by another copy of Roga, from \(abbreviated(folder)).")
         case .unknown(let words)?:
@@ -486,7 +486,7 @@ enum AgentSummaries {
         case .failed?, nil:
             if button?.action == .install, agents.helperPath == nil {
                 button?.isEnabled = false
-                note = "This copy of Roga has no roga helper, so it can't install hooks."
+                note = "Hook installation unavailable: roga helper missing."
             }
         }
         return HookLine(tone: tone, text: text, button: button, note: note, problems: (failure.map { [$0] } ?? []) + filesError)

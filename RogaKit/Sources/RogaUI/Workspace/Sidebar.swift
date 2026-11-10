@@ -344,12 +344,13 @@ private struct ListHeader<Trailing: View>: View {
     }
 }
 
-/// A group's label, small and gray, where the text of the rows under it
-/// starts. A chevron after it shows while the pointer is over it, and clicking
-/// it collapses or expands the group. A collapsed group's label has the mark of
-/// the most urgent agent among the worktrees it hides, in the column of the
-/// rows' marks, so that one waiting for you still shows. It has no commands, so
-/// the mark stays on hover.
+/// A group's label, small and gray, in the middle of a line across the list,
+/// which separates one organization's repositories from the next. A chevron
+/// after it shows while the pointer is over it, and clicking it collapses or
+/// expands the group. A collapsed group's label has the mark of the most
+/// urgent agent among the worktrees it hides, in the column of the rows'
+/// marks, so that one waiting for you still shows. It has no commands, so the
+/// mark stays on hover.
 private struct GroupLabel: View {
     let title: String
     let isCollapsed: Bool
@@ -359,23 +360,40 @@ private struct GroupLabel: View {
 
     /// How wide a row's mark is (`SidebarRow.markWidth`).
     private static let markWidth: CGFloat = 24
+    /// How wide the chevron is (`Chevron`).
+    private static let chevronWidth: CGFloat = 10
 
     var body: some View {
         let agent = agents?.summary
-        HStack(spacing: 4) {
-            FadingText(title)
-                .font(.system(size: 12, weight: .medium))
-            Chevron(pointsDown: !isCollapsed)
-                .opacity(isHovering ? 1 : 0)
-            Spacer(minLength: 6)
-            if let agent {
-                SidebarMark(summary: agent)
-                    .frame(width: Self.markWidth)
+        HStack(spacing: 8) {
+            rule
+            HStack(spacing: 4) {
+                // As wide as the chevron after the name, so that the name is
+                // in the middle whether or not the chevron shows.
+                Color.clear
+                    .frame(width: Self.chevronWidth, height: 1)
+                FadingText(title)
+                    .font(.system(size: 12, weight: .medium))
+                Chevron(pointsDown: !isCollapsed)
+                    .opacity(isHovering ? 1 : 0)
             }
+            .layoutPriority(1)
+            // The two sides share what's left equally, the mark included, so
+            // the lines are as long as each other.
+            HStack(spacing: 6) {
+                rule
+                if let agent {
+                    SidebarMark(summary: agent)
+                        .frame(width: Self.markWidth)
+                }
+            }
+            .frame(maxWidth: .infinity)
         }
         .foregroundStyle(.secondary)
         .padding(.leading, 10)
-        .padding(.trailing, 4)
+        // As far in as the rows' text on the left, or as the rows' marks when
+        // there's one.
+        .padding(.trailing, agent == nil ? 10 : 4)
         .frame(height: 24)
         .padding(.top, 8)
         .contentShape(Rectangle())
@@ -386,6 +404,16 @@ private struct GroupLabel: View {
         .accessibilityValue([isCollapsed ? "Collapsed" : "Expanded", agent?.description].compactMap(\.self).joined(separator: ", "))
         .accessibilityAddTraits([.isHeader, .isButton])
         .accessibilityAction(.default, toggle)
+    }
+
+    /// The line on either side of the name, in the color of the one under the
+    /// sidebar's commands. It's never shorter than a dash, however long the
+    /// name.
+    private var rule: some View {
+        Rectangle()
+            .fill(Palette.separator)
+            .frame(minWidth: 8, maxWidth: .infinity)
+            .frame(height: 1)
     }
 }
 

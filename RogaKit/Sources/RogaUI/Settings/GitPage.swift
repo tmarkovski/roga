@@ -32,12 +32,12 @@ struct GitProgramSection: View {
                     HStack(spacing: 6) {
                         AgentListSection.lookAgainIcon.image
                             .font(.system(size: 11))
-                        Text("Look Again")
+                        Text("Rescan")
                     }
                 }
                 .buttonStyle(.settings(small: true))
                 .disabled(gitProvider.isLooking)
-                .help("Look for Git again, after installing or updating one")
+                .help("Scan for Git installations")
             }
         } content: {
             if items.contains(.gitProgram) {
@@ -72,6 +72,6 @@ struct GitProgramSection: View {
     /// opened with, or nil when it is.
     static func restartNotice(running: GitInstallation?, chosen: GitInstallation?) -> String? {
         guard let running, let chosen, running.executable != chosen.executable else { return nil }
-        return "Roga goes over to this Git the next time it opens. Until then it runs \(AgentSummaries.abbreviated(running.executable)), which is \(running.version)."
+        return "Restart Roga to use the selected Git installation. Currently using \(AgentSummaries.abbreviated(running.executable)) (\(running.version))."
     }
 }

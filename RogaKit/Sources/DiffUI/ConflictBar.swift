@@ -341,7 +341,7 @@ final class ConflictEditor: NSViewController {
 
         let title = NSTextField(labelWithString: heading)
         title.font = .systemFont(ofSize: 13, weight: .semibold)
-        let note = NSTextField(wrappingLabelWithString: "This starts with both sides. Only these lines change, and the rest of the file stays as it is.")
+        let note = NSTextField(wrappingLabelWithString: "Edit the combined content from both sides to resolve this conflict. Changes apply only to this conflict.")
         note.font = .systemFont(ofSize: 12)
         note.textColor = .secondaryLabelColor
 
@@ -361,11 +361,11 @@ final class ConflictEditor: NSViewController {
 
         let cancel = NSButton(title: "Cancel", target: self, action: #selector(cancelPressed))
         cancel.keyEquivalent = "\u{1b}"
-        let keep = NSButton(title: "Keep These Lines", target: self, action: #selector(keepPressed))
+        let keep = NSButton(title: "Apply Resolution", target: self, action: #selector(keepPressed))
         // Return makes a new line, so Command-Return keeps them.
         keep.keyEquivalent = "\r"
         keep.keyEquivalentModifierMask = .command
-        keep.toolTip = "Keep These Lines (⌘↩)"
+        keep.toolTip = "Apply Resolution (⌘↩)"
         let buttons = NSStackView(views: [NSView(), cancel, keep])
         buttons.orientation = .horizontal
         buttons.spacing = 8

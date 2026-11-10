@@ -40,7 +40,7 @@ struct GenerateButtonTests {
     @Test func showsTheWordWhileTheBoxIsEmpty() {
         let state = GenerateButtonState(showsButton: true, agent: .claude, hasText: false, isWriting: false, readiness: .ready)
         #expect(state == .shown(agent: .claude, rewrites: false, readiness: .ready))
-        #expect(GenerateButton<EmptyView>.help(agent: .claude, rewrites: false, readiness: .ready) == "Write the message with Claude Code (⌥\u{2009}⌘\u{2009}L)")
+        #expect(GenerateButton<EmptyView>.help(agent: .claude, rewrites: false, readiness: .ready) == "Generate a commit message with Claude Code (⌥\u{2009}⌘\u{2009}L)")
     }
 
     @Test func theWordNamesTheAgentAClickRuns() {
@@ -52,21 +52,21 @@ struct GenerateButtonTests {
     @Test func showsTheIconAloneToRewriteYourWords() {
         let state = GenerateButtonState(showsButton: true, agent: .codex, hasText: true, isWriting: false, readiness: .ready)
         #expect(state == .shown(agent: .codex, rewrites: true, readiness: .ready))
-        #expect(GenerateButton<EmptyView>.help(agent: .codex, rewrites: true, readiness: .ready) == "Rewrite with Codex, starting from your words (⌥\u{2009}⌘\u{2009}L)")
+        #expect(GenerateButton<EmptyView>.help(agent: .codex, rewrites: true, readiness: .ready) == "Rewrite the commit message with Codex using the current draft (⌥\u{2009}⌘\u{2009}L)")
     }
 
     @Test func saysToStageFilesWhenNothingIsStaged() {
         let state = GenerateButtonState(showsButton: true, agent: .claude, hasText: false, isWriting: false, readiness: .nothingStaged)
         #expect(state == .shown(agent: .claude, rewrites: false, readiness: .nothingStaged))
-        #expect(GenerateButton<EmptyView>.help(agent: .claude, rewrites: false, readiness: .nothingStaged) == "Stage files to write a message for them")
+        #expect(GenerateButton<EmptyView>.help(agent: .claude, rewrites: false, readiness: .nothingStaged) == "Stage changes to generate a commit message")
     }
 
     /// Grayed out, it doesn't offer a shortcut that can't run, and during a
     /// rebase it says why.
     @Test func saysWhyItWaits() {
-        #expect(GenerateButton<EmptyView>.help(agent: .claude, rewrites: false, readiness: .busy) == "Write the message with Claude Code")
-        #expect(GenerateButton<EmptyView>.help(agent: .codex, rewrites: true, readiness: .busy) == "Rewrite with Codex, starting from your words")
-        #expect(GenerateButton<EmptyView>.help(agent: .claude, rewrites: true, readiness: .rebasing) == "Claude Code can write a message once the rebase is done")
+        #expect(GenerateButton<EmptyView>.help(agent: .claude, rewrites: false, readiness: .busy) == "Generate a commit message with Claude Code")
+        #expect(GenerateButton<EmptyView>.help(agent: .codex, rewrites: true, readiness: .busy) == "Rewrite the commit message with Codex using the current draft")
+        #expect(GenerateButton<EmptyView>.help(agent: .claude, rewrites: true, readiness: .rebasing) == "Finish the rebase to generate a commit message")
     }
 
     @Test func isHiddenWhenTurnedOffWithoutAnAgentOrWhileWriting() {
@@ -107,16 +107,16 @@ struct GenerateButtonTests {
         let broken = SkippedAgent(kind: .codex, executable: "/usr/local/bin/codex", reason: .timedOut)
         let provider = provider([.claude: .notFound, .codex: .unusable([old])])
         #expect(GeneratePopover.unusableReason(.claude, in: provider) == "Not found")
-        #expect(GeneratePopover.unusableReason(.codex, in: provider) == "Too old to use")
+        #expect(GeneratePopover.unusableReason(.codex, in: provider) == "Unsupported version")
         provider.setStateForTests(lookups: [.claude: .configuredMissing("/nowhere/claude"), .codex: .configuredUnusable(broken)])
         #expect(GeneratePopover.unusableReason(.claude, in: provider) == "Not found")
-        #expect(GeneratePopover.unusableReason(.codex, in: provider) == "Couldn't run it")
+        #expect(GeneratePopover.unusableReason(.codex, in: provider) == "Unable to run")
         provider.setStateForTests(lookups: [.claude: found(.claude)])
         #expect(GeneratePopover.unusableReason(.claude, in: provider) == nil)
-        #expect(GeneratePopover.unusableReason(.codex, in: provider) == "Looking for it…")
+        #expect(GeneratePopover.unusableReason(.codex, in: provider) == "Searching…")
         defaults.set(false, forKey: AgentPreferences.enabledKey(.claude))
         provider.reloadSettings()
-        #expect(GeneratePopover.unusableReason(.claude, in: provider) == "Turned off")
+        #expect(GeneratePopover.unusableReason(.claude, in: provider) == "Disabled")
     }
 
     @Test func offersEachAgentsModels() {
@@ -137,7 +137,7 @@ struct GenerateButtonTests {
         let setup = try #require(provider.generation(with: provider.generateAgent))
         #expect(setup.kind == .codex)
         let lines = setup.terminal(worktree: "/tmp/work", hasDraft: false)
-        #expect(lines.first == .comment("The staged changes go to its standard input"))
+        #expect(lines.first == .comment("Staged diff supplied via standard input"))
         guard case .program(let command, _)? = lines.last else {
             Issue.record("Expected the command")
             return
@@ -169,6 +169,49 @@ struct GenerateButtonTests {
                 #expect(height > CommandBlock.maximumHeight)
             }
         }
+    }
+
+    /// The popover hangs from the button under it, so if it changed height
+    /// when another agent is picked, every row above the command would move.
+    /// Claude Code's command and Codex's wrap onto different numbers of lines.
+    @Test func staysTheSameHeightWhicheverAgentIsPicked() throws {
+        defer { clean() }
+        let provider = provider()
+        func height(_ view: some View) -> CGFloat {
+            NSHostingView(rootView: view).fittingSize.height
+        }
+        var commands: [CGFloat] = []
+        var popovers: [CGFloat] = []
+        for kind in AgentKind.allCases {
+            provider.setGenerateAgent(kind)
+            let setup = try #require(provider.generation(with: kind))
+            commands.append(height(
+                CommandBlock(lines: setup.terminal(worktree: "/Users/someone/git/acme/api", hasDraft: false), isCompact: true)
+                    .frame(width: GeneratePopover.width)
+            ))
+            popovers.append(height(
+                GeneratePopover(
+                    agents: provider, worktree: "/Users/someone/git/acme/api", hasDraft: false,
+                    openAgentSettings: { _ in }, close: {}
+                )
+            ))
+        }
+        #expect(Set(commands).count > 1, "The commands are all \(commands) tall, so this shows nothing")
+        #expect(Set(popovers).count == 1, "The popover is \(popovers) tall")
+    }
+
+    /// The picked agent's row has menus on its second line and the others
+    /// have words, at the same height, so picking one moves nothing.
+    @Test func aRowIsTheSameHeightPickedOrNot() {
+        defer { clean() }
+        let provider = provider([.claude: found(.claude), .codex: .notFound])
+        func height(_ kind: AgentKind, isPicked: Bool) -> CGFloat {
+            NSHostingView(rootView: GeneratePopoverAgentRow(kind: kind, agents: provider, isPicked: isPicked).frame(width: 380)).fittingSize.height
+        }
+        let picked = height(.claude, isPicked: true)
+        #expect(height(.claude, isPicked: false) == picked)
+        // One that can't be picked says why at the same height.
+        #expect(height(.codex, isPicked: false) == picked)
     }
 
     // MARK: Grays

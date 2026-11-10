@@ -30,7 +30,7 @@ extension GitFixModel {
         DialogContent(
             id: "gitFix-asking",
             title: "Asking \(kind.name)…",
-            message: "Roga is sending it what git said and what read-only commands show about this worktree. It has no tools, so it can only answer, and nothing runs until you say so.",
+            message: "Sending Git output and worktree diagnostics to \(kind.name). Agent tools are disabled. Review and approve any suggested commands before running them.",
             terminal: [.program(program, showsPath: showsPath)],
             isWaitingForAgent: true,
             buttons: [DialogButton(title: "Stop", kind: .secondary) { [weak self] in self?.dismiss() }],
@@ -54,7 +54,7 @@ extension GitFixModel {
         guard fix.canRun else {
             return DialogContent(
                 id: "gitFix-answer",
-                title: "What \(kind.shortName) suggests",
+                title: "Suggested fix from \(kind.shortName)",
                 message: said,
                 note: Self.refusalNote(fix),
                 terminal: terminal,
@@ -64,9 +64,9 @@ extension GitFixModel {
         }
         return DialogContent(
             id: "gitFix-answer",
-            title: "What \(kind.shortName) suggests",
+            title: "Suggested fix from \(kind.shortName)",
             message: said,
-            note: fix.keepsEverything ? "Nothing has run yet." : "Nothing has run yet. These commands can lose work that git can't bring back, so read them first.",
+            note: fix.keepsEverything ? "Commands have not run yet." : "Commands have not run yet. Review them carefully: they may discard work that Git cannot recover.",
             terminal: terminal,
             buttons: [
                 DialogButton(title: "Cancel", kind: .secondary, isEnabled: !isRunning, action: close),
@@ -97,8 +97,8 @@ extension GitFixModel {
         guard let refused else {
             return DialogContent(
                 id: "gitFix-finished",
-                title: count == 1 ? "The command ran" : "The commands ran",
-                message: "You can try what failed again.",
+                title: count == 1 ? "Command completed" : "Commands completed",
+                message: "Retry the original operation.",
                 terminal: lines,
                 buttons: [ok],
                 dismiss: close
@@ -108,7 +108,7 @@ extension GitFixModel {
         if refused.skipped > 0 {
             sentences.append(refused.skipped == 1 ? "The command after it didn't run." : "The \(refused.skipped.formatted()) commands after it didn't run.")
         }
-        sentences.append("What git said is below.")
+        sentences.append("Git output is shown below.")
         // The agent often gets it right once it has seen what git said.
         let askAgain = askAgainTitle.map { title in
             DialogButton(title: title, kind: .secondary) { [weak self] in self?.askAgain() }

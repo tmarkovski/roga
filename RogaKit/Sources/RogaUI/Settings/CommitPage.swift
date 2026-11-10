@@ -85,12 +85,12 @@ struct CommitSection: View {
                     HStack(alignment: .firstTextBaseline) {
                         Text(item.title)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                        Button("Reset to Roga's") {
+                        Button("Restore Defaults") {
                             storedInstructions = nil
                         }
                         .buttonStyle(SettingsLinkStyle())
                         .disabled(storedInstructions == nil)
-                        .help("Puts back the instructions Roga came with")
+                        .help("Restore the default commit message instructions")
                     }
                     SettingsTextArea(text: instructions, label: item.title)
                 }
@@ -183,8 +183,8 @@ enum GenerateChoices {
 
     /// What the Agent popup says when there's no agent to choose.
     static func noAgentTitle(_ agents: AgentProvider) -> String {
-        if agents.isLooking { return "Looking…" }
-        return AgentKind.allCases.contains { agents.installation($0) != nil } ? "Turned off" : "None found"
+        if agents.isLooking { return "Searching…" }
+        return AgentKind.allCases.contains { agents.installation($0) != nil } ? "Disabled" : "None found"
     }
 
     /// The models a picker offers, with the stored one added when it's
@@ -209,22 +209,22 @@ enum GenerateChoices {
     static func modelHelp(_ kind: AgentKind, onAgentPage: Bool, agents: AgentProvider) -> String {
         switch (kind, onAgentPage) {
         case (.claude, false):
-            return "Something fast is plenty for a commit message."
+            return "Model used for commit message generation."
         case (.claude, true):
-            return "Passed as --model. Default leaves it to Claude Code's own settings."
+            return "Passed as --model. Default uses Claude Code's configured model."
         case (.codex, false):
-            return "Something fast is plenty for a commit message. Default is the one in \(codexConfiguration(agents))."
+            return "Default uses the model in \(codexConfiguration(agents))."
         case (.codex, true):
             let model = agents.codexDefaultModel.map { " (\($0))" } ?? ""
-            return "Passed as -m. Default is the model in \(codexConfiguration(agents))\(model)."
+            return "Passed as -m. Default uses the model in \(codexConfiguration(agents))\(model)."
         }
     }
 
     /// The help under Effort on an agent's own page.
     static func effortHelp(_ kind: AgentKind, agents: AgentProvider) -> String {
         switch kind {
-        case .claude: "Passed as --effort. Default leaves it to Claude Code's own settings."
-        case .codex: "Passed as -c model_reasoning_effort. Default is the one in \(codexConfiguration(agents))."
+        case .claude: "Passed as --effort. Default uses Claude Code's configured effort."
+        case .codex: "Passed as -c model_reasoning_effort. Default uses the effort in \(codexConfiguration(agents))."
         }
     }
 
@@ -252,6 +252,6 @@ enum GenerateChoices {
         )
         let command = CommitMessageCommand.command(for: agent, worktree: NSHomeDirectory(), style: style, hasDraft: false)
         let showsPath = found != nil && agents.showsPath(agent.executable)
-        return [.comment("The staged changes go to its standard input"), .program(command, showsPath: showsPath)]
+        return [.comment("Staged diff supplied via standard input"), .program(command, showsPath: showsPath)]
     }
 }

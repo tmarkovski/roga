@@ -51,19 +51,19 @@ struct AgentDetailPage: View {
     // MARK: Command
 
     private var commandSection: some View {
-        SettingsSection("Command") {
-            SettingsRow(title: "Use \(kind.name)", help: "Off takes it out of the Generate button's picker. Its hooks stay as they are.") {
-                Toggle("Use \(kind.name)", isOn: $isEnabled)
+        SettingsSection("Configuration") {
+            SettingsRow(title: "Enable \(kind.name)", help: "Available for commit message generation. Hook settings are independent.") {
+                Toggle("Enable \(kind.name)", isOn: $isEnabled)
                     .toggleStyle(.settings)
             }
             programRow
             SettingsRow(title: "Model", help: GenerateChoices.modelHelp(kind, onAgentPage: true, agents: agents)) {
                 AgentModelControl(kind: kind, typesName: kind == .codex)
             }
-            SettingsRow(title: "Effort", help: GenerateChoices.effortHelp(kind, agents: agents)) {
+            SettingsRow(title: "Reasoning effort", help: GenerateChoices.effortHelp(kind, agents: agents)) {
                 AgentEffortControl(kind: kind, isSegmented: false)
             }
-            SettingsRow(title: "Extra arguments", help: "Added after Roga's own.") {
+            SettingsRow(title: "Additional arguments", help: "Appended after the default arguments.") {
                 SettingsTextField(
                     text: $extraArguments,
                     placeholder: kind == .claude ? "--append-system-prompt …" : "-c model_verbosity=low",
@@ -71,7 +71,7 @@ struct AgentDetailPage: View {
                     isMonospaced: true
                 )
             }
-            SettingsRow(title: "Time limit", help: "Roga stops the agent after this long.") {
+            SettingsRow(title: "Timeout", help: "Maximum duration for commit message generation.") {
                 SettingsPopup(
                     selection: $timeLimit,
                     options: GenerateChoices.timeLimits(stored: timeLimit).map { (value: $0, title: "\($0) seconds") }
@@ -87,7 +87,7 @@ struct AgentDetailPage: View {
             isChosen: program?.isEmpty == false,
             isFirstInPath: agents.installation(kind).map { !agents.showsPath($0.executable) } ?? false
         )
-        return SettingsRow(title: "Program", help: detail.plain, namesControl: false) {
+        return SettingsRow(title: "Executable", help: detail.plain, namesControl: false) {
             VStack(alignment: .leading, spacing: 2) {
                 if let path = detail.path {
                     // One line, cut in the middle, so that both the start of
@@ -134,12 +134,12 @@ struct AgentDetailPage: View {
         return "None"
     }
 
-    // MARK: How Roga runs it
+    // MARK: Command-line arguments
 
     private var runsSection: some View {
         SettingsSection(
-            title: "How Roga runs it",
-            description: AttributedString("Each flag is there to keep a small job small. Roga always adds these, before your extra arguments.")
+            title: "Command-line arguments",
+            description: AttributedString("Default arguments for commit message generation, applied before additional arguments.")
         ) {
             EmptyView()
         } content: {
@@ -161,7 +161,7 @@ struct AgentDetailPage: View {
 
     private var testRow: some View {
         HStack(spacing: 12) {
-            Button(test.isRunning ? "Stop" : "Run a Test") {
+            Button(test.isRunning ? "Stop" : "Run Test") {
                 if test.isRunning {
                     test.stop()
                 } else if let agent = agents.commitMessageAgent(kind), let programs = agents.programs {
@@ -178,11 +178,11 @@ struct AgentDetailPage: View {
 
     private var workingStatusSection: some View {
         SettingsSection(
-            title: "Working status",
+            title: "Agent status",
             description: .settingsWords([
-                ("Each hook runs ", false),
+                ("Hooks send session events and worktree paths via ", false),
                 ("roga hook --host \(kind.rawValue)", true),
-                (", which tells Roga the event and the folder. It returns at once, and does nothing while Roga is closed.", false),
+                (". They return immediately and have no effect when Roga is closed.", false),
             ])
         ) {
             EmptyView()
@@ -268,16 +268,16 @@ struct AgentDetailPage: View {
     static func programDetail(_ kind: AgentKind, lookup: AgentLookup?, isChosen: Bool, isFirstInPath: Bool) -> ProgramDetail {
         switch lookup {
         case nil:
-            return ProgramDetail(sentence: "Looking…")
+            return ProgramDetail(sentence: "Searching…")
         case .found(let installation)?:
             let how = if isChosen {
-                "Chosen by you."
+                "Custom executable."
             } else if kind.prefersNewest, !installation.others.isEmpty {
-                "The newest of the copies Roga found."
+                "Latest detected version."
             } else if isFirstInPath {
                 "Found in your login shell's PATH."
             } else {
-                "Found outside your login shell's PATH, where its installer puts it."
+                "Detected in a standard installation location outside your login shell's PATH."
             }
             return ProgramDetail(
                 path: AgentSummaries.abbreviated(installation.executable),
@@ -291,7 +291,7 @@ struct AgentDetailPage: View {
         case .configuredMissing(let path)?:
             return ProgramDetail(
                 path: AgentSummaries.abbreviated(path),
-                sentence: "Chosen by you, but Roga can't find or run it.",
+                sentence: "Custom executable not found or cannot be run.",
                 isWarning: true
             )
         case .configuredUnusable(let skipped)?:
@@ -305,19 +305,19 @@ struct AgentDetailPage: View {
         switch kind {
         case .claude:
             [
-                ("-p", "Prints its answer and exits, rather than starting a conversation."),
-                ("--safe-mode", "Leaves out your hooks, plugins, skills, MCP servers and CLAUDE.md, so only Roga's instructions count."),
-                ("--setting-sources user", "Leaves out the worktree's own .claude settings, which it would otherwise use without asking whether you trust the folder."),
-                ("--tools=", "No tools, so it can't run commands, read other files or change anything."),
-                ("--no-session-persistence", "Leaves no session behind in Claude Code's history."),
+                ("-p", "Print the response and exit."),
+                ("--safe-mode", "Disable hooks, plugins, skills, MCP servers and CLAUDE.md instructions."),
+                ("--setting-sources user", "Load user settings only; exclude the worktree's .claude settings."),
+                ("--tools=", "Disable all tools, including shell commands and file access."),
+                ("--no-session-persistence", "Disable session history."),
             ]
         case .codex:
             [
-                ("exec", "Prints its answer and exits, rather than starting a conversation."),
-                ("--ephemeral", "Leaves no session behind in Codex's history."),
-                ("--sandbox read-only", "It can read the worktree, but can't change files or reach the network."),
-                ("--disable hooks …", "And plugins, apps and its shell tool, so nothing of yours runs and it answers without running commands."),
-                ("-c mcp_servers.<name>.enabled=false", "Turns off each MCP server in your config.toml, since they would start with every run and act outside the sandbox."),
+                ("exec", "Print the response and exit."),
+                ("--ephemeral", "Disable session history."),
+                ("--sandbox read-only", "Restrict access to reading files; block file changes and network access."),
+                ("--disable hooks …", "Disable hooks, plugins, apps and the shell tool."),
+                ("-c mcp_servers.<name>.enabled=false", "Disable each configured MCP server, which would otherwise run outside the sandbox."),
             ]
         }
     }
@@ -331,9 +331,9 @@ struct AgentDetailPage: View {
         }
         return [
             ("UserPromptSubmit, PreToolUse", .working, "Working"),
-            (waiting, .waiting(.permission), "Waiting for you"),
+            (waiting, .waiting(.permission), "Waiting for input"),
             ("Stop", .finished, "Finished"),
-            ("SessionEnd", nil, "Gone from the sidebar"),
+            ("SessionEnd", nil, "Removed from sidebar"),
         ]
     }
 }
@@ -348,7 +348,7 @@ struct AgentTestResult: View {
         Group {
             switch state {
             case .idle:
-                Text("Writes a message for a small sample diff, in a folder of its own.")
+                Text("Generate a commit message from a sample diff in a temporary folder.")
                     .foregroundStyle(SettingsColors.note)
             case .running:
                 HStack(spacing: 7) {

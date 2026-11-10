@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Roga: a Git client for the way code gets written now</title>
-<meta name="description" content="Roga is a fast, native Git client for the Mac, made for reviewing what your agents wrote. Free and open source.">
+<title>Roga: a native Git client for macOS</title>
+<meta name="description" content="A free, native Git client for macOS. Review branches, manage worktrees and track Claude Code and Codex sessions. Written in Swift and open source.">
 <link rel="canonical" href="https://roga.sh/">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
@@ -13,8 +13,8 @@
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#16150e">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://roga.sh/">
-<meta property="og:title" content="Roga: a Git client for the way code gets written now">
-<meta property="og:description" content="A fast, native Git client for the Mac, made for reviewing what your agents wrote. Free and open source.">
+<meta property="og:title" content="Roga: a native Git client for macOS">
+<meta property="og:description" content="A free, native Git client for macOS. Review branches, manage worktrees and track Claude Code and Codex sessions. Written in Swift and open source.">
 <meta property="og:image" content="https://roga.sh/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -356,13 +356,6 @@
     margin-top: clamp(2rem, 4vw, 3rem);
   }
 
-  .feature > .wide > .points {
-    margin-top: 0.875rem;
-    color: var(--ink);
-    font-size: 1.0625rem;
-    font-weight: 600;
-  }
-
   /* Two pictures of one window. The light one, on top, stops at --split. */
   .compare {
     --split: 50%;
@@ -616,15 +609,15 @@
   <section class="hero">
     <div class="wide">
       <p class="name">Rather Opinionated Git App</p>
-      <h1>A Git client for the way code gets written now.</h1>
-      <p class="lede">Other Git clients were built for people clicking through Git. Today you’re more likely to be watching agents work in parallel worktrees and reviewing what they did. Roga is a native Mac app built for that.</p>
+      <h1>A native Git client for macOS.</h1>
+      <p class="lede">Review branch changes, manage worktrees and track coding agents in one window. Built in Swift for developers who work across the terminal and a Git client.</p>
       <div class="install">
-        <a class="button" href="/download">Download for the Mac</a>
+        <a class="button" href="/download">Download for macOS</a>
         <span class="or">or</span>
         <div class="command">
           <span class="prompt" aria-hidden="true">$</span>
           <code>brew install --cask tmarkovski/roga/roga</code>
-          <button class="copy" type="button" aria-label="Copy the command" title="Copy" hidden>
+          <button class="copy" type="button" aria-label="Copy Homebrew command" title="Copy" hidden>
             <svg class="copy-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>
             <svg class="done-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
           </button>
@@ -634,7 +627,7 @@
       <p class="terms">Free and open source · Apache 2.0 · macOS 26 or later</p>
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="/shots/window-dark.webp">
-        <img class="window" src="/shots/window-light.webp" width="2400" height="1492" alt="The Roga window: repositories and their agents in a sidebar, a commit graph in the middle, branches on the right, and a commit's diff underneath.">
+        <img class="window" src="/shots/window-light.webp" width="2400" height="1492" alt="Roga with repositories and worktrees in the sidebar, commit history, branches and the selected diff.">
       </picture>
     </div>
   </section>
@@ -642,8 +635,8 @@
   <section class="feature">
     <div class="wide side">
       <div>
-        <h2>Know what every agent is doing.</h2>
-        <p>Every worktree gets a row in the sidebar. Install the hooks for Claude Code or Codex from Settings, and each row shows whether its agent is working, finished or waiting for your OK, with a line saying what it’s doing.</p>
+        <h2>Track agents across worktrees.</h2>
+        <p>See which worktrees have agents working, waiting for input or finished, with activity details in the sidebar. Install the Claude Code or Codex hooks from Settings to enable status updates.</p>
       </div>
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="/shots/agents-dark.webp">
@@ -654,8 +647,8 @@
 
   <section class="feature">
     <div class="wide">
-      <h2>Review it like a pull request.</h2>
-      <p>Roga shows everything a branch changed since it left main: its commits and one combined diff, with the changed words highlighted.</p>
+      <h2>Review a branch in one diff.</h2>
+      <p>Compare a branch with its base to review the full change. See its commits, changed files and a combined diff with individual word changes highlighted.</p>
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="/shots/review-dark.webp">
         <img class="crop review" src="/shots/review-light.webp" width="1760" height="856" loading="lazy" alt="An agent’s branch under review: four commits since it left main, the three files it changed, and the combined diff of one of them.">
@@ -665,20 +658,19 @@
 
   <section class="feature">
     <div class="wide">
-      <h2>Stuck? Ask the agent you already have.</h2>
-      <p>Some Git clients charge extra for AI. Roga hands the hard parts to the Claude Code or Codex you’re already signed in to: a merge conflict, a commit message, or a command Git refused. They can only answer: what they write comes back to you, and nothing is marked resolved or run until you say so.</p>
-      <p class="points">No API keys · No AI add-on to pay for · No limits from Roga</p>
+      <h2>Use your existing coding agent.</h2>
+      <p>Generate commit messages, resolve merge conflicts and troubleshoot Git errors with Claude Code or Codex. Roga uses your existing sign-in. Review the results and approve suggested commands before running them.</p>
       <ul class="frames pair">
         <li>
           <picture>
             <source media="(prefers-color-scheme: dark)" srcset="/shots/conflict-before-dark.webp">
-            <img src="/shots/conflict-before-light.webp" width="1116" height="1470" loading="lazy" alt="A file stopped on three merge conflicts, each side named by its branch and commit, with a Resolve with Claude button at the top.">
+            <img src="/shots/conflict-before-light.webp" width="1116" height="1470" loading="lazy" alt="Three merge conflicts with branches and commits identified, and a Resolve with Claude button.">
           </picture>
         </li>
         <li>
           <picture>
             <source media="(prefers-color-scheme: dark)" srcset="/shots/conflict-after-dark.webp">
-            <img src="/shots/conflict-after-light.webp" width="1116" height="1470" loading="lazy" alt="The same file after Claude Code resolved all three conflicts, with its explanation of what it kept and each answer marked for review.">
+            <img src="/shots/conflict-after-light.webp" width="1116" height="1470" loading="lazy" alt="Claude Code’s proposed resolutions for the three conflicts, ready for review.">
           </picture>
         </li>
       </ul>
@@ -687,8 +679,8 @@
 
   <section class="feature">
     <div class="wide">
-      <h2>A real Mac app.</h2>
-      <p>Roga is written in Swift, with no web views standing in for the interface. It follows your Mac between light and dark, and keeps itself up to date.</p>
+      <h2>Built for macOS.</h2>
+      <p>Roga is written in Swift, with standard Mac menus, keyboard shortcuts and support for light and dark appearance. Updates are delivered in the app.</p>
       <div class="compare">
         <img class="base" src="/shots/window-dark.webp" width="2400" height="1492" loading="lazy" draggable="false" alt="The Roga window in the dark appearance.">
         <img class="over" src="/shots/window-light.webp" width="2400" height="1492" loading="lazy" draggable="false" alt="The same window in the light appearance.">
@@ -696,7 +688,7 @@
         <span class="knob" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M9 7l-5 5 5 5M15 7l5 5-5 5"/></svg>
         </span>
-        <input type="range" min="0" max="100" value="50" aria-label="How much of the window is shown in light" hidden>
+        <input type="range" min="0" max="100" value="50" aria-label="Light appearance preview" hidden>
       </div>
       <div class="compare-labels"><span>Light</span><span>Dark</span></div>
     </div>
@@ -705,8 +697,8 @@
   <section class="band">
     <div class="wide">
       <span class="soon">Coming in the next release</span>
-      <h2>Then play it back.</h2>
-      <p>A hard week’s work deserves more than a merged pull request. Roga replays a branch’s history as a metro map, with a departure board counting every commit as it lands, and ends on a poster of what the team got done. Save it as a video or an image and send it to them.</p>
+      <h2>Git history as a metro map.</h2>
+      <p>Replay commits and branches over time, ending with a summary of the selected history. Export the replay as a video or save the final map as an image.</p>
       <ul class="frames">
         <li><img src="/shots/replay-playing.webp" width="2200" height="1276" loading="lazy" alt="A replay in progress: a departure board counts lines and commits above a metro map of branches, with a card marking the latest night."></li>
         <li><img src="/shots/replay-poster.webp" width="2200" height="1276" loading="lazy" alt="A replay’s closing poster: 52 commits, 7 branches and 8 days, with the busiest day, the biggest commit, the longest branch and the latest night."></li>
@@ -717,24 +709,24 @@
   <section class="feature">
     <div class="wide">
       <ul class="history">
-        <li><strong>Fast on huge repositories.</strong> Roga reads Git’s commit-graph file directly and loads only the rows on screen. Checking out a branch in the Linux kernel takes about 0.4 seconds.</li>
-        <li><strong>Git stays in charge.</strong> Roga runs the Git you already have and keeps no hidden state, so you can drop to the command line at any moment.</li>
-        <li><strong>Free and open source.</strong> Apache 2.0, with <a href="https://github.com/tmarkovski/roga">the code on GitHub</a>. No account to create and nothing to pay for.</li>
-        <li>Next: file history, search and&nbsp;blame.</li>
+        <li><strong>Built for large repositories.</strong> Roga loads visible history as needed. In our Linux kernel benchmark, branch checkout took about 0.4 seconds. <a href="https://github.com/tmarkovski/roga/blob/main/docs/performance/2026-11-03-actions-waiting-on-background-work.md">View the measurements.</a></li>
+        <li><strong>Works with your Git setup.</strong> Roga uses your installed Git, configuration and repositories. Switch between Roga and the terminal as you work.</li>
+        <li><strong>Free and open source.</strong> Available under Apache 2.0. <a href="https://github.com/tmarkovski/roga">View the source on GitHub.</a></li>
+        <li>Planned: file history, search and&nbsp;blame.</li>
       </ul>
     </div>
   </section>
 
   <section class="close">
     <div class="wide">
-      <h2>Try it on your biggest repository.</h2>
+      <h2>Download Roga.</h2>
       <div class="install">
-        <a class="button" href="/download">Download for the Mac</a>
+        <a class="button" href="/download">Download for macOS</a>
         <span class="or">or</span>
         <div class="command">
           <span class="prompt" aria-hidden="true">$</span>
           <code>brew install --cask tmarkovski/roga/roga</code>
-          <button class="copy" type="button" aria-label="Copy the command" title="Copy" hidden>
+          <button class="copy" type="button" aria-label="Copy Homebrew command" title="Copy" hidden>
             <svg class="copy-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>
             <svg class="done-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
           </button>

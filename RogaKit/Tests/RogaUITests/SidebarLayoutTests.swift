@@ -100,11 +100,18 @@ struct SidebarLayoutTests {
     }
 
     @Test func otherNamesOwnersAndThenListsRepositoriesWithoutARemote() {
+        let repositories = [repository("linux", owner: "torvalds"), repository("git", owner: "git"), repository("scratch"), repository("api", owner: "acme"), repository("web", owner: "acme")]
+        #expect(rows(repositories, arrangement: grouped) == ["<acme>", "api", "web", "<Other>", "git/git", "torvalds/linux", "scratch"])
+    }
+
+    /// With no organization, Other's label would separate it from nothing, so
+    /// there's none, and its repositories are listed as it lists them.
+    @Test func withNoOrganizationThereIsNoLabel() {
         let rows = rows(
             [repository("linux", owner: "torvalds"), repository("git", owner: "git"), repository("scratch")],
             arrangement: grouped
         )
-        #expect(rows == ["<Other>", "git/git", "torvalds/linux", "scratch"])
+        #expect(rows == ["git/git", "torvalds/linux", "scratch"])
     }
 
     @Test func aRepositoryInTwoOrganizationsIsListedOnceUnderItsFirstOwner() {
@@ -261,8 +268,9 @@ struct SidebarLayoutTests {
 
     @Test func eachRowMarksTheWorktreesItStandsFor() {
         let api = repository("api", owner: "acme", linked: ["a", "b", "c"], kept: ["a"])
-        let items = SidebarLayout(groups: RepositoryGroups([api]), arrangement: grouped, selection: select(api, "c")).items
-        #expect(items.map(\.markedWorktrees) == [[], ["/git/api"], ["/git/a"], ["/git/c"], ["/git/b"]])
+        // A second repository makes acme an organization, with a label.
+        let items = SidebarLayout(groups: RepositoryGroups([api, repository("web", owner: "acme")]), arrangement: grouped, selection: select(api, "c")).items
+        #expect(items.map(\.markedWorktrees) == [[], ["/git/api"], ["/git/a"], ["/git/c"], ["/git/b"], ["/git/web"]])
     }
 
     private func event(_ name: String, _ session: String, in cwd: String, at seconds: Double) -> HookEvent {

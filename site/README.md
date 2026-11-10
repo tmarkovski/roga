@@ -2,6 +2,10 @@
 
 The landing page at [roga.sh](https://roga.sh). It's static files in `public/` with no build step, served by Cloudflare Workers ([decision 22](../docs/decisions/0022-host-the-landing-page-on-cloudflare-workers.md)).
 
+## Copy
+
+Lead with concrete workflows: reviewing branches, managing worktrees and tracking coding agents in a native Mac app. Use direct headings and short, factual descriptions. Keep the tone practical, with room for a little humor in the house and history replay. Avoid competitor comparisons, sales slogans and exaggerated claims. Link performance numbers to their measurements, label upcoming features, and keep page metadata consistent with the visible copy.
+
 ## Running it
 
 This serves the page the way Cloudflare will, with the headers in `public/_headers` and the 404 page:

@@ -115,14 +115,14 @@ extension GenerateButton {
     /// the box is busy for a while, as when a commit is being made, it leaves
     /// out the shortcut, which can't run yet either.
     static func help(agent: AgentKind, rewrites: Bool, readiness: MessageGenerator.Readiness) -> String {
-        let words = rewrites ? "Rewrite with \(agent.name), starting from your words" : "Write the message with \(agent.name)"
+        let words = rewrites ? "Rewrite the commit message with \(agent.name) using the current draft" : "Generate a commit message with \(agent.name)"
         switch readiness {
         case .ready:
             return "\(words) (\(RepositoryCommands.generateMessageShortcut.symbols))"
         case .nothingStaged:
-            return "Stage files to write a message for them"
+            return "Stage changes to generate a commit message"
         case .rebasing:
-            return "\(agent.name) can write a message once the rebase is done"
+            return "Finish the rebase to generate a commit message"
         case .busy:
             return words
         }

@@ -151,7 +151,7 @@ struct GitFixTests {
 
         let answer = try await work.settledDialog()
         #expect(answer.id == "gitFix-answer")
-        #expect(answer.title == "What Claude suggests")
+        #expect(answer.title == "Suggested fix from Claude")
         #expect(answer.message?.plain == "The index has a gitlink for an ignored folder.")
         #expect(answer.terminal == [.command(["rm", "-r", "--cached", "-f", ".build"])])
         // Nothing has run: the worktree still refuses.
@@ -164,7 +164,7 @@ struct GitFixTests {
 
         let done = try await work.settledDialog()
         #expect(done.id == "gitFix-finished")
-        #expect(done.title == "The command ran")
+        #expect(done.title == "Command completed")
         _ = try await work.git("diff", "--name-only", "--no-renames", "HEAD", "--")
         #expect(FileManager.default.fileExists(atPath: work.path + "/" + Self.brokenFolder + "/a.txt"))
         try button("OK", in: done).action()
@@ -215,7 +215,7 @@ struct GitFixTests {
         work.fix.start(command: ["pull"], said: "fatal: no", with: setup())
         let answer = try await work.settledDialog()
         #expect(try button("Run", in: answer).kind == .destructive)
-        #expect(answer.note?.plain.contains("can lose work") == true)
+        #expect(answer.note?.plain.contains("may discard work that Git cannot recover") == true)
     }
 
     @Test func anAnswerWithNoCommandsOffersNothing() async throws {
@@ -283,7 +283,7 @@ struct GitFixTests {
         try button("Run", in: answer).action()
 
         let done = try await work.settledDialog()
-        #expect(done.title == "The command ran")
+        #expect(done.title == "Command completed")
         #expect(done.buttons.map(\.title) == ["OK"])
         _ = try await work.git("diff", "--name-only", "--no-renames", "HEAD", "--")
     }
