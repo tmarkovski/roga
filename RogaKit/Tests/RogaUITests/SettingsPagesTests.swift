@@ -901,7 +901,10 @@ struct SettingsPagesTests {
         #expect(found("Reset to Roga").contains(.instructions))
         #expect(found("subjects") == [.matchesStyle])
         #expect(found("roga-hooks") == [.hooks])
-        #expect(found("Look Again") == [.agentList])
+        // Git and the agents each have one.
+        #expect(found("Look Again") == [.gitProgram, .agentList])
+        #expect(found("Homebrew") == [.gitProgram])
+        #expect(SettingsGroup.allCases.filter { $0.page == .git } == [.installation, .fetching])
         #expect(found("Codex").contains(.agentList))
         #expect(found("Codex").contains(.hooks))
         #expect(found("sidebar").contains(.showsMarks))

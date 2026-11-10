@@ -184,6 +184,8 @@ public struct WorkspaceView: View {
     @Environment(RepositoryList.self) private var list
     @Environment(AgentProvider.self) private var agents
     @Environment(AgentMonitor.self) private var agentMonitor
+    /// Setup, which takes the window over the first time Roga runs.
+    @Environment(SetupModel.self) private var setup
     @State private var recent = RecentWorktrees()
     @State private var columns = NavigationSplitViewVisibility.all
     @SceneStorage("showsRefsPanel") private var wantsRefsPanel = true
@@ -222,6 +224,42 @@ public struct WorkspaceView: View {
     }
 
     public var body: some View {
+        Group {
+            // Setup fades out before the app fades in, since the two are
+            // laid out differently and neither reads through the other.
+            if setup.isShowing {
+                SetupView(setup: setup)
+                    .transition(SetupMotion.fade)
+            } else {
+                workspace
+                    .transition(SetupMotion.fade)
+            }
+        }
+        .frame(minWidth: 720, minHeight: 480)
+        .task(id: Connection(hasGit: gitProvider.git != nil, isSettingUp: setup.isShowing)) {
+            guard let git = gitProvider.git else { return }
+            // The agents run with git's environment, and the monitor asks
+            // Claude Code about its sessions once Roga has found it with
+            // its hooks installed. Both belong to the app, so starting
+            // them from another window does nothing. Setup needs both, to
+            // find the agents and to install their hooks.
+            agents.start(git: git)
+            agentMonitor.start(agents: agents)
+            // The repositories open with one git and keep it, so they wait
+            // for setup, where someone may choose another.
+            if !setup.isShowing { await list.connect(git: git) }
+        }
+    }
+
+    /// When to start what needs git: once there's a git, and again once
+    /// setup is over.
+    private struct Connection: Hashable {
+        var hasGit: Bool
+        var isSettingUp: Bool
+    }
+
+    /// The sidebar and the worktree selected in it.
+    private var workspace: some View {
         NavigationSplitView(columnVisibility: $columns) {
             Sidebar(list: list, monitor: agentMonitor, selection: selection, showsSettings: $showsSettings, locate: locate, newWorktree: startNewWorktree)
                 .overlay(alignment: .trailing) {
@@ -298,18 +336,6 @@ public struct WorkspaceView: View {
                 .ignoresSafeArea()
         }
         .navigationTitle(title)
-        .frame(minWidth: 720, minHeight: 480)
-        .task(id: gitProvider.git != nil) {
-            if let git = gitProvider.git {
-                // The agents run with git's environment, and the monitor asks
-                // Claude Code about its sessions once Roga has found it with
-                // its hooks installed. Both belong to the app, so starting
-                // them from another window does nothing.
-                agents.start(git: git)
-                agentMonitor.start(agents: agents)
-                await list.connect(git: git)
-            }
-        }
         .onAppear {
             // A new window, or one macOS didn't restore, shows the worktree
             // selected last.
@@ -433,6 +459,9 @@ public struct WorkspaceView: View {
                 Label("Roga Can't Use Git", icon: .warning)
             } description: {
                 Text(error.description)
+            } actions: {
+                // Where every git Roga found is listed, to choose another.
+                Button("Git Settings…") { openSettings(.page(.git)) }
             }
         case .ready:
             if let selected = window?.selection, let repository = list.repository(at: selected.repository) {

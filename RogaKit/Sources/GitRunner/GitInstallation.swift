@@ -57,9 +57,15 @@ public struct GitInstallation: Sendable, Hashable {
     ///   it's set, Roga uses it or nothing.
     @concurrent
     public static func locate(configuredPath: String? = nil) async throws(GitInstallationError) -> GitInstallation {
-        let inherited = ProcessInfo.processInfo.environment
-        let searchPath = await LoginShellPath.read() ?? inherited["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
-        return try await locate(configuredPath: configuredPath, searchPath: searchPath)
+        try await locate(configuredPath: configuredPath, searchPath: await readSearchPath().searchPath)
+    }
+
+    /// The `PATH` Roga searches for git and gives it: the login shell's, or
+    /// the one Roga started with when the shell didn't say.
+    @concurrent
+    public static func readSearchPath() async -> (searchPath: String, fromLoginShell: Bool) {
+        if let fromShell = await LoginShellPath.read() { return (fromShell, true) }
+        return (ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin", false)
     }
 
     /// Finds git in this order, and uses the first one that's at least the
@@ -131,13 +137,95 @@ public struct GitInstallation: Sendable, Hashable {
 
     /// Whether `xcode-select -p` finds Xcode or the Command Line Tools.
     public static func developerToolsAreInstalled() async -> Bool {
-        let result = await ChildProcess.run(
+        await developerToolsFolder() != nil
+    }
+
+    /// The folder `xcode-select -p` prints, which is inside Xcode or is the
+    /// Command Line Tools' own, or nil when neither is installed. Apple's git
+    /// runs the git in that folder.
+    public static func developerToolsFolder() async -> String? {
+        guard let result = await ChildProcess.run(
             "/usr/bin/xcode-select",
             arguments: ["-p"],
             environment: ProcessInfo.processInfo.environment,
             timeout: .seconds(5)
+        ), result.status == .exited(0) else { return nil }
+        let folder = String(decoding: result.output, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        return folder.isEmpty ? nil : folder
+    }
+
+    /// The Command Line Tools' folder, and the git in it. Apple's git runs
+    /// this one only while `xcode-select` points here, so with Xcode chosen
+    /// it's a git of its own, and it can be a different version.
+    public static let commandLineToolsFolder = "/Library/Developer/CommandLineTools"
+    public static let commandLineToolsGit = commandLineToolsFolder + "/usr/bin/git"
+
+    /// Finds every git where `locate` looks, in the same order, and asks each
+    /// for its version, all at once. Setup and Settings list them, so that
+    /// someone can see which one Roga runs and choose another.
+    ///
+    /// The Command Line Tools' own git comes last, when it's there and Apple's
+    /// git runs another one, since it's a git people have without knowing.
+    /// Apple's git is only run when the developer tools are installed, as in
+    /// `locate`.
+    public static func survey(
+        searchPath: String,
+        wellKnownDirectories: [String] = homebrewDirectories,
+        developerToolsGit: String = developerToolsGit,
+        commandLineToolsGit: String = commandLineToolsGit,
+        developerToolsFolder: @escaping @Sendable () async -> String? = { await developerToolsFolder() },
+        inheritedEnvironment: [String: String] = ProcessInfo.processInfo.environment
+    ) async -> GitSurvey {
+        let environment = Git.environment(inheriting: inheritedEnvironment, searchPath: searchPath)
+        let toolsFolder = await developerToolsFolder()
+        var wellKnown = (wellKnownDirectories + [(developerToolsGit as NSString).deletingLastPathComponent])
+            .map { ($0 as NSString).appendingPathComponent("git") }
+        // The tools' folder is three levels above their git, which is in
+        // `usr/bin`. While Apple's git runs that one, it's the same git.
+        let extraTools = (0..<3).reduce(commandLineToolsGit) { path, _ in (path as NSString).deletingLastPathComponent }
+        let applesGitRunsTheExtra = toolsFolder.map { realPath($0) == realPath(extraTools) } ?? false
+        if !applesGitRunsTheExtra { wellKnown.append(commandLineToolsGit) }
+
+        let resolvedDeveloperToolsGit = realPath(developerToolsGit)
+        var developerToolsMissing = false
+        let candidates = ExecutableSearch.candidates(named: ["git"], searchPath: searchPath, wellKnown: wellKnown).filter { candidate in
+            guard realPath(candidate) == resolvedDeveloperToolsGit, toolsFolder == nil else { return true }
+            developerToolsMissing = true
+            return false
+        }
+        let versions = await withTaskGroup(of: (Int, GitVersion?).self) { group in
+            for (index, candidate) in candidates.enumerated() {
+                group.addTask { (index, await readVersion(of: candidate, environment: environment)) }
+            }
+            var versions = [GitVersion?](repeating: nil, count: candidates.count)
+            for await (index, version) in group {
+                versions[index] = version
+            }
+            return versions
+        }
+        return GitSurvey(
+            searchPath: searchPath,
+            copies: zip(candidates, versions).map { FoundGit(executable: $0, version: $1) },
+            developerToolsMissing: developerToolsMissing,
+            developerToolsFolder: toolsFolder,
+            firstInPath: ExecutableSearch.candidates(named: ["git"], searchPath: searchPath, wellKnown: []).first
         )
-        return result?.status == .exited(0)
+    }
+
+    /// The command that offers to install the Command Line Tools, which is
+    /// what running Apple's git without them does.
+    public static let developerToolsInstallCommand = ["/usr/bin/xcode-select", "--install"]
+
+    /// Opens Apple's installer for the Command Line Tools, and returns once
+    /// its window is up, long before anything is installed.
+    @concurrent
+    public static func offerDeveloperTools() async {
+        _ = await ChildProcess.run(
+            developerToolsInstallCommand[0],
+            arguments: Array(developerToolsInstallCommand.dropFirst()),
+            environment: ProcessInfo.processInfo.environment,
+            timeout: .seconds(10)
+        )
     }
 
     static func readVersion(of executable: String, environment: [String: String]) async -> GitVersion? {
@@ -157,6 +245,63 @@ public struct GitInstallation: Sendable, Hashable {
     static func realPath(_ path: String) -> String {
         ExecutableSearch.realPath(path)
     }
+}
+
+/// A git Roga found on this Mac, whether or not it can use it.
+public struct FoundGit: Sendable, Hashable {
+    /// The path it was found at, which may be a symbolic link.
+    public var executable: String
+    /// The version, or nil when running `git version` failed.
+    public var version: GitVersion?
+
+    public init(executable: String, version: GitVersion?) {
+        self.executable = executable
+        self.version = version
+    }
+
+    /// Whether it's at least the minimum version (decision 8).
+    public var isUsable: Bool { version?.isSupported == true }
+}
+
+/// Every git Roga found, in the order it looks for one, so that setup and
+/// Settings can list them and say which one Roga uses by itself.
+public struct GitSurvey: Sendable, Hashable {
+    /// The `PATH` that was searched, which the chosen git gets too.
+    public var searchPath: String
+    /// Whether `searchPath` came from the login shell. When the shell didn't
+    /// say, it's the `PATH` Roga started with.
+    public var readFromLoginShell = true
+    public var copies: [FoundGit]
+    /// Whether Apple's git was left out, because neither Xcode nor the Command
+    /// Line Tools are installed and running it would offer to install them.
+    public var developerToolsMissing: Bool
+    /// The folder Apple's git runs its git from, as `xcode-select -p` prints
+    /// it, or nil when the developer tools aren't installed.
+    public var developerToolsFolder: String?
+    /// The git a terminal runs, which is the first one in `PATH`, whether or
+    /// not Roga can use it, or nil when `PATH` has none.
+    public var firstInPath: String?
+
+    public init(
+        searchPath: String,
+        copies: [FoundGit],
+        developerToolsMissing: Bool = false,
+        developerToolsFolder: String? = nil,
+        firstInPath: String? = nil
+    ) {
+        self.searchPath = searchPath
+        self.copies = copies
+        self.developerToolsMissing = developerToolsMissing
+        self.developerToolsFolder = developerToolsFolder
+        self.firstInPath = firstInPath
+    }
+
+    /// The git Roga uses when nobody chose one: the first it can use, as in
+    /// `GitInstallation.locate`.
+    public var recommended: FoundGit? {
+        copies.first(where: \.isUsable)
+    }
+
 }
 
 /// Why Roga can't use any git.

@@ -76,3 +76,4 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [66](0066-sentence-case-branch-icons-and-the-value-on-a-row.md) | Sentence case, branch icons and the value on a row | Accepted |
 | [67](0067-add-and-remove-remotes-in-the-refs-panel.md) | Add and remove remotes in the refs panel | Accepted |
 | [68](0068-mark-an-agents-commands-with-an-orange-line-rather-than-sparkles.md) | Mark an agent's commands with an orange line, rather than sparkles | Accepted |
+| [69](0069-set-roga-up-in-the-whole-window-the-first-time-it-runs.md) | Set Roga up in the whole window, the first time it runs | Accepted |

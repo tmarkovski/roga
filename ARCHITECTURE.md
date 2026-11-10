@@ -55,7 +55,7 @@ roga/
 │   │   │       └── PatchParser.swift       the hunks that diff-tree -p prints
 │   │   ├── GitRunner/
 │   │   │   ├── Git.swift               running a command, which every git command goes through
-│   │   │   ├── GitInstallation.swift   finding git and checking its version
+│   │   │   ├── GitInstallation.swift   finding git and checking its version, and listing every git for setup and Settings
 │   │   │   ├── GitVersion.swift        reading git version and the 2.44 minimum
 │   │   │   ├── LoginShellPath.swift    the PATH from the user's login shell
 │   │   │   ├── ExecutableSearch.swift  finding a program in PATH and in well-known folders
@@ -105,7 +105,7 @@ roga/
 │   │   │   └── AgentSessions.swift     what the events say each session is doing
 │   │   ├── AgentEngine/                decision 41
 │   │   │   ├── AgentKind.swift         Claude Code and Codex
-│   │   │   ├── AgentInstallation.swift finding an agent and its version
+│   │   │   ├── AgentInstallation.swift finding an agent and its version, and listing every copy of it
 │   │   │   ├── HookPlugin.swift        the roga-hooks plugin's files
 │   │   │   ├── HookInstaller.swift     installing and removing it with each agent's commands, and its status
 │   │   │   ├── ClaudeSessionList.swift reading claude agents --json
@@ -139,10 +139,10 @@ roga/
 │   │   │   ├── Workspace/              windows, finding git, the sidebar, the saved list of repositories and the update notice
 │   │   │   ├── Repository/             the repository model, panels, the refs panel, commit details
 │   │   │   ├── Dialogs/                the sheet for everything Roga asks or reports, with its command (decision 29)
-│   │   │   ├── House/                  the house's joints, its animations and drawing them (decision 21)
+│   │   │   ├── House/                  the house's joints, its animations and drawing them (decision 21), and the wordmark
 │   │   │   ├── Commands/               menus and keyboard shortcuts
 │   │   │   ├── Settings/
-│   │   │   └── Onboarding/             missing or outdated git
+│   │   │   └── Setup/                  the first run's screens, and a program's row with its menu of copies (decision 69)
 │   │   └── roga-bench/                 benchmarks that use the real modules
 │   └── Tests/
 │       ├── GitCoreTests/
@@ -392,9 +392,11 @@ At launch, `GitInstallation` looks for git in this order:
 3. Homebrew's locations, `/opt/homebrew/bin` and `/usr/local/bin`
 4. `/usr/bin/git`
 
-Roga runs `git version` for each git it finds and uses the first one that's 2.44 or later (decision 8). An older git is passed over rather than ending the search. A Mac often has an old git first on the `PATH` and a newer one elsewhere, and decision 8 only asks people to upgrade when their only git is too old. Settings shows which git Roga uses, its version, and the gits it passed over. When no git is new enough, Roga explains what to do instead of opening repositories.
+Roga runs `git version` for each git it finds and uses the first one that's 2.44 or later (decision 8). An older git is passed over rather than ending the search. A Mac often has an old git first on the `PATH` and a newer one elsewhere, and decision 8 only asks people to upgrade when their only git is too old. When no git is new enough, Roga explains what to do instead of opening repositories.
 
 Wherever `/usr/bin/git` comes up in the search, Roga runs it only if `xcode-select -p` finds the developer tools, because otherwise running it opens the dialog that offers to install them. Roga recognizes that git by its real path, so a folder in the `PATH` that leads to it through a symbolic link is caught too.
+
+Once git is found, `GitInstallation.survey` asks every git in those places for its version, all at once, and adds the Command Line Tools' own git when `/usr/bin/git` runs another ([decision 69](docs/decisions/0069-set-roga-up-in-the-whole-window-the-first-time-it-runs.md)). `GitProvider` keeps that list for setup and for Settings › Git, where each git is an item in a menu on git's row. Choosing one saves its path, which is the path of step 1 from then on. The provider goes over to it at once, but the repositories in the sidebar were opened with one git and keep it until Roga quits, so a git chosen in Settings takes over the next time Roga opens, and one chosen in setup is the one they open with. `AgentInstallation.survey` lists every copy of an agent in the same way, for the menu on its row.
 
 ## Testing
 

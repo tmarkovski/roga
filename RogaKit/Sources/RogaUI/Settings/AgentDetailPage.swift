@@ -100,37 +100,38 @@ struct AgentDetailPage: View {
                     .foregroundStyle(detail.isWarning ? AgentColors.warn : SettingsColors.note)
             }
         } control: {
-            HStack(spacing: 8) {
-                if program?.isEmpty == false {
-                    Button("Use the One Roga Finds") {
-                        program = nil
-                    }
-                    .buttonStyle(.settings())
-                }
+            // The same menu as on the agent's row in setup: every copy Roga
+            // found, and Choose Another… for one it didn't. Roga looks at
+            // what was chosen as soon as it's stored, and says on this page
+            // if it can't use it.
+            if let menu = ProgramMenu.agent(kind, agents: agents, choose: { program = $0 }) {
+                ProgramSelect(title: Self.selectTitle(lookup: agents.lookups[kind], program: program), menu: menu)
+            } else {
                 Button("Choose…", action: choose)
                     .buttonStyle(.settings())
+                    .disabled(agents.isLooking)
             }
         }
     }
 
-    /// Asks for the program in an open panel. Roga looks at what was chosen
-    /// as soon as it's stored, and says on this page if it can't use it.
+    /// Asks for the program in an open panel, before Roga has a list of
+    /// copies to show.
     private func choose() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = true
-        panel.canChooseDirectories = false
-        panel.allowsMultipleSelection = false
-        // The Codex inside the ChatGPT app is inside its bundle, and Claude
-        // Code's is in a hidden folder.
-        panel.treatsFilePackagesAsDirectories = true
-        panel.showsHiddenFiles = true
-        panel.prompt = "Choose"
-        panel.message = "Choose the \(kind.executableName) program for Roga to run."
-        if let current = agents.installation(kind)?.executable {
-            panel.directoryURL = URL(filePath: (current as NSString).deletingLastPathComponent, directoryHint: .isDirectory)
+        if let path = ProgramPanel.choose(kind.executableName, startingAt: agents.installation(kind)?.executable) {
+            program = path
         }
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        program = url.path(percentEncoded: false)
+    }
+
+    /// What the Program row's button says: where the copy in use is from, or
+    /// that there's none.
+    static func selectTitle(lookup: AgentLookup?, program: String?, home: String = NSHomeDirectory()) -> String {
+        if case .found(let installation)? = lookup {
+            return ProgramSource.of(installation.executable, home: home).name
+        }
+        if let program, !program.isEmpty {
+            return ProgramSource.of(program, home: home).name
+        }
+        return "None"
     }
 
     // MARK: How Roga runs it

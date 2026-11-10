@@ -5,42 +5,7 @@ import SwiftUI
 /// docs/design/branding/roga-house-body.svg. Its windows are holes, so fill it
 /// with the even-odd rule.
 nonisolated enum HouseOutline {
-    static let body: Path = {
-        var path = Path()
-        let words = data.split(separator: " ")
-        var index = words.startIndex
-        func point() -> CGPoint {
-            defer { index += 2 }
-            return CGPoint(x: Double(words[index])!, y: Double(words[index + 1])!)
-        }
-        // Each of these commands is followed by as many points as it has room
-        // for, because the file leaves out letters that repeat.
-        var command = "M"
-        while index < words.endIndex {
-            if let first = words[index].first, first.isLetter {
-                command = String(words[index])
-                index += 1
-                if command == "Z" {
-                    path.closeSubpath()
-                    continue
-                }
-            }
-            switch command {
-            case "M":
-                path.move(to: point())
-                command = "L"
-            case "L":
-                path.addLine(to: point())
-            case "C":
-                let control1 = point()
-                let control2 = point()
-                path.addCurve(to: point(), control1: control1, control2: control2)
-            default:
-                preconditionFailure("The outline only uses M, L, C and Z.")
-            }
-        }
-        return path
-    }()
+    static let body = OutlinePath.path(from: data)
 
     private static let data = """
         M 652.79 509.23 L 635.65 505.99 C 601.04 499.46 567.46 492.94 565.84 492.44 L 517.23 480.68 C 516.34 480.18 \

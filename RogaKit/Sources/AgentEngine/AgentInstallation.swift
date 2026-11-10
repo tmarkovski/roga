@@ -165,6 +165,83 @@ public enum AgentLookup: Sendable, Hashable {
     case configuredUnusable(SkippedAgent)
 }
 
+/// Every copy of an agent's tool that Roga found, in the order it looks, so
+/// that setup and Settings can list them and say which one Roga uses by
+/// itself.
+public struct AgentSurvey: Sendable, Hashable {
+    /// One copy, and whether Roga can use it.
+    public struct Copy: Sendable, Hashable {
+        public var executable: String
+        /// The version, or nil for a copy that didn't print one Roga could read.
+        public var version: AgentVersion?
+        /// Why Roga can't use it, or nil when it can.
+        public var skipped: SkippedAgent?
+
+        public init(executable: String, version: AgentVersion?, skipped: SkippedAgent? = nil) {
+            self.executable = executable
+            self.version = version
+            self.skipped = skipped
+        }
+
+        public var isUsable: Bool { skipped == nil && version != nil }
+    }
+
+    public var kind: AgentKind
+    public var copies: [Copy]
+    /// The `PATH` that was searched, before the agent's well-known places.
+    public var searchPath: String
+    /// The copy a terminal runs, which is the first one in `PATH`, whether or
+    /// not Roga can use it, or nil when `PATH` has none.
+    public var firstInPath: String?
+
+    public init(kind: AgentKind, copies: [Copy], searchPath: String = "", firstInPath: String? = nil) {
+        self.kind = kind
+        self.copies = copies
+        self.searchPath = searchPath
+        self.firstInPath = firstInPath
+    }
+
+    /// The usable copies, in the order Roga found them.
+    public var usable: [FoundAgent] {
+        copies.compactMap { copy in
+            copy.isUsable ? copy.version.map { FoundAgent(executable: copy.executable, version: $0) } : nil
+        }
+    }
+
+    /// The copies Roga can't use, in the order it found them.
+    public var skipped: [SkippedAgent] {
+        copies.compactMap(\.skipped)
+    }
+
+    /// The copy Roga uses when nobody chose one: the first usable one for
+    /// Claude Code and the newest for Codex, as `AgentKind.prefersNewest`
+    /// explains.
+    public var recommended: FoundAgent? {
+        let usable = usable
+        guard var chosen = usable.first else { return nil }
+        if kind.prefersNewest {
+            // The first of the newest, so that a tie goes to PATH order.
+            for found in usable where found.version > chosen.version {
+                chosen = found
+            }
+        }
+        return chosen
+    }
+
+    /// What looking for the agent comes to when nobody chose a program.
+    public var lookup: AgentLookup {
+        guard !copies.isEmpty else { return .notFound }
+        guard let chosen = recommended else { return .unusable(skipped) }
+        return .found(AgentInstallation(
+            kind: kind,
+            executable: chosen.executable,
+            version: chosen.version,
+            others: usable.filter { $0.executable != chosen.executable },
+            skipped: skipped
+        ))
+    }
+}
+
 extension AgentInstallation {
     /// How long a copy has to print its version. A tool that needs longer is
     /// probably waiting for something, such as a login prompt it can't show.
@@ -227,12 +304,40 @@ extension AgentInstallation {
             }
         }
 
+        return await survey(kind, searchPath: searchPath, programs: programs, home: home, wellKnown: wellKnown, timeLimit: timeLimit).lookup
+    }
+
+    /// Finds every copy of an agent's tool where `locate` looks, in the same
+    /// order, and asks each for its version, all at once since each takes a
+    /// moment to start.
+    @concurrent
+    public static func survey(
+        _ kind: AgentKind,
+        searchPath: String,
+        programs: Programs,
+        home: String = NSHomeDirectory(),
+        wellKnown: [String]? = nil
+    ) async -> AgentSurvey {
+        await survey(kind, searchPath: searchPath, programs: programs, home: home, wellKnown: wellKnown, timeLimit: probeTimeLimit)
+    }
+
+    /// `survey`, with a time limit that tests can shorten.
+    @concurrent
+    static func survey(
+        _ kind: AgentKind,
+        searchPath: String,
+        programs: Programs,
+        home: String,
+        wellKnown: [String]?,
+        timeLimit: Duration
+    ) async -> AgentSurvey {
         let candidates = ExecutableSearch.candidates(
             named: [kind.executableName],
             searchPath: searchPath,
             wellKnown: wellKnown ?? kind.wellKnownPaths(home: home)
         )
-        guard !candidates.isEmpty else { return .notFound }
+        let firstInPath = ExecutableSearch.candidates(named: [kind.executableName], searchPath: searchPath, wellKnown: []).first
+        guard !candidates.isEmpty else { return AgentSurvey(kind: kind, copies: [], searchPath: searchPath, firstInPath: firstInPath) }
 
         let results = await withTaskGroup(of: (Int, Probe).self) { group in
             for (index, candidate) in candidates.enumerated() {
@@ -247,28 +352,16 @@ extension AgentInstallation {
             return results.compactMap { $0 }
         }
 
-        var usable: [FoundAgent] = []
-        var skipped: [SkippedAgent] = []
-        for (candidate, result) in zip(candidates, results) {
+        let copies = zip(candidates, results).map { candidate, result in
             switch result {
-            case .usable(let version): usable.append(FoundAgent(executable: candidate, version: version))
-            case .skipped(let reason): skipped.append(reason)
+            case .usable(let version):
+                return AgentSurvey.Copy(executable: candidate, version: version)
+            case .skipped(let skipped):
+                let version: AgentVersion? = if case .tooOld(let version) = skipped.reason { version } else { nil }
+                return AgentSurvey.Copy(executable: candidate, version: version, skipped: skipped)
             }
         }
-        guard var chosen = usable.first else { return .unusable(skipped) }
-        if kind.prefersNewest {
-            // The first of the newest, so that a tie goes to PATH order.
-            for found in usable where found.version > chosen.version {
-                chosen = found
-            }
-        }
-        return .found(AgentInstallation(
-            kind: kind,
-            executable: chosen.executable,
-            version: chosen.version,
-            others: usable.filter { $0.executable != chosen.executable },
-            skipped: skipped
-        ))
+        return AgentSurvey(kind: kind, copies: copies, searchPath: searchPath, firstInPath: firstInPath)
     }
 
     /// What asking one copy for its version came to.

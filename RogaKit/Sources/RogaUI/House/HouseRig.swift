@@ -149,6 +149,20 @@ nonisolated struct HouseLeg: Equatable, Sendable {
         leg.toes = toes.map { $0.applying(transform) }
         return leg
     }
+
+    /// This leg part of the way to another, with each joint going straight
+    /// to where it is in the other.
+    func mixed(with other: HouseLeg, by amount: Double) -> HouseLeg {
+        HouseLeg(
+            hip: Tween.mix(hip, other.hip, amount),
+            knee: Tween.mix(knee, other.knee, amount),
+            hock: Tween.mix(hock, other.hock, amount),
+            foot: HouseFoot(
+                ankle: Tween.mix(ankle, other.ankle, amount),
+                toes: zip(toes, other.toes).map { Tween.mix($0, $1, amount) }
+            )
+        )
+    }
 }
 
 /// The whole house at one moment.
@@ -198,6 +212,24 @@ nonisolated struct HousePose: Equatable, Sendable {
         pose.frontLeg = frontLeg.applying(transform)
         return pose
     }
+
+    /// This pose part of the way to another, which is how the house gets
+    /// from one motion into the next without jumping: none of the way at 0
+    /// and all of it at 1.
+    func mixed(with other: HousePose, by amount: Double) -> HousePose {
+        HousePose(
+            body: HouseBody(
+                lean: Tween.mix(body.lean, other.body.lean, amount),
+                offset: CGVector(
+                    dx: Tween.mix(body.offset.dx, other.body.offset.dx, amount),
+                    dy: Tween.mix(body.offset.dy, other.body.offset.dy, amount)
+                )
+            ),
+            rearLeg: rearLeg.mixed(with: other.rearLeg, by: amount),
+            frontLeg: frontLeg.mixed(with: other.frontLeg, by: amount),
+            floorTravel: Tween.mix(floorTravel, other.floorTravel, amount)
+        )
+    }
 }
 
 /// How values get from one to another.
@@ -205,6 +237,10 @@ nonisolated enum Tween {
     /// `start` at 0, `end` at 1, and in a straight line between.
     static func mix(_ start: Double, _ end: Double, _ amount: Double) -> Double {
         start + (end - start) * amount
+    }
+
+    static func mix(_ start: CGPoint, _ end: CGPoint, _ amount: Double) -> CGPoint {
+        CGPoint(x: mix(start.x, end.x, amount), y: mix(start.y, end.y, amount))
     }
 
     /// From 0 to 1, leaving and arriving gently.
