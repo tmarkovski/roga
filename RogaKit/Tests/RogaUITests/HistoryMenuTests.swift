@@ -282,6 +282,42 @@ struct HistoryMenuTests {
         #expect(titles(try #require(submenu("Copy", in: all))) == ["Hash", "Subject", "Tag name"])
     }
 
+    @Test func aTagIsPushedFromRemoteToWhereItWouldGo() throws {
+        var situation = situation
+        situation.tagRemote = "origin"
+        var pushed = 0
+        var actions = HistoryMenu.Actions()
+        actions.pushTag = { pushed += 1 }
+        let all = entries(target(ref: "refs/tags/v1"), situation, actions: actions)
+        #expect(titles(all).suffix(3) == ["Create ▸", "Remote ▸", "Copy ▸"])
+        let remote = try #require(submenu("Remote", in: all))
+        #expect(titles(remote) == ["Push to origin"])
+        for case let .command(_, _, _, _, action) in remote { action() }
+        #expect(pushed == 1)
+    }
+
+    @Test func aTagWithNoRemoteToGoToHasNoRemoteRow() {
+        #expect(submenu("Remote", in: entries(target(ref: "refs/tags/v1"), situation)) == nil)
+    }
+
+    @Test func onlyATagIsPushedAsATag() {
+        var situation = situation
+        situation.tagRemote = "origin"
+        #expect(submenu("Remote", in: entries(target(), situation)) == nil)
+        #expect(submenu("Remote", in: entries(target(ref: "refs/remotes/origin/feature"), situation)) == nil)
+    }
+
+    @Test func aTagsRemoteRowWaitsForWhatsRunning() {
+        var situation = situation
+        situation.tagRemote = "origin"
+        situation.isBusy = true
+        let all = entries(target(ref: "refs/tags/v1"), situation)
+        let isEnabled = all.compactMap { entry -> Bool? in
+            if case let .submenu(title, _, enabled, _) = entry, title.plain == "Remote" { enabled } else { nil }
+        }
+        #expect(isEnabled == [false])
+    }
+
     // MARK: What's in the groups
 
     @Test func createOffersABranchAWorktreeAndATag() throws {

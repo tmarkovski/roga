@@ -28,6 +28,10 @@ enum HistoryMenu {
         var refIsLocalBranch: Bool {
             ref?.hasPrefix(Ref.branchPrefix) ?? false
         }
+
+        var refIsTag: Bool {
+            ref?.hasPrefix(Ref.tagPrefix) ?? false
+        }
     }
 
     /// What's true of the worktree when the menu opens.
@@ -54,6 +58,9 @@ enum HistoryMenu {
         var status: BranchStatus?
         /// The repository's remotes, which Set upstream chooses from.
         var remotes: [String] = []
+        /// Where the target's tag would be pushed, when it's a tag and there's a
+        /// remote to push it to.
+        var tagRemote: String?
     }
 
     /// What the rows do. Each is about the target the menu was made for, because
@@ -78,6 +85,8 @@ enum HistoryMenu {
         var pushBranch: (() -> Void)?
         /// Fast-forwards the target's branch to its upstream.
         var fastForwardBranch: () -> Void = {}
+        /// Pushes the target's tag to `Situation.tagRemote`.
+        var pushTag: () -> Void = {}
         /// Makes the target's branch push to and pull from a remote, by its name.
         var setUpstream: (String) -> Void = { _ in }
         var copy: (String) -> Void = { _ in }
@@ -208,8 +217,11 @@ enum HistoryMenu {
     }
 
     /// For a local branch other than the current one, which the title row can't
-    /// push or pull.
+    /// push or pull, and for a tag, which nothing else pushes.
     private static func remoteRows(_ target: Target, _ name: String?, _ situation: Situation, _ actions: Actions) -> [RefMenu.Entry] {
+        if target.refIsTag, let remote = situation.tagRemote {
+            return [.command("Push to \(remote)", action: actions.pushTag)]
+        }
         guard target.refIsLocalBranch, target.ref != situation.currentBranch, let name else { return [] }
         var rows: [RefMenu.Entry] = []
         let upstream = situation.relation?.upstream
@@ -305,6 +317,26 @@ extension RepositoryModel {
         return HistoryMenu.entries(for: target, in: situation, actions: actions)
     }
 
+    /// What right-clicking a tag in the refs panel offers, which is what its badge
+    /// in history offers.
+    ///
+    /// - Parameter looksForHead: Whether to find out if `HEAD` has the commit, which
+    ///   walks back from `HEAD`. Without it, Cherry-pick is offered unless the
+    ///   commit is `HEAD`'s, and its dialog says if `HEAD` has it.
+    func menuEntries(
+        forTag name: String,
+        commit: ObjectID,
+        looksForHead: Bool = true,
+        pasteboard: NSPasteboard = .general,
+        showWorktree: @escaping (String, ObjectID?) -> Void
+    ) -> [RefMenu.Entry] {
+        let target = HistoryMenu.Target(commit: commit, shortID: String(commit.hex.prefix(8)), ref: name)
+        var situation = situation(for: target)
+        situation.headContains = looksForHead ? headContains(commit: commit) : nil
+        let actions = actions(for: target, pasteboard: pasteboard, showWorktree: showWorktree)
+        return HistoryMenu.entries(for: target, in: situation, actions: actions)
+    }
+
     private func situation(for target: HistoryMenu.Target) -> HistoryMenu.Situation {
         HistoryMenu.Situation(
             currentBranch: history?.refs.currentBranch,
@@ -315,7 +347,8 @@ extension RepositoryModel {
             isRemoteCopyOfCurrentBranch: target.ref.map(isRemoteCopyOfCurrentBranch) ?? false,
             reviewBase: target.refIsBranch ? target.ref.flatMap(reviewBase(for:))?.title : nil,
             status: branch.status,
-            remotes: remoteNames
+            remotes: remoteNames,
+            tagRemote: target.refIsTag ? branch.tagRemote : nil
         )
     }
 
@@ -355,6 +388,9 @@ extension RepositoryModel {
             if let upstream {
                 actions.fastForwardBranch = { [weak self] in self?.branch.fastForward(branch: ref, toUpstream: upstream.name) }
             }
+        }
+        if let ref = target.ref, target.refIsTag, let remote = branch.tagRemote {
+            actions.pushTag = { [weak self] in self?.branch.push(tag: Ref.shortName(ref), to: remote) }
         }
         actions.copy = { text in
             pasteboard.clearContents()

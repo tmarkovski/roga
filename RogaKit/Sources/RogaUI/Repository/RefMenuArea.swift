@@ -11,6 +11,9 @@ struct RefMenuArea: NSViewRepresentable {
     var opensOnClick = false
     /// What opens the menu without a click, as VoiceOver's press does.
     var opener: RefMenuOpener?
+    /// Builds the menu as it opens, in place of `entries`, for a menu that needs
+    /// something too slow to find out whenever the row is drawn.
+    var entriesOnOpen: (() -> [RefMenu.Entry])?
 
     func makeNSView(context: Context) -> RefMenuAreaView {
         RefMenuAreaView()
@@ -18,6 +21,7 @@ struct RefMenuArea: NSViewRepresentable {
 
     func updateNSView(_ view: RefMenuAreaView, context: Context) {
         view.entries = entries
+        view.entriesOnOpen = entriesOnOpen
         view.opensOnClick = opensOnClick
         opener?.view = view
     }
@@ -35,6 +39,7 @@ final class RefMenuOpener {
 
 final class RefMenuAreaView: NSView {
     var entries: [RefMenu.Entry] = []
+    var entriesOnOpen: (() -> [RefMenu.Entry])?
     var opensOnClick = false
 
     override func hitTest(_ point: NSPoint) -> NSView? {
@@ -45,7 +50,7 @@ final class RefMenuAreaView: NSView {
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
-        RefMenu.make(entries)
+        RefMenu.make(entriesOnOpen?() ?? entries)
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -57,7 +62,7 @@ final class RefMenuAreaView: NSView {
     }
 
     fileprivate func openUnder() {
-        RefMenu.make(entries).popUp(positioning: nil, at: NSPoint(x: 0, y: -Self.gapUnderButton), in: self)
+        RefMenu.make(entriesOnOpen?() ?? entries).popUp(positioning: nil, at: NSPoint(x: 0, y: -Self.gapUnderButton), in: self)
     }
 
     private static let gapUnderButton = 4.0

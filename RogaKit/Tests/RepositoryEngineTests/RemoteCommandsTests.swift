@@ -438,6 +438,48 @@ struct RemoteCommandsTests {
         #expect(try await runGit("rev-parse", "main", in: clones.remote) == theirs)
     }
 
+    // MARK: Pushing a tag
+
+    func tags(in folder: String) async throws -> [String] {
+        try await runGit("for-each-ref", "--format=%(refname)", "refs/tags", in: folder).split(separator: "\n").map(String.init)
+    }
+
+    @Test func pushesOnlyTheTagItsAskedTo() async throws {
+        let clones = try await clones()
+        let before = try await tags(in: clones.remote)
+        let tip = try #require(ObjectID(hex: try await head(of: clones)))
+        try await clones.session.create(NewTag(name: "v0.0.1", commit: tip), in: clones.work)
+        try await runGit("tag", "v0.0.2", in: clones.work)
+        // A branch of the same name would make `git push origin v0.0.1` ambiguous.
+        try await runGit("branch", "v0.0.1", in: clones.work)
+
+        try await clones.session.push(.tag("v0.0.1", remote: "origin"), in: clones.work)
+        #expect(try await runGit("rev-parse", "refs/tags/v0.0.1", in: clones.remote) == tip.hex)
+        #expect(try await tags(in: clones.remote) == (before + ["refs/tags/v0.0.1"]).sorted())
+        #expect(try await runGit("for-each-ref", "refs/heads/v0.0.1", in: clones.remote).isEmpty)
+    }
+
+    @Test func gitRefusesATagTheRemoteHasOnAnotherCommit() async throws {
+        let clones = try await clones()
+        let theirs = try await commit("Theirs", in: clones.other)
+        try await runGit("tag", "v0.0.1", in: clones.other)
+        try await runGit("push", "--quiet", "origin", "refs/tags/v0.0.1", in: clones.other)
+        try await runGit("tag", "v0.0.1", in: clones.work)
+
+        let error = await #expect(throws: GitError.self) {
+            try await clones.session.push(.tag("v0.0.1", remote: "origin"), in: clones.work)
+        }
+        #expect(error?.message.contains("already exists") == true)
+        #expect(try await runGit("rev-parse", "refs/tags/v0.0.1", in: clones.remote) == theirs)
+    }
+
+    @Test func aTagTheRemoteHasOnTheSameCommitIsUpToDate() async throws {
+        let clones = try await clones()
+        try await runGit("tag", "v0.0.1", in: clones.work)
+        try await runGit("push", "--quiet", "origin", "refs/tags/v0.0.1", in: clones.work)
+        try await clones.session.push(.tag("v0.0.1", remote: "origin"), in: clones.work)
+    }
+
     // MARK: New branches
 
     @Test func createsABranchAndSwitchesToIt() async throws {

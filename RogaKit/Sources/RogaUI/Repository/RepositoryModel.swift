@@ -251,6 +251,7 @@ final class RepositoryModel {
         branch.isCheckingOut = { [weak self] in self?.checkout != nil }
         branch.lookAgain = { [weak self] in self?.lookAgain() }
         branch.remotesChanged = { [weak self] in self?.updateRefRelations(head: self?.history?.refs.head) }
+        branch.remoteNames = { [weak self] in self?.remoteNames ?? [] }
         branch.showConflicts = { [weak self] in
             guard let self, hasWorkingTreeRow else { return }
             selectRow(0)
@@ -810,6 +811,13 @@ final class RepositoryModel {
     func headContains(row: Int) -> Bool? {
         guard let history, let head = history.head, row >= rowOffset, row - rowOffset < history.rows.count else { return nil }
         return history.graph.reaches(history.rows[row - rowOffset], from: head, visitLimit: 20_000)
+    }
+
+    /// Whether `HEAD` has a commit, when history has it and that doesn't take long
+    /// to find out.
+    func headContains(commit id: ObjectID) -> Bool? {
+        guard let history, let head = history.head, let position = history.graph.position(of: id) else { return nil }
+        return history.graph.reaches(position, from: head, visitLimit: 20_000)
     }
 
     private func run(_ commitSwitch: CommitSwitch) async {

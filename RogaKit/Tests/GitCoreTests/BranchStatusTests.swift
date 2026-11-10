@@ -36,6 +36,23 @@ struct BranchStatusTests {
         #expect(BranchStatus(branch: "refs/heads/agent").push == nil)
     }
 
+    /// By its full name, so that a branch called the same can't go instead, and
+    /// with no `--tags`, so that no other tag goes along with it.
+    @Test func aTagIsPushedOnItsOwnByItsFullName() {
+        #expect(Push.tag("v0.0.1", remote: "origin").arguments == ["push", "origin", "refs/tags/v0.0.1"])
+    }
+
+    @Test func aTagGoesWhereTheCurrentBranchPushes() {
+        #expect(Push.remote(forTagWith: "fork", among: ["fork", "origin"]) == "fork")
+    }
+
+    @Test func withHeadDetachedATagGoesToOriginOrTheOnlyRemote() {
+        #expect(Push.remote(forTagWith: nil, among: ["fork", "origin"]) == "origin")
+        #expect(Push.remote(forTagWith: nil, among: ["fork"]) == "fork")
+        #expect(Push.remote(forTagWith: nil, among: ["fork", "upstream"]) == nil)
+        #expect(Push.remote(forTagWith: nil, among: []) == nil)
+    }
+
     @Test func aNewWorktreeGoesNextToThisOne() {
         #expect(NewBranch(name: "fix-retry").arguments == ["switch", "-c", "fix-retry"])
         #expect(NewBranch(name: "tm/fix", inNewWorktree: true).arguments == ["worktree", "add", "-b", "tm/fix", "../tm-fix"])
