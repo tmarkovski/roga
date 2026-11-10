@@ -142,7 +142,7 @@ roga/
 │   │   │   ├── House/                  the house's joints, its animations and drawing them (decision 21), and the wordmark
 │   │   │   ├── Commands/               menus and keyboard shortcuts
 │   │   │   ├── Settings/
-│   │   │   └── Setup/                  the first run's screens, and a program's row with its menu of copies (decision 65)
+│   │   │   └── Setup/                  the first run's screens, and a program's row with its menu of copies (decision 69)
 │   │   └── roga-bench/                 benchmarks that use the real modules
 │   └── Tests/
 │       ├── GitCoreTests/
@@ -396,7 +396,7 @@ Roga runs `git version` for each git it finds and uses the first one that's 2.44
 
 Wherever `/usr/bin/git` comes up in the search, Roga runs it only if `xcode-select -p` finds the developer tools, because otherwise running it opens the dialog that offers to install them. Roga recognizes that git by its real path, so a folder in the `PATH` that leads to it through a symbolic link is caught too.
 
-Once git is found, `GitInstallation.survey` asks every git in those places for its version, all at once, and adds the Command Line Tools' own git when `/usr/bin/git` runs another ([decision 65](docs/decisions/0065-set-roga-up-in-the-whole-window-the-first-time-it-runs.md)). `GitProvider` keeps that list for setup and for Settings › Git, where each git is an item in a menu on git's row. Choosing one saves its path, which is the path of step 1 from then on. The provider goes over to it at once, but the repositories in the sidebar were opened with one git and keep it until Roga quits, so a git chosen in Settings takes over the next time Roga opens, and one chosen in setup is the one they open with. `AgentInstallation.survey` lists every copy of an agent in the same way, for the menu on its row.
+Once git is found, `GitInstallation.survey` asks every git in those places for its version, all at once, and adds the Command Line Tools' own git when `/usr/bin/git` runs another ([decision 69](docs/decisions/0069-set-roga-up-in-the-whole-window-the-first-time-it-runs.md)). `GitProvider` keeps that list for setup and for Settings › Git, where each git is an item in a menu on git's row. Choosing one saves its path, which is the path of step 1 from then on. The provider goes over to it at once, but the repositories in the sidebar were opened with one git and keep it until Roga quits, so a git chosen in Settings takes over the next time Roga opens, and one chosen in setup is the one they open with. `AgentInstallation.survey` lists every copy of an agent in the same way, for the menu on its row.
 
 ## Testing
 
