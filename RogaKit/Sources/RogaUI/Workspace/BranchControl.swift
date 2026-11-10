@@ -657,17 +657,24 @@ private struct NewBranchPopover: View {
 }
 
 /// Puts a new tag on a commit someone chose in a menu, and shows the exact command
-/// as it's typed.
+/// as it's typed. It can push the tag too, which starts unchecked every time,
+/// because pushing a tag can start a release.
 private struct NewTagPopover: View {
     let branch: BranchModel
     let start: BranchModel.NewRefStart
     @State private var name = ""
+    @State private var pushes = false
     @State private var refusal: String?
     @State private var isCreating = false
     @FocusState private var isNameFocused: Bool
 
     private var newTag: NewTag {
         NewTag(name: name.trimmingCharacters(in: .whitespaces), commit: start.commit)
+    }
+
+    /// Where the tag goes once it's made, if it's to be pushed.
+    private var pushRemote: String? {
+        pushes ? branch.tagRemote : nil
     }
 
     var body: some View {
@@ -681,12 +688,23 @@ private struct NewTagPopover: View {
                 .focused($isNameFocused)
                 .onSubmit(create)
                 .onChange(of: name) { refusal = nil }
-            Text(BranchModel.command(newTag.arguments))
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .textSelection(.enabled)
+            if let remote = branch.tagRemote {
+                Toggle("Push to \(remote)", isOn: $pushes)
+                    .toggleStyle(.checkbox)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(BranchModel.command(newTag.arguments))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                if let pushRemote {
+                    Text(BranchModel.command(Push.tag(newTag.name, remote: pushRemote).arguments))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
+            .font(.system(size: 11, design: .monospaced))
+            .foregroundStyle(.secondary)
+            .textSelection(.enabled)
             if let refusal {
                 Text(refusal)
                     .font(.system(size: 12))
@@ -703,7 +721,7 @@ private struct NewTagPopover: View {
         guard !newTag.name.isEmpty, !isCreating else { return }
         isCreating = true
         Task {
-            refusal = await branch.create(newTag)
+            refusal = await branch.create(newTag, pushingTo: pushRemote)
             isCreating = false
         }
     }

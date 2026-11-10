@@ -127,6 +127,12 @@ public enum Push: Sendable, Hashable {
     /// A branch other than the one checked out, to a remote that doesn't have it
     /// yet, which becomes its upstream.
     case otherBranchFirstTime(String, remote: String)
+    /// One tag, by its short name, and no other. `--tags` would push every tag,
+    /// and `--follow-tags` leaves lightweight tags behind, which is what Roga
+    /// makes. The full name keeps git from pushing a branch with the same name
+    /// instead. git refuses when the remote has a tag of that name on another
+    /// commit, and says it's up to date when it's on the same one.
+    case tag(String, remote: String)
 
     public var arguments: [String] {
         switch self {
@@ -135,7 +141,24 @@ public enum Push: Sendable, Hashable {
         case .forceWithLease: ["push", "--force-with-lease", "--force-if-includes"]
         case .otherBranch(let branch, let remote, let onRemote): ["push", remote, onRemote.map { "\(branch):\($0)" } ?? branch]
         case .otherBranchFirstTime(let branch, let remote): ["push", "--set-upstream", remote, branch]
+        case .tag(let name, let remote): ["push", remote, Ref.tagPrefix + name]
         }
+    }
+
+    /// The remote a tag is pushed to. That's where the current branch pushes, which
+    /// follows `branch.<name>.pushRemote` and `remote.pushDefault`, as a branch's
+    /// first push does. With `HEAD` detached there's no branch to go by, so it's
+    /// `origin`, or the only remote there is.
+    ///
+    /// - Parameters:
+    ///   - branchPushRemote: Where the current branch pushes, or nil when `HEAD`
+    ///     is detached. `BranchStatus.pushRemote` is only ever a remote that exists.
+    ///   - remotes: The names of the repository's remotes.
+    /// - Returns: The remote, or nil when there's none to choose.
+    public static func remote(forTagWith branchPushRemote: String?, among remotes: [String]) -> String? {
+        if let branchPushRemote { return branchPushRemote }
+        if remotes.contains("origin") { return "origin" }
+        return remotes.count == 1 ? remotes[0] : nil
     }
 }
 

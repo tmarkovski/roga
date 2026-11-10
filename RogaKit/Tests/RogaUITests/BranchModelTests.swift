@@ -4,6 +4,7 @@ import Foundation
 import GitCore
 import GitRunner
 import HistoryUI
+import MenuUI
 import RepositoryEngine
 import SwiftUI
 import TestSupport
@@ -1252,6 +1253,119 @@ struct BranchModelTests {
         await model.branch.running?.value
         #expect(model.branch.forcePush == nil)
         #expect(try await git("rev-parse", "main", in: clones.remote) == mine)
+    }
+
+    // MARK: Pushing a tag
+
+    /// Puts `v0.0.1` on the remote from `other`, on a commit `work` hasn't got.
+    func pushTagFromOther(_ clones: Clones) async throws {
+        try await commit("Theirs", in: clones.other)
+        try await git("tag", "v0.0.1", in: clones.other)
+        try await git("push", "--quiet", "origin", "refs/tags/v0.0.1", in: clones.other)
+    }
+
+    /// A command in a menu, by the titles of the submenus it's in and its own.
+    func command(_ path: String..., in entries: [RefMenu.Entry]) -> (() -> Void)? {
+        var entries = entries
+        for title in path.dropLast() {
+            guard let inner = entries.lazy.compactMap({ entry -> [RefMenu.Entry]? in
+                if case let .submenu(name, _, _, inner) = entry, name.plain == title { inner } else { nil }
+            }).first else { return nil }
+            entries = inner
+        }
+        return entries.lazy.compactMap { entry -> (() -> Void)? in
+            if case let .command(name, _, _, _, action) = entry, name.plain == path.last { action } else { nil }
+        }.first
+    }
+
+    @Test func pushesATagFromItsMenuInTheRefsPanelAndSaysSo() async throws {
+        let clones = try await clones()
+        try await git("tag", "v0.0.1", in: clones.work)
+        let tip = try await git("rev-parse", "HEAD", in: clones.work)
+        let model = model(clones, fetches: false)
+        await model.appear()
+
+        let entries = model.menuEntries(forTag: "refs/tags/v0.0.1", commit: try #require(ObjectID(hex: tip))) { _, _ in }
+        let push = try #require(command("Remote", "Push to origin", in: entries))
+        push()
+        #expect(model.branch.action == .pushing)
+        await model.branch.running?.value
+        #expect(model.branch.failure == nil)
+        #expect(model.branch.finished == "Pushed v0.0.1")
+        #expect(try await git("rev-parse", "refs/tags/v0.0.1", in: clones.remote) == tip)
+    }
+
+    @Test func withHeadDetachedATagStillGoesToOrigin() async throws {
+        let clones = try await clones()
+        try await git("switch", "--quiet", "--detach", in: clones.work)
+        let model = model(clones, fetches: false)
+        await model.appear()
+        await model.refRelationsUpdate?.value
+        #expect(model.branch.status == nil)
+        #expect(model.branch.tagRemote == "origin")
+    }
+
+    @Test func aRefusedTagPushShowsWhatRanAndWhatGitSaid() async throws {
+        let clones = try await clones()
+        try await pushTagFromOther(clones)
+        try await git("tag", "v0.0.1", in: clones.work)
+        let model = model(clones, fetches: false)
+        await model.appear()
+
+        model.branch.push(tag: "v0.0.1", to: "origin")
+        await model.branch.running?.value
+        let dialog = try dialogContent(model)
+        #expect(dialog.title == "Can't push v0.0.1")
+        #expect(dialog.message?.plain == "Nothing changed. What git said is below.")
+        #expect(dialog.terminal.first == .ran(["push", "origin", "refs/tags/v0.0.1"]))
+        guard case .output(let said) = dialog.terminal.last else {
+            Issue.record("Expected what git said")
+            return
+        }
+        #expect(said.contains("already exists"))
+    }
+
+    @Test func makesATagAndPushesItWhenAsked() async throws {
+        let clones = try await clones()
+        let tip = try await git("rev-parse", "HEAD", in: clones.work)
+        let model = model(clones, fetches: false)
+        await model.appear()
+        model.branch.startNewTag(at: try #require(ObjectID(hex: tip)), named: "main")
+
+        let refusal = await model.branch.create(NewTag(name: "v0.0.1", commit: try #require(ObjectID(hex: tip))), pushingTo: "origin")
+        #expect(refusal == nil)
+        #expect(model.branch.newTagStart == nil)
+        await model.branch.running?.value
+        #expect(model.branch.finished == "Pushed v0.0.1")
+        #expect(try await git("rev-parse", "refs/tags/v0.0.1", in: clones.remote) == tip)
+    }
+
+    @Test func makesATagWithoutPushingItUnlessAsked() async throws {
+        let clones = try await clones()
+        let tip = try await git("rev-parse", "HEAD", in: clones.work)
+        let model = model(clones, fetches: false)
+        await model.appear()
+
+        #expect(await model.branch.create(NewTag(name: "v0.0.1", commit: try #require(ObjectID(hex: tip)))) == nil)
+        #expect(model.branch.running == nil)
+        #expect(try await git("rev-parse", "refs/tags/v0.0.1", in: clones.work) == tip)
+        #expect(try await git("for-each-ref", "refs/tags/v0.0.1", in: clones.remote).isEmpty)
+    }
+
+    @Test func saysTheTagIsMadeWhenItsPushIsRefused() async throws {
+        let clones = try await clones()
+        try await pushTagFromOther(clones)
+        let tip = try await git("rev-parse", "HEAD", in: clones.work)
+        let model = model(clones, fetches: false)
+        await model.appear()
+
+        let refusal = await model.branch.create(NewTag(name: "v0.0.1", commit: try #require(ObjectID(hex: tip))), pushingTo: "origin")
+        #expect(refusal == nil)
+        await model.branch.running?.value
+        let dialog = try dialogContent(model)
+        #expect(dialog.title == "Made v0.0.1, but can't push it")
+        #expect(dialog.message?.plain == "What git said is below.")
+        #expect(try await git("rev-parse", "refs/tags/v0.0.1", in: clones.work) == tip)
     }
 
     // MARK: Deleting branches

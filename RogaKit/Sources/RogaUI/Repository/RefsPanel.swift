@@ -320,15 +320,19 @@ struct RefsPanel: View {
         .id(branch.name)
     }
 
+    /// A tag on a commit has the menu its badge in history has. One on something
+    /// else, such as a tree, can only be copied. Whether `HEAD` has the commit is
+    /// only looked for as the menu opens, because that walks history.
     private func tagRow(_ tag: TagDetails) -> some View {
         RefRow(
             icon: .tag,
             title: tag.shortName,
             subtitle: tag.subject ?? "No commit to show",
-            menu: [
+            menu: tag.commit.map { model.menuEntries(forTag: tag.name, commit: $0, looksForHead: false, showWorktree: showWorktree) } ?? [
                 .header(RefMenu.Title(tag.shortName)),
                 .command("Copy name") { copy(tag.shortName) },
             ],
+            menuOnOpen: tag.commit.map { commit in { model.menuEntries(forTag: tag.name, commit: commit, showWorktree: showWorktree) } },
             isSelected: tag.commit.map { isSelected(tag.name, $0) } ?? false,
             action: tag.commit.map { commit in { select(tag.name, commit) } }
         ) {
@@ -582,6 +586,9 @@ private struct RefRow<Trailing: View, Commands: View>: View {
     /// What right-clicking the row offers. Its header names the ref, so that it's
     /// clear what the menu acts on. A row with nothing to offer has no menu.
     var menu: [RefMenu.Entry] = []
+    /// Builds the menu again as it opens, when it needs something that's too slow
+    /// to find out whenever the row is drawn. Assistive apps get `menu`.
+    var menuOnOpen: (() -> [RefMenu.Entry])?
     var isSelected = false
     /// How much further in than a section's rows it starts (`RefIndent`).
     var indent = 0.0
@@ -637,7 +644,7 @@ private struct RefRow<Trailing: View, Commands: View>: View {
         .padding(.horizontal, 6)
         .contentShape(Rectangle())
         .overlay {
-            if !menu.isEmpty { RefMenuArea(entries: menu) }
+            if !menu.isEmpty { RefMenuArea(entries: menu, entriesOnOpen: menuOnOpen) }
         }
         .onTapGesture { action?() }
         // Alongside the single click rather than ahead of it, so that a click

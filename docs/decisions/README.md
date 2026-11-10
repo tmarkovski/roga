@@ -72,8 +72,9 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [62](0062-replay-a-repositorys-history.md) | Replay a repository's history, drawn in Swift | Partly superseded by [64](0064-dress-the-replay-as-a-departure-board-and-end-it-on-a-poster.md) |
 | [63](0063-ask-an-agent-to-fix-what-git-refused.md) | Ask an agent to fix what git refused | Accepted |
 | [64](0064-dress-the-replay-as-a-departure-board-and-end-it-on-a-poster.md) | Dress the replay as a departure board, and end it on a poster | Accepted |
-| [65](0065-one-menu-for-a-commit-or-a-branch.md) | One menu for a commit or a branch | Rows reworded by [66](0066-sentence-case-branch-icons-and-the-value-on-a-row.md) |
+| [65](0065-one-menu-for-a-commit-or-a-branch.md) | One menu for a commit or a branch | Rows reworded by [66](0066-sentence-case-branch-icons-and-the-value-on-a-row.md), and pushing a tag added by [70](0070-push-a-tag-from-its-menu-or-as-its-made.md) |
 | [66](0066-sentence-case-branch-icons-and-the-value-on-a-row.md) | Sentence case, branch icons and the value on a row | Accepted |
 | [67](0067-add-and-remove-remotes-in-the-refs-panel.md) | Add and remove remotes in the refs panel | Accepted |
 | [68](0068-mark-an-agents-commands-with-an-orange-line-rather-than-sparkles.md) | Mark an agent's commands with an orange line, rather than sparkles | Accepted |
 | [69](0069-set-roga-up-in-the-whole-window-the-first-time-it-runs.md) | Set Roga up in the whole window, the first time it runs | Accepted |
+| [70](0070-push-a-tag-from-its-menu-or-as-its-made.md) | Push a tag from its menu, or as it's made | Accepted |

@@ -311,6 +311,8 @@ final class BranchModel {
     /// Tells the menus to read the remotes again, since adding or choosing one
     /// needn't move any ref.
     @ObservationIgnored var remotesChanged: () -> Void = {}
+    /// The names of the repository's remotes, as the menus last read them.
+    @ObservationIgnored var remoteNames: () -> [String] = { [] }
     /// A deletion that's waiting for someone to choose what goes.
     var branchChoice: BranchChoice?
     /// Whether the popover for a new branch shows.
@@ -812,6 +814,25 @@ final class BranchModel {
         }
     }
 
+    /// Where a tag is pushed to, or nil when there's no remote to push it to.
+    var tagRemote: String? {
+        Push.remote(forTagWith: status?.pushRemote, among: remoteNames())
+    }
+
+    /// Pushes one tag to a remote.
+    ///
+    /// - Parameters:
+    ///   - name: The tag's short name.
+    ///   - justMade: Whether Roga made the tag a moment ago, so that a refusal
+    ///     can't say nothing changed.
+    func push(tag name: String, to remote: String, justMade: Bool = false) {
+        let failure = justMade ? "Made \(name), but can't push it" : "Can't push \(name)"
+        run(.pushing, failure: failure, changesNothing: !justMade) { [session, worktree] in
+            try await session.push(.tag(name, remote: remote), in: worktree)
+            return "Pushed \(Self.shortened(name))"
+        }
+    }
+
     /// Pushes a branch other than the one checked out.
     ///
     /// - Parameters:
@@ -1031,10 +1052,12 @@ final class BranchModel {
         return nil
     }
 
-    /// Makes a tag.
+    /// Makes a tag, and pushes it if someone asked for that too.
     ///
-    /// - Returns: What git said if it refused, which the popover shows.
-    func create(_ tag: NewTag) async -> String? {
+    /// - Parameter remote: Where to push it once it's made, or nil to keep it here.
+    /// - Returns: What git said if it refused to make it, which the popover shows.
+    ///   A push that's refused opens a dialog instead, since the popover has gone.
+    func create(_ tag: NewTag, pushingTo remote: String? = nil) async -> String? {
         guard !isBusy else { return nil }
         do {
             try await session.create(tag, in: worktree)
@@ -1043,6 +1066,7 @@ final class BranchModel {
         }
         newTagStart = nil
         lookAgain()
+        if let remote { push(tag: tag.name, to: remote, justMade: true) }
         return nil
     }
 
