@@ -10,12 +10,12 @@ brew install --cask tmarkovski/roga/roga
 
 ## How a release works
 
-1. Pushing a tag like `v0.1.0` from `main` starts the [Release workflow](../.github/workflows/release.yml). It runs RogaKit's tests, archives the app with Developer ID, notarizes and staples it, packs the ZIP and the DMG, notarizes the DMG, checks both with [Scripts/verify-artifact.sh](../Scripts/verify-artifact.sh), writes the update feed, and publishes all of it as a **prerelease**.
+1. Pushing a tag like `v1.2.3` from `main` starts the [Release workflow](../.github/workflows/release.yml). It runs RogaKit's tests, archives the app with Developer ID, notarizes and staples it, packs the ZIP and the DMG, notarizes the DMG, checks both with [Scripts/verify-artifact.sh](../Scripts/verify-artifact.sh), writes the update feed, and publishes all of it as a **prerelease**.
 2. Installed copies don't see it yet. They read `https://roga.sh/appcast.xml`, which [site/public/_redirects](../site/public/_redirects) points at the feed in the latest release, and GitHub never counts a prerelease as the latest. `roga.sh/download` points at the latest release's `Roga.dmg` the same way.
 3. Try the update on a real Mac by pointing a copy of Roga at the prerelease's own feed, choosing Check for Updates, and confirming that Roga relaunches and agents' marks still come through:
 
    ```bash
-   defaults write sh.roga.app SUFeedURL https://github.com/tmarkovski/roga/releases/download/v0.1.0/appcast.xml
+   defaults write sh.roga.app SUFeedURL https://github.com/tmarkovski/roga/releases/download/v1.2.3/appcast.xml
    ```
 
    ```bash
@@ -53,28 +53,28 @@ xcrun notarytool store-credentials roga-notary --key AuthKey_XXXXXXXXXX.p8 --key
 
 ## Making a release
 
-1. Write the release notes in `docs/release-notes/0.1.0.md`, and merge them to `main`. They show on the release and in Sparkle's update window, and the Release workflow stops if they're missing.
+The commands here and below use 1.2.3 for the version.
+
+1. Write the release notes in `docs/release-notes/1.2.3.md`, and merge them to `main`. They show on the release and in Sparkle's update window, and the Release workflow stops if they're missing.
 2. Tag `main` and push the tag:
 
    ```bash
-   git fetch origin && git tag v0.1.0 origin/main
+   git fetch origin && git tag v1.2.3 origin/main
    ```
 
    ```bash
-   git push origin v0.1.0
+   git push origin v1.2.3
    ```
 
 3. When the build job finishes, its summary says how to try the prerelease. Try it.
 4. Approve the publish job from the workflow run's page.
-
-For the first release, the site's download link has nothing to point at until the publish job has run, so merge the change to `site/public/index.html` after that.
 
 ## Running the steps on a Mac
 
 Each step of the workflow is a command of the release script, which `uv` runs with its own dependencies. On a Mac, notarizing uses the `roga-notary` profile and the feed is signed with the key in the keychain:
 
 ```bash
-uv run Scripts/release/release.py archive --version 0.1.0 --build 212 --out build/release
+uv run Scripts/release/release.py archive --version 1.2.3 --build 212 --out build/release
 ```
 
 ```bash
@@ -82,15 +82,15 @@ uv run Scripts/release/release.py notarize build/release/Roga.app
 ```
 
 ```bash
-uv run Scripts/release/release.py zip build/release/Roga.app dist/Roga-0.1.0.zip
+uv run Scripts/release/release.py zip build/release/Roga.app dist/Roga-1.2.3.zip
 ```
 
 ```bash
-uv run Scripts/release/release.py dmg build/release/Roga.app dist/Roga-0.1.0.dmg --sign
+uv run Scripts/release/release.py dmg build/release/Roga.app dist/Roga-1.2.3.dmg --sign
 ```
 
 ```bash
-uv run Scripts/release/release.py notarize dist/Roga-0.1.0.dmg
+uv run Scripts/release/release.py notarize dist/Roga-1.2.3.dmg
 ```
 
 ```bash
@@ -98,7 +98,7 @@ Scripts/verify-artifact.sh build/release/Roga.app
 ```
 
 ```bash
-uv run Scripts/release/release.py appcast dist/Roga-0.1.0.zip --tag v0.1.0 --out dist
+uv run Scripts/release/release.py appcast dist/Roga-1.2.3.zip --tag v1.2.3 --out dist
 ```
 
 `archive --signing adhoc` builds without the Developer ID certificate, for trying the packaging without it.
@@ -108,11 +108,11 @@ uv run Scripts/release/release.py appcast dist/Roga-0.1.0.zip --tag v0.1.0 --out
 The notice for a new version ([decision 43](decisions/0043-show-a-new-version-in-the-sidebar-rather-than-sparkles-window.md)) and Sparkle's installing can be tried with two builds and a feed served from this Mac. Nothing goes to roga.sh, GitHub or the keychain. Build an old and a new copy ad hoc, the new one with the higher build number:
 
 ```bash
-uv run Scripts/release/release.py archive --version 0.1.0 --build 1 --signing adhoc --out build/rehearsal/old
+uv run Scripts/release/release.py archive --version 1.2.3 --build 1 --signing adhoc --out build/rehearsal/old
 ```
 
 ```bash
-uv run Scripts/release/release.py archive --version 0.1.1 --build 2 --signing adhoc --out build/rehearsal/new
+uv run Scripts/release/release.py archive --version 1.2.4 --build 2 --signing adhoc --out build/rehearsal/new
 ```
 
 Then rehearse the update:

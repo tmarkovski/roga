@@ -24,7 +24,7 @@ Some of the setup comes later, when there's something for it to work on:
 
 ## Release 1: a fast viewer for reviewing agents' work
 
-Release 1 is for someone who works in the terminal and keeps Roga open next to it. They use it to read history and to review what they and their agents have changed. It ships as version 0.1.0.
+Release 1 is for someone who works in the terminal and keeps Roga open next to it. They use it to read history and to review what they and their agents have changed. It shipped as version 0.0.1, the first beta. Roga stays in beta until 1.0.0.
 
 It was planned as a read-only viewer, and it grew while it was built. Several of these changes came forward from release 2, and reverting a commit wasn't planned for any release. Besides keeping the commit-graph file up to date (decision 6), Roga changes the repository in these ways:
 

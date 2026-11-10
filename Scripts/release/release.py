@@ -7,12 +7,12 @@
 The release workflow (.github/workflows/release.yml) runs these commands in
 order, and so can anyone with the credentials on their own Mac:
 
-    uv run Scripts/release/release.py archive --version 0.1.0 --build 212 --out build/release
+    uv run Scripts/release/release.py archive --version 1.2.3 --build 212 --out build/release
     uv run Scripts/release/release.py notarize build/release/Roga.app
-    uv run Scripts/release/release.py zip build/release/Roga.app dist/Roga-0.1.0.zip
-    uv run Scripts/release/release.py dmg build/release/Roga.app dist/Roga-0.1.0.dmg --sign
-    uv run Scripts/release/release.py notarize dist/Roga-0.1.0.dmg
-    uv run Scripts/release/release.py appcast dist/Roga-0.1.0.zip --tag v0.1.0 --out dist
+    uv run Scripts/release/release.py zip build/release/Roga.app dist/Roga-1.2.3.zip
+    uv run Scripts/release/release.py dmg build/release/Roga.app dist/Roga-1.2.3.dmg --sign
+    uv run Scripts/release/release.py notarize dist/Roga-1.2.3.dmg
+    uv run Scripts/release/release.py appcast dist/Roga-1.2.3.zip --tag v1.2.3 --out dist
 
 Once the release is approved, the publish job writes the Homebrew cask with
 `cask`.
@@ -116,7 +116,7 @@ def cli() -> None:
 
 
 @cli.command()
-@click.option("--version", "marketing", required=True, help="The version people see, like 0.1.0.")
+@click.option("--version", "marketing", required=True, help="The version people see, like 1.2.3.")
 @click.option("--build", "build", required=True, type=click.IntRange(min=1), help="The build number Sparkle compares.")
 @click.option(
     "--signing",
@@ -358,7 +358,7 @@ def published_releases(limit: int) -> list[str]:
 
 @cli.command()
 @click.argument("archive_zip", metavar="ZIP", type=click.Path(exists=True, dir_okay=False, path_type=Path))
-@click.option("--tag", required=True, help="The tag of the release the ZIP will be uploaded to, like v0.1.0.")
+@click.option("--tag", required=True, help="The tag of the release the ZIP will be uploaded to, like v1.2.3.")
 @click.option(
     "--out",
     type=click.Path(file_okay=False, path_type=Path),

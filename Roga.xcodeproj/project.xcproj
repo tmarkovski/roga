@@ -92,7 +92,7 @@
         "INFOPLIST_KEY_LSApplicationCategoryType": "public.app-category.developer-tools",
         "LD_RUNPATH_SEARCH_PATHS": "@executable_path/../Frameworks",
         "MACOSX_DEPLOYMENT_TARGET": "26.0",
-        "MARKETING_VERSION": "0.1.0",
+        "MARKETING_VERSION": "0.0.0",
         "PRODUCT_BUNDLE_IDENTIFIER": "sh.roga.app",
         "PRODUCT_NAME": "Roga",
         "SDKROOT": "macosx",
