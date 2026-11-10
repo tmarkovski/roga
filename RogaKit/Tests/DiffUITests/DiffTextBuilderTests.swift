@@ -30,6 +30,80 @@ struct DiffTextBuilderTests {
         #expect(string(document) == "@@ -1,2 +1,2 @@ func main()\nsame\nold\nnew\n")
     }
 
+    // MARK: The whole file (decision 74)
+
+    /// A whole file as git prints it: one hunk from the first line, with the
+    /// tenth of its twelve lines changed.
+    static let wholeFile = "@@ -1,12 +1,12 @@\n" + (1...9).map { " line \($0)\n" }.joined() + "-line ten\n+line TEN\n line 11\n line 12\n"
+    /// The same change as git prints it in hunks.
+    static let hunks = "@@ -7,6 +7,6 @@\n line 7\n line 8\n line 9\n-line ten\n+line TEN\n line 11\n line 12\n"
+
+    @Test func aWholeFileHasNoHunkHeaders() throws {
+        let document = DiffTextBuilder.build(try PatchParser.parse(Array(Self.wholeFile.utf8)), layout: .inline)
+        #expect(document.layout == .inline)
+        #expect(string(document) == (1...9).map { "line \($0)\n" }.joined() + "line ten\nline TEN\nline 11\nline 12\n")
+        #expect(document.lines.count == 13)
+        #expect(document.hunkHeaders.isEmpty)
+        #expect(document.hunkHeader(atRow: 5) == nil)
+        // Each row still has its line's numbers, and the first one is line 1.
+        #expect(document.lines[0].newNumber == 1)
+        #expect(document.lines[9].kind == .removed)
+        #expect(document.firstChangedRow == 9)
+        // The words that changed are still marked.
+        #expect(document.changedWords.count == 2)
+    }
+
+    @Test func hunksKeepTheirHeaders() throws {
+        let document = try document(Self.hunks)
+        #expect(document.layout == .hunks)
+        #expect(document.hunkHeaders == [0])
+        #expect(document.firstChangedRow == 4)
+    }
+
+    /// A file that became another kind of file is the old file and then the new one.
+    @Test func aWholeFileOfTwoKindsHasBothWithoutHeaders() throws {
+        let patch = try PatchParser.parse(Array("@@ -1 +0,0 @@\n-link target\n@@ -0,0 +1 @@\n+run.sh\n\\ No newline at end of file\n".utf8))
+        #expect(string(DiffTextBuilder.build(patch, layout: .inline)) == "link target\nrun.sh\nNo newline at end of file\n")
+    }
+
+    @Test func findsALineInTheOtherLayout() throws {
+        let hunks = try document(Self.hunks)
+        let whole = DiffTextBuilder.build(try PatchParser.parse(Array(Self.wholeFile.utf8)), layout: .inline)
+
+        // Line 8 is the second row under the hunk's header, and the eighth of the file.
+        #expect(hunks.lines[2].newNumber == 8)
+        #expect(whole.row(showing: hunks.lines[2]) == (7, true))
+        #expect(hunks.row(showing: whole.lines[7]) == (2, true))
+        // A removed line and the added one after it are different rows.
+        #expect(whole.row(showing: hunks.lines[4]) == (9, true))
+        #expect(whole.row(showing: hunks.lines[5]) == (10, true))
+        #expect(hunks.row(showing: whole.lines[9]) == (4, true))
+        // Line 2 isn't in the hunks, so it gives the header of the hunk after it.
+        #expect(hunks.row(showing: whole.lines[1]) == (0, false))
+    }
+
+    @Test func aLineBetweenHunksGivesTheNextHunkAndOnePastThemTheLast() throws {
+        let hunk = { (start: Int) in "@@ -\(start),2 +\(start),2 @@\n line \(start)\n-old\n+new\n" }
+        let hunks = try document(hunk(10) + hunk(40))
+        #expect(hunks.hunkHeaders == [0, 4])
+        func line(_ number: Int) -> FilePatch.Line {
+            FilePatch.Line(kind: .context, oldNumber: number, newNumber: number, text: 0..<0)
+        }
+        #expect(hunks.row(showing: line(5)) == (0, false))
+        #expect(hunks.row(showing: line(25)) == (4, false))
+        #expect(hunks.row(showing: line(90)) == (4, false))
+    }
+
+    @Test func findsTheFirstLineOfTheFileAtOrAfterARow() throws {
+        let hunks = try document(Self.hunks)
+        // The header isn't a line of the file, and the row under it is.
+        #expect(hunks.fileRow(atOrAfter: 0) == 1)
+        #expect(hunks.fileRow(atOrAfter: -3) == 1)
+        #expect(hunks.fileRow(atOrAfter: 3) == 3)
+        // Past the end, it's the last one.
+        #expect(hunks.fileRow(atOrAfter: 99) == 7)
+    }
+
     @Test func findsTextIgnoringCase() throws {
         let document = DiffTextBuilder.build(try PatchParser.parse(Array("@@ -1 +1 @@\n-Old line\n+new LINE\n".utf8)))
         let text = document.storage.string as NSString

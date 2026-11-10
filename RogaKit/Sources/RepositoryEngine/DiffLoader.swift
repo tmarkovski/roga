@@ -8,6 +8,15 @@ enum DiffLoader {
     /// that nobody will read, such as a data dump, which could take gigabytes.
     static let patchLimit = 64 << 20
 
+    /// The arguments that print a file's patch: in hunks, or with every line
+    /// of the file (decision 74). git has no word for the whole file, so this
+    /// asks for more lines around each change than a patch Roga reads can
+    /// have, since every line takes at least a byte. The file then comes as
+    /// one hunk that starts at its first line.
+    static func patchArguments(wholeFile: Bool) -> [String] {
+        PatchParser.arguments + (wholeFile ? ["-U\(patchLimit)"] : [])
+    }
+
     /// Lists the files `commit` changed. A commit with no parents adds all of
     /// its files, and a merge is compared with its first parent, which shows
     /// what the merge brought into the branch.
@@ -56,12 +65,15 @@ enum DiffLoader {
 
     /// Loads what `commit` changed in `file`, comparing as `changedFiles` does.
     ///
+    /// - Parameter wholeFile: Whether the patch has every line of the file
+    ///   rather than only its hunks.
     /// - Throws: `RepositoryError.patchTooLarge` when the patch has more than
     ///   `limit` bytes, which stops git.
     @concurrent
     static func patch(
         of file: DiffFile,
         in commit: ObjectID,
+        wholeFile: Bool = false,
         git: Git,
         directory: String,
         limit: Int = patchLimit
@@ -70,7 +82,7 @@ enum DiffLoader {
         // path the file would look new.
         var command = GitCommand(
             ["diff-tree", "-r", "-M", "--root", "--no-commit-id", "--diff-merges=first-parent"]
-                + PatchParser.arguments + [commit.hex, "--"] + [file.oldPath, file.path].compactMap { $0 },
+                + patchArguments(wholeFile: wholeFile) + [commit.hex, "--"] + [file.oldPath, file.path].compactMap { $0 },
             in: directory
         )
         // These are names rather than patterns, and a name can hold a `*`.
@@ -99,6 +111,8 @@ enum DiffLoader {
     /// Loads what changed in `file` from one commit to another, comparing as
     /// `changedFiles(from:to:)` does.
     ///
+    /// - Parameter wholeFile: Whether the patch has every line of the file
+    ///   rather than only its hunks.
     /// - Throws: `RepositoryError.patchTooLarge` when the patch has more than
     ///   `limit` bytes, which stops git.
     @concurrent
@@ -106,13 +120,14 @@ enum DiffLoader {
         of file: DiffFile,
         from: ObjectID?,
         to: ObjectID,
+        wholeFile: Bool = false,
         format: ObjectFormat,
         git: Git,
         directory: String,
         limit: Int = patchLimit
     ) async throws -> FilePatch {
         var command = GitCommand(
-            ["diff-tree", "-r", "-M"] + PatchParser.arguments
+            ["diff-tree", "-r", "-M"] + patchArguments(wholeFile: wholeFile)
                 + [(from ?? format.emptyTree).hex, to.hex, "--"] + [file.oldPath, file.path].compactMap { $0 },
             in: directory
         )

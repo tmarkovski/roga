@@ -57,6 +57,11 @@ public final class DiffTextController: NSObject {
 
     /// The space above and below the text.
     private static let inset: CGFloat = 4
+    /// How many lines show above a whole file's first change when the file is
+    /// selected, which is as many as git puts above a hunk's.
+    static let linesAboveFirstChange = 3
+    /// Where the text should be scrolled to once the view has a size.
+    private var waitingPosition: NSPoint?
 
     /// How tall the view has to be to show a patch of some lines in a code font
     /// without scrolling: a row for each, and the space above and below the text.
@@ -114,6 +119,10 @@ public final class DiffTextController: NSObject {
 
     @objc private func clipViewChangedSize() {
         updateTextSize()
+        if let position = waitingPosition, scrollView.contentSize.height > 0 {
+            waitingPosition = nil
+            textView.scroll(position)
+        }
         updateHunkButton()
         updateConflictBars()
     }
@@ -129,17 +138,26 @@ public final class DiffTextController: NSObject {
         letGoOfDocument()
     }
 
-    /// Shows a patch from its start.
+    /// Shows a patch from its start, which for a whole file is a few lines
+    /// above its first change.
     ///
     /// - Parameter keepingPosition: Whether the text stays scrolled to the same
-    ///   place, for a newer copy of the document showing.
+    ///   place, for a newer copy of the document showing. A copy in the other
+    ///   layout stays at the same line of the file.
     public func show(_ document: DiffDocument, keepingPosition: Bool = false) {
         guard document !== self.document else { return }
         var position = scrollView.contentView.bounds.origin
-        // A copy in another font has rows of another height, so the same place
-        // is the same row and column rather than the same distance.
         let old = metrics
-        if old !== document.metrics {
+        if !keepingPosition {
+            position = Self.start(of: document)
+        } else if let shown = self.document, shown.layout != document.layout, !shown.hasConflicts, !document.hasConflicts {
+            // A copy in the other layout has other rows, so the same place is
+            // the same line of the file.
+            position.x *= document.metrics.columnWidth / old.columnWidth
+            position.y = Self.position(in: document, ofTheLineAt: position.y, in: shown)
+        } else if old !== document.metrics {
+            // A copy in another font has rows of another height, so the same place
+            // is the same row and column rather than the same distance.
             position.x *= document.metrics.columnWidth / old.columnWidth
             position.y = (position.y * document.metrics.lineHeight / old.lineHeight).rounded()
         }
@@ -158,10 +176,45 @@ public final class DiffTextController: NSObject {
         textView.sizeToFit()
         updateTextSize()
         textView.needsDisplay = true
-        textView.scroll(keepingPosition ? position : NSPoint(x: 0, y: 0))
+        textView.scroll(position)
+        // A view that hasn't been given its size yet can't scroll, so the text
+        // goes there once it has one.
+        waitingPosition = scrollView.contentSize.height > 0 ? nil : position
         updateHunkButton()
         editor?.close()
         updateConflictBars()
+    }
+
+    /// Where a document that's just been selected starts. Hunks start at the
+    /// top. A whole file starts a few lines above its first change, because
+    /// the top of a long file can be a long way from one (decision 74).
+    static func start(of document: DiffDocument) -> NSPoint {
+        guard document.layout == .inline, let row = document.firstChangedRow, row > linesAboveFirstChange else { return .zero }
+        return NSPoint(x: 0, y: inset + CGFloat(row - linesAboveFirstChange) * document.metrics.lineHeight)
+    }
+
+    /// How far down a document in the other layout has to be scrolled to stay
+    /// at the same line of the file (decision 74). It goes by the first line of
+    /// the file in view, which stays as far from the top of the view as it was.
+    /// When that line isn't in the hunks, the hunk that comes next starts at
+    /// the top instead, and so does a hunk whose first line it is.
+    static func position(in document: DiffDocument, ofTheLineAt y: CGFloat, in shown: DiffDocument) -> CGFloat {
+        // How many rows are above the view, which is a part of one when a row
+        // is cut off at the top.
+        let rowsAbove = (y - inset) / shown.metrics.lineHeight
+        guard let anchor = shown.fileRow(atOrAfter: Int(rowsAbove.rounded(.down))) else { return 0 }
+        var (row, isExact) = document.row(showing: shown.lines[anchor])
+        var rowsBelowTop = isExact ? CGFloat(anchor) - rowsAbove : 0
+        // A hunk's first line at the top of the view brings the hunk's header
+        // with it, which would otherwise be just out of view.
+        if isExact, rowsBelowTop <= 0, row > 0, document.lines[row - 1].kind == .hunkHeader {
+            row -= 1
+            rowsBelowTop = 0
+        }
+        let position = inset + (CGFloat(row) - rowsBelowTop) * document.metrics.lineHeight
+        // The first row has the space above the text over it, which shows
+        // when the text is at its start.
+        return position <= inset ? 0 : position.rounded()
     }
 
     /// Sets what depends on the font: how far a step of scrolling goes, and how

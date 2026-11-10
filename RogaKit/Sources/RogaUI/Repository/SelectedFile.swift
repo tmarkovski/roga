@@ -27,6 +27,9 @@ final class SelectedFile {
         var isUpdate = false
         /// How far resolving a conflicted file has got, when it's one (decision 60).
         var conflicts: ConflictSummary?
+        /// The layout its patch was read in, or nil for what's the same in
+        /// both layouts: a note, and a file's conflicts (decision 74).
+        var layout: DiffLayout?
     }
 
     /// Where the text being searched for shows in a document.
@@ -106,9 +109,51 @@ final class SelectedFile {
     /// (decision 73). A test gives it another, rather than changing the font
     /// every diff in the process is built in.
     @ObservationIgnored var codeFont: () -> CodeFont = { CodeFont.current }
+    /// Whether diffs show only their hunks or the whole file, which is what's
+    /// chosen in the diff panel or the View menu (decision 74). Every load
+    /// reads it, so that no file arrives in a layout that isn't chosen. A test
+    /// gives it another, rather than changing the preference.
+    @ObservationIgnored var layout: () -> DiffLayout = { DiffLayout.stored() }
+    /// The layout that the load under way is reading the file in, or nil while
+    /// nothing is loading.
+    @ObservationIgnored private var loadingLayout: DiffLayout?
 
     init(session: RepositorySession) {
         self.session = session
+    }
+
+    /// Reads the selected file again when it isn't in the layout chosen any
+    /// more: as the layout is chosen, and when a panel comes back to a diff
+    /// from before. A file that's showing stays until its other layout is
+    /// ready, and then shows at the same line. One that's still loading starts
+    /// over, since git prints a different patch for each layout.
+    func followLayout() {
+        guard let file, let source else { return }
+        let chosen = layout()
+        let isShowing = shown.map { $0.file.path == file.path && $0.source == source } ?? false
+        if let loadingLayout {
+            guard loadingLayout != chosen else { return }
+        } else {
+            guard isShowing, let layout = shown?.layout, layout != chosen else { return }
+        }
+        if isShowing {
+            refresh(file, from: source)
+            // Someone asked for this and is waiting for it, and the whole of a
+            // long file can take a while.
+            if loadingLayout != nil { startPatience() }
+        } else {
+            show(file, from: source)
+        }
+    }
+
+    /// Says that the file is taking a while, if it still is after `patience`.
+    private func startPatience() {
+        patience = Task {
+            try await Task.sleep(for: Self.patience)
+            // The file can arrive after the sleep ends and before this runs.
+            try Task.checkCancellation()
+            isWaiting = true
+        }
     }
 
     /// Builds the diff showing again when it's in a code font that isn't the
@@ -142,13 +187,10 @@ final class SelectedFile {
             isWaiting = false
             return
         }
-        patience = Task {
-            try await Task.sleep(for: Self.patience)
-            // The file can arrive after the sleep ends and before this runs.
-            try Task.checkCancellation()
-            isWaiting = true
-        }
-        loading = Task { await load(file, from: source) }
+        startPatience()
+        let layout = layout()
+        loadingLayout = layout
+        loading = Task { await load(file, from: source, in: layout) }
     }
 
     /// Reads the selected file again, because it may have changed. What's
@@ -163,7 +205,9 @@ final class SelectedFile {
             isWaiting = false
             return
         }
-        loading = Task { await load(file, from: source, isRefresh: true) }
+        let layout = layout()
+        loadingLayout = layout
+        loading = Task { await load(file, from: source, in: layout, isRefresh: true) }
     }
 
     /// Stops loading a file, because the commit it belongs to isn't selected
@@ -171,6 +215,7 @@ final class SelectedFile {
     func cancelLoading() {
         loading?.cancel()
         loading = nil
+        loadingLayout = nil
         patience?.cancel()
     }
 
@@ -249,14 +294,23 @@ final class SelectedFile {
     }
 
     /// Whether what's showing can stay when the file turns out not to have
-    /// changed: anything but a diff in a code font that isn't the one chosen.
-    private var shownIsInCodeFont: Bool {
-        shownDocument.map { $0.font == codeFont() } ?? true
+    /// changed: anything but a diff in a code font that isn't the one chosen,
+    /// or a patch that was read in the other layout.
+    private func shownIsAsChosen(in layout: DiffLayout) -> Bool {
+        (shownDocument.map { $0.font == codeFont() } ?? true) && (shown?.layout ?? layout) == layout
     }
 
     /// Whether there's text to find something in.
     var canFind: Bool {
         shownDocument != nil
+    }
+
+    /// Whether what's showing has another layout to change to, which a patch
+    /// has, and so has one that git couldn't show, since the other layout may
+    /// be short enough. A file's conflicts show in the whole file already, and
+    /// a note has no lines.
+    var canChangeLayout: Bool {
+        shown?.layout != nil
     }
 
     /// The group of a worktree's changes or a stash's that the selected file is
@@ -291,31 +345,45 @@ final class SelectedFile {
         return "This file has no lines to compare."
     }
 
-    private func load(_ file: DiffFile, from source: PatchSource, isRefresh: Bool = false) async {
+    /// - Parameter layout: The layout chosen as the load started. Choosing the
+    ///   other one starts the load again.
+    private func load(_ file: DiffFile, from source: PatchSource, in layout: DiffLayout, isRefresh: Bool = false) async {
         do {
             var conflicts: ConflictSummary?
             if case .worktree(let worktree, .conflicted, _) = source, let resolution = conflictResolution {
-                if try await loadConflicts(of: file, from: source, in: worktree, resolution: resolution, isRefresh: isRefresh) { return }
+                if try await loadConflicts(of: file, from: source, in: worktree, layout: layout, resolution: resolution, isRefresh: isRefresh) { return }
                 // Without markers, the file shows as a patch, and its header can
                 // still offer each side's version.
                 conflicts = ConflictSummary(total: 0, left: 0, sides: await nameConflicts(nil))
             }
-            let patch = try await session.patch(of: file, from: source)
+            let patch = try await session.patch(of: file, from: source, wholeFile: layout == .inline)
             try Task.checkCancellation()
-            if isRefresh, let shown, patch.bytes == shownPatch?.bytes, shown.conflicts == conflicts, shownIsInCodeFont {
-                finishLoading(Shown(file: file, source: source, content: shown.content, isUpdate: true, conflicts: conflicts), patch: patch)
+            if isRefresh, let shown, patch.bytes == shownPatch?.bytes, shown.conflicts == conflicts, shownIsAsChosen(in: layout) {
+                finishLoading(
+                    Shown(file: file, source: source, content: shown.content, isUpdate: true, conflicts: conflicts, layout: shown.layout),
+                    patch: patch
+                )
                 return
             }
+            // A patch with no lines is a note, which is the same in both layouts.
             let content: Content = if patch.lines.isEmpty {
                 .note(Self.note(for: patch, of: file, from: source))
             } else {
-                .patch(await inCodeFont { await DiffTextBuilder.document(for: patch, in: $0) })
+                .patch(await inCodeFont { await DiffTextBuilder.document(for: patch, layout: layout, in: $0) })
             }
             try Task.checkCancellation()
-            finishLoading(Shown(file: file, source: source, content: content, isUpdate: isRefresh, conflicts: conflicts), patch: patch)
+            finishLoading(
+                Shown(
+                    file: file, source: source, content: content, isUpdate: isRefresh, conflicts: conflicts,
+                    layout: patch.lines.isEmpty ? nil : layout
+                ),
+                patch: patch
+            )
         } catch is CancellationError {
         } catch {
-            finishLoading(Shown(file: file, source: source, content: .failed(String(describing: error))), patch: nil)
+            // The other layout may still show, as when the whole file is too
+            // large and its hunks aren't.
+            finishLoading(Shown(file: file, source: source, content: .failed(String(describing: error)), layout: layout), patch: nil)
         }
     }
 
@@ -325,6 +393,7 @@ final class SelectedFile {
         of file: DiffFile,
         from source: PatchSource,
         in worktree: String,
+        layout: DiffLayout,
         resolution: ConflictResolution,
         isRefresh: Bool
     ) async throws -> Bool {
@@ -334,7 +403,7 @@ final class SelectedFile {
         let sides = await nameConflicts((first.oursLabel, first.theirsLabel))
         try Task.checkCancellation()
         let summary = ConflictSummary(total: progress.original.conflicts.count, left: progress.left, sides: sides)
-        if isRefresh, let shown, progress == shownConflicts, shown.conflicts == summary, shownIsInCodeFont {
+        if isRefresh, let shown, progress == shownConflicts, shown.conflicts == summary, shownIsAsChosen(in: layout) {
             finishLoading(Shown(file: file, source: source, content: shown.content, isUpdate: true, conflicts: summary), patch: nil, conflicts: progress)
             return true
         }
@@ -366,6 +435,7 @@ final class SelectedFile {
 
     private func finishLoading(_ shown: Shown, patch: FilePatch?, conflicts: ConflictResolution.Progress? = nil) {
         patience?.cancel()
+        loadingLayout = nil
         self.shown = shown
         shownPatch = patch
         shownConflicts = conflicts

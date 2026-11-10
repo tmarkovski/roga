@@ -69,6 +69,11 @@ nonisolated public final class DiffDocument: @unchecked Sendable {
     let changedWords: [NSRange]
     /// Which lines are hunks' headers, in order.
     let hunkHeaders: [Int]
+    /// Whether this shows a patch's hunks or the whole file (decision 74).
+    public let layout: DiffLayout
+    /// The first row that's a changed line, which is where a whole file
+    /// starts out, or nil when it has none.
+    let firstChangedRow: Int?
     /// For a file with conflicts, what its rows are beyond lines of the file
     /// (decision 60), or nil for a patch.
     let conflicts: ConflictLayout?
@@ -90,10 +95,13 @@ nonisolated public final class DiffDocument: @unchecked Sendable {
         lineStarts: [Int],
         columns: Int,
         changedWords: [NSRange],
+        layout: DiffLayout = .hunks,
         conflicts: ConflictLayout? = nil,
         metrics: DiffMetrics
     ) {
         self.metrics = metrics
+        self.layout = layout
+        firstChangedRow = lines.firstIndex { $0.kind == .added || $0.kind == .removed }
         storage = NSTextStorage(attributedString: text)
         layoutManager = DiffLayoutManager()
         layoutManager.allowsNonContiguousLayout = true
@@ -136,6 +144,35 @@ nonisolated public final class DiffDocument: @unchecked Sendable {
             if hunkHeaders[middle] <= row { low = middle + 1 } else { high = middle }
         }
         return low > 0 ? hunkHeaders[low - 1] : nil
+    }
+
+    /// The first row at or after one that's a line of the file, rather than a
+    /// hunk's header or git's remark, or else the last one before it.
+    func fileRow(atOrAfter row: Int) -> Int? {
+        func isOfFile(_ line: FilePatch.Line) -> Bool { line.kind != .hunkHeader && line.kind != .noNewline }
+        let start = min(max(row, 0), lines.count)
+        return lines[start...].firstIndex(where: isOfFile) ?? lines[..<start].lastIndex(where: isOfFile)
+    }
+
+    /// Where a line of the same diff in the other layout is in this one, for
+    /// staying at the same place when the layout changes (decision 74). Every
+    /// changed line is in both. A line that hunks leave out gives the header
+    /// of the hunk that comes next, or of the last one.
+    ///
+    /// It goes through the rows, which takes about a millisecond for a
+    /// million of them, and it only runs when someone changes the layout.
+    func row(showing line: FilePatch.Line) -> (row: Int, isExact: Bool) {
+        // A removed line is only in the old file, so it goes by that number.
+        let number = line.newNumber ?? line.oldNumber ?? 0
+        for (row, other) in lines.enumerated() where other.kind != .hunkHeader && other.kind != .noNewline {
+            if other.kind == line.kind, other.oldNumber == line.oldNumber, other.newNumber == line.newNumber {
+                return (row, true)
+            }
+            if let otherNumber = line.newNumber == nil ? other.oldNumber : other.newNumber, otherNumber > number {
+                return (hunkHeader(atRow: row) ?? row, false)
+            }
+        }
+        return (hunkHeaders.last ?? max(lines.count - 1, 0), false)
     }
 
     /// The index of the line that a position in the text belongs to.
@@ -200,11 +237,14 @@ nonisolated public enum DiffTextBuilder {
     /// How many characters to lay out between checks for cancellation.
     private static let layoutStep = 1 << 18
 
-    /// - Parameter font: The code font to build it in, which is the one in use
-    ///   unless something else is asked for.
+    /// - Parameters:
+    ///   - layout: How to lay the patch out. For `inline`, the patch should
+    ///     have every line of the file.
+    ///   - font: The code font to build it in, which is the one in use unless
+    ///     something else is asked for.
     @concurrent
-    public static func document(for patch: FilePatch, in font: CodeFont = .current) async -> DiffDocument {
-        build(patch, metrics: .of(font))
+    public static func document(for patch: FilePatch, layout: DiffLayout = .hunks, in font: CodeFont = .current) async -> DiffDocument {
+        build(patch, layout: layout, metrics: .of(font))
     }
 
     /// Builds a patch of a few lines where it's called, such as the sample of a
@@ -216,16 +256,25 @@ nonisolated public enum DiffTextBuilder {
     /// Only hunk headers and git's remarks differ from the text's attributes,
     /// and the layout manager draws the lines' backgrounds and the changed
     /// words, so most of a long patch costs no attributes.
-    static func build(_ patch: FilePatch, conflicts: ConflictLayout? = nil, metrics: DiffMetrics = .current) -> DiffDocument {
+    static func build(
+        _ patch: FilePatch,
+        layout: DiffLayout = .hunks,
+        conflicts: ConflictLayout? = nil,
+        metrics: DiffMetrics = .current
+    ) -> DiffDocument {
+        // A whole file comes as one hunk, whose header would only say that it
+        // starts at line 1 (decision 74). A file that became another kind of
+        // file comes as two, the old file and then the new one.
+        let lines = layout == .inline ? patch.lines.filter { $0.kind != .hunkHeader } : patch.lines
         var utf8: [UInt8] = []
         utf8.reserveCapacity(patch.bytes.count)
         var lineStarts: [Int] = []
-        lineStarts.reserveCapacity(patch.lines.count)
+        lineStarts.reserveCapacity(lines.count)
         var length = 0
         var columns = 0
         var secondary: [NSRange] = []
 
-        for line in patch.lines {
+        for line in lines {
             lineStarts.append(length)
             let start = length
             let (bytes, isCut) = shownBytes(of: patch.bytes[line.text])
@@ -276,13 +325,14 @@ nonisolated public enum DiffTextBuilder {
             }
         }
         // A conflicted file's sides aren't a change from one to the other.
-        let changedWords = conflicts == nil && patch.lines.count <= wholeLayoutLimit
-            ? ChangedWords.ranges(in: Array(string.utf16), lines: patch.lines, lineStarts: lineStarts)
+        let changedWords = conflicts == nil && lines.count <= wholeLayoutLimit
+            ? ChangedWords.ranges(in: Array(string.utf16), lines: lines, lineStarts: lineStarts)
             : []
         let document = DiffDocument(
-            text: text, lines: patch.lines, lineStarts: lineStarts, columns: columns, changedWords: changedWords, conflicts: conflicts, metrics: metrics
+            text: text, lines: lines, lineStarts: lineStarts, columns: columns, changedWords: changedWords,
+            layout: layout, conflicts: conflicts, metrics: metrics
         )
-        if patch.lines.count <= wholeLayoutLimit {
+        if lines.count <= wholeLayoutLimit {
             var laidOut = 0
             while laidOut < length, !Task.isCancelled {
                 laidOut = min(laidOut + layoutStep, length)

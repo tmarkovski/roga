@@ -369,6 +369,116 @@ struct SelectedFileTests {
         #expect(selection.shown?.isUpdate == false)
     }
 
+    // MARK: The whole file (decision 74)
+
+    @Test func showsTheWholeFileInTheInlineLayout() async throws {
+        let commit = try await selected("every-way")
+        try await select("lib/moved.txt", commit)
+        let selection = commit.selectedFile
+        // git takes the line above the hunk for the function it's in.
+        #expect(shownText(commit) == "@@ -4,3 +4,4 @@ three\nfour\nfive\nsix\nseven\n")
+        #expect(shownDocument(commit)?.layout == .hunks)
+        #expect(selection.canChangeLayout)
+
+        // The same file, as a newer copy of what's showing, so that the text
+        // stays at the same line.
+        selection.layout = { .inline }
+        selection.followLayout()
+        await selection.loading?.value
+        #expect(shownText(commit) == "one\ntwo\nthree\nfour\nfive\nsix\nseven\n")
+        #expect(shownDocument(commit)?.layout == .inline)
+        #expect(selection.shown?.isUpdate == true)
+        #expect(!selection.isWaiting)
+
+        // Reading the file again while it hasn't changed builds nothing, and
+        // neither does a panel that comes back to it.
+        let whole = try #require(shownDocument(commit))
+        selection.refresh(try #require(selection.file), from: try #require(selection.source))
+        await selection.loading?.value
+        #expect(shownDocument(commit) === whole)
+        let loading = selection.loading
+        selection.followLayout()
+        #expect(selection.loading == loading)
+
+        // A file selected afterwards is in that layout from the start.
+        try await select("with space.txt", commit)
+        #expect(shownText(commit) == "keep\nmore\n")
+        #expect(selection.shown?.isUpdate == false)
+
+        selection.layout = { .hunks }
+        selection.followLayout()
+        await selection.loading?.value
+        #expect(shownText(commit) == "@@ -1 +1,2 @@\nkeep\nmore\n")
+    }
+
+    /// git prints the same patch for both layouts of a file that's short enough
+    /// to be one hunk, and the layouts still differ by its header.
+    @Test func aFileThatsOneHunkLosesItsHeaderInTheInlineLayout() async throws {
+        let commit = try await selected("every-way")
+        try await select("with space.txt", commit)
+        let selection = commit.selectedFile
+        let patch = try #require(selection.shownPatch)
+
+        selection.layout = { .inline }
+        selection.followLayout()
+        await selection.loading?.value
+        #expect(selection.shownPatch?.bytes == patch.bytes)
+        #expect(shownText(commit) == "keep\nmore\n")
+    }
+
+    /// Choosing a layout while a file is on its way starts the file over.
+    @Test func aFileStillLoadingArrivesInTheLayoutChosenMeanwhile() async throws {
+        let commit = try await selected("every-way")
+        let selection = commit.selectedFile
+        commit.select(try #require(try files(commit).first { $0.path == "lib/moved.txt" }))
+        selection.layout = { .inline }
+        selection.followLayout()
+        await settled(commit)
+        #expect(selection.shown?.file.path == "lib/moved.txt")
+        #expect(shownText(commit) == "one\ntwo\nthree\nfour\nfive\nsix\nseven\n")
+        #expect(selection.shown?.isUpdate == false)
+    }
+
+    /// The whole of a file can be too large to show when its hunks aren't, so a
+    /// file that git couldn't show is read again in the other layout.
+    @Test func readsAFileThatFailedAgainInTheOtherLayout() async throws {
+        let repository = try await Fixture.repository("changes")
+        let session = try await RepositorySession.open(containing: repository, git: try await TestGit.make())
+        let selection = SelectedFile(session: session)
+        selection.layout = { .inline }
+        let unknown = ObjectID(hex: String(repeating: "1", count: 40))
+        selection.show(DiffFile(status: .modified, path: "a", oldMode: 0o100644, newMode: 0o100644, lines: .init(added: 1, removed: 1)), in: unknown)
+        await selection.loading?.value
+        guard case .failed = selection.shown?.content else {
+            Issue.record("It shows \(String(describing: selection.shown?.content))")
+            return
+        }
+        #expect(selection.canChangeLayout)
+
+        // Nothing is read again while the layout is the one it failed in.
+        let failed = selection.loading
+        selection.followLayout()
+        #expect(selection.loading == failed)
+        selection.layout = { .hunks }
+        selection.followLayout()
+        #expect(selection.loading != failed)
+        await selection.loading?.value
+        #expect(!selection.isWaiting)
+    }
+
+    /// A file with no lines to compare has no other layout.
+    @Test func leavesANoteAloneWhenTheLayoutChanges() async throws {
+        let commit = try await selected("every-way")
+        let selection = commit.selectedFile
+        #expect(shownNote(commit) != nil)
+        #expect(!selection.canChangeLayout)
+        let loading = selection.loading
+        selection.layout = { .inline }
+        selection.followLayout()
+        #expect(selection.loading == loading)
+        #expect(shownNote(commit) != nil)
+    }
+
     /// A file with no lines to compare has nothing in the code font.
     @Test func leavesANoteAloneWhenTheCodeFontChanges() async throws {
         let commit = try await selected("every-way")

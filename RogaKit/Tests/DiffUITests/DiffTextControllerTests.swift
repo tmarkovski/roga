@@ -236,6 +236,101 @@ struct DiffTextControllerTests {
         #expect(textView.visibleRect.origin.y == 0)
     }
 
+    // MARK: The whole file (decision 74)
+
+    /// A file of 200 lines whose 50th and 150th changed, as git prints the
+    /// whole of it and as it prints its hunks.
+    func fileLine(_ number: Int) -> String {
+        number == 50 || number == 150 ? "-line old\n+line new\n" : " line \(number)\n"
+    }
+
+    func wholeFile() throws -> DiffDocument {
+        let text = "@@ -1,200 +1,200 @@\n" + (1...200).map(fileLine).joined()
+        return DiffTextBuilder.build(try PatchParser.parse(Array(text.utf8)), layout: .inline)
+    }
+
+    func hunksOfThatFile() throws -> DiffDocument {
+        try document([47, 147].map { start in "@@ -\(start),7 +\(start),7 @@\n" + (start..<start + 7).map(fileLine).joined() }.joined())
+    }
+
+    @Test func aWholeFileStartsAFewLinesAboveItsFirstChange() throws {
+        let lineHeight = DiffMetrics.current.lineHeight
+        let controller = controller(showing: try wholeFile())
+        let textView = text(of: controller)
+        // Line 50 is on the 50th row, and lines 47 to 49 show above it.
+        #expect(textView.visibleRect.origin.y == 4 + 46 * lineHeight)
+
+        // Hunks start at the top, and so does a whole file that changes near its top.
+        controller.show(try hunksOfThatFile())
+        #expect(textView.visibleRect.origin.y == 0)
+        let early = "@@ -1,200 +1,200 @@\n line 1\n-line old\n+line new\n" + (3...200).map { " line \($0)\n" }.joined()
+        controller.show(DiffTextBuilder.build(try PatchParser.parse(Array(early.utf8)), layout: .inline))
+        #expect(textView.visibleRect.origin.y == 0)
+
+        // A newer copy of the whole file stays where it was scrolled to.
+        controller.show(try wholeFile())
+        textView.scroll(NSPoint(x: 0, y: 300))
+        controller.show(try wholeFile(), keepingPosition: true)
+        #expect(textView.visibleRect.origin.y == 300)
+    }
+
+    /// The view can be asked to show a file before SwiftUI has given it a size.
+    @Test func aWholeFileGoesToItsFirstChangeOnceTheViewHasASize() throws {
+        let controller = DiffTextController()
+        controller.show(try wholeFile())
+        controller.view.frame = NSRect(x: 0, y: 0, width: 600, height: 200)
+        controller.view.layoutSubtreeIfNeeded()
+        #expect(text(of: controller).visibleRect.origin.y == 4 + 46 * DiffMetrics.current.lineHeight)
+
+        // It only goes there once, and not each time the view changes size.
+        text(of: controller).scroll(NSPoint(x: 0, y: 0))
+        controller.view.frame = NSRect(x: 0, y: 0, width: 600, height: 300)
+        controller.view.layoutSubtreeIfNeeded()
+        #expect(text(of: controller).visibleRect.origin.y == 0)
+    }
+
+    @Test func staysAtTheSameLineOfTheFileWhenTheLayoutChanges() throws {
+        let lineHeight = DiffMetrics.current.lineHeight
+        // Four rows tall, so that the hunks' 18 rows have room to scroll.
+        let controller = DiffTextController()
+        controller.view.frame = NSRect(x: 0, y: 0, width: 600, height: 4 * lineHeight)
+        controller.view.layoutSubtreeIfNeeded()
+        controller.show(try hunksOfThatFile())
+        let textView = text(of: controller)
+
+        // The second hunk's header is at the top, with line 147 under it. In
+        // the whole file, line 147 stays one row down, under line 146.
+        textView.scroll(NSPoint(x: 0, y: 4 + 9 * lineHeight))
+        controller.show(try wholeFile(), keepingPosition: true)
+        #expect(textView.visibleRect.origin.y == 4 + 146 * lineHeight)
+
+        // Line 146 isn't in the hunks, so the hunk after it starts at the top.
+        controller.show(try hunksOfThatFile(), keepingPosition: true)
+        #expect(textView.visibleRect.origin.y == 4 + 9 * lineHeight)
+
+        // A line that's in both stays exactly where it was, here with 5 points
+        // of it cut off at the top: line 148, the second under the header.
+        controller.show(try wholeFile(), keepingPosition: true)
+        textView.scroll(NSPoint(x: 0, y: 4 + 148 * lineHeight + 5))
+        controller.show(try hunksOfThatFile(), keepingPosition: true)
+        #expect(textView.visibleRect.origin.y == 4 + 11 * lineHeight + 5)
+
+        // A hunk's first line at the top brings the hunk's header with it,
+        // rather than leaving it just out of view: line 147, whole or cut off.
+        for cutOff in [0.0, 5.0] {
+            controller.show(try wholeFile(), keepingPosition: true)
+            textView.scroll(NSPoint(x: 0, y: 4 + 147 * lineHeight + cutOff))
+            controller.show(try hunksOfThatFile(), keepingPosition: true)
+            #expect(textView.visibleRect.origin.y == 4 + 9 * lineHeight)
+        }
+
+        // The first hunk at the top of the hunks is the top of them.
+        controller.show(try wholeFile(), keepingPosition: true)
+        textView.scroll(NSPoint(x: 0, y: 4 + 20 * lineHeight))
+        controller.show(try hunksOfThatFile(), keepingPosition: true)
+        #expect(textView.visibleRect.origin.y == 0)
+    }
+
     @Test func usesTextKit1() throws {
         // Asking for the layout manager of a text view on TextKit 2 quietly
         // moves it to TextKit 1, so this looks at the other one first.

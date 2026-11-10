@@ -106,6 +106,31 @@ struct WorktreeChangesTests {
         #expect(try await patchText(changes.unstaged[0], .unstaged, changes, session, in: repository) == ["-two", "+unstaged"])
     }
 
+    /// Each group of a worktree's files can show the whole file (decision 74).
+    @Test func readsEveryLineOfAnUncommittedFileWhenAsked() async throws {
+        func twenty(_ changed: [Int: String] = [:]) -> String {
+            (1...20).map { (changed[$0] ?? "line \($0)") + "\n" }.joined()
+        }
+        let (session, repository) = try await makeRepository(files: ["a.txt": twenty()])
+        try write(twenty([2: "staged"]), to: "a.txt", in: repository)
+        try await runGit("add", "a.txt", in: repository)
+        try write(twenty([2: "staged", 19: "unstaged"]), to: "a.txt", in: repository)
+        try write("a\nb\n", to: "new.txt", in: repository)
+        let changes = try await session.changes(in: repository)
+
+        func kinds(_ file: DiffFile, _ group: WorktreeChanges.Group, wholeFile: Bool) async throws -> [FilePatch.Line.Kind: Int] {
+            let source = PatchSource.worktree(path: repository, group: group, head: changes.head)
+            let patch = try await session.patch(of: file, from: source, wholeFile: wholeFile)
+            return Dictionary(grouping: patch.lines, by: \.kind).mapValues(\.count)
+        }
+        // In hunks, the unstaged change has three lines above it and the one below.
+        #expect(try await kinds(changes.unstaged[0], .unstaged, wholeFile: false) == [.hunkHeader: 1, .context: 4, .removed: 1, .added: 1])
+        #expect(try await kinds(changes.unstaged[0], .unstaged, wholeFile: true) == [.hunkHeader: 1, .context: 19, .removed: 1, .added: 1])
+        #expect(try await kinds(changes.staged[0], .staged, wholeFile: true) == [.hunkHeader: 1, .context: 19, .removed: 1, .added: 1])
+        // A new file is all there already.
+        #expect(try await kinds(changes.untracked[0], .untracked, wholeFile: true) == [.hunkHeader: 1, .added: 2])
+    }
+
     @Test func readsARenamedFileAgainstItsOldPath() async throws {
         let (session, repository) = try await makeRepository(files: ["old.txt": (1...20).map { "line \($0)\n" }.joined()])
         try await runGit("mv", "old.txt", "new.txt", in: repository)
