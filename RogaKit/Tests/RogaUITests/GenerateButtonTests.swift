@@ -171,6 +171,49 @@ struct GenerateButtonTests {
         }
     }
 
+    /// The popover hangs from the button under it, so if it changed height
+    /// when another agent is picked, every row above the command would move.
+    /// Claude Code's command and Codex's wrap onto different numbers of lines.
+    @Test func staysTheSameHeightWhicheverAgentIsPicked() throws {
+        defer { clean() }
+        let provider = provider()
+        func height(_ view: some View) -> CGFloat {
+            NSHostingView(rootView: view).fittingSize.height
+        }
+        var commands: [CGFloat] = []
+        var popovers: [CGFloat] = []
+        for kind in AgentKind.allCases {
+            provider.setGenerateAgent(kind)
+            let setup = try #require(provider.generation(with: kind))
+            commands.append(height(
+                CommandBlock(lines: setup.terminal(worktree: "/Users/someone/git/acme/api", hasDraft: false), isCompact: true)
+                    .frame(width: GeneratePopover.width)
+            ))
+            popovers.append(height(
+                GeneratePopover(
+                    agents: provider, worktree: "/Users/someone/git/acme/api", hasDraft: false,
+                    openAgentSettings: { _ in }, close: {}
+                )
+            ))
+        }
+        #expect(Set(commands).count > 1, "The commands are all \(commands) tall, so this shows nothing")
+        #expect(Set(popovers).count == 1, "The popover is \(popovers) tall")
+    }
+
+    /// The picked agent's row has menus on its second line and the others
+    /// have words, at the same height, so picking one moves nothing.
+    @Test func aRowIsTheSameHeightPickedOrNot() {
+        defer { clean() }
+        let provider = provider([.claude: found(.claude), .codex: .notFound])
+        func height(_ kind: AgentKind, isPicked: Bool) -> CGFloat {
+            NSHostingView(rootView: GeneratePopoverAgentRow(kind: kind, agents: provider, isPicked: isPicked).frame(width: 380)).fittingSize.height
+        }
+        let picked = height(.claude, isPicked: true)
+        #expect(height(.claude, isPicked: false) == picked)
+        // One that can't be picked says why at the same height.
+        #expect(height(.codex, isPicked: false) == picked)
+    }
+
     // MARK: Grays
 
     /// The darkest gray in a view drawn in light on white, from 0 for black to

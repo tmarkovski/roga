@@ -230,21 +230,20 @@ struct CommitBox: View {
         .overlay(alignment: .bottomTrailing) {
             if case .shown(let agent, let rewrites, let readiness) = generateButton, let agents {
                 GenerateButton(agent: agent, rewrites: rewrites, readiness: readiness, isChoosing: $isChoosingAgent) {
+                    // A click on it while the popover is open runs what was
+                    // just picked there, and closes it.
+                    isChoosingAgent = false
                     generator.generate(with: agents.generation())
                 } choices: {
                     GeneratePopover(
                         agents: agents,
                         worktree: composer.worktree,
                         hasDraft: composer.hasMessage,
-                        canGenerate: generator.readiness == .ready,
                         openAgentSettings: { kind in
                             isChoosingAgent = false
                             openSettings(.agent(kind))
                         }
-                    ) { kind in
-                        isChoosingAgent = false
-                        generator.generate(with: agents.generation(with: kind))
-                    } close: {
+                    ) {
                         isChoosingAgent = false
                     }
                 }

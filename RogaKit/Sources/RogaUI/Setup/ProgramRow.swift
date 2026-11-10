@@ -467,7 +467,7 @@ private struct ProgramChoiceRow: View {
     var body: some View {
         Button(action: action) {
             HStack(alignment: .top, spacing: 8) {
-                ProgramMenuCheck(isChecked: isChecked)
+                ChoiceCheck(isChecked: isChecked)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 8) {
                         Text(choice.source)
@@ -523,7 +523,7 @@ private struct ProgramCommandRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 8) {
-                ProgramMenuCheck(isChecked: isChecked)
+                ChoiceCheck(isChecked: isChecked)
                 Text(title)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -544,19 +544,6 @@ private struct ProgramMenuRowStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .opacity(configuration.isPressed ? 0.75 : 1)
-    }
-}
-
-/// The check before what's chosen in the menu, in a column every item keeps.
-private struct ProgramMenuCheck: View {
-    let isChecked: Bool
-
-    var body: some View {
-        Icon.check.image
-            .font(.system(size: 12.5, weight: .semibold))
-            .opacity(isChecked ? 1 : 0)
-            .frame(width: 16, height: 18)
-            .accessibilityHidden(true)
     }
 }
 

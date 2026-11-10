@@ -544,6 +544,22 @@ struct SettingsChoices<Value: Hashable>: View {
     }
 }
 
+/// The check before what's chosen, where a choice of one is a list of rows:
+/// setup's menus of programs and Generate's popover. Roga marks a choice of
+/// one with a check everywhere, as its menus do, rather than a radio. Every
+/// row keeps the check's column, so their names line up.
+struct ChoiceCheck: View {
+    let isChecked: Bool
+
+    var body: some View {
+        Icon.check.image
+            .font(.system(size: 12.5, weight: .semibold))
+            .opacity(isChecked ? 1 : 0)
+            .frame(width: 16, height: 18)
+            .accessibilityHidden(true)
+    }
+}
+
 /// The small chevron at the end of a popup or a select.
 struct SettingsChevron: View {
     var body: some View {
