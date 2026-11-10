@@ -236,7 +236,11 @@ struct CommitBox: View {
                         agents: agents,
                         worktree: composer.worktree,
                         hasDraft: composer.hasMessage,
-                        canGenerate: generator.readiness == .ready
+                        canGenerate: generator.readiness == .ready,
+                        openAgentSettings: { kind in
+                            isChoosingAgent = false
+                            openSettings(.agent(kind))
+                        }
                     ) { kind in
                         isChoosingAgent = false
                         generator.generate(with: agents.generation(with: kind))
