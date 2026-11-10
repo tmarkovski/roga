@@ -521,15 +521,16 @@ struct RefsPanelPlaceholder: View {
     }
 }
 
-/// A section's title with a chevron after it, and how many items it has.
-/// Clicking it collapses or expands the section, unless it has nothing to show,
-/// which leaves no chevron and nothing to click. It stays in place as the
-/// section's rows scroll under it, so it has a background of its own.
+/// A section's title with a chevron after it, and how many items it has, or a
+/// plus that adds one. Clicking it collapses or expands the section, unless it
+/// has nothing to show, which leaves no chevron and nothing to click. It stays
+/// in place as the section's rows scroll under it, so it has a background of
+/// its own.
 private struct RefSectionHeader: View {
     let section: RefsModel.Section
     let count: Int
     let isCollapsed: Bool
-    /// What the plus before the count does, for a section that has one.
+    /// What the plus does, for a section that has one. It takes the count's place.
     var add: (() -> Void)?
     let toggle: () -> Void
 
@@ -541,15 +542,19 @@ private struct RefSectionHeader: View {
                 Chevron(pointsDown: !isCollapsed)
             }
             Spacer(minLength: 8)
+            // A section with a plus has it where the count would be. Remotes
+            // is the only one, and a repository seldom has more than one, so
+            // its count would say little.
             if let add {
                 Button(action: add) {
                     HoverIcon(size: 22) { Icon.plus.image }
                 }
                 .buttonStyle(.plain)
                 .help("Add a remote")
+            } else {
+                Text(count, format: .number)
+                    .font(.system(size: 11.5))
             }
-            Text(count, format: .number)
-                .font(.system(size: 11.5))
         }
         .foregroundStyle(.secondary)
         .padding(.leading, 16)
