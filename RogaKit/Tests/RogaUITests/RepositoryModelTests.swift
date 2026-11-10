@@ -665,7 +665,8 @@ struct RepositoryModelTests {
         let session = try await RepositorySession.open(containing: repository, git: try await TestGit.make())
         let model = RepositoryModel(session: session, worktree: repository, keepsCommitGraphCurrent: { false })
         await model.appear()
-        #expect(model.rowCount == 1)
+        // Required, since asking for a row that isn't there stops the whole run.
+        try #require(model.rowCount == 1)
         #expect(model.rowContent(0).lanes?.lines == [])
         model.selectRow(0)
         await settled(model)

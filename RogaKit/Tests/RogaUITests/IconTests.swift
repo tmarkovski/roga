@@ -42,11 +42,21 @@ struct IconTests {
 
     @Test func everyIconIsAboutTheSameWidthSoThatAColumnOfThemLinesUp() throws {
         // They all have the grid's width, which the system rounds to a whole point.
-        let widths = Icon.allCases.compactMap { symbol($0, size: 13)?.size.width }
-        #expect(widths.count == Icon.allCases.count)
-        let narrowest = try #require(widths.min())
-        let widest = try #require(widths.max())
-        #expect(widest - narrowest <= 1)
+        var icons: [CGFloat: [String]] = [:]
+        for icon in Icon.allCases {
+            let width = try #require(symbol(icon, size: 13)?.size.width, "\(icon.rawValue) didn't load")
+            icons[width, default: []].append(icon.rawValue)
+        }
+        let narrowest = try #require(icons.keys.min())
+        let widest = try #require(icons.keys.max())
+        // On a display at 2x they come out 15 or 16 points wide. At 1x, which
+        // is what a CI runner has, they come out 14, 15 or 16. A failure names
+        // some icons of each width.
+        let scale = NSScreen.main?.backingScaleFactor ?? 1
+        let found = icons.sorted { $0.key < $1.key }
+            .map { "\($0.key): \($0.value.prefix(6).joined(separator: ", "))" }
+            .joined(separator: "; ")
+        #expect(widest - narrowest <= (scale < 2 ? 2 : 1), "\(found), on a display at \(scale)x")
     }
 
     @Test func aLargerPointSizeDrawsALargerIcon() throws {
