@@ -3,10 +3,12 @@ import IconUI
 import RepositoryEngine
 import SwiftUI
 
-/// What the user has chosen so far, which outlasts the popover closing while
-/// the open panel is up.
-struct AddRepositoriesChoices {
-    /// The folders the user picked, whose clones show whoever owns them.
+/// What the popover found and what the user has chosen, which outlast the
+/// popover closing, while the open panel is up and until it opens again.
+struct AddRepositoriesState {
+    /// The clones found the last time it looked, or nil until it has.
+    var found: [LocalClone]?
+    /// The folders the user picked, which it looks in as well.
     var pickedFolders: [String] = []
     /// The clones checked, by their folders.
     var checked: Set<String> = []
@@ -14,14 +16,14 @@ struct AddRepositoriesChoices {
 
 /// The popover that adds clones already on this Mac to the sidebar. It looks in
 /// the folders that listed repositories are in, and in any the user picks
-/// (decision 16).
+/// (decision 16). It opens with what the sidebar found as the window opened,
+/// or what it found itself last time, and looks again, so that it opens at
+/// its full size rather than growing once it has looked.
 struct AddRepositories: View {
     let list: RepositoryList
-    @Binding var choices: AddRepositoriesChoices
+    @Binding var state: AddRepositoriesState
     let lookInAnotherFolder: () -> Void
     let select: (WorktreeSelection) -> Void
-    /// The clones found, or nil while looking.
-    @State private var clones: [LocalClone]?
     /// The row the keyboard is on.
     @State private var current: String?
     @State private var filter = ""
@@ -62,13 +64,13 @@ struct AddRepositories: View {
             .padding(12)
         }
         .frame(width: 400)
-        .task(id: choices.pickedFolders) {
-            let found = await list.clonesToAdd(alsoLookingIn: choices.pickedFolders)
+        .task(id: state.pickedFolders) {
+            let found = await list.clonesToAdd(alsoLookingIn: state.pickedFolders)
             guard !Task.isCancelled else { return }
-            clones = found
+            state.found = found
             // A folder the user picked that is itself a clone is the one they
             // want.
-            choices.checked.formUnion(found.map(\.path).filter(pickedPaths.contains))
+            state.checked.formUnion(found.map(\.path).filter(pickedPaths.contains))
         }
         .onAppear { isFilterFocused = true }
     }
@@ -76,16 +78,16 @@ struct AddRepositories: View {
     /// The folders the user picked with symbolic links resolved, as git and
     /// the clones found have them.
     private var pickedPaths: Set<String> {
-        Set(choices.pickedFolders.map { folder in
+        Set(state.pickedFolders.map { folder in
             guard let resolved = realpath(folder, nil) else { return folder }
             defer { free(resolved) }
             return String(cString: resolved)
         })
     }
 
-    /// The clones found, narrowed by the filter.
+    /// The clones found that the list doesn't have, narrowed by the filter.
     private var visible: [LocalClone] {
-        (clones ?? []).filter { clone in
+        list.unlisted(state.found ?? []).filter { clone in
             filter.isEmpty || clone.name.localizedStandardContains(filter)
         }
     }
@@ -93,7 +95,7 @@ struct AddRepositories: View {
     /// What's checked, or else the row the keyboard is on, in the order shown.
     private var toAdd: [String] {
         let shown = visible.map(\.path)
-        let chosen = shown.filter(choices.checked.contains)
+        let chosen = shown.filter(state.checked.contains)
         return chosen.isEmpty ? shown.filter { $0 == current } : chosen
     }
 
@@ -129,7 +131,7 @@ struct AddRepositories: View {
 
     @ViewBuilder private var rows: some View {
         let visible = visible
-        if clones == nil {
+        if state.found == nil {
             ProgressView()
                 .controlSize(.small)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -145,7 +147,7 @@ struct AddRepositories: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(visible) { clone in
-                            CloneRow(clone: clone, isChecked: choices.checked.contains(clone.path), isCurrent: current == clone.path) {
+                            CloneRow(clone: clone, isChecked: state.checked.contains(clone.path), isCurrent: current == clone.path) {
                                 toggle(clone.path)
                             }
                             .frame(height: Self.rowHeight)
@@ -174,7 +176,7 @@ struct AddRepositories: View {
 
     private func toggle(_ path: String) {
         current = path
-        if !choices.checked.insert(path).inserted { choices.checked.remove(path) }
+        if !state.checked.insert(path).inserted { state.checked.remove(path) }
     }
 
     private func move(by step: Int) {
@@ -187,7 +189,7 @@ struct AddRepositories: View {
     private func add() {
         let folders = toAdd
         guard !folders.isEmpty else { return }
-        choices.checked = []
+        state.checked = []
         dismiss()
         Task {
             var first: WorktreeSelection?

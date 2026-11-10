@@ -211,11 +211,16 @@ public final class RepositoryList {
     /// Lists the clones that could be added: the ones in the folders that
     /// listed repositories are in, and in `folders`, leaving out what's listed.
     func clonesToAdd(alsoLookingIn folders: [String] = []) async -> [LocalClone] {
-        guard let git else { return [] }
         var seen: Set<String> = []
         let searched = (repositories.map(\.parentFolder) + folders).filter { seen.insert($0).inserted }
+        return unlisted(await LocalClones.find(in: searched))
+    }
+
+    /// Leaves out the clones the list has, which clones found before one of
+    /// them was added still include.
+    func unlisted(_ clones: [LocalClone]) -> [LocalClone] {
         let listed = Set(repositories.map(\.path))
-        return await LocalClones.find(in: searched, git: git).filter { !listed.contains($0.path + "/.git") }
+        return clones.filter { !listed.contains($0.path + "/.git") }
     }
 
     /// Takes the repository out of the list and closes its session.

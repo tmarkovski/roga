@@ -38,7 +38,7 @@ struct Sidebar: View {
     @State private var isAddingRepositories = false
     /// Opens the menu that groups and sorts the list for VoiceOver's press.
     @State private var arrangementOpener = RefMenuOpener()
-    @State private var adding = AddRepositoriesChoices()
+    @State private var adding = AddRepositoriesState()
     @State private var deletions = WorktreeDeletionModel()
     @State private var repairs = WorktreeRepairModel()
     @FocusState private var isFocused: Bool
@@ -51,10 +51,24 @@ struct Sidebar: View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 2) {
                 SidebarCommandRow(title: "Add Repositories", icon: .plus, isOpen: isAddingRepositories, isEnabled: list.isConnected) {
-                    isAddingRepositories = true
+                    // With nothing listed and no folder picked, the popover
+                    // has nowhere to look, so the row asks for a folder first.
+                    if list.repositories.isEmpty && adding.pickedFolders.isEmpty {
+                        lookInAnotherFolder()
+                    } else {
+                        isAddingRepositories = true
+                    }
                 }
                 .popover(isPresented: $isAddingRepositories, arrowEdge: .trailing) {
-                    AddRepositories(list: list, choices: $adding, lookInAnotherFolder: lookInAnotherFolder) { selection = $0 }
+                    AddRepositories(list: list, state: $adding, lookInAnotherFolder: lookInAnotherFolder) { selection = $0 }
+                }
+                // Looks for clones as the window opens, so that the popover
+                // opens at its full size the first time too. It takes a few
+                // milliseconds, off the main actor.
+                .task {
+                    guard adding.found == nil else { return }
+                    let found = await list.clonesToAdd(alsoLookingIn: adding.pickedFolders)
+                    if adding.found == nil { adding.found = found }
                 }
                 // Settings isn't something the list can show, so it keeps the
                 // gray of an open popover while the sheet is up.
@@ -113,15 +127,17 @@ struct Sidebar: View {
         )
     }
 
-    /// Closes the popover while the open panel is up, because a popover can
-    /// close by itself when another window takes over, and reopens it after.
+    /// Asks for a folder to look in, then shows the popover with the clones in
+    /// it. The popover closes while the open panel is up, because a popover
+    /// can close by itself when another window takes over, and opens again
+    /// after, unless the panel was cancelled before the popover was ever open.
     private func lookInAnotherFolder() {
+        let wasOpen = isAddingRepositories
         isAddingRepositories = false
         Task {
-            if let folder = chooseRepositoryFolder(message: "Choose a folder to look in, or a repository.") {
-                adding.pickedFolders.append(folder)
-            }
-            isAddingRepositories = true
+            let folder = chooseRepositoryFolder(message: "Choose a folder to look in, or a repository.")
+            if let folder { adding.pickedFolders.append(folder) }
+            if folder != nil || wasOpen { isAddingRepositories = true }
         }
     }
 
