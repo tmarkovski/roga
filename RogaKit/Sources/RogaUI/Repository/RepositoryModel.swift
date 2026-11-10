@@ -1410,7 +1410,7 @@ final class RepositoryModel {
 
     /// Shows the day and time for dates this year, and the day and year for
     /// older ones.
-    private static func format(_ time: Int64, now: Date) -> String {
+    static func format(_ time: Int64, now: Date) -> String {
         let date = Date(timeIntervalSince1970: TimeInterval(time))
         if Calendar.current.isDate(date, equalTo: now, toGranularity: .year) {
             return date.formatted(.dateTime.day().month(.abbreviated).hour().minute())

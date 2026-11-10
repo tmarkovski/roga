@@ -13,6 +13,15 @@ public final class DiffTextController: NSObject {
     private let sides: SideBySideView
     let hunkButton = HunkButton()
     public private(set) var document: DiffDocument?
+    /// Whether the view only shows a diff, as the sample in Settings does: its
+    /// text can't be selected, and it has no scrollers.
+    public var isPicture = false {
+        didSet {
+            configureTextView()
+            scrollView.hasVerticalScroller = !isPicture
+            scrollView.hasHorizontalScroller = !isPicture
+        }
+    }
 
     /// Takes a hunk out of the file, by the index of its header among the patch's
     /// lines, or nil when the hunks showing can't be taken out (decision 39).
@@ -47,6 +56,12 @@ public final class DiffTextController: NSObject {
 
     /// The space above and below the text.
     private static let inset: CGFloat = 4
+
+    /// How tall the view has to be to show a patch of some lines without
+    /// scrolling: a row for each, and the space above and below the text.
+    public static func height(lines: Int) -> CGFloat {
+        CGFloat(lines) * DiffStyle.lineHeight + inset * 2
+    }
     /// How far a conflict's outline stays from the view's sides, so that the
     /// light's glow isn't cut off along them.
     static let outlineInset: CGFloat = 2
@@ -317,7 +332,7 @@ public final class DiffTextController: NSObject {
     /// they need setting for each document.
     private func configureTextView() {
         textView.isEditable = false
-        textView.isSelectable = true
+        textView.isSelectable = !isPicture
         // Copying gives plain text rather than colored text.
         textView.isRichText = false
         textView.usesRuler = false

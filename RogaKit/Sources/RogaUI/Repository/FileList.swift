@@ -266,7 +266,7 @@ private struct FolderGuides: View {
 /// chevron comes before its name, unlike the sidebar's, so that the chevrons
 /// line up with the status letters of the files at the same depth and the rows
 /// read as a tree. A closed folder says how many lines change under it.
-private struct FolderRow: View {
+struct FolderRow: View {
     let path: String
     let title: String
     let isCollapsed: Bool

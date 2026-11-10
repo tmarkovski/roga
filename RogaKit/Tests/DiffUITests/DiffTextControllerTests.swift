@@ -33,6 +33,22 @@ struct DiffTextControllerTests {
         #expect((430...451).contains(Int(rows)))
     }
 
+    /// A sample of a diff, as in Settings, is only for looking at.
+    @Test func aPictureCantBeSelectedOrScrolled() throws {
+        let controller = DiffTextController()
+        #expect(text(of: controller).isSelectable)
+        #expect(controller.scrollView.hasVerticalScroller)
+
+        controller.isPicture = true
+        // Showing a document sets the text view up again.
+        controller.show(try document())
+        #expect(!text(of: controller).isSelectable)
+        #expect(!controller.scrollView.hasVerticalScroller)
+        #expect(!controller.scrollView.hasHorizontalScroller)
+        // It's given the height that shows all of its lines: three rows here.
+        #expect(DiffTextController.height(lines: 3) == 3 * DiffStyle.lineHeight + 8)
+    }
+
     @Test func selectsTheCurrentMatchWhenTheSearchEnds() throws {
         let document = try longDocument()
         let controller = DiffTextController()

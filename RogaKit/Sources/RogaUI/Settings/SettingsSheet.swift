@@ -480,7 +480,18 @@ struct SettingsSheet: View {
                     }
                 }
                 ForEach(items, id: \.self) { item in
-                    row(item)
+                    if group == .interface, item == items.last {
+                        // The preview goes with the row above it, under whichever
+                        // of Theme and Colors shows, since it follows both. Its
+                        // border sets it apart, so no line comes between them.
+                        VStack(spacing: 0) {
+                            row(item)
+                            ThemePreview()
+                                .padding(EdgeInsets(top: 4, leading: 0, bottom: 12, trailing: 0))
+                        }
+                    } else {
+                        row(item)
+                    }
                 }
             }
         }

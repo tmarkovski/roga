@@ -209,6 +209,12 @@ nonisolated public enum DiffTextBuilder {
         build(patch)
     }
 
+    /// Builds a patch of a few lines where it's called, such as the sample of a
+    /// diff in Settings, which isn't worth a task and shouldn't show empty first.
+    public static func document(forShort patch: FilePatch) -> DiffDocument {
+        build(patch)
+    }
+
     /// Only hunk headers and git's remarks differ from the text's attributes,
     /// and the layout manager draws the lines' backgrounds and the changed
     /// words, so most of a long patch costs no attributes.
