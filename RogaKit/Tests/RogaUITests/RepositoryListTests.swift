@@ -458,8 +458,11 @@ struct RepositoryListTests {
         _ = try await list.add(folder: repository)
         #expect(await list.clonesToAdd().map(\.path) == [other])
         #expect(Set(await list.clonesToAdd(alsoLookingIn: [folder + "/elsewhere"]).map(\.path)) == [other, elsewhere])
+        let foundBefore = await list.clonesToAdd()
         _ = try await list.add(folder: other)
         #expect(await list.clonesToAdd().isEmpty)
+        // What the popover found before keeps out what's been added since.
+        #expect(list.unlisted(foundBefore).isEmpty)
     }
 
     @Test func setsAsideAFileItCantRead() async throws {

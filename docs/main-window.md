@@ -57,7 +57,7 @@ The list starts with **Repositories** in bold and how many there are, and at its
 
 The **Add Repositories** row opens a popover with that title.
 
-- It lists the clones it finds in the folders the user has added repositories from, one level deep, leaving out what the sidebar lists. Each row has a checkbox, the clone's name, its folder and when it was last used, which is when its index last changed, and the latest come first.
+- It lists the clones it finds in the folders the user has added repositories from, one level deep, leaving out what the sidebar lists. Each row has a checkbox, the clone's name, its folder and when it was last used, which is when its index last changed, and the latest come first. Finding them only reads the folders, without running git, and the sidebar looks once as the window opens. The popover opens with what was found last and looks again, so it opens at its full size.
 - A field at the top filters by name. The down arrow goes from it to the rows, where the up and down arrows move, Space checks a row and Return adds what's checked, or else the row the keyboard is on.
 - **Look in Another Folder…** lists the clones in a folder the user picks, or the folder itself if it's a clone, which starts checked. **Add Selected** adds them to the sidebar and shows the first.
 
