@@ -106,6 +106,10 @@ public final class AgentProvider {
     /// Which programs `showsPath` said need their path, since views ask as
     /// they draw. A look starts it again.
     @ObservationIgnored private var pathIsShown: [String: Bool] = [:]
+    /// The commands Install shows for each agent in a preview. A preview has
+    /// no installer, so that Install and the status checks never run a real
+    /// agent from Xcode's canvas, and these stand in for its commands.
+    @ObservationIgnored private var shownInstallCommands: [AgentKind: [ProgramCommand]] = [:]
 
     /// - Parameters:
     ///   - supportFolder: Roga's folder in Application Support, which is
@@ -370,6 +374,7 @@ public final class AgentProvider {
     /// The exact commands Install runs for an agent (decision 29), or nil
     /// while Roga hasn't found it.
     func installCommands(_ kind: AgentKind) -> [ProgramCommand]? {
+        if let commands = shownInstallCommands[kind] { return commands }
         guard let installer, let installation = installation(kind) else { return nil }
         return installer.installCommands(kind, executable: installation.executable)
     }
@@ -447,7 +452,10 @@ public final class AgentProvider {
     private func refreshHookStatus(_ kind: AgentKind, keepingFailure: Bool = false) {
         statusGeneration[kind, default: 0] += 1
         let generation = statusGeneration[kind] ?? 0
-        guard let installer, let installation = installation(kind) else {
+        // Before git is ready there's nothing to ask with, and no status to
+        // clear, since only asking sets one. A preview's statuses stay.
+        guard let installer else { return }
+        guard let installation = installation(kind) else {
             hookStatus[kind] = nil
             return
         }
@@ -520,16 +528,21 @@ public final class AgentProvider {
 
     // MARK: Tests
 
-    /// Puts the provider in a state, for tests of what views show in it,
-    /// without finding or running anything.
+    /// Puts the provider in a state, for tests and previews of what views show
+    /// in it, without finding or running anything.
+    ///
+    /// - Parameter installCommands: The commands Install shows for each
+    ///   agent, which previews pass since they have no installer.
     func setStateForTests(
         lookups: [AgentKind: AgentLookup]? = nil,
         surveys: [AgentKind: AgentSurvey]? = nil,
         hookStatus: [AgentKind: HookStatus]? = nil,
         hookWork: [AgentKind: HookWork]? = nil,
         codexDefaultModel: String?? = nil,
-        programs: Programs?? = nil
+        programs: Programs?? = nil,
+        installCommands: [AgentKind: [ProgramCommand]]? = nil
     ) {
+        if let installCommands { shownInstallCommands = installCommands }
         if let lookups { self.lookups = lookups }
         if let surveys { self.surveys = surveys }
         if let hookStatus { self.hookStatus = hookStatus }
