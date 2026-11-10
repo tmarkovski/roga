@@ -250,6 +250,29 @@ struct DiscardTests {
         #expect(try work.hunkHeaders().count == 2)
     }
 
+    /// The whole file has no hunks to take out, and its one header, which isn't
+    /// showing, would take every change with it (decision 74).
+    @Test func noHunkGoesWhileTheWholeFileShows() async throws {
+        let work = try await worktree()
+        try work.write(numbers(replacing: [3: "three", 30: "thirty"]), to: "a.txt")
+        await work.open()
+        #expect(work.changes.hunkDiscard != nil)
+
+        work.selectedFile.layout = { .inline }
+        work.selectedFile.followLayout()
+        await work.settled()
+        #expect(work.changes.hunkDiscard == nil)
+        work.changes.discardHunk(at: 0)
+        await work.settled()
+        #expect(try work.read("a.txt") == numbers(replacing: [3: "three", 30: "thirty"]))
+
+        work.selectedFile.layout = { .hunks }
+        work.selectedFile.followLayout()
+        await work.settled()
+        #expect(work.changes.hunkDiscard != nil)
+        #expect(try work.hunkHeaders().count == 2)
+    }
+
     @Test func theLastHunkTakesTheFileOffTheList() async throws {
         let work = try await worktree()
         try work.write(numbers(replacing: [3: "three"]), to: "a.txt")

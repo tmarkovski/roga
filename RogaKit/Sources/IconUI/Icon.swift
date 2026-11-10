@@ -61,6 +61,8 @@ extension Icon {
     public static let stage = squarePlus
     public static let unstage = squareMinus
     public static let discard = undo2
+    /// A diff that shows the whole file rather than only its hunks (decision 74).
+    public static let inlineDiff = fileText
 
     // Commands and states that aren't only about git.
     public static let warning = triangleAlert

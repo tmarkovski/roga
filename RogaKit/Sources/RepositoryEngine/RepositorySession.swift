@@ -244,9 +244,11 @@ public actor RepositorySession {
     /// Reads what a commit changed in one of its files, which is the slower
     /// half of showing a commit, so it waits until someone looks at the file.
     ///
+    /// - Parameter wholeFile: Whether the patch has every line of the file
+    ///   rather than only its hunks (decision 74).
     /// - Throws: `RepositoryError.patchTooLarge` for a patch too long to show.
-    public nonisolated func patch(of file: DiffFile, in commit: ObjectID) async throws -> FilePatch {
-        try await DiffLoader.patch(of: file, in: commit, git: git, directory: location.commonDirectory)
+    public nonisolated func patch(of file: DiffFile, in commit: ObjectID, wholeFile: Bool = false) async throws -> FilePatch {
+        try await DiffLoader.patch(of: file, in: commit, wholeFile: wholeFile, git: git, directory: location.commonDirectory)
     }
 
     /// Lists a worktree's uncommitted files, without their line counts, which
@@ -309,15 +311,19 @@ public actor RepositorySession {
 
     /// Reads the patch of a file from a commit or a worktree.
     ///
+    /// - Parameter wholeFile: Whether the patch has every line of the file
+    ///   rather than only its hunks (decision 74).
     /// - Throws: `RepositoryError.patchTooLarge` for a patch too long to show.
-    public nonisolated func patch(of file: DiffFile, from source: PatchSource) async throws -> FilePatch {
+    public nonisolated func patch(of file: DiffFile, from source: PatchSource, wholeFile: Bool = false) async throws -> FilePatch {
         switch source {
         case .commit(let commit):
-            try await patch(of: file, in: commit)
+            try await patch(of: file, in: commit, wholeFile: wholeFile)
         case .commits(let from, let to, _):
-            try await DiffLoader.patch(of: file, from: from, to: to, format: location.format, git: git, directory: location.commonDirectory)
+            try await DiffLoader.patch(
+                of: file, from: from, to: to, wholeFile: wholeFile, format: location.format, git: git, directory: location.commonDirectory
+            )
         case .worktree(let path, let group, let head):
-            try await ChangesLoader.patch(of: file, in: group, head: head, directory: path, format: location.format, git: git)
+            try await ChangesLoader.patch(of: file, in: group, head: head, wholeFile: wholeFile, directory: path, format: location.format, git: git)
         }
     }
 

@@ -102,8 +102,11 @@ enum ChangesLoader {
     /// conflict markers as lines added. `diff-files` would print a combined
     /// diff, whose hunks have a column for each side of the merge.
     ///
-    /// - Parameter head: The commit that staged changes compare with, or nil
-    ///   when there's none yet.
+    /// - Parameters:
+    ///   - head: The commit that staged changes compare with, or nil when
+    ///     there's none yet.
+    ///   - wholeFile: Whether the patch has every line of the file rather
+    ///     than only its hunks.
     /// - Throws: `RepositoryError.patchTooLarge` when the patch has more than
     ///   `limit` bytes, which stops git.
     @concurrent
@@ -111,6 +114,7 @@ enum ChangesLoader {
         of file: DiffFile,
         in group: WorktreeChanges.Group,
         head: ObjectID?,
+        wholeFile: Bool = false,
         directory: String,
         format: ObjectFormat,
         git: Git,
@@ -118,17 +122,18 @@ enum ChangesLoader {
     ) async throws -> FilePatch {
         let base = (head ?? format.emptyTree).hex
         let paths = [file.oldPath, file.path].compactMap { $0 }
+        let patch = DiffLoader.patchArguments(wholeFile: wholeFile)
         var command = switch group {
         case .staged:
-            GitCommand(["diff-index", "--cached", "-r", "-M"] + PatchParser.arguments + [base, "--"] + paths, in: directory)
+            GitCommand(["diff-index", "--cached", "-r", "-M"] + patch + [base, "--"] + paths, in: directory)
         case .unstaged:
-            GitCommand(["diff-files", "-r", "-M"] + PatchParser.arguments + ["--"] + paths, in: directory)
+            GitCommand(["diff-files", "-r", "-M"] + patch + ["--"] + paths, in: directory)
         case .conflicted:
-            GitCommand(["diff-index", "-r"] + PatchParser.arguments + [base, "--"] + paths, in: directory)
+            GitCommand(["diff-index", "-r"] + patch + [base, "--"] + paths, in: directory)
         case .untracked:
             // `--no-textconv` because `git diff` would otherwise run a command
             // that the repository's settings name, which the plumbing doesn't.
-            GitCommand(["diff", "--no-index", "--no-textconv"] + PatchParser.arguments + ["--", "/dev/null"] + paths, in: directory)
+            GitCommand(["diff", "--no-index", "--no-textconv"] + patch + ["--", "/dev/null"] + paths, in: directory)
         }
         command.environment["GIT_LITERAL_PATHSPECS"] = "1"
         // Comparing two files with `--no-index` exits with 1 when they differ.

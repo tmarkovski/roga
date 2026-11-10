@@ -534,6 +534,10 @@ private struct RefSectionHeader: View {
     var add: (() -> Void)?
     let toggle: () -> Void
 
+    /// How far the plus is from the right of its box: it's about 9 points wide
+    /// at its size, in a box of 22.
+    private static let plusInset = 6.0
+
     var body: some View {
         HStack(spacing: 4) {
             Text(section.title)
@@ -551,6 +555,11 @@ private struct RefSectionHeader: View {
                 }
                 .buttonStyle(.plain)
                 .help("Add a remote")
+                // The plus is in the middle of a box that's wider than it,
+                // which is what turns gray under the pointer. The box goes
+                // past the line the counts end on, so that the plus itself
+                // ends on that line.
+                .padding(.trailing, -Self.plusInset)
             } else {
                 Text(count, format: .number)
                     .font(.system(size: 11.5))

@@ -1,5 +1,6 @@
 import AgentEngine
 import CommitGraph
+import DiffUI
 import GitCore
 import SwiftUI
 
@@ -20,6 +21,7 @@ public struct RepositoryCommands: Commands {
     @AppStorage(SidebarSettings.groupsByOrganization) private var groupsByOrganization = true
     @AppStorage(SidebarSettings.sort) private var sidebarSort = SidebarSort.name
     @AppStorage(FileListSettings.layout) private var fileLayout = FileLayout.list
+    @AppStorage(DiffSettings.layout) private var diffLayout = DiffLayout.hunks
     @Environment(\.openWindow) private var openWindow
 
     /// The shortcut for opening a repository, which the sidebar shows too.
@@ -246,6 +248,12 @@ public struct RepositoryCommands: Commands {
             .disabled(repository?.canFilterFiles != true)
             Picker("Show Files", selection: $fileLayout) {
                 ForEach(FileLayout.allCases, id: \.self) { layout in
+                    Text(layout.title).tag(layout)
+                }
+            }
+            // Only the hunks, or the whole file (decision 74).
+            Picker("Diff View", selection: $diffLayout) {
+                ForEach(DiffLayout.allCases, id: \.self) { layout in
                     Text(layout.title).tag(layout)
                 }
             }

@@ -204,12 +204,12 @@ struct RepositorySessionTests {
         }
     }
 
-    func patch(of path: String, at tag: String) async throws -> FilePatch {
+    func patch(of path: String, at tag: String, wholeFile: Bool = false) async throws -> FilePatch {
         let repository = try await Fixture.repository("changes")
         let session = try await openSession(repository)
         let commit = try #require(ObjectID(hex: try await runGit("rev-parse", tag + "^{commit}", in: repository)))
         let file = try #require(try await session.changedFiles(in: commit).first { $0.path == path })
-        return try await session.patch(of: file, in: commit)
+        return try await session.patch(of: file, in: commit, wholeFile: wholeFile)
     }
 
     func summary(_ patch: FilePatch) -> [String] {
@@ -221,6 +221,26 @@ struct RepositorySessionTests {
         #expect(summary(patch) == ["@@ -1 +1,2 @@", "keep", "more"])
         #expect(patch.lines.map(\.kind) == [.hunkHeader, .context, .added])
         #expect(patch.lines[2].newNumber == 2)
+    }
+
+    /// A whole file comes as one hunk from its first line, where its hunks have
+    /// only the three lines above the one that was added (decision 74). git
+    /// takes the line above those for the function the hunk is in.
+    @Test func readsEveryLineOfAFileWhenAsked() async throws {
+        #expect(summary(try await patch(of: "lib/moved.txt", at: "every-way")) == ["@@ -4,3 +4,4 @@ three", "four", "five", "six", "seven"])
+        let whole = try await patch(of: "lib/moved.txt", at: "every-way", wholeFile: true)
+        #expect(summary(whole) == ["@@ -1,6 +1,7 @@", "one", "two", "three", "four", "five", "six", "seven"])
+        #expect(whole.lines.map(\.kind) == [.hunkHeader] + Array(repeating: .context, count: 6) + [.added])
+        #expect(whole.lines.last?.newNumber == 7)
+    }
+
+    /// A file that became another kind of file still has a hunk for each kind.
+    @Test func readsEveryLineOfBothKindsOfAFile() async throws {
+        let whole = try await patch(of: "kind.txt", at: "every-way", wholeFile: true)
+        #expect(summary(whole) == [
+            "@@ -1 +0,0 @@", "link target",
+            "@@ -0,0 +1 @@", "run.sh", "No newline at end of file",
+        ])
     }
 
     @Test func comparesARenamedFileWithItsOldPath() async throws {

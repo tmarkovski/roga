@@ -506,8 +506,11 @@ final class SelectedChanges {
     /// What takes a hunk of the diff out of the file, by the index of its header among
     /// the patch's lines, or nil when the hunks showing can't be taken out on their own:
     /// staged ones, and the only hunk of a file that's new or gone, which is the file.
+    /// A whole file has no hunks to take out either (decision 74).
     var hunkDiscard: ((Int) -> Void)? {
-        guard let shown = selectedFile.shown, case .worktree(_, .unstaged, _) = shown.source, shown.file.status == .modified else { return nil }
+        guard let shown = selectedFile.shown, case .worktree(_, .unstaged, _) = shown.source, shown.file.status == .modified,
+              case .patch(let document) = shown.content, document.layout == .hunks
+        else { return nil }
         return { [weak self] header in self?.discardHunk(at: header) }
     }
 

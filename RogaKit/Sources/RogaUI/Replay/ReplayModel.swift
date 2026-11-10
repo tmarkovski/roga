@@ -16,6 +16,7 @@ final class ReplayModel {
     /// Which commits behind the tip to replay.
     enum Scope: Hashable, Identifiable {
         case days(Int)
+        case commits(Int)
         case wholeHistory
         case afterTag(name: String, commit: CommitGraph.Position)
 
@@ -24,6 +25,7 @@ final class ReplayModel {
         var title: String {
             switch self {
             case .days(let days): "Last \(days) days"
+            case .commits(let count): "Last \(count) commits"
             case .wholeHistory: "Whole history"
             case .afterTag(let name, _): "Since \(name)"
             }
@@ -50,8 +52,9 @@ final class ReplayModel {
         var commit: CommitGraph.Position
     }
 
-    /// The ranges everyone gets. Tags add theirs.
-    static let dayRanges = [7, 14, 30, 90, 365]
+    /// The ranges everyone gets, by days and by how many commits. Tags add theirs.
+    static let dayRanges = [3, 7, 14, 30, 90, 365]
+    static let commitRanges = [10, 25, 50, 100, 200]
     /// The lengths it offers, in seconds.
     static let lengths = [30.0, 45, 60, 75, 90, 120]
     /// Where a replay starts, until someone picks something else.
@@ -104,10 +107,13 @@ final class ReplayModel {
 
     var repositoryName: String { session.location.name }
 
-    /// The ranges every replay offers. The window adds one for each tag.
-    var scopes: [Scope] {
-        Self.dayRanges.map(Scope.days) + [.wholeHistory]
-    }
+    /// The ranges every replay offers, in the groups its menu shows them in.
+    /// The window adds one for each tag.
+    static let scopeGroups: [[Scope]] = [
+        dayRanges.map(Scope.days),
+        commitRanges.map(Scope.commits),
+        [.wholeHistory],
+    ]
 
     /// Loads the starting range, the first time the window shows.
     func start(reducesMotion: Bool) {
@@ -147,6 +153,7 @@ final class ReplayModel {
         // From the branch's newest commit rather than from today, so that a
         // quiet branch still shows the end of its history.
         case .days(let days): .since(time: graph.commitTime(at: tip) - Int64(days) * 86_400)
+        case .commits(let count): .last(count)
         case .afterTag(_, let commit): .after(commit)
         }
     }
@@ -334,7 +341,10 @@ struct ReplayView: View {
 
     private var rangePicker: some View {
         Picker("Range", selection: Binding(get: { model.scope ?? .wholeHistory }, set: { model.choose($0) })) {
-            ForEach(model.scopes) { Text($0.title).tag($0) }
+            ForEach(ReplayModel.scopeGroups.indices, id: \.self) { index in
+                if index > 0 { Divider() }
+                ForEach(ReplayModel.scopeGroups[index]) { Text($0.title).tag($0) }
+            }
             if !model.tags.isEmpty {
                 Divider()
                 ForEach(model.tags, id: \.self) { tag in

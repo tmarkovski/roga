@@ -25,6 +25,10 @@ public struct HistoryReplay: Sendable {
         /// any dated earlier that sit on top of those, as when someone's clock
         /// was wrong.
         case since(time: Int64)
+        /// The newest commits, up to this many, as history lists them by date.
+        /// A commit comes after all of its children there, so each one that's
+        /// in the range still leads up to the tip.
+        case last(Int)
         /// The commits that aren't behind another commit, such as a tag.
         case after(Position)
     }
@@ -147,6 +151,8 @@ public struct HistoryReplay: Sendable {
                     remaining -= 1
                 }
             }
+        case .last(let count):
+            commits = try order.next(max(0, count))
         case .after(let base):
             var walk = SidesWalk(graph: graph)
             try walk.run(tip, base)

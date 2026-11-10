@@ -440,8 +440,15 @@ struct ReplayModelTests {
         #expect(map.replay.hasLineCounts)
     }
 
-    @Test func offersEveryRangeFromAWeekUp() {
-        #expect(ReplayModel.dayRanges == [7, 14, 30, 90, 365])
+    @Test func offersRangesByDaysAndByCommits() {
+        #expect(ReplayModel.dayRanges == [3, 7, 14, 30, 90, 365])
+        #expect(ReplayModel.commitRanges == [10, 25, 50, 100, 200])
+        #expect(ReplayModel.scopeGroups.map { $0.map(\.title) } == [
+            ["Last 3 days", "Last 7 days", "Last 14 days", "Last 30 days", "Last 90 days", "Last 365 days"],
+            ["Last 10 commits", "Last 25 commits", "Last 50 commits", "Last 100 commits", "Last 200 commits"],
+            ["Whole history"],
+        ])
+        #expect(ReplayModel.scopeGroups[0].contains(.days(ReplayModel.startingDays)))
         #expect(ReplayModel.lengths.contains(ReplayModel.startingLength))
     }
 }
@@ -466,6 +473,58 @@ struct ReplaySavingTests {
         let track = try #require(try await AVURLAsset(url: url).loadTracks(withMediaType: .video).first)
         let size = try await track.load(.naturalSize)
         #expect(size == CGSize(width: 1920, height: 1080))
+    }
+
+    /// The cover is what Finder shows for the file, rather than the first
+    /// frame, which has nothing on the board yet.
+    @Test func givesAVideoItsLastFrameAsItsCover() async throws {
+        let map = MetroMap(replay: try makeReplay(flat: 3, branches: 1, length: 2), repositoryName: "app")
+        let url = temporaryFile("cover.mp4")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try await ReplaySaving.writeVideo(of: map, colorScheme: .light, to: url) { _ in }
+
+        let metadata = try await AVURLAsset(url: url).load(.commonMetadata)
+        let covers = AVMetadataItem.metadataItems(from: metadata, filteredByIdentifier: .commonIdentifierArtwork)
+        let data = try #require(try await covers.first?.load(.dataValue))
+        let cover = try #require(NSBitmapImageRep(data: data))
+        #expect(cover.pixelsWide == 1920)
+        #expect(cover.pixelsHigh == 1080)
+        // It's the picture at the end, not at the start.
+        let shown = try smallPixels(of: try #require(cover.cgImage))
+        let end = try smallPixels(of: try frame(of: map, at: map.duration))
+        let start = try smallPixels(of: try frame(of: map, at: 0))
+        #expect(difference(shown, end) < difference(shown, start) / 4)    }
+
+    private func frame(of map: MetroMap, at time: Double) throws -> CGImage {
+        let view = Canvas(opaque: true, rendersAsynchronously: false) { context, size in
+            map.draw(in: context, size: size, at: time, colorScheme: .light)
+        }
+        .frame(width: ReplaySaving.pictureSize.width, height: ReplaySaving.pictureSize.height)
+        return try #require(ImageRenderer(content: view).cgImage)
+    }
+
+    /// A picture's colors at a small size, for comparing pictures that came
+    /// in different sizes and formats.
+    private func smallPixels(of image: CGImage) throws -> [UInt8] {
+        let width = 64, height = 36
+        var bytes = [UInt8](repeating: 0, count: width * height * 4)
+        try bytes.withUnsafeMutableBytes { buffer in
+            let context = try #require(CGContext(
+                data: buffer.baseAddress,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: width * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+            ))
+            context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        }
+        return bytes
+    }
+
+    private func difference(_ first: [UInt8], _ second: [UInt8]) -> Int {
+        zip(first, second).reduce(0) { $0 + abs(Int($1.0) - Int($1.1)) }
     }
 
     @Test func leavesNoFileBehindWhenCancelled() async throws {

@@ -61,6 +61,23 @@ struct ReviewTests {
         #expect(back.map(\.status) == [.modified, .deleted])
     }
 
+    /// A diff from one commit to another can show the whole file too (decision 74).
+    @Test func readsEveryLineOfAFileBetweenTwoCommits() async throws {
+        let (session, repository) = try await makeRepository()
+        try write((1...10).map { "line \($0)\n" }.joined(), to: "a.txt", in: repository)
+        let second = try await commit("Second", in: repository)
+        try write((1...9).map { "line \($0)\n" }.joined() + "ten\n", to: "a.txt", in: repository)
+        let third = try await commit("Third", in: repository)
+
+        let source = PatchSource.commits(from: second, to: third)
+        let file = try #require(try await session.changedFiles(from: second, to: third).first)
+        let hunks = try await session.patch(of: file, from: source)
+        #expect(hunks.lines.filter { $0.kind == .context }.map(\.newNumber) == [7, 8, 9])
+        let whole = try await session.patch(of: file, from: source, wholeFile: true)
+        #expect(whole.lines.filter { $0.kind == .context }.map(\.newNumber) == Array(1...9))
+        #expect(whole.hunkCount == 1)
+    }
+
     @Test func comparesWithNothingForTheParentOfARootCommit() async throws {
         let (session, repository) = try await makeRepository()
         let first = try #require(ObjectID(hex: try await runGit("rev-parse", "HEAD", in: repository)))

@@ -24,6 +24,8 @@ struct DiffPanel: View {
     /// Whether the panel is wide enough for the buttons that go through the
     /// matches, beside the search box and the buttons for the panels' size.
     @State private var hasRoomForMatchButtons = true
+    /// Whether diffs show only their hunks or the whole file (decision 74).
+    @AppStorage(DiffSettings.layout) private var layout = DiffLayout.hunks
 
     /// The widest the search box gets, so that it doesn't reach across a wide
     /// screen.
@@ -107,6 +109,15 @@ struct DiffPanel: View {
                     .disabled(!selection.hasMatches)
                     .help("Next Match (\(RepositoryCommands.findNextShortcut.symbols))")
             }
+            // It looks pressed while the whole file shows, as the button for a
+            // tree of files does while they're in one.
+            Button(layout.switchTitle, icon: .inlineDiff) {
+                layout = layout == .inline ? .hunks : .inline
+            }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.icon(isOn: layout == .inline))
+            .disabled(!selection.canChangeLayout)
+            .help(layout.switchTitle)
             Button(selection.isFindShown ? "Close Find" : "Find in Diff", icon: .search, action: selection.toggleFind)
                 .labelStyle(.iconOnly)
                 .buttonStyle(.icon(isOn: selection.isFindShown))
@@ -164,6 +175,12 @@ struct DiffPanel: View {
         .onChange(of: CodeFont.observed, initial: true) {
             selection.followCodeFont()
         }
+        // A diff read before the other layout was chosen is read again in
+        // that one: as it's chosen, here or in the View menu, and when a panel
+        // comes back to a diff from before (decision 74).
+        .onChange(of: layout, initial: true) {
+            selection.followLayout()
+        }
     }
 
     /// What asking an agent does, and the exact command, as decision 29 asks.
@@ -195,6 +212,35 @@ struct DiffPanel: View {
             .multilineTextAlignment(.center)
             .padding(16)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// The name of the setting that the diff panel and the menu bar share.
+enum DiffSettings {
+    static let layout = "diffLayout"
+}
+
+extension DiffLayout {
+    /// The layout `defaults` has, which is hunks until another is chosen.
+    static func stored(in defaults: UserDefaults = .standard) -> DiffLayout {
+        defaults.string(forKey: DiffSettings.layout).flatMap(DiffLayout.init(rawValue:)) ?? .hunks
+    }
+
+    /// What the View menu calls it.
+    var title: String {
+        switch self {
+        case .hunks: "Hunks"
+        case .inline: "Inline"
+        }
+    }
+
+    /// What the diff panel's button does while this layout shows, which says
+    /// what the other one is as well as its name.
+    var switchTitle: String {
+        switch self {
+        case .hunks: "Show the Whole File (Inline View)"
+        case .inline: "Show Only the Hunks (Hunk View)"
+        }
     }
 }
 

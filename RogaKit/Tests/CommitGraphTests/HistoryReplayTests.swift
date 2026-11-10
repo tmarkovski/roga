@@ -285,6 +285,40 @@ struct HistoryReplayTests {
         #expect(Set(replay.commits.map(\.id)) == (try await revList("--since=\(time)", "main", in: repository)))
     }
 
+    @Test func replaysOnlyTheNewestCommits() async throws {
+        let repository = try await Fixture.repository("replay")
+        let graph = try openGraph(repository)
+        let tip = try #require(graph.position(of: try await resolve(["main"], in: repository)[0]))
+        let newestFirst = try HistoryReplay.commits(in: graph, from: tip, range: .all).map(graph.id(at:))
+        try #require(newestFirst.count > 5)
+        let replay = try await makeReplay(of: "main", in: repository, graph: graph, range: { _ in .last(5) })
+        #expect(Set(replay.commits.map(\.id)) == Set(newestFirst.prefix(5)))
+        #expect(replay.commits.last?.id == newestFirst.first)
+    }
+
+    @Test func replaysEverythingWhenThereAreFewerCommitsThanAskedFor() async throws {
+        let repository = try await Fixture.repository("replay")
+        let replay = try await makeReplay(of: "main", in: repository, graph: try openGraph(repository), range: { _ in .last(1_000_000) })
+        #expect(Set(replay.commits.map(\.id)) == (try await revList("main", in: repository)))
+    }
+
+    /// Counting commits can end the range anywhere, such as partway along a
+    /// branch or between a merge's parents.
+    @Test(arguments: Fixture.History.allCases)
+    func replaysTheNewestCommitsWhereverTheRangeEnds(_ history: Fixture.History) async throws {
+        let repository = try await history.repository()
+        let graph = try await history.graph()
+        let total = try await revList("main", in: repository).count
+        for count in [1, 2, 3, 5, 10, 25, 50, 100, 200] {
+            let replay = try await makeReplay(of: "main", in: repository, graph: graph, range: { _ in .last(count) })
+            #expect(replay.commits.count == min(count, total))
+            #expect(replay.commits.count == Set(replay.commits.map(\.id)).count)
+            for (step, commit) in replay.commits.enumerated() {
+                #expect(commit.parents.allSatisfy { $0 < step })
+            }
+        }
+    }
+
     /// 1,050 hours after the fixture starts, which is after its old commits
     /// and before its recent ones.
     private static let cutoff: Int64 = 1_767_225_600 + 1050 * 3600

@@ -16,7 +16,7 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [6](0006-keep-the-commit-graph-up-to-date.md) | Keep the commit-graph file up to date automatically | Accepted |
 | [7](0007-commit-list-is-an-nstableview.md) | Build the commit list on NSTableView | Accepted |
 | [8](0008-require-git-2-44.md) | Require git 2.44 or later | Accepted |
-| [9](0009-diff-view-uses-textkit-1.md) | Show diffs in a TextKit 1 text view | Its font and size made a choice by [73](0073-choose-the-code-font-and-its-size.md) |
+| [9](0009-diff-view-uses-textkit-1.md) | Show diffs in a TextKit 1 text view | Its font and size made a choice by [73](0073-choose-the-code-font-and-its-size.md), and a layout that shows the whole file added by [74](0074-switch-a-diff-between-its-hunks-and-the-whole-file.md) |
 | [10](0010-our-own-tabs-in-one-window.md) | Show repositories as tabs that yaga draws itself | Partly superseded by [13](0013-repositories-in-a-sidebar.md) |
 | [11](0011-thin-xcode-project-and-a-local-package.md) | Keep the Xcode project thin and the code in a local Swift package | Accepted |
 | [12](0012-history-in-topological-order.md) | Show history in topological order by default | Accepted |
@@ -46,7 +46,7 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [36](0036-a-solid-ink-tile-for-whats-selected-on-the-rail.md) | A solid ink tile for what's selected on the rail | Superseded by [53](0053-organizations-as-groups-in-the-list-and-add-and-settings-at-the-top.md), which removes the rail |
 | [37](0037-double-click-a-commit-to-go-to-it.md) | Double-click a commit to go to it | Accepted |
 | [38](0038-one-delete-on-a-commit-with-its-branches-in-the-dialog.md) | One Delete… on a commit, with its branches in the dialog | A commit's menu gets Revert… in [44](0044-revert-a-commit-from-its-menu-in-history.md) |
-| [39](0039-discard-with-undo-and-ask-only-for-many.md) | Discard changes, with Undo, and ask only for more than one file | Accepted |
+| [39](0039-discard-with-undo-and-ask-only-for-many.md) | Discard changes, with Undo, and ask only for more than one file | Discarding a hunk kept to Hunk view by [74](0074-switch-a-diff-between-its-hunks-and-the-whole-file.md) |
 | [40](0040-the-repositorys-name-opens-a-menu-of-its-worktrees.md) | The repository's name opens a menu of its worktrees | Accepted |
 | [41](0041-agents-status-from-their-hooks-and-messages-from-their-clis.md) | Show what agents are doing from their hooks, and write commit messages with their CLIs | The working ring made to turn by [46](0046-turn-the-ring-of-an-agent-at-work.md), and what the helper sends and what the mark's tooltip and the worktree menu say by [47](0047-say-what-an-agent-is-doing-in-a-line-the-helper-makes.md), and its mark moved to the start of that second line by [48](0048-a-second-line-under-a-sidebar-row-while-theres-something-to-say.md), then to the right of the row, with a worktree's New Window button dropped, by [51](0051-marks-at-the-right-of-a-sidebar-row-and-names-that-fade.md), and the Generate button's sparkles replaced by [68](0068-mark-an-agents-commands-with-an-orange-line-rather-than-sparkles.md). Interface wording revised by [72](0072-use-standard-interface-terminology.md) |
 | [42](0042-run-each-line-down-to-its-parent-in-its-lanes-color.md) | Run each line down to its parent, in its lane's color | Accepted |
@@ -81,3 +81,4 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [71](0071-choose-monokais-or-xcodes-colors.md) | Choose Monokai's or Xcode's colors | A preview of the colors added by [73](0073-choose-the-code-font-and-its-size.md) |
 | [72](0072-use-standard-interface-terminology.md) | Use standard interface terminology | Accepted |
 | [73](0073-choose-the-code-font-and-its-size.md) | Choose the code font and its size | Accepted |
+| [74](0074-switch-a-diff-between-its-hunks-and-the-whole-file.md) | Switch a diff between its hunks and the whole file | Accepted |
