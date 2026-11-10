@@ -46,6 +46,9 @@ extension Icon {
     public static let worktree = folderGit2
     public static let remote = cloud
     public static let clone = bookCopy
+    /// A repository inside another one, which the parent records one commit of
+    /// (decision 75).
+    public static let submodule = box
     public static let fileHistory = fileClock
 
     // Stashes.

@@ -12,6 +12,9 @@ import ThemeUI
 final class SelectedFile {
     enum Content {
         case patch(DiffDocument)
+        /// The file is a submodule, and this is what its row compares: the
+        /// submodule's own commits rather than lines (decision 75).
+        case submodule(SubmoduleDetails)
         /// The file has no lines to compare, and this says what changed.
         case note(String)
         /// git couldn't show the patch. The message says why.
@@ -28,7 +31,8 @@ final class SelectedFile {
         /// How far resolving a conflicted file has got, when it's one (decision 60).
         var conflicts: ConflictSummary?
         /// The layout its patch was read in, or nil for what's the same in
-        /// both layouts: a note, and a file's conflicts (decision 74).
+        /// both layouts: a note, a file's conflicts (decision 74) and a
+        /// submodule's commits.
         var layout: DiffLayout?
     }
 
@@ -105,6 +109,10 @@ final class SelectedFile {
     /// The search for the latest text, which typing more cancels.
     @ObservationIgnored private(set) var searching: Task<Void, Never>?
     @ObservationIgnored private let session: RepositorySession
+    /// The worktree the window shows, which a submodule's commits are read
+    /// from the checkout in (decision 75), or nil when there's none, as in a
+    /// test of a commit's files.
+    @ObservationIgnored private let worktree: String?
     /// The code font diffs are built in, which is the one chosen in Settings
     /// (decision 73). A test gives it another, rather than changing the font
     /// every diff in the process is built in.
@@ -118,8 +126,9 @@ final class SelectedFile {
     /// nothing is loading.
     @ObservationIgnored private var loadingLayout: DiffLayout?
 
-    init(session: RepositorySession) {
+    init(session: RepositorySession, worktree: String? = nil) {
         self.session = session
+        self.worktree = worktree
     }
 
     /// Reads the selected file again when it isn't in the layout chosen any
@@ -181,7 +190,7 @@ final class SelectedFile {
             isWaiting = false
             return
         }
-        if let note = Self.note(for: file) {
+        if !file.isSubmodule, let note = Self.note(for: file) {
             shown = Shown(file: file, source: source, content: .note(note))
             shownPatch = nil
             isWaiting = false
@@ -199,7 +208,7 @@ final class SelectedFile {
         cancelLoading()
         self.file = file
         self.source = source
-        if let note = Self.note(for: file) {
+        if !file.isSubmodule, let note = Self.note(for: file) {
             shown = Shown(file: file, source: source, content: .note(note), isUpdate: true)
             shownPatch = nil
             isWaiting = false
@@ -313,6 +322,17 @@ final class SelectedFile {
         shown?.layout != nil
     }
 
+    /// The selected file as the panel shows it, when it's a submodule whose
+    /// commits have been read: the file with what the panel found, so that the
+    /// header's buttons go by the same reading as the words under them
+    /// (decision 75).
+    var shownSubmodule: DiffFile? {
+        guard let file, let shown, shown.file.path == file.path, shown.source == source, case .submodule(let details) = shown.content else { return nil }
+        var read = shown.file
+        read.submodule = details.change(checkout: read.submodule?.checkout)
+        return read
+    }
+
     /// The group of a worktree's changes or a stash's that the selected file is
     /// in, or nil when it belongs to a commit or a comparison.
     var group: WorktreeChanges.Group? {
@@ -349,6 +369,14 @@ final class SelectedFile {
     ///   other one starts the load again.
     private func load(_ file: DiffFile, from source: PatchSource, in layout: DiffLayout, isRefresh: Bool = false) async {
         do {
+            if file.isSubmodule {
+                // git's patch for a submodule is two `Subproject commit` lines,
+                // so the panel shows its own commits between those two instead.
+                let details = try await session.submoduleDetails(of: file, from: source, in: worktree)
+                try Task.checkCancellation()
+                finishLoading(Shown(file: file, source: source, content: .submodule(details), isUpdate: isRefresh), patch: nil)
+                return
+            }
             var conflicts: ConflictSummary?
             if case .worktree(let worktree, .conflicted, _) = source, let resolution = conflictResolution {
                 if try await loadConflicts(of: file, from: source, in: worktree, layout: layout, resolution: resolution, isRefresh: isRefresh) { return }
@@ -382,8 +410,11 @@ final class SelectedFile {
         } catch is CancellationError {
         } catch {
             // The other layout may still show, as when the whole file is too
-            // large and its hunks aren't.
-            finishLoading(Shown(file: file, source: source, content: .failed(String(describing: error)), layout: layout), patch: nil)
+            // large and its hunks aren't. A submodule has only the one.
+            finishLoading(
+                Shown(file: file, source: source, content: .failed(String(describing: error)), layout: file.isSubmodule ? nil : layout),
+                patch: nil
+            )
         }
     }
 

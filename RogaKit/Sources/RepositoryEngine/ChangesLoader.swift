@@ -88,10 +88,12 @@ enum ChangesLoader {
         }
     }
 
+    /// A submodule keeps its counts of zero, because the `Subproject commit`
+    /// lines that git counts for one aren't lines of any file.
     private static func add(_ counts: [String: DiffFile.LineCounts?], to files: [DiffFile]) -> [DiffFile] {
         files.map { file in
             var file = file
-            if let lines = counts[file.path] { file.lines = lines }
+            if let lines = counts[file.path], !file.isSubmodule { file.lines = lines }
             return file
         }
     }

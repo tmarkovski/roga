@@ -30,6 +30,18 @@ struct CommitDrafts {
     }
 }
 
+/// Stage All and Commit staged nothing, because all there was to stage were
+/// submodules that staging would take commits away from (decision 75).
+struct NothingToCommit: Error, CustomStringConvertible {
+    let leftOut: [DiffFile]
+
+    var description: String {
+        let it = leftOut.count == 1 ? "it" : "them"
+        return "There's nothing to commit, because Stage All \(SubmoduleWords.leftOut(leftOut) ?? "left out a submodule"). "
+            + "Update \(it), or stage \(it) from the diff panel's menu if you mean to go back."
+    }
+}
+
 /// The message of a worktree's next commit, and making that commit (decision 30).
 @Observable
 final class CommitComposer {
@@ -244,8 +256,24 @@ final class CommitComposer {
             return Action(title: conflicts == 1 ? "1 Conflict Left" : "\(conflicts.formatted()) Conflicts Left", isEnabled: false)
         }
         if isRebasing { return Action(title: "Continue Rebase", isEnabled: true) }
-        let hasFiles = (changes.loaded?.fileCount ?? 0) > 0
-        return Action(title: buttonTitle, isEnabled: hasMessage && (hasFiles || isAmending))
+        return Action(title: buttonTitle, isEnabled: hasMessage && (hasSomethingToCommit || isAmending))
+    }
+
+    /// Whether a commit would have anything in it: something staged, or with
+    /// nothing staged, something that staging everything would stage. That
+    /// leaves out a submodule that's behind what's recorded, and one with only
+    /// files of its own changed (decision 75), so a worktree with nothing else
+    /// has nothing to commit.
+    private var hasSomethingToCommit: Bool {
+        guard let loaded = changes.loaded, loaded.fileCount > 0 else { return false }
+        if !loaded.staged.isEmpty || !loaded.untracked.isEmpty || isMerging { return true }
+        return loaded.unstaged.contains { file in
+            // One that hasn't been read yet may have commits to record.
+            switch file.submoduleStaging {
+            case nil, .recordsNewCommits, .unknown: true
+            case .takesCommitsAway, .takesSomeAndAddsSome, .nothingToStage: false
+            }
+        }
     }
 
     private var buttonTitle: String {
@@ -362,11 +390,22 @@ final class CommitComposer {
             do {
                 // A press of Space may still be on its way to git.
                 await changes.applyingIndexChanges?.value
-                if stagesFirst { try await session.stageEverything(in: worktree) }
+                // Staging everything leaves out a submodule that it would take
+                // commits away from, which the title row then says (decision 75).
+                var leftOut: [DiffFile] = []
+                if stagesFirst {
+                    leftOut = try await session.stageEverything(in: worktree)
+                    // With nothing else to stage, git would only say that
+                    // there's nothing to commit, and not why.
+                    if !leftOut.isEmpty, try await session.status(in: worktree).staged.isEmpty {
+                        throw NothingToCommit(leftOut: leftOut)
+                    }
+                }
                 let made = try await session.commit(request, in: worktree)
                 finish(made, message: request.message)
                 if (try? await session.status(in: worktree).fileCount) == 0 { select(made.id) }
-                return "\(wasAmending ? "Amended" : "Committed") \(made.id.hex.prefix(8))"
+                let committed = "\(wasAmending ? "Amended" : "Committed") \(made.id.hex.prefix(8))"
+                return SubmoduleWords.leftOut(leftOut).map { "\(committed) · \($0)" } ?? committed
             } catch is CancellationError {
                 phase = .idle
             } catch {

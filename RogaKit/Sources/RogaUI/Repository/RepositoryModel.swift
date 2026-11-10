@@ -225,7 +225,7 @@ final class RepositoryModel {
         self.reportUncommittedFiles = reportUncommittedFiles
         self.reportConflicts = reportConflicts
         self.reportBranchChange = reportBranchChange
-        selectedCommit = SelectedCommit(session: session)
+        selectedCommit = SelectedCommit(session: session, worktree: worktree)
         selectedChanges = SelectedChanges(session: session, worktree: worktree, selectedFile: selectedCommit.selectedFile, fileList: selectedCommit.fileList)
         refs = RefsModel(session: session, worktree: worktree)
         branch = BranchModel(session: session, worktree: worktree, fetchesByItself: fetchesByItself, reportBranchChange: reportBranchChange)
@@ -243,6 +243,8 @@ final class RepositoryModel {
             return !branch.isBusy && branch.unfinished == nil
         }
         selectedChanges.lookAgain = { [weak self] in self?.lookAgain() }
+        selectedChanges.onLeftOut = { [weak branch] words in branch?.announce(words, undo: nil, lingers: true) }
+        selectedChanges.runSubmoduleUpdate = { [weak self] file in self?.updateSubmodule(file) }
         gitFix.lookAgain = { [weak self] in self?.lookAgain() }
         selectedChanges.showChanges = { [weak self] in self?.selectChangesOnceTheyShow() }
         composer.currentBranch = { [weak self] in self?.history?.refs.currentBranch }
@@ -265,6 +267,18 @@ final class RepositoryModel {
             return await nameConflicts(labels)
         }
         branch.stagedFiles = { [weak self] in self?.stagedFiles ?? 0 }
+    }
+
+    /// Checks out the commit that the worktree records for a submodule, with
+    /// `git submodule update --init`, which fetches the commit first when the
+    /// checkout hasn't got it (decision 75). It runs like a pull, with nothing
+    /// else alongside it, and git's refusal shows in a dialog, as when the
+    /// submodule's own uncommitted changes are in the way.
+    func updateSubmodule(_ file: DiffFile) {
+        branch.run(.updatingSubmodule, failure: "Can't update \(file.path)") { [session, worktree] in
+            try await session.updateSubmodule(file.path, in: worktree)
+            return "Updated \(file.name)"
+        }
     }
 
     /// The file selected in whichever panel is showing, which the diff panel

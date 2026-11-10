@@ -135,6 +135,18 @@ struct FileRowAction {
     let perform: (DiffFile) -> Void
     /// The button before it, for throwing the file's changes away, if it has one.
     var discard: ((DiffFile) -> RowDiscard?)?
+    /// What a row has in place of the button, when staging isn't the thing for
+    /// it, as for a submodule that's behind what's recorded (decision 75). Nil
+    /// leaves the row its button.
+    var instead: ((DiffFile) -> Instead?)?
+
+    enum Instead {
+        /// The row has no button, because there's nothing of it to stage.
+        case nothing
+        /// A button that says what it does in words, with the command it runs
+        /// in its tooltip.
+        case button(title: String, help: String, perform: () -> Void)
+    }
 }
 
 /// The button on a row for throwing away what it's about (decision 39). It comes
@@ -152,6 +164,8 @@ private struct FileRowButton<Content: View>: View {
     var isSelected = false
     var accessoryIcon: Icon?
     var accessoryTitle: String?
+    /// The button's tooltip, when it says more than its title.
+    var accessoryHelp: String?
     var accessoryLabel = ""
     var performAccessory: (() -> Void)?
     var discard: RowDiscard?
@@ -214,7 +228,7 @@ private struct FileRowButton<Content: View>: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .help(accessoryTitle ?? "")
+                        .help(accessoryHelp ?? accessoryTitle ?? "")
                         .accessibilityLabel(accessoryLabel)
                     }
                 }
@@ -326,12 +340,14 @@ struct ChangedFileRow: View {
 
     var body: some View {
         let discard = action?.discard?(file)
+        let button = button
         FileRowButton(
             isSelected: isSelected,
-            accessoryIcon: action?.icon,
-            accessoryTitle: action?.title,
-            accessoryLabel: "\(action?.title ?? "") \(file.path)",
-            performAccessory: action.map { action in { action.perform(file) } },
+            accessoryIcon: button?.icon,
+            accessoryTitle: button?.title,
+            accessoryHelp: button?.help,
+            accessoryLabel: "\(button?.title ?? "") \(file.path)",
+            performAccessory: button?.perform,
             discard: discard,
             discardLabel: "\(discard?.title ?? "") \(file.path)",
             action: select
@@ -345,6 +361,17 @@ struct ChangedFileRow: View {
         .background { FolderGuides(depth: depth) }
     }
 
+    /// The button at the end of the row: the one every row of its list has, or
+    /// what this row has in its place, which can be nothing.
+    private var button: (icon: Icon?, title: String, help: String?, perform: () -> Void)? {
+        guard let action else { return nil }
+        switch action.instead?(file) {
+        case .nothing: return nil
+        case .button(let title, let help, let perform): return (nil, title, help, perform)
+        case nil: return (action.icon, action.title, nil, { action.perform(file) })
+        }
+    }
+
     /// - Parameter reservingRoom: Whether two buttons cover the end of the row, which
     ///   short counts have no room for, so that a long name stops before them.
     private func content(hidingCounts: Bool, reservingRoom: Bool) -> some View {
@@ -353,6 +380,14 @@ struct ChangedFileRow: View {
                 .font(.system(size: 11.5, weight: .medium, design: .monospaced))
                 .foregroundStyle(file.status.color)
                 .frame(width: 12)
+            if file.isSubmodule {
+                // A box says the row is a commit of another repository rather
+                // than a file (decision 75).
+                Icon.submodule.image
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
             Text(file.name)
                 .font(.system(size: 12.5))
                 .lineLimit(1)
@@ -365,7 +400,18 @@ struct ChangedFileRow: View {
                 .truncationMode(.middle)
             Spacer(minLength: 8)
             HStack(spacing: 0) {
-                if let lines = file.lines {
+                if file.isSubmodule {
+                    // In place of line counts, which a submodule has none of,
+                    // how its pointer moves, once the submodule has been read.
+                    if let label = file.submoduleLabel {
+                        Text(label.text)
+                            .font(.system(size: 12))
+                            .monospacedDigit()
+                            .foregroundStyle(label.isUncommitted ? AnyShapeStyle(Color.orange) : AnyShapeStyle(.secondary))
+                            .fixedSize()
+                            .opacity(hidingCounts ? 0 : 1)
+                    }
+                } else if let lines = file.lines {
                     if lines.added + lines.removed > 0 {
                         // The name gives way in a narrow panel or a deep folder,
                         // because numbers cut short would say the wrong thing.
@@ -414,12 +460,15 @@ struct ChangedFileRow: View {
         case .other(let letter): "\(letter) \(file.path)"
         }
         guard file.status != .untracked, file.status != .conflicted else { return change }
+        if file.isSubmodule {
+            return change + ", a submodule" + (file.submoduleLabel.map { ", " + $0.spoken } ?? "")
+        }
         guard let lines = file.lines else { return change + ", a binary file" }
         return change + ", \(lines.added) lines added and \(lines.removed) removed"
     }
 }
 
-private extension DiffFile.Status {
+extension DiffFile.Status {
     /// The color of the status letter. Changed files are orange like the
     /// sidebar's counts, added ones green, and ones that are gone or in conflict
     /// red, like the line counts. Moved and copied ones are blue, because their
@@ -433,6 +482,21 @@ private extension DiffFile.Status {
         case .deleted, .conflicted: Palette.red
         case .renamed, .copied: Palette.blue
         case .untracked, .other: .secondary
+        }
+    }
+
+    /// The status in a word, for VoiceOver to say before a path.
+    var word: String {
+        switch self {
+        case .added: "Added"
+        case .deleted: "Deleted"
+        case .modified: "Modified"
+        case .renamed: "Renamed"
+        case .copied: "Copied"
+        case .typeChanged: "Changed the kind of"
+        case .untracked: "Untracked"
+        case .conflicted: "Conflict in"
+        case .other(let letter): letter
         }
     }
 }

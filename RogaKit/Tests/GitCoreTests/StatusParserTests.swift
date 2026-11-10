@@ -64,6 +64,58 @@ struct StatusParserTests {
         #expect(changes.unstaged.map(\.newID) == [nil])
     }
 
+    @Test func readsWhatASubmodulesCheckoutHas() throws {
+        let changes = try StatusParser.parse(output([
+            "1 .M SC.. 160000 160000 160000 \(one) \(one) vendor/moved",
+            "1 .M S.MU 160000 160000 160000 \(one) \(one) vendor/changed inside",
+            "1 .M SCM. 160000 160000 160000 \(one) \(one) vendor/both",
+            "1 M. S... 160000 160000 160000 \(one) \(two) vendor/staged",
+            "1 MM S..U 160000 160000 160000 \(one) \(two) vendor/staged and changed",
+            "1 .D S... 160000 160000 000000 \(one) \(one) vendor/gone",
+            "1 .M N... 100644 100644 100644 \(one) \(one) file.txt",
+        ]))
+        func checkout(_ path: String) -> SubmoduleChange.Checkout? {
+            changes.unstaged.first { $0.path == path }?.submodule?.checkout
+        }
+        #expect(checkout("vendor/moved") == [.commitChanged])
+        #expect(checkout("vendor/changed inside") == [.modifiedFiles, .untrackedFiles])
+        #expect(checkout("vendor/both") == [.commitChanged, .modifiedFiles])
+        #expect(checkout("vendor/staged and changed") == [.untrackedFiles])
+        #expect(checkout("vendor/gone") == [])
+        #expect(changes.unstaged.first { $0.path == "vendor/gone" }?.isSubmodule == true)
+        // What git says is about the worktree's side, so a staged change has none of it.
+        #expect(changes.staged.map(\.submodule) == [SubmoduleChange(), SubmoduleChange()])
+        #expect(changes.staged.map(\.isSubmodule) == [true, true])
+        let file = try #require(changes.unstaged.first { $0.path == "file.txt" })
+        #expect(file.submodule == nil && !file.isSubmodule)
+    }
+
+    @Test func saysWhatStagingASubmoduleWouldDo() throws {
+        func staging(_ checkout: SubmoduleChange.Checkout?, _ distance: SubmoduleChange.Distance?, newMode: UInt32 = DiffFile.submoduleMode) -> SubmoduleStaging? {
+            DiffFile(
+                status: .modified, path: "vendor/parser", oldMode: DiffFile.submoduleMode, newMode: newMode,
+                submodule: SubmoduleChange(checkout: checkout, distance: distance)
+            ).submoduleStaging
+        }
+        #expect(staging([.commitChanged], nil) == .unknown)
+        #expect(staging([.commitChanged], .counted(ahead: 2, behind: 0)) == .recordsNewCommits)
+        #expect(staging([.commitChanged], .counted(ahead: 0, behind: 3)) == .takesCommitsAway)
+        #expect(staging([.commitChanged], .counted(ahead: 2, behind: 3)) == .takesSomeAndAddsSome)
+        #expect(staging([.commitChanged], .commitMissing) == .takesCommitsAway)
+        #expect(staging([.commitChanged, .modifiedFiles], .counted(ahead: 2, behind: 0)) == .recordsNewCommits)
+        #expect(staging([.modifiedFiles], nil) == .nothingToStage)
+        #expect(staging([.untrackedFiles], .counted(ahead: 0, behind: 0)) == .nothingToStage)
+        // A row that isn't under Unstaged, and a submodule whose folder is gone,
+        // stage as any file does.
+        #expect(staging(nil, .counted(ahead: 0, behind: 3)) == nil)
+        #expect(staging([], nil, newMode: 0) == nil)
+        #expect(DiffFile(status: .modified, path: "a.txt", oldMode: 0o100644, newMode: 0o100644).submoduleStaging == nil)
+
+        let leftOut: [SubmoduleStaging] = [.takesCommitsAway, .takesSomeAndAddsSome, .unknown]
+        #expect(leftOut.map(\.isLeftOutOfStagingAll) == [true, true, true])
+        #expect(!SubmoduleStaging.recordsNewCommits.isLeftOutOfStagingAll && !SubmoduleStaging.nothingToStage.isLeftOutOfStagingAll)
+    }
+
     @Test func keepsTheOldPathOnlyOnTheSideThatMoved() throws {
         // Staged as a rename, and then changed in the worktree.
         let changes = try StatusParser.parse(output(["2 RM N... 100644 100644 100644 \(one) \(two) R100 new.txt", "old.txt"]))

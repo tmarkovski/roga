@@ -1,6 +1,6 @@
 # 75. List submodules in the refs panel, and go into one in the window
 
-Accepted on 2026-11-10. Nothing in it is built yet.
+Accepted on 2026-11-10. The first of its three steps was built the same day, and the other two aren't built. Building it added two cases that this doesn't name, which [the main window](../main-window.md#the-commit-and-diff-panels) describes: a checkout that hasn't fetched the commit that's recorded, which is treated as one that's behind, and a checkout with commits of its own that's missing some too, which has Update and Stage in a menu and neither as a button.
 
 ## Context
 
@@ -61,4 +61,4 @@ It comes in three steps, in this order, and each is worth having without the nex
   - how the title row's path reads for a submodule inside a submodule, and which key goes back, where Finder's Command-Up Arrow for the enclosing folder is the likely one
   - whether the section's heading gets Update All
   - adding and removing submodules and changing their URLs, which would follow [decision 67](0067-add-and-remove-remotes-in-the-refs-panel.md)'s dialogs for remotes
-- The roadmap still lists submodules under what isn't planned. This decision says what to build and in which order, and scheduling the steps is separate. Git LFS still needs a decision of its own.
+- The roadmap listed submodules under what isn't planned. This decision says what to build and in which order, and scheduling the steps is separate, so the roadmap now lists the two steps that aren't built there. Git LFS still needs a decision of its own.

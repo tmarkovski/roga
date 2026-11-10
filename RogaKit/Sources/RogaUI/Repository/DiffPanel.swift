@@ -72,7 +72,11 @@ struct DiffPanel: View {
                 hasRoomForTitle = hasRoom
             }
         } trailing: {
-            if let changes, let file = selection.file, let group = selection.group {
+            if let changes, let file = selection.file, let group = selection.group, file.isSubmodule {
+                // Once the panel has read the submodule, the buttons go by the
+                // same reading as the words under them.
+                SubmoduleButtons(file: selection.shownSubmodule ?? changes.listed(file, in: group), group: group, changes: changes)
+            } else if let changes, let file = selection.file, let group = selection.group {
                 if group == .conflicted, let conflicts = selection.shown?.conflicts, selection.shown?.file.path == file.path {
                     let setup = conflicts.left > 0 && changes.agentWork[file.path]?.isWorking != true ? agents?.generation() : nil
                     if let setup, let worktree {
@@ -148,6 +152,8 @@ struct DiffPanel: View {
                         resolveConflict: changes?.conflictResolve,
                         agentIsResolving: selection.file.flatMap { changes?.agentWork[$0.path]?.isWorking } == true
                     )
+                case .submodule(let details):
+                    SubmoduleReportView(report: SubmoduleReport(details, path: selection.shown?.file.path ?? ""))
                 case .note(let text):
                     note(text)
                 case .failed(let message):
@@ -279,6 +285,7 @@ private struct FileTitle: View {
     private var details: String {
         var details: [String] = []
         if let group = source.group { details.append(group.title) }
+        if file.isSubmodule { details.append("Submodule") }
         if let conflicts, conflicts.total > 0 {
             details.append(conflicts.left == 0 ? "none left" : "\(conflicts.left) of \(conflicts.total) left")
         }
@@ -287,6 +294,67 @@ private struct FileTitle: View {
             details.append("mode \(String(file.oldMode, radix: 8)) → \(String(file.newMode, radix: 8))")
         }
         return details.joined(separator: " · ")
+    }
+}
+
+/// The header's buttons for a submodule's row under uncommitted changes, which
+/// go by what staging it would do (decision 75).
+///
+/// - A checkout with new commits has **Stage**, which records them.
+/// - One that's behind what's recorded has **Update**, in the orange of what
+///   comes next, and staging it is in the menu, for someone who means to go back.
+/// - One that has commits of its own and is missing some has both in the menu
+///   and neither as a button, because either one leaves commits out. So has
+///   one that hasn't been read, or couldn't be.
+/// - One with only files of its own changed has nothing, because the parent
+///   can't stage those.
+private struct SubmoduleButtons: View {
+    let file: DiffFile
+    let group: WorktreeChanges.Group
+    let changes: SelectedChanges
+
+    var body: some View {
+        switch group == .unstaged ? file.submoduleStaging : nil {
+        case nil:
+            // Under Staged, and for a submodule whose folder is gone, it's
+            // staged and unstaged as any file is.
+            let title = group == .staged ? "Unstage" : "Stage"
+            Button(title) { changes.toggle(file, in: group) }
+                .buttonStyle(OutlinedButtonStyle(height: 24, cornerRadius: 6))
+                .help("\(title) (\(RepositoryCommands.stageShortcut.symbols))")
+        case .recordsNewCommits:
+            Button("Stage") { changes.toggle(file, in: group) }
+                .buttonStyle(OutlinedButtonStyle(height: 24, cornerRadius: 6))
+                .help("Record the commit that's checked out (\(RepositoryCommands.stageShortcut.symbols))")
+        case .takesCommitsAway:
+            Button("Update") { changes.updateSubmodule(file) }
+                .buttonStyle(OutlinedButtonStyle(height: 24, cornerRadius: 6, isNext: true))
+                .help(SubmoduleWords.updateHelp(file))
+            menu {
+                Button("Stage the checked-out commit instead") { changes.toggle(file, in: group) }
+            }
+        case .takesSomeAndAddsSome, .unknown:
+            // One that couldn't be read has both too, so that it can still be
+            // staged or updated from here by someone who knows which they want.
+            menu {
+                Button("Update to the recorded commit") { changes.updateSubmodule(file) }
+                Button("Stage the checked-out commit") { changes.toggle(file, in: group) }
+            }
+        case .nothingToStage:
+            EmptyView()
+        }
+    }
+
+    private func menu(@ViewBuilder _ items: () -> some View) -> some View {
+        Menu(content: items) {
+            Icon.ellipsis.image
+        }
+        .menuStyle(.button)
+        .buttonStyle(.icon)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Update or Stage the Submodule")
+        .accessibilityLabel("Update or Stage the Submodule")
     }
 }
 

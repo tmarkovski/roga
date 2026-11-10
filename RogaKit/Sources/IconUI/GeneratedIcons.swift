@@ -18,6 +18,7 @@ public enum Icon: String, CaseIterable, Sendable {
     case bookCopy = "book-copy"
     case bookmark = "bookmark"
     case bot = "bot"
+    case box = "box"
     case buildingComplex = "building-complex"
     case check = "check"
     case checkCheck = "check-check"

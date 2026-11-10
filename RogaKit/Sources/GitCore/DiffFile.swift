@@ -64,8 +64,13 @@ public struct DiffFile: Sendable, Hashable {
     /// doesn't exist.
     public var oldID: ObjectID?
     public var newID: ObjectID?
-    /// Nil for a binary file, which has no lines.
+    /// Nil for a binary file, which has no lines. A submodule has counts of
+    /// zero, because the two lines git's patch for one has aren't lines of
+    /// any file.
     public var lines: LineCounts?
+    /// What's known about the submodule this is beyond its two commits, or nil
+    /// for any other file (decision 75).
+    public var submodule: SubmoduleChange?
 
     public init(
         status: Status,
@@ -75,7 +80,8 @@ public struct DiffFile: Sendable, Hashable {
         newMode: UInt32,
         oldID: ObjectID? = nil,
         newID: ObjectID? = nil,
-        lines: LineCounts? = nil
+        lines: LineCounts? = nil,
+        submodule: SubmoduleChange? = nil
     ) {
         self.status = status
         self.path = path
@@ -85,6 +91,13 @@ public struct DiffFile: Sendable, Hashable {
         self.oldID = oldID
         self.newID = newID
         self.lines = lines
+        self.submodule = submodule
+    }
+
+    /// Whether this is a submodule on either side, which is a commit of
+    /// another repository rather than a file.
+    public var isSubmodule: Bool {
+        oldMode == Self.submoduleMode || newMode == Self.submoduleMode
     }
 
     /// The part of the path after the last slash.
