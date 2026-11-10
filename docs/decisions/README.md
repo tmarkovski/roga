@@ -16,7 +16,7 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [6](0006-keep-the-commit-graph-up-to-date.md) | Keep the commit-graph file up to date automatically | Accepted |
 | [7](0007-commit-list-is-an-nstableview.md) | Build the commit list on NSTableView | Accepted |
 | [8](0008-require-git-2-44.md) | Require git 2.44 or later | Accepted |
-| [9](0009-diff-view-uses-textkit-1.md) | Show diffs in a TextKit 1 text view | Accepted |
+| [9](0009-diff-view-uses-textkit-1.md) | Show diffs in a TextKit 1 text view | Its font and size made a choice by [73](0073-choose-the-code-font-and-its-size.md) |
 | [10](0010-our-own-tabs-in-one-window.md) | Show repositories as tabs that yaga draws itself | Partly superseded by [13](0013-repositories-in-a-sidebar.md) |
 | [11](0011-thin-xcode-project-and-a-local-package.md) | Keep the Xcode project thin and the code in a local Swift package | Accepted |
 | [12](0012-history-in-topological-order.md) | Show history in topological order by default | Accepted |
@@ -78,5 +78,6 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [68](0068-mark-an-agents-commands-with-an-orange-line-rather-than-sparkles.md) | Mark an agent's commands with an orange line, rather than sparkles | Accepted |
 | [69](0069-set-roga-up-in-the-whole-window-the-first-time-it-runs.md) | Set Roga up in the whole window, the first time it runs | Interface wording revised by [72](0072-use-standard-interface-terminology.md) |
 | [70](0070-push-a-tag-from-its-menu-or-as-its-made.md) | Push a tag from its menu, or as it's made | Accepted |
-| [71](0071-choose-monokais-or-xcodes-colors.md) | Choose Monokai's or Xcode's colors | Accepted |
+| [71](0071-choose-monokais-or-xcodes-colors.md) | Choose Monokai's or Xcode's colors | A preview of the colors added by [73](0073-choose-the-code-font-and-its-size.md) |
 | [72](0072-use-standard-interface-terminology.md) | Use standard interface terminology | Accepted |
+| [73](0073-choose-the-code-font-and-its-size.md) | Choose the code font and its size | Accepted |

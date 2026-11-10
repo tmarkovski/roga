@@ -3,6 +3,7 @@ import Foundation
 import GitCore
 import Observation
 import RepositoryEngine
+import ThemeUI
 
 /// The file selected in the commit panel, and what the diff panel shows of it.
 /// What's showing stays until the next file's patch is ready, because a panel
@@ -101,9 +102,23 @@ final class SelectedFile {
     /// The search for the latest text, which typing more cancels.
     @ObservationIgnored private(set) var searching: Task<Void, Never>?
     @ObservationIgnored private let session: RepositorySession
+    /// The code font diffs are built in, which is the one chosen in Settings
+    /// (decision 73). A test gives it another, rather than changing the font
+    /// every diff in the process is built in.
+    @ObservationIgnored var codeFont: () -> CodeFont = { CodeFont.current }
 
     init(session: RepositorySession) {
         self.session = session
+    }
+
+    /// Builds the diff showing again when it's in a code font that isn't the
+    /// one chosen any more, at the same place in the file. A file that's still
+    /// loading is left alone, since it's built in the font chosen as it arrives.
+    func followCodeFont() {
+        guard let file, let source, let shown, shown.file.path == file.path, shown.source == source,
+              let document = shownDocument, document.font != codeFont()
+        else { return }
+        refresh(file, from: source)
     }
 
     /// Selects a file of a commit, or none, and loads its patch.
@@ -233,6 +248,12 @@ final class SelectedFile {
         if case .patch(let document) = shown?.content { document } else { nil }
     }
 
+    /// Whether what's showing can stay when the file turns out not to have
+    /// changed: anything but a diff in a code font that isn't the one chosen.
+    private var shownIsInCodeFont: Bool {
+        shownDocument.map { $0.font == codeFont() } ?? true
+    }
+
     /// Whether there's text to find something in.
     var canFind: Bool {
         shownDocument != nil
@@ -281,14 +302,14 @@ final class SelectedFile {
             }
             let patch = try await session.patch(of: file, from: source)
             try Task.checkCancellation()
-            if isRefresh, let shown, patch.bytes == shownPatch?.bytes, shown.conflicts == conflicts {
+            if isRefresh, let shown, patch.bytes == shownPatch?.bytes, shown.conflicts == conflicts, shownIsInCodeFont {
                 finishLoading(Shown(file: file, source: source, content: shown.content, isUpdate: true, conflicts: conflicts), patch: patch)
                 return
             }
             let content: Content = if patch.lines.isEmpty {
                 .note(Self.note(for: patch, of: file, from: source))
             } else {
-                .patch(await DiffTextBuilder.document(for: patch))
+                .patch(await inCodeFont { await DiffTextBuilder.document(for: patch, in: $0) })
             }
             try Task.checkCancellation()
             finishLoading(Shown(file: file, source: source, content: content, isUpdate: isRefresh, conflicts: conflicts), patch: patch)
@@ -313,20 +334,34 @@ final class SelectedFile {
         let sides = await nameConflicts((first.oursLabel, first.theirsLabel))
         try Task.checkCancellation()
         let summary = ConflictSummary(total: progress.original.conflicts.count, left: progress.left, sides: sides)
-        if isRefresh, let shown, progress == shownConflicts, shown.conflicts == summary {
+        if isRefresh, let shown, progress == shownConflicts, shown.conflicts == summary, shownIsInCodeFont {
             finishLoading(Shown(file: file, source: source, content: shown.content, isUpdate: true, conflicts: summary), patch: nil, conflicts: progress)
             return true
         }
-        let document = await DiffTextBuilder.document(
-            for: progress.original,
-            choices: progress.choices,
-            sides: sides,
-            writtenBy: progress.writtenBy,
-            shownSides: progress.shownSides
-        )
+        let document = await inCodeFont { font in
+            await DiffTextBuilder.document(
+                for: progress.original,
+                choices: progress.choices,
+                sides: sides,
+                writtenBy: progress.writtenBy,
+                shownSides: progress.shownSides,
+                in: font
+            )
+        }
         try Task.checkCancellation()
         finishLoading(Shown(file: file, source: source, content: .patch(document), isUpdate: isRefresh, conflicts: summary), patch: nil, conflicts: progress)
         return true
+    }
+
+    /// Builds a document in the code font chosen, and again if another was
+    /// chosen while it was being built, so that what arrives is never in a font
+    /// that's already been left.
+    private func inCodeFont(_ build: (CodeFont) async -> DiffDocument) async -> DiffDocument {
+        var document = await build(codeFont())
+        while document.font != codeFont(), !Task.isCancelled {
+            document = await build(codeFont())
+        }
+        return document
     }
 
     private func finishLoading(_ shown: Shown, patch: FilePatch?, conflicts: ConflictResolution.Progress? = nil) {

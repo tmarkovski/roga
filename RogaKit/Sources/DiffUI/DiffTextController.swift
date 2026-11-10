@@ -1,5 +1,6 @@
 import AppKit
 import GitCore
+import ThemeUI
 
 /// Owns the text view that shows one file's patch, and the line numbers beside
 /// it. It uses TextKit 1 with non-contiguous layout, which lays out only the
@@ -13,6 +14,15 @@ public final class DiffTextController: NSObject {
     private let sides: SideBySideView
     let hunkButton = HunkButton()
     public private(set) var document: DiffDocument?
+    /// Whether the view only shows a diff, as the sample in Settings does: its
+    /// text can't be selected, and it has no scrollers.
+    public var isPicture = false {
+        didSet {
+            configureTextView()
+            scrollView.hasVerticalScroller = !isPicture
+            scrollView.hasHorizontalScroller = !isPicture
+        }
+    }
 
     /// Takes a hunk out of the file, by the index of its header among the patch's
     /// lines, or nil when the hunks showing can't be taken out (decision 39).
@@ -47,6 +57,18 @@ public final class DiffTextController: NSObject {
 
     /// The space above and below the text.
     private static let inset: CGFloat = 4
+
+    /// How tall the view has to be to show a patch of some lines in a code font
+    /// without scrolling: a row for each, and the space above and below the text.
+    public static func height(lines: Int, in font: CodeFont = .current) -> CGFloat {
+        CGFloat(lines) * DiffMetrics.of(font).lineHeight + inset * 2
+    }
+
+    /// The measures of the font the document showing was built in, which say
+    /// where its rows are. With no document, they're the font's in use.
+    private var metrics: DiffMetrics {
+        document?.metrics ?? .current
+    }
     /// How far a conflict's outline stays from the view's sides, so that the
     /// light's glow isn't cut off along them.
     static let outlineInset: CGFloat = 2
@@ -67,8 +89,6 @@ public final class DiffTextController: NSObject {
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = true
         scrollView.autohidesScrollers = true
-        scrollView.verticalLineScroll = DiffStyle.lineHeight
-        scrollView.horizontalLineScroll = DiffStyle.columnWidth * 4
 
         gutter = LineNumberGutter(textView: textView)
         sides = SideBySideView(gutter: gutter, scrollView: scrollView, hunkButton: hunkButton)
@@ -83,6 +103,7 @@ public final class DiffTextController: NSObject {
         textView.isCovered = { [weak self] point in self?.isCovered(atWindowPoint: point) ?? false }
 
         configureTextView()
+        followMetrics()
         let clipView = scrollView.contentView
         clipView.postsFrameChangedNotifications = true
         clipView.postsBoundsChangedNotifications = true
@@ -114,12 +135,20 @@ public final class DiffTextController: NSObject {
     ///   place, for a newer copy of the document showing.
     public func show(_ document: DiffDocument, keepingPosition: Bool = false) {
         guard document !== self.document else { return }
-        let position = scrollView.contentView.bounds.origin
+        var position = scrollView.contentView.bounds.origin
+        // A copy in another font has rows of another height, so the same place
+        // is the same row and column rather than the same distance.
+        let old = metrics
+        if old !== document.metrics {
+            position.x *= document.metrics.columnWidth / old.columnWidth
+            position.y = (position.y * document.metrics.lineHeight / old.lineHeight).rounded()
+        }
         // The selection is a place in the old text, which the new one may not have.
         textView.setSelectedRange(NSRange(location: 0, length: 0))
         letGoOfDocument()
         self.document = document
         gutter.document = document
+        followMetrics()
         view.needsLayout = true
         // An earlier view may still have this document, when a window goes to
         // another worktree and back.
@@ -133,6 +162,14 @@ public final class DiffTextController: NSObject {
         updateHunkButton()
         editor?.close()
         updateConflictBars()
+    }
+
+    /// Sets what depends on the font: how far a step of scrolling goes, and how
+    /// tall a hunk's button can be on its band.
+    private func followMetrics() {
+        scrollView.verticalLineScroll = metrics.lineHeight
+        scrollView.horizontalLineScroll = metrics.columnWidth * 4
+        hunkButton.rowHeight = metrics.lineHeight
     }
 
     /// A text view that's going away takes its text container with it, so it
@@ -149,7 +186,7 @@ public final class DiffTextController: NSObject {
     /// The header of the hunk at a height in the text view. Every line is one row of
     /// the same height, so this takes no layout, however long the patch is.
     func hunkHeader(atTextY y: CGFloat) -> Int? {
-        let row = ((y - textView.textContainerOrigin.y) / DiffStyle.lineHeight).rounded(.down)
+        let row = ((y - textView.textContainerOrigin.y) / metrics.lineHeight).rounded(.down)
         return document?.hunkHeader(atRow: Int(row))
     }
 
@@ -170,8 +207,8 @@ public final class DiffTextController: NSObject {
             hunkButton.isHidden = true
             return
         }
-        let top = textView.textContainerOrigin.y + CGFloat(header) * DiffStyle.lineHeight
-        let band = view.convert(NSRect(x: 0, y: top, width: 1, height: DiffStyle.lineHeight), from: textView)
+        let top = textView.textContainerOrigin.y + CGFloat(header) * metrics.lineHeight
+        let band = view.convert(NSRect(x: 0, y: top, width: 1, height: metrics.lineHeight), from: textView)
         let clip = scrollView.contentView
         let visible = view.convert(clip.bounds, from: clip)
         guard visible.minY...visible.maxY ~= band.midY else {
@@ -226,8 +263,8 @@ public final class DiffTextController: NSObject {
         let visible = view.convert(clip.bounds, from: clip)
         let origin = textView.textContainerOrigin.y
         let shown = textView.visibleRect
-        let firstRow = Int(((shown.minY - origin) / DiffStyle.lineHeight).rounded(.down))
-        let lastRow = Int(((shown.maxY - origin) / DiffStyle.lineHeight).rounded(.up))
+        let firstRow = Int(((shown.minY - origin) / metrics.lineHeight).rounded(.down))
+        let lastRow = Int(((shown.maxY - origin) / metrics.lineHeight).rounded(.up))
         let bands = document.conflictBands.filter { $0.row + ConflictBand.rowCount > firstRow && $0.row <= lastRow }
         let count = document.conflictBands.count
         while conflictBars.count < bands.count {
@@ -244,8 +281,8 @@ public final class DiffTextController: NSObject {
             }
             let band = bands[index]
             bar.show(band, sides: conflicts.sides, of: count, canResolve: resolveConflict != nil)
-            let top = origin + CGFloat(band.row) * DiffStyle.lineHeight
-            let row = view.convert(NSRect(x: 0, y: top, width: 1, height: ConflictBar.height), from: textView)
+            let top = origin + CGFloat(band.row) * metrics.lineHeight
+            let row = view.convert(NSRect(x: 0, y: top, width: 1, height: ConflictBar.height(lineHeight: metrics.lineHeight)), from: textView)
             bar.place(in: NSRect(x: 0, y: row.minY, width: visible.maxX, height: row.height), textStart: gutter.thickness + DiffStyle.textPadding)
             bar.isHidden = row.maxY <= visible.minY || row.minY >= visible.maxY
         }
@@ -261,8 +298,8 @@ public final class DiffTextController: NSObject {
         }
         let origin = textView.textContainerOrigin.y
         let shown = textView.visibleRect
-        let firstRow = Int(((shown.minY - origin) / DiffStyle.lineHeight).rounded(.down))
-        let lastRow = Int(((shown.maxY - origin) / DiffStyle.lineHeight).rounded(.up))
+        let firstRow = Int(((shown.minY - origin) / metrics.lineHeight).rounded(.down))
+        let lastRow = Int(((shown.maxY - origin) / metrics.lineHeight).rounded(.up))
         let blocks = document.unresolvedConflictRows.filter { $0.upperBound > firstRow && $0.lowerBound <= lastRow }
         while conflictOutlines.count < blocks.count {
             let outline = make()
@@ -277,7 +314,7 @@ public final class DiffTextController: NSObject {
             }
             let rows = blocks[index]
             let block = view.convert(
-                NSRect(x: 0, y: origin + CGFloat(rows.lowerBound) * DiffStyle.lineHeight, width: 1, height: CGFloat(rows.count) * DiffStyle.lineHeight),
+                NSRect(x: 0, y: origin + CGFloat(rows.lowerBound) * metrics.lineHeight, width: 1, height: CGFloat(rows.count) * metrics.lineHeight),
                 from: textView
             )
             outline.frame = NSRect(x: Self.outlineInset, y: block.minY, width: max(view.bounds.width - 2 * Self.outlineInset, 0), height: block.height)
@@ -317,7 +354,7 @@ public final class DiffTextController: NSObject {
     /// they need setting for each document.
     private func configureTextView() {
         textView.isEditable = false
-        textView.isSelectable = true
+        textView.isSelectable = !isPicture
         // Copying gives plain text rather than colored text.
         textView.isRichText = false
         textView.usesRuler = false
@@ -343,7 +380,7 @@ public final class DiffTextController: NSObject {
         let origin = textView.textContainerOrigin
         let rect = document.layoutManager.boundingRect(forGlyphRange: glyphs, in: document.container)
             .offsetBy(dx: origin.x, dy: origin.y)
-        textView.scrollToVisible(rect.insetBy(dx: -DiffStyle.columnWidth * 8, dy: -DiffStyle.lineHeight * 3))
+        textView.scrollToVisible(rect.insetBy(dx: -metrics.columnWidth * 8, dy: -metrics.lineHeight * 3))
     }
 
     /// Selects the match the search is at, and gives the text the keyboard,
@@ -362,7 +399,7 @@ public final class DiffTextController: NSObject {
     /// wider, since the lines' backgrounds fill it.
     private func updateTextSize() {
         let visible = scrollView.contentSize
-        let width = CGFloat(document?.columns ?? 0) * DiffStyle.columnWidth + DiffStyle.textPadding * 2
+        let width = CGFloat(document?.columns ?? 0) * metrics.columnWidth + DiffStyle.textPadding * 2
         textView.minSize = NSSize(width: 0, height: visible.height)
         textView.setFrameSize(NSSize(width: max(width, visible.width), height: max(textView.frame.height, visible.height)))
     }

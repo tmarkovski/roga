@@ -2,26 +2,15 @@ import AppKit
 import GitCore
 import ThemeUI
 
-/// How diffs look. Every line has the same height, whatever fonts its
-/// characters fall back on, and lines don't wrap, so each line of a patch is
-/// one row.
+/// How diffs look, whatever font they're in. What depends on the font, such as
+/// how tall a row is, is in `DiffMetrics`.
 nonisolated enum DiffStyle {
-    // Fonts and paragraph styles can't change once they exist, and the builder
-    // reads these away from the main actor.
-    nonisolated(unsafe) static let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
-    static let lineHeight: CGFloat = 17
-    /// How far below the top of a row its text stands. TextKit puts the extra
-    /// height of a row above the text.
-    static var baseline: CGFloat { lineHeight + font.descender }
     /// How many columns a tab reaches, as in a terminal.
     static let tabWidth = 8
 
     /// The space before and after the text, which is inside the text's lines,
     /// so that their backgrounds cover it.
     static let textPadding: CGFloat = 6
-
-    /// The width of one column of text.
-    static let columnWidth = ("M" as NSString).size(withAttributes: [.font: font]).width
 
     // A changed line's tints are the color theme's (decision 71). They follow
     // the theme as they're drawn, so a document built in one theme shows in another.
@@ -59,15 +48,6 @@ nonisolated enum DiffStyle {
     static var matchBackground: NSColor { NSColor.systemYellow.withAlphaComponent(0.3) }
     /// The fill behind the match that the search is at.
     static var currentMatchBackground: NSColor { NSColor.systemOrange.withAlphaComponent(0.65) }
-
-    nonisolated(unsafe) static let paragraph: NSParagraphStyle = {
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.minimumLineHeight = lineHeight
-        paragraph.maximumLineHeight = lineHeight
-        paragraph.defaultTabInterval = columnWidth * CGFloat(tabWidth)
-        paragraph.tabStops = []
-        return paragraph
-    }()
 }
 
 /// A patch made ready for the text view: what it shows, and which line of the
@@ -96,8 +76,24 @@ nonisolated public final class DiffDocument: @unchecked Sendable {
     let conflictBands: [ConflictBand]
     /// Which rows each unresolved conflict takes up, from its band to its last side.
     let unresolvedConflictRows: [Range<Int>]
+    /// The measures of the font the text is in, which is how tall its rows are
+    /// and how wide its columns.
+    let metrics: DiffMetrics
 
-    init(text: NSAttributedString, lines: [FilePatch.Line], lineStarts: [Int], columns: Int, changedWords: [NSRange], conflicts: ConflictLayout? = nil) {
+    /// The code font the document was built in. When another is chosen, the
+    /// document is built again rather than changed (decision 73).
+    public var font: CodeFont { metrics.codeFont }
+
+    init(
+        text: NSAttributedString,
+        lines: [FilePatch.Line],
+        lineStarts: [Int],
+        columns: Int,
+        changedWords: [NSRange],
+        conflicts: ConflictLayout? = nil,
+        metrics: DiffMetrics
+    ) {
+        self.metrics = metrics
         storage = NSTextStorage(attributedString: text)
         layoutManager = DiffLayoutManager()
         layoutManager.allowsNonContiguousLayout = true
@@ -204,15 +200,23 @@ nonisolated public enum DiffTextBuilder {
     /// How many characters to lay out between checks for cancellation.
     private static let layoutStep = 1 << 18
 
+    /// - Parameter font: The code font to build it in, which is the one in use
+    ///   unless something else is asked for.
     @concurrent
-    public static func document(for patch: FilePatch) async -> DiffDocument {
-        build(patch)
+    public static func document(for patch: FilePatch, in font: CodeFont = .current) async -> DiffDocument {
+        build(patch, metrics: .of(font))
+    }
+
+    /// Builds a patch of a few lines where it's called, such as the sample of a
+    /// diff in Settings, which isn't worth a task and shouldn't show empty first.
+    public static func document(forShort patch: FilePatch, in font: CodeFont = .current) -> DiffDocument {
+        build(patch, metrics: .of(font))
     }
 
     /// Only hunk headers and git's remarks differ from the text's attributes,
     /// and the layout manager draws the lines' backgrounds and the changed
     /// words, so most of a long patch costs no attributes.
-    static func build(_ patch: FilePatch, conflicts: ConflictLayout? = nil) -> DiffDocument {
+    static func build(_ patch: FilePatch, conflicts: ConflictLayout? = nil, metrics: DiffMetrics = .current) -> DiffDocument {
         var utf8: [UInt8] = []
         utf8.reserveCapacity(patch.bytes.count)
         var lineStarts: [Int] = []
@@ -251,15 +255,15 @@ nonisolated public enum DiffTextBuilder {
 
         let string = String(decoding: utf8, as: UTF8.self)
         let text = NSMutableAttributedString(string: string, attributes: [
-            .font: DiffStyle.font,
+            .font: metrics.font,
             .foregroundColor: NSColor.labelColor,
-            .paragraphStyle: DiffStyle.paragraph,
+            .paragraphStyle: metrics.paragraph,
         ])
         for range in secondary {
             text.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: range)
         }
         if let conflicts {
-            let bold = NSFont.monospacedSystemFont(ofSize: DiffStyle.font.pointSize, weight: .semibold)
+            let bold = metrics.boldFont
             for (index, row) in conflicts.rows.enumerated() {
                 guard let row, let color = ConflictLayout.textColor(row) else { continue }
                 let end = index + 1 < lineStarts.count ? lineStarts[index + 1] - 1 : length - 1
@@ -275,7 +279,9 @@ nonisolated public enum DiffTextBuilder {
         let changedWords = conflicts == nil && patch.lines.count <= wholeLayoutLimit
             ? ChangedWords.ranges(in: Array(string.utf16), lines: patch.lines, lineStarts: lineStarts)
             : []
-        let document = DiffDocument(text: text, lines: patch.lines, lineStarts: lineStarts, columns: columns, changedWords: changedWords, conflicts: conflicts)
+        let document = DiffDocument(
+            text: text, lines: patch.lines, lineStarts: lineStarts, columns: columns, changedWords: changedWords, conflicts: conflicts, metrics: metrics
+        )
         if patch.lines.count <= wholeLayoutLimit {
             var laidOut = 0
             while laidOut < length, !Task.isCancelled {

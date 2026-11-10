@@ -2,17 +2,21 @@ import AppKit
 
 /// The button that takes a hunk out of the file. It shows on the hunk's band while
 /// the pointer is anywhere in that hunk (decision 39). A band is one row of text tall,
-/// which leaves it 1 point above and below.
+/// which leaves it 1 point above and below, or more in a larger code font.
 final class HunkButton: NSButton {
     /// The index among the patch's lines of the header of the hunk it's on.
     var header: Int?
+    /// How tall a row of the diff is, in the code font it's in (decision 73).
+    var rowHeight: CGFloat = 17
 
+    /// How tall it is where a row has the room.
     private static let height: CGFloat = 15
     private static let padding: CGFloat = 6
 
-    /// How big it draws.
+    /// How big it draws: no taller than leaves a point of its band above and
+    /// below it, which the smallest code font makes a point less.
     var size: NSSize {
-        NSSize(width: (attributedTitle.size().width + Self.padding * 2).rounded(.up), height: Self.height)
+        NSSize(width: (attributedTitle.size().width + Self.padding * 2).rounded(.up), height: min(Self.height, rowHeight - 2))
     }
 
     init() {

@@ -4,6 +4,7 @@ import GitRunner
 import RepositoryEngine
 import TestSupport
 import Testing
+import ThemeUI
 @testable import DiffUI
 @testable import RogaUI
 
@@ -326,5 +327,57 @@ struct SelectedFileTests {
         #expect(!selection.canFind)
         #expect(selection.isFindShown)
         #expect(selection.matches == nil)
+    }
+
+    func shownDocument(_ commit: SelectedCommit) -> DiffDocument? {
+        guard case .patch(let document) = commit.selectedFile.shown?.content else { return nil }
+        return document
+    }
+
+    /// A diff built before another code font was chosen is built again in that
+    /// one, as the same file at the same place (decision 73).
+    @Test func buildsTheDiffAgainInAnotherCodeFont() async throws {
+        let commit = try await selected("every-way")
+        try await select("with space.txt", commit)
+        let selection = commit.selectedFile
+        let first = try #require(shownDocument(commit))
+        #expect(first.font == .standard)
+
+        // There's nothing to do while the font is the one it's in.
+        selection.followCodeFont()
+        await selection.loading?.value
+        #expect(shownDocument(commit) === first)
+
+        let menlo = CodeFont(family: "Menlo", size: 16)
+        selection.codeFont = { menlo }
+        selection.followCodeFont()
+        await selection.loading?.value
+        let second = try #require(shownDocument(commit))
+        #expect(second !== first)
+        #expect(second.font == menlo)
+        #expect(second.storage.string == first.storage.string)
+        #expect(selection.shown?.isUpdate == true)
+
+        // Following it again builds nothing more.
+        selection.followCodeFont()
+        await selection.loading?.value
+        #expect(shownDocument(commit) === second)
+
+        // A file selected afterwards is built in it from the start.
+        try await select("lib/moved.txt", commit)
+        #expect(shownDocument(commit)?.font == menlo)
+        #expect(selection.shown?.isUpdate == false)
+    }
+
+    /// A file with no lines to compare has nothing in the code font.
+    @Test func leavesANoteAloneWhenTheCodeFontChanges() async throws {
+        let commit = try await selected("every-way")
+        let selection = commit.selectedFile
+        #expect(shownNote(commit) != nil)
+        let loading = selection.loading
+        selection.codeFont = { CodeFont(size: 18) }
+        selection.followCodeFont()
+        #expect(selection.loading == loading)
+        #expect(shownNote(commit) != nil)
     }
 }

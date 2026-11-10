@@ -133,15 +133,18 @@ nonisolated extension DiffTextBuilder {
     ///     agent, which their bands say.
     ///   - shownSides: The resolved conflicts that show their sides under what
     ///     they kept, for comparing.
+    ///   - font: The code font to build it in, which is the one in use unless
+    ///     something else is asked for.
     @concurrent
     public static func document(
         for file: ConflictedFile,
         choices: [Int: ConflictedFile.Choice],
         sides: ConflictSides,
         writtenBy: [Int: String] = [:],
-        shownSides: Set<Int> = []
+        shownSides: Set<Int> = [],
+        in font: CodeFont = .current
     ) async -> DiffDocument {
-        build(file, choices: choices, sides: sides, writtenBy: writtenBy, shownSides: shownSides)
+        build(file, choices: choices, sides: sides, writtenBy: writtenBy, shownSides: shownSides, metrics: .of(font))
     }
 
     static func build(
@@ -149,7 +152,8 @@ nonisolated extension DiffTextBuilder {
         choices: [Int: ConflictedFile.Choice],
         sides: ConflictSides,
         writtenBy: [Int: String] = [:],
-        shownSides: Set<Int> = []
+        shownSides: Set<Int> = [],
+        metrics: DiffMetrics = .current
     ) -> DiffDocument {
         var bytes: [UInt8] = []
         var lines: [FilePatch.Line] = []
@@ -242,7 +246,7 @@ nonisolated extension DiffTextBuilder {
         _ = addLines(file.bytes[position...], nil, from: number)
 
         let patch = FilePatch(bytes: bytes, lines: lines)
-        return build(patch, conflicts: ConflictLayout(rows: rows, edits: edits, sides: sides))
+        return build(patch, conflicts: ConflictLayout(rows: rows, edits: edits, sides: sides), metrics: metrics)
     }
 }
 

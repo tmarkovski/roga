@@ -11,12 +11,9 @@ import GitCore
 /// because AppKit lays out text under a ruler, on the macOS this was built on.
 ///
 /// It draws every row each time the text moves, which as strings took 12 ms for
-/// a window of them. So it finds each digit's glyph once, and draws them all at
-/// once.
+/// a window of them. So each digit's glyph is found once for a font, in
+/// `DiffMetrics`, and it draws them all at once.
 final class LineNumberGutter: NSView {
-    private static let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
-    private static let digitWidth = ("0" as NSString).size(withAttributes: [.font: font]).width
-    private static let digitGlyphs = glyphs(for: "0123456789")
     /// So that going from one file to another doesn't usually move the text.
     private static let fewestDigits = 3
     private static let edge: CGFloat = 10
@@ -31,12 +28,16 @@ final class LineNumberGutter: NSView {
     var document: DiffDocument? {
         didSet {
             digits = max(document?.numberDigits ?? 0, Self.fewestDigits)
+            metrics = document?.metrics ?? .current
             needsDisplay = true
         }
     }
 
     private var digits = LineNumberGutter.fewestDigits
-    private var numberWidth: CGFloat { CGFloat(digits) * Self.digitWidth }
+    /// The measures of the font the document is in, which the numbers' size
+    /// and the rows' baseline come from.
+    private var metrics = DiffMetrics.current
+    private var numberWidth: CGFloat { CGFloat(digits) * metrics.digitWidth }
 
     /// How wide the gutter needs to be for the current document.
     var thickness: CGFloat {
@@ -56,13 +57,6 @@ final class LineNumberGutter: NSView {
     }
 
     override var isFlipped: Bool { true }
-
-    private static func glyphs(for text: String) -> [CGGlyph] {
-        let characters = Array(text.utf16)
-        var glyphs = [CGGlyph](repeating: 0, count: characters.count)
-        CTFontGetGlyphsForCharacters(font, characters, &glyphs, characters.count)
-        return glyphs
-    }
 
     /// Draws stripes across some bars. Each stripe keeps its place in the text,
     /// so that they move with it rather than crawling along the bars.
@@ -103,12 +97,13 @@ final class LineNumberGutter: NSView {
         // positions go through this too, so they're negative below.
         context.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
 
+        let metrics = metrics
         func add(_ number: Int?, right: CGFloat, baseline: CGFloat) {
             guard var number else { return }
             var x = right
             repeat {
-                x -= Self.digitWidth
-                glyphs.append(Self.digitGlyphs[number % 10])
+                x -= metrics.digitWidth
+                glyphs.append(metrics.digitGlyphs[number % 10])
                 positions.append(CGPoint(x: x, y: baseline))
                 number /= 10
             } while number > 0
@@ -124,7 +119,7 @@ final class LineNumberGutter: NSView {
                 color.setFill()
                 row.fill(using: .sourceOver)
             }
-            let baseline = -(row.minY + DiffStyle.baseline)
+            let baseline = -(row.minY + metrics.baseline)
             add(line.oldNumber, right: oldRight, baseline: baseline)
             add(line.newNumber, right: newRight, baseline: baseline)
             let bar = CGRect(x: 0, y: row.minY, width: Self.barWidth, height: row.height)
@@ -140,7 +135,7 @@ final class LineNumberGutter: NSView {
         }
 
         NSColor.tertiaryLabelColor.setFill()
-        CTFontDrawGlyphs(Self.font, glyphs, positions, glyphs.count, context)
+        CTFontDrawGlyphs(metrics.numberFont, glyphs, positions, glyphs.count, context)
         for (color, bars) in coloredBars {
             color.setFill()
             context.fill(bars)

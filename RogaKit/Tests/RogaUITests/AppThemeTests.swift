@@ -40,7 +40,7 @@ struct AppThemeTests {
     @Test func settingsShowsItFirstOnAppearance() {
         #expect(AppTheme.allCases.map(\.title) == ["System", "Light", "Dark"])
         #expect(SettingsGroup.allCases.first { $0.page == .appearance } == .interface)
-        #expect(SettingsGroup.interface.items == [.theme, .colors])
+        #expect(SettingsGroup.interface.items == [.theme, .colors, .codeFont])
         #expect(SettingsItem.theme.title == "Theme")
         // Search finds it by any of its choices, and by what people call them.
         for query in ["theme", "Dark", "light mode", "System", "Appearance"] {
@@ -56,5 +56,19 @@ struct AppThemeTests {
             #expect(SettingsItem.colors.matches(query), "\(query)")
         }
         #expect(!SettingsItem.colors.matches("light mode"))
+    }
+
+    /// The code font comes after the colors, under the preview it shows in,
+    /// with its size on the same row. Search finds it by what people call
+    /// either (decision 73).
+    @Test func settingsShowsTheCodeFontUnderThePreview() {
+        #expect(SettingsItem.codeFont.title == "Code font")
+        #expect(SettingsItem.codeFont.help == "For diffs and conflict resolution.")
+        #expect(SettingsGroup.interface.items.last == .codeFont)
+        for query in ["font", "monospaced", "SF Mono", "typeface", "diff", "font size", "text size", "points"] {
+            #expect(SettingsItem.codeFont.matches(query), "\(query)")
+        }
+        #expect(SettingsGroup.found("code font").map(\.items) == [[.codeFont]])
+        #expect(SettingsGroup.found("font size").map(\.items) == [[.codeFont]])
     }
 }
