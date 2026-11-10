@@ -68,19 +68,23 @@ extension ProgramMenu {
 
 // MARK: Welcome
 
-/// The first screen: the house, the wordmark, what Roga is for, and one
-/// button in the middle, since there's nothing to go back to. Its parts come
-/// in one after another when it appears.
+/// The first screen: room for the house, the wordmark, what Roga is for, and
+/// one button in the middle, since there's nothing to go back to. Its parts
+/// come in one after another when it appears.
 struct SetupWelcome: View {
     let setup: SetupModel
+    /// Tells setup where the house goes. `SetupHouseLayer` draws it there,
+    /// so that the same house can go down to the floor.
+    let house: (SetupHouseSpot) -> Void
     @State private var isIn = false
 
     var body: some View {
         VStack(spacing: 14) {
-            HouseFigure(pose: .mark)
-                .frame(width: 168 * HouseRig.frame.width / HouseRig.frame.height, height: 168)
-                .accessibilityHidden(true)
-                .setupEntrance(isIn, order: 0)
+            Color.clear
+                .frame(width: SetupLayout.welcomeHouse * HouseRig.frame.width / HouseRig.frame.height, height: SetupLayout.welcomeHouse)
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SetupLayout.space)) } action: { frame in
+                    house(SetupHouseSpot(foot: CGPoint(x: frame.midX, y: frame.maxY), height: frame.height))
+                }
             Wordmark(width: 132)
                 .padding(.top, 6)
                 .setupEntrance(isIn, order: 1)

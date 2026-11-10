@@ -479,7 +479,7 @@ enum WordsArrival: Equatable {
         switch house {
         case .push: self = .fromLeft
         case .heave, .tugOfWar: self = .fromRight
-        case .waddle: self = .fade
+        case .waddle, .run: self = .fade
         }
     }
 }

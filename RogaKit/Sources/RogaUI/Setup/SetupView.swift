@@ -5,7 +5,7 @@ import SwiftUI
 /// Setup, in the whole window: one centered column with a heading, what Roga
 /// found, and the buttons that answer the screen, as the design canvas's
 /// First run boards draw it. Dots at the top say how far along it is, and the
-/// house walks along a floor at the bottom as it goes, and waddles while
+/// house runs along a floor at the bottom as it goes, and waddles while
 /// Roga is busy. A screen comes in from the side setup is moving toward.
 struct SetupView: View {
     let setup: SetupModel
@@ -17,6 +17,9 @@ struct SetupView: View {
     /// How tall the screen that shows is, once it's laid out, which says
     /// whether the floor fits under it.
     @State private var screenHeight: CGFloat = 0
+    /// Where Welcome has room for the house, once it's laid out. It's kept
+    /// after Welcome goes, which is where the house goes back to.
+    @State private var welcomeHouse: SetupHouseSpot?
     @Environment(\.accessibilityReduceMotion) private var reducesMotion
 
     /// The agents Roga found and can run.
@@ -33,6 +36,15 @@ struct SetupView: View {
             // room for one at its top instead.
             let titleRow = proxy.safeAreaInsets.top
             let ownRow = titleRow > 0 ? 0 : SetupLayout.titleRow
+            // The floor is at the bottom of the window. A screen that leaves
+            // no room for it goes without it, and scrolls if it has to, so
+            // the house never stands on a button.
+            let top = ownRow + SetupLayout.top
+            let hasFloor = top + screenHeight + SetupLayout.floorGap + SetupFloor.height <= proxy.size.height
+            let position = Double(steps.firstIndex(of: setup.step) ?? 0) / Double(max(1, steps.count - 1))
+            let house = isWelcome
+                ? SetupHouseTarget(place: .welcome, spot: welcomeHouse)
+                : SetupHouseTarget(place: .floor(position), spot: hasFloor ? SetupFloor.spot(at: position, in: proxy.size) : nil)
             ScrollView(.vertical) {
                 // One over the other, so that a screen on its way out
                 // doesn't push the one coming in down the window.
@@ -40,18 +52,12 @@ struct SetupView: View {
                     if isWelcome {
                         // Welcome sits in the middle of the window, a little
                         // above it.
-                        SetupWelcome(setup: setup)
+                        SetupWelcome(setup: setup) { welcomeHouse = $0 }
                             .frame(width: SetupLayout.column)
                             .frame(maxWidth: .infinity, minHeight: proxy.size.height - 40)
                             .transition(SetupMotion.fade)
                     } else {
-                        // The other screens start at the top, and the floor
-                        // is at the bottom of the window. A screen that
-                        // leaves no room for the floor goes without it, and
-                        // scrolls if it has to, so the house never stands on
-                        // a button.
-                        let top = ownRow + SetupLayout.top
-                        let hasFloor = top + screenHeight + SetupLayout.floorGap + SetupFloor.height <= proxy.size.height
+                        // The other screens start at the top.
                         VStack(spacing: 0) {
                             ZStack(alignment: .top) {
                                 screen
@@ -64,11 +70,8 @@ struct SetupView: View {
                             .padding(.top, top)
                             if hasFloor {
                                 Spacer(minLength: SetupLayout.floorGap)
-                                SetupFloor(
-                                    position: Double(steps.firstIndex(of: setup.step) ?? 0) / Double(max(1, steps.count - 1)),
-                                    isBusy: isBusy
-                                )
-                                .transition(.opacity)
+                                SetupFloor()
+                                    .transition(.opacity)
                             } else {
                                 Color.clear
                                     .frame(height: SetupLayout.floorGap)
@@ -80,6 +83,12 @@ struct SetupView: View {
                     }
                 }
                 .animation(SetupMotion.step(reducesMotion), value: setup.step)
+                // The house is over the screens rather than in one, so that
+                // it can go from one to the next.
+                .coordinateSpace(.named(SetupLayout.space))
+                .overlay {
+                    SetupHouseLayer(target: house, isBusy: isBusy)
+                }
             }
             .scrollBounceBehavior(.basedOnSize)
             .overlay(alignment: .top) {
@@ -162,6 +171,11 @@ enum SetupLayout {
     /// The size of a command in a card, at which each of the commands that
     /// install the hooks fits on one line of the column.
     static let commandFontSize: CGFloat = 11
+    /// How tall the house is on Welcome.
+    static let welcomeHouse: CGFloat = 168
+    /// The name of the coordinates the house is placed in, which are those
+    /// of everything that scrolls.
+    static let space = "setup"
 }
 
 // MARK: Motion
@@ -257,68 +271,34 @@ private struct SetupDots: View {
     }
 }
 
-/// A thin floor near the bottom of the window, with the house standing on it
-/// as far along as setup is. It walks to its next place when the screen
-/// changes, and waddles on the spot while Roga is busy.
+/// A thin floor near the bottom of the window, which the house stands on as
+/// far along as setup is. `SetupHouseLayer` draws the house.
 private struct SetupFloor: View {
-    /// How far along the floor the house stands, from 0 to 1.
-    let position: Double
-    let isBusy: Bool
-    /// Whether the house is on its way to a new place.
-    @State private var isWalking = false
-    @Environment(\.accessibilityReduceMotion) private var reducesMotion
-
     private static let houseHeight: CGFloat = 46
-    private static let houseWidth = houseHeight * HouseRig.frame.width / HouseRig.frame.height
     /// How far the floor is from the bottom of the window, and how much
     /// room the house and that take together.
     private static let fromBottom: CGFloat = 30
     static let height = houseHeight + fromBottom
-    /// How far from each edge of the window the house's walk starts and ends.
+    /// How far from each edge of the window the house's run starts and ends.
     private static let inset: CGFloat = 64
-    private static let walk = 0.8
 
-    var body: some View {
-        GeometryReader { proxy in
-            let room = max(0, proxy.size.width - 2 * Self.inset - Self.houseWidth)
-            ZStack(alignment: .bottomLeading) {
-                Rectangle()
-                    .fill(SetupColors.hairline)
-                    .frame(height: 1)
-                SetupHouse(isMoving: isBusy || isWalking, height: Self.houseHeight)
-                    .offset(x: Self.inset + room * position)
-                    .animation(reducesMotion ? nil : .timingCurve(0.3, 0.7, 0.3, 1, duration: Self.walk), value: position)
-            }
-            .frame(maxHeight: .infinity, alignment: .bottom)
-        }
-        .frame(height: Self.houseHeight)
-        .padding(.bottom, Self.fromBottom)
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
-        .onChange(of: position) {
-            guard !reducesMotion else { return }
-            isWalking = true
-        }
-        .task(id: position) {
-            // Its feet stop once it's there.
-            guard isWalking, (try? await Task.sleep(for: .seconds(Self.walk))) != nil else { return }
-            isWalking = false
-        }
+    /// Where the house stands when it's this far along the floor, from 0 to
+    /// 1, in a window of this size.
+    static func spot(at position: Double, in size: CGSize) -> SetupHouseSpot {
+        var spot = SetupHouseSpot(foot: CGPoint(x: 0, y: size.height - fromBottom), height: houseHeight)
+        let room = max(0, size.width - 2 * inset - spot.width)
+        spot.foot.x = inset + room * position + spot.width / 2
+        return spot
     }
-}
-
-/// The house standing as the mark draws it, or waddling.
-private struct SetupHouse: View {
-    let isMoving: Bool
-    let height: CGFloat
 
     var body: some View {
-        if isMoving {
-            HouseAnimationView(animation: .waddle, height: height)
-        } else {
-            HouseFigure(pose: .mark)
-                .frame(width: height * HouseRig.frame.width / HouseRig.frame.height, height: height)
-        }
+        Rectangle()
+            .fill(SetupColors.hairline)
+            .frame(height: 1)
+            .frame(height: Self.houseHeight, alignment: .bottom)
+            .padding(.bottom, Self.fromBottom)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 }
 

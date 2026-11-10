@@ -38,12 +38,14 @@ struct HouseAnimationTests {
     @Test(arguments: HouseAnimation.allCases)
     func nothingJumpsBetweenFrames(_ animation: HouseAnimation) {
         let motion = animation.motion
+        // A running foot covers more ground in a frame than a walking one.
+        let furthest: Double = animation == .run ? 60 : 40
         var previous = motion.pose(at: 0)
         for time in times(motion).dropFirst() {
             let pose = motion.pose(at: time)
             #expect(abs(pose.body.lean - previous.body.lean) < 4)
             for (before, after) in zip(points(previous), points(pose)) {
-                #expect(distance(before, after) < 40)
+                #expect(distance(before, after) < furthest)
             }
             previous = pose
         }
@@ -73,7 +75,7 @@ struct HouseAnimationTests {
         }
     }
 
-    @Test(arguments: [HouseAnimation.push, .tugOfWar, .heave])
+    @Test(arguments: [HouseAnimation.push, .tugOfWar, .heave, .run])
     func feetStayOnOrAboveTheFloor(_ animation: HouseAnimation) {
         let motion = animation.motion
         for time in times(motion) {
@@ -101,7 +103,7 @@ struct HouseAnimationTests {
 
     /// A foot that's down moves with the floor, so it doesn't look like it's
     /// skating.
-    @Test(arguments: [HouseAnimation.push, .tugOfWar, .heave])
+    @Test(arguments: [HouseAnimation.push, .tugOfWar, .heave, .run])
     func aFootThatIsDownMovesWithTheFloor(_ animation: HouseAnimation) {
         let motion = animation.motion
         var previous = motion.pose(at: 0)
@@ -113,6 +115,38 @@ struct HouseAnimationTests {
             }
             previous = pose
         }
+    }
+
+    /// What makes it a run rather than a walk: between steps, neither foot is
+    /// on the floor. Each foot still takes its turn on it.
+    @Test func runningHasBothFeetInTheAirBetweenSteps() {
+        let motion = StrideMotion.run
+        var together = false
+        var rearDown = false
+        var frontDown = false
+        for time in times(motion) {
+            let pose = motion.pose(at: time)
+            together = together || (isLifted(pose.rearLeg) && isLifted(pose.frontLeg))
+            rearDown = rearDown || !isLifted(pose.rearLeg)
+            frontDown = frontDown || !isLifted(pose.frontLeg)
+            #expect(isLifted(pose.rearLeg) || isLifted(pose.frontLeg))
+        }
+        #expect(together)
+        #expect(rearDown)
+        #expect(frontDown)
+    }
+
+    /// It leans into the run, lands ahead of its hips and pushes off behind
+    /// them, and the floor goes back under it.
+    @Test func runningLeansForwardAndStridesPastItsHips() {
+        let motion = StrideMotion.run
+        #expect(motion.pose(at: 0.1).body.lean > 0)
+        #expect(motion.pose(at: 1).floorTravel < 0)
+        let landing = motion.pose(at: 0.001)
+        #expect(landing.rearLeg.ankle.x > landing.rearLeg.hip.x)
+        let leaving = motion.pose(at: motion.timeDown * motion.duration - 0.001)
+        #expect(leaving.rearLeg.ankle.x < leaving.rearLeg.hip.x)
+        #expect(motion.duration < StrideMotion.push.duration / 2)
     }
 
     @Test func pushingMovesTheFloorBackAndPullingMovesItForward() {
@@ -217,6 +251,7 @@ struct HouseAnimationTests {
         #expect(WordsArrival(.push) == .fromLeft)
         #expect(WordsArrival(.heave) == .fromRight)
         #expect(WordsArrival(.waddle) == .fade)
+        #expect(WordsArrival(.run) == .fade)
     }
 
     @Test func playingOnceTakesOneCycleAtTheSpeed() {

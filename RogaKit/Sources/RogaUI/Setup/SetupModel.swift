@@ -71,7 +71,7 @@ public final class SetupModel {
     // MARK: Steps
 
     /// The screens after Welcome, which the dots at the top stand for and
-    /// the house walks along.
+    /// the house runs along.
     ///
     /// - Parameter found: The agents Roga found.
     func steps(found: [AgentKind]) -> [Step] {

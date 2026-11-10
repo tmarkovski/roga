@@ -30,6 +30,7 @@ nonisolated enum HouseAnimation: CaseIterable, Identifiable, Sendable {
     case tugOfWar
     case heave
     case waddle
+    case run
 
     var id: Self { self }
 
@@ -39,6 +40,7 @@ nonisolated enum HouseAnimation: CaseIterable, Identifiable, Sendable {
         case .tugOfWar: "Tug of War"
         case .heave: "Heave"
         case .waddle: "Waddle"
+        case .run: "Run"
         }
     }
 
@@ -48,6 +50,7 @@ nonisolated enum HouseAnimation: CaseIterable, Identifiable, Sendable {
         case .tugOfWar: StrideMotion.tugOfWar
         case .heave: HeaveMotion()
         case .waddle: WaddleMotion()
+        case .run: StrideMotion.run
         }
     }
 
@@ -59,7 +62,9 @@ nonisolated enum HouseAnimation: CaseIterable, Identifiable, Sendable {
 
 /// Walking on the spot with the feet taking turns. Each foot slides along the
 /// floor while it's down, then lifts and steps back to where it started. Pushing
-/// and the tug of war are this motion with different numbers.
+/// and the tug of war are this motion with different numbers, and so is
+/// running, where each foot is down for less than half the time, so that both
+/// are in the air between steps.
 nonisolated struct StrideMotion: HouseMotion {
     struct Leg: Sendable {
         var hip: CGPoint
@@ -91,6 +96,9 @@ nonisolated struct StrideMotion: HouseMotion {
     /// How the body rocks with each step: along the floor, up and down, and in
     /// its lean.
     var rock: (dx: CGFloat, dy: CGFloat, lean: Double)
+    /// How late the rocking runs, as a fraction of a cycle. The body is lowest
+    /// this long after a foot lands.
+    var rockDelay = 0.0
 
     /// Leaning forward with both legs behind the body.
     static let push = StrideMotion(
@@ -118,9 +126,28 @@ nonisolated struct StrideMotion: HouseMotion {
         rock: (dx: -8, dy: 4, lean: -1.8)
     )
 
+    /// Leaning into it with long, quick steps. A foot lands ahead of its hip
+    /// and leaves from behind it, and the body sinks onto each step and comes
+    /// up off it into the air.
+    static let run = StrideMotion(
+        duration: 0.36,
+        stillPhase: 0.4,
+        timeDown: 0.34,
+        lean: 7,
+        offset: CGVector(dx: 0, dy: 8),
+        rear: Leg(hip: HouseRig.rearHip, touchdown: 100, liftoff: -175, length: 268, phase: 0),
+        front: Leg(hip: HouseRig.frontHip, touchdown: 100, liftoff: -175, length: 250, phase: 0.5),
+        stepHeight: 64,
+        pitchLanding: -8,
+        pitchLeaving: 40,
+        pitchInAir: 44,
+        rock: (dx: 5, dy: 11, lean: 2.5),
+        rockDelay: 0.17
+    )
+
     func pose(at time: TimeInterval) -> HousePose {
         let phase = cycle(at: time).phase
-        let steps = 2 * .pi * 2 * phase
+        let steps = 2 * .pi * 2 * (phase - rockDelay)
         let wave = sin(steps + 0.5)
         let dip = cos(steps)
         let body = HouseBody(

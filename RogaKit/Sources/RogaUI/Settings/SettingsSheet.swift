@@ -574,7 +574,7 @@ private struct PageButton: View {
     }
 }
 
-/// The house's four animations on a gray card, which move as the speed changes.
+/// The house's animations on a gray card, which move as the speed changes.
 private struct HouseAnimations: View {
     var body: some View {
         HStack(spacing: 8) {
@@ -591,6 +591,6 @@ private struct HouseAnimations: View {
         .padding(EdgeInsets(top: 12, leading: 8, bottom: 10, trailing: 8))
         .background(SettingsColors.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("The house's animations: Push, Tug of War, Heave and Waddle")
+        .accessibilityLabel("The house's animations: Push, Tug of War, Heave, Waddle and Run")
     }
 }
