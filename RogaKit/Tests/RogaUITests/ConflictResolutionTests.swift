@@ -124,7 +124,7 @@ struct ConflictResolutionTests {
         work.changes.resolve(.choose(0, .lines(ConflictedFile.lines(typed: "OURS and THEIRS"))))
         await work.settled()
         #expect(try work.read("a.txt") == "one\nOURS and THEIRS\nthree\n")
-        #expect(work.document?.conflictBands.first?.kept == "Kept what you wrote")
+        #expect(work.document?.conflictBands.first?.kept == "Manual resolution")
     }
 
     @Test func aFileThatChangedMeanwhileIsntWrittenOver() async throws {
@@ -198,7 +198,7 @@ struct ConflictResolutionTests {
         await settledAgent(work)
         #expect(try work.read("a.txt") == "one\nOURS\nTHEIRS\nthree\n")
         #expect(work.changes.agentWork["a.txt"]?.phase == .done(explanation: "Both changed line two, so both stay.", resolved: 1, duration: .seconds(9)))
-        #expect(work.document?.conflictBands.first?.kept == "Claude Code wrote this")
+        #expect(work.document?.conflictBands.first?.kept == "Resolved by Claude Code")
         // It isn't marked resolved until someone says so.
         #expect(work.changes.loaded?.conflicted.map(\.path) == ["a.txt"])
 

@@ -40,7 +40,7 @@ struct GeneralSection: View {
     }
 
     /// Why the switches are off, in a copy of Roga that Sparkle doesn't run in.
-    static let cantUpdateNotice = "This copy of Roga doesn't update itself. Only releases have the key that updates are checked against."
+    static let cantUpdateNotice = "Automatic updates are available in release builds only."
 
     /// The chosen terminal, or Terminal while that one is gone from this Mac.
     private var shownTerminal: Binding<TerminalApp> {

@@ -380,7 +380,7 @@ struct AgentMonitorTests {
         let waiting = try #require(monitor.summary(forWorktree: "/git/api-login", in: list))
         #expect(waiting.description == "Codex is waiting for you to allow: git push")
         #expect(waiting.help(now: start.addingTimeInterval(130)) == "Codex is waiting for you to allow: git push, for 2 minutes")
-        #expect(waiting.menuDetail(now: start.addingTimeInterval(130)) == "Codex needs your OK: git push · 2 min")
+        #expect(waiting.menuDetail(now: start.addingTimeInterval(130)) == "Codex: approval required: git push · 2 min")
 
         monitor.receive(event("PreToolUse", "a", in: "/git/api", at: 20, tool: "AskUserQuestion", activity: "Asked a question"))
         let question = try #require(monitor.summary(forWorktree: "/git/api", in: list))
@@ -424,7 +424,7 @@ struct AgentMonitorTests {
         #expect(working.rowParts(now: start.addingTimeInterval(6 * 60 + 5)) == ("Run the test suite", "6 min"))
         #expect(working.rowParts(now: start.addingTimeInterval(65 * 60)) == ("Run the test suite", "1 hr 5 min"))
         let allow = AgentSummary(state: .waiting(.permission), since: start, hosts: [.codex], sessions: 1, activity: "git push")
-        #expect(allow.rowParts(now: start.addingTimeInterval(130)) == ("Needs your OK: git push", "2 min"))
+        #expect(allow.rowParts(now: start.addingTimeInterval(130)) == ("Approval required: git push", "2 min"))
         let question = AgentSummary(state: .waiting(.question), since: start, hosts: [.claude], sessions: 1, activity: "Wants a plan approved")
         #expect(question.rowParts(now: start.addingTimeInterval(130)) == ("Wants a plan approved", "2 min"))
         // A finished session's reply, never with how long.
@@ -436,7 +436,7 @@ struct AgentMonitorTests {
         let working = AgentSummary(state: .working, since: start, hosts: [.claude], sessions: 1)
         #expect(working.rowParts(now: start.addingTimeInterval(120)) == ("Claude Code is working", "2 min"))
         let allow = AgentSummary(state: .waiting(.permission), since: start, hosts: [.codex], sessions: 1)
-        #expect(allow.rowParts(now: start) == ("Codex needs your OK", nil))
+        #expect(allow.rowParts(now: start) == ("Codex: approval required", nil))
         let question = AgentSummary(state: .waiting(.question), since: start, hosts: [.codex], sessions: 1)
         #expect(question.rowParts(now: start) == ("Codex is waiting for you", nil))
         let finished = AgentSummary(state: .finished, since: start, hosts: [.codex], sessions: 1)
@@ -520,7 +520,7 @@ struct AgentMonitorTests {
                 .menuDetail(now: start.addingTimeInterval(minutes * 60 + 5))
         }
         #expect(line(.working, [.claude], "Run the test suite", minutes: 6) == "Claude Code: Run the test suite · 6 min")
-        #expect(line(.waiting(.permission), [.codex], "git push", minutes: 2) == "Codex needs your OK: git push · 2 min")
+        #expect(line(.waiting(.permission), [.codex], "git push", minutes: 2) == "Codex: approval required: git push · 2 min")
         #expect(line(.waiting(.question), [.claude], "Wants a plan approved", minutes: 2) == "Claude Code: Wants a plan approved · 2 min")
         #expect(line(.working, [.claude], minutes: 6) == "Claude Code working · 6 min")
         #expect(line(.waiting(.permission), [.codex], minutes: 2) == "Codex waiting for you · 2 min")

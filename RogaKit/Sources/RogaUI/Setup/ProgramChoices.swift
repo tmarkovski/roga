@@ -95,9 +95,9 @@ nonisolated struct ProgramChoice: Equatable, Identifiable {
         var title: String {
             switch self {
             case .recommended: "Recommended"
-            case .tooOld: "Too old"
-            case .unusable: "Can't use"
-            case .chosen: "Chosen by you"
+            case .tooOld: "Outdated"
+            case .unusable: "Unavailable"
+            case .chosen: "Custom"
             }
         }
 
@@ -153,19 +153,19 @@ nonisolated enum ProgramChoices {
             if copy.isUsable {
                 if copy.executable == recommended {
                     tag = .recommended
-                    why = isFirst ? "Your terminal runs this one too."
-                        : isInPath ? "The first Git in your PATH that's new enough."
-                        : "Not in your PATH. Roga looks here after it."
+                    why = isFirst ? "Default in your shell's PATH."
+                        : isInPath ? "First compatible Git in PATH."
+                        : "Detected outside PATH."
                 } else {
                     tag = nil
-                    why = isInPath ? "Further along your PATH." : "Not in your PATH."
+                    why = isInPath ? "Lower priority in PATH." : "Not in your PATH."
                 }
             } else if copy.version != nil {
                 tag = .tooOld
                 why = (isFirst ? "Your terminal runs this one, but " : "") + "Roga needs \(minimum.major).\(minimum.minor) or later."
             } else {
                 tag = .unusable
-                why = isFirst ? "Your terminal runs this one, but it didn't say its version." : "It didn't say its version."
+                why = isFirst ? "Default in PATH; version unavailable." : "Version unavailable."
             }
             return ProgramChoice(
                 executable: copy.executable,
@@ -183,17 +183,17 @@ nonisolated enum ProgramChoices {
                 source: ProgramSource.of(chosenPath, developerToolsFolder: survey.developerToolsFolder, home: home).name,
                 tag: .chosen,
                 path: ProgramSource.abbreviated(chosenPath, home: home),
-                why: "From somewhere Roga doesn't look by itself."
+                why: "Custom installation location."
             )
             switch failure {
             case .configuredGitMissing?:
                 chosen.tag = .unusable
-                chosen.why = "Roga can't find or run it."
+                chosen.why = "File not found or cannot be executed."
                 chosen.canChoose = false
             case .configuredGitUnsupported(let skipped)?:
                 chosen.version = skipped.version?.description
                 chosen.tag = skipped.version == nil ? .unusable : .tooOld
-                chosen.why = skipped.version == nil ? "It didn't say its version." : "Roga needs \(minimum.major).\(minimum.minor) or later."
+                chosen.why = skipped.version == nil ? "Version unavailable." : "Roga needs \(minimum.major).\(minimum.minor) or later."
                 chosen.canChoose = false
             default:
                 if current?.executable == chosenPath { chosen.version = current?.version.description }
@@ -228,13 +228,13 @@ nonisolated enum ProgramChoices {
                 (tag, why) = reason(skipped, terminalRunsIt: isFirst)
             } else if copy.executable == recommended {
                 tag = .recommended
-                why = kind.prefersNewest && usableCount > 1 ? "The newest copy, which new models need."
-                    : isFirst ? "Your terminal runs this one too."
-                    : isInPath ? "The first copy in your PATH that Roga can use."
-                    : "Not in your PATH. It's where its installer puts it."
+                why = kind.prefersNewest && usableCount > 1 ? "Latest detected version."
+                    : isFirst ? "Default in your shell's PATH."
+                    : isInPath ? "First compatible installation in PATH."
+                    : "Standard installation outside PATH."
             } else {
                 tag = nil
-                why = isFirst ? "Your terminal runs this one." : isInPath ? "Further along your PATH." : "Not in your PATH."
+                why = isFirst ? "Default in your shell's PATH." : isInPath ? "Lower priority in PATH." : "Not in your PATH."
             }
             return ProgramChoice(
                 executable: copy.executable,
@@ -252,14 +252,14 @@ nonisolated enum ProgramChoices {
                 source: ProgramSource.of(program, home: home).name,
                 tag: .chosen,
                 path: ProgramSource.abbreviated(program, home: home),
-                why: "From somewhere Roga doesn't look by itself."
+                why: "Custom installation location."
             )
             switch lookup {
             case .found(let installation)? where installation.executable == program:
                 chosen.version = installation.version.description
             case .configuredMissing?:
                 chosen.tag = .unusable
-                chosen.why = "Roga can't find or run it."
+                chosen.why = "File not found or cannot be executed."
                 chosen.canChoose = false
             case .configuredUnusable(let skipped)?:
                 (chosen.tag, chosen.why) = reason(skipped, terminalRunsIt: false)
@@ -349,7 +349,7 @@ nonisolated struct ProgramRowContent: Equatable {
 
     static let looking = "Looking…"
     /// Under an agent someone chose not to use.
-    static let unused = "Roga won't use it. Pick a copy from the menu to use it after all."
+    static let unused = "Disabled. Select an installation to enable it."
 
     /// The row for git.
     static func git(
@@ -437,7 +437,7 @@ nonisolated struct ProgramRowContent: Equatable {
         case .notFound?:
             return ProgramRowContent(
                 name: kind.name,
-                line: "Not found in your PATH, or where its installer puts it.",
+                line: "Not found in PATH or standard installation locations.",
                 tone: .plain,
                 select: .choose,
                 isDimmed: true

@@ -99,7 +99,7 @@ final class BranchModel {
                 self.init(title: title, message: refused.refusal.dialogMessage, command: refused.refusal.gitArguments)
                 summary = .sentences([
                     "Nothing moved, but Roga couldn't put your uncommitted changes back, so they're still in the stash \(code: refused.aside.message).",
-                    "What git said is below.",
+                    "Git output is shown below.",
                 ])
                 return
             }
@@ -688,7 +688,7 @@ final class BranchModel {
         var failure = Failure(title: "Your changes are still in a stash", message: said, command: ran)
         failure.summary = .sentences([
             "git wouldn't put your uncommitted changes back over what's in the worktree now, so they're in the stash \(code: aside.message), and nothing is lost.",
-            "What git said is below.",
+            "Git output is shown below.",
         ])
         return failure
     }
@@ -806,7 +806,7 @@ final class BranchModel {
             } catch {
                 var failure = Failure(title: commitSwitch.failureTitle, error: error)
                 let stayed: DialogText = "The push went through, but \(code: branchName) is still where it was."
-                failure.summary = error.gitArguments == nil ? stayed : .sentences([stayed, "What git said is below."])
+                failure.summary = error.gitArguments == nil ? stayed : .sentences([stayed, "Git output is shown below."])
                 self?.failure = failure
                 return nil
             }
@@ -990,7 +990,7 @@ final class BranchModel {
                     let gone = deletions[..<index].map(\.shortName)
                     let left = deletions[index...].map(\.shortName)
                     var failure = Failure(title: "Can't delete \(deletion.shortName)", error: error)
-                    failure.summary = "\(Self.list(gone)) \(gone.count == 1 ? "is" : "are") gone, but \(Self.list(left)) \(left.count == 1 ? "isn't" : "aren't"). What git said is below."
+                    failure.summary = "\(Self.list(gone)) \(gone.count == 1 ? "is" : "are") gone, but \(Self.list(left)) \(left.count == 1 ? "isn't" : "aren't"). Git output is shown below."
                     self?.failure = failure
                     return nil
                 }

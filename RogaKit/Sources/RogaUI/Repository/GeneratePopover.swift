@@ -34,7 +34,7 @@ struct GeneratePopover: View {
         let picked = agents.generateAgent
         let setup = picked.flatMap { agents.generation(with: $0) }
         VStack(alignment: .leading, spacing: 0) {
-            Text("Write the message with")
+            Text("Agent")
                 .font(.system(size: 13, weight: .semibold))
                 .padding(EdgeInsets(top: 13, leading: 16, bottom: 8, trailing: 16))
                 .accessibilityAddTraits(.isHeader)
@@ -48,7 +48,7 @@ struct GeneratePopover: View {
             .padding(.horizontal, 6)
             // Picking is all there is to do here, so this says there's
             // nothing to confirm.
-            Text("Remembered for next time")
+            Text("Selection saved automatically")
                 .font(.system(size: 12.5))
                 .foregroundStyle(DialogColors.note)
                 .padding(EdgeInsets(top: 10, leading: 16, bottom: 12, trailing: 16))
@@ -96,10 +96,10 @@ extension GeneratePopover {
     /// Why an agent can't be picked, for the second line of its row, or nil
     /// when it can.
     static func unusableReason(_ kind: AgentKind, in agents: AgentProvider) -> String? {
-        guard let lookup = agents.lookups[kind] else { return "Looking for it…" }
+        guard let lookup = agents.lookups[kind] else { return "Searching…" }
         switch lookup {
         case .found:
-            return agents.settings[kind]?.isEnabled == false ? "Turned off" : nil
+            return agents.settings[kind]?.isEnabled == false ? "Disabled" : nil
         case .notFound, .configuredMissing:
             return "Not found"
         case .unusable(let skipped):
@@ -111,7 +111,7 @@ extension GeneratePopover {
 
     private static func reason(_ skipped: [SkippedAgent]) -> String {
         let isTooOld = skipped.contains { if case .tooOld = $0.reason { true } else { false } }
-        return isTooOld ? "Too old to use" : "Couldn't run it"
+        return isTooOld ? "Unsupported version" : "Unable to run"
     }
 
     /// The second line of a usable agent's row: its model and its effort, as in
@@ -246,7 +246,7 @@ struct GeneratePopoverAgentRow: View {
                 .accessibilityHidden(true)
             GeneratePopoverMenu(
                 title: GeneratePopover.effortWords(effort),
-                name: "Effort",
+                name: "Reasoning effort",
                 selection: $effort,
                 options: GenerateChoices.efforts(stored: effort).map { (value: $0, title: AgentKind.effortTitle($0)) }
             )

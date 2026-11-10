@@ -80,9 +80,9 @@ enum SettingsGroup: CaseIterable {
         case .lists: "Lists"
         case .installation: "Installation"
         case .fetching: "Fetching"
-        case .generate: "Generate messages with an agent"
+        case .generate: "Commit message generation"
         case .commandLineAgents: "Command-line agents"
-        case .workingStatus: "Working status"
+        case .workingStatus: "Agent status"
         case .largeRepositories: "Large repositories"
         }
     }
@@ -102,13 +102,13 @@ enum SettingsGroup: CaseIterable {
     var description: String? {
         switch self {
         case .openIn:
-            "Roga lists the terminals it finds on this Mac that can open a folder."
+            "Available terminal apps on this Mac."
         case .installation:
-            "Roga uses the first Git \(SetupWords.minimumGit) or newer in your login shell's PATH, unless you pick another from the menu."
+            "Requires Git \(SetupWords.minimumGit) or later. The first compatible version in your login shell's PATH is selected by default."
         case .commandLineAgents:
-            "Roga looks for these in your login shell's PATH, the way it finds git. Generating a commit message runs one on this Mac with its tools off."
+            "Detect agents in your login shell's PATH and standard installation locations. Commit message generation runs locally with tools disabled."
         case .workingStatus:
-            "Roga can show which worktrees have an agent working, finished or waiting for you. The agents tell it through their hooks, so Roga never guesses from file changes, and it ignores folders that aren't in its sidebar."
+            "Show agent activity for worktrees in the sidebar. Status updates come from agent hooks."
         default:
             nil
         }
@@ -199,22 +199,22 @@ enum SettingsItem: CaseIterable {
         case .theme: "Theme"
         case .colors: "Colors"
         case .animationSpeed: "Animation speed"
-        case .fileLayout: "Show files as"
-        case .refsSort: "Sort branches by"
+        case .fileLayout: "File layout"
+        case .refsSort: "Branch sorting"
         case .foldsDescriptions: "Fold commit descriptions"
         case .gitProgram: "Git"
         case .fetchesByItself: "Fetch when Roga becomes active"
-        case .showsGenerateButton: "Show the Generate button"
+        case .showsGenerateButton: "Show Generate button"
         case .generateAgent: "Agent"
         case .generateModel: "Model"
-        case .generateEffort: "Effort"
-        case .matchesStyle: "Match the repository's style"
-        case .instructions: "Instructions"
+        case .generateEffort: "Reasoning effort"
+        case .matchesStyle: "Match repository commit style"
+        case .instructions: "Custom instructions"
         case .generateCommand: "Command"
         case .agentList: "Claude Code and Codex"
         case .hooks: "Hooks"
         case .showsMarks: "Show agents in the sidebar"
-        case .marksLegend: "Marks"
+        case .marksLegend: "Status indicators"
         case .keepsCommitGraphCurrent: "Keep commit-graph files up to date"
         }
     }
@@ -222,39 +222,39 @@ enum SettingsItem: CaseIterable {
     var help: String {
         switch self {
         case .terminal:
-            "For Open in Terminal on a repository or a worktree."
+            "Default app for Open in Terminal."
         case .checksForUpdates:
-            "Roga looks at roga.sh once a day, and the sidebar says when there's a new version. Nothing installs until you say so."
+            "Check roga.sh daily and show available updates in the sidebar."
         case .downloadsUpdates:
-            "A new version downloads in the background and installs when Roga quits. Restart to Update installs it straight away."
+            "Download updates in the background and install when Roga quits. Use Restart to Update to install immediately."
         case .colors:
             "For the graph, branches, diffs and commands."
         case .animationSpeed:
-            "How fast the house moves while git runs."
+            "House animation speed during Git operations."
         case .fileLayout:
             "In the commit and changes panels. Also in the View menu."
         case .refsSort:
             "In the refs panel. Also in its sort menu and the View menu."
         case .foldsDescriptions:
-            "The commit panel shows only a commit's first line, and clicking it shows the rest."
+            "Show only the commit subject by default. Click to expand the description."
         case .fetchesByItself:
-            "Roga runs git fetch for the repository on screen, at most once a minute, so that it can say how far your branch is from its upstream. It only moves remote branches, and it never asks for credentials."
+            "Fetch the active repository at most once a minute to update upstream status. Only remote-tracking branches are updated; authentication prompts are disabled."
         case .showsGenerateButton:
-            "In the message box. ⌥⌘L writes a message too."
+            "Generate commit messages from the message editor or with ⌥⌘L."
         case .generateAgent:
-            "Your staged diff goes to the agent, and from there to its provider."
+            "The staged diff is sent to the selected agent's provider."
         case .generateModel:
-            "Something fast is plenty for a commit message."
+            "Model used for commit message generation."
         case .matchesStyle:
-            "Sends the last 20 commit subjects along with the diff."
+            "Include the last 20 commit subjects as style examples."
         case .generateCommand:
-            "It runs in the worktree's folder with its tools, hooks, plugins and MCP servers off, and without the repository's own agent settings, so it can't change anything. Agents are set up on the Agents page."
+            "Runs in the worktree with tools, hooks, plugins, MCP servers and repository agent settings disabled. Configure the executable and arguments in Agents."
         case .showsMarks:
-            "Marks each worktree an agent is working in, waiting in, or has finished in."
+            "Show working, waiting and finished states beside each worktree."
         case .theme, .gitProgram, .generateEffort, .instructions, .agentList, .hooks, .marksLegend:
             ""
         case .keepsCommitGraphCurrent:
-            "Roga runs git commit-graph write in the background, so that large repositories open quickly. It writes to each repository's objects folder and never changes your git configuration."
+            "Run git commit-graph write in the background to speed up large repositories. Writes to the repository's objects folder without changing Git configuration."
         }
     }
 
@@ -266,11 +266,11 @@ enum SettingsItem: CaseIterable {
         case .downloadsUpdates: ["install", "Restart to Update", "version"]
         case .theme: AppTheme.allCases.map(\.title) + ["Dark mode", "Light mode"]
         case .colors: ColorTheme.allCases.map(\.title) + ["Color theme", "Palette", "Graph"]
-        case .gitProgram: ["Look Again", "Choose another", "program", "version", "PATH", "Xcode", "Command Line Tools", "Homebrew"]
-        case .instructions: ["Reset to Roga's", "prompt"]
-        case .agentList: ["Look Again", "Use", "program", "PATH"]
+        case .gitProgram: ["Rescan", "Choose another", "executable", "program", "version", "PATH", "Xcode", "Command Line Tools", "Homebrew"]
+        case .instructions: ["Restore Defaults", "prompt"]
+        case .agentList: ["Rescan", "Enable", "executable", "program", "PATH"]
         case .hooks: ["Install", "Remove", "roga-hooks", "plugin", "Claude Code", "Codex"]
-        case .marksLegend: ["Working", "Finished", "Waiting for you"]
+        case .marksLegend: ["Working", "Finished", "Waiting", "approval", "response"]
         default: []
         }
     }

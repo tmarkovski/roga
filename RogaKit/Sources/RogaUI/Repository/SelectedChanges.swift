@@ -296,7 +296,7 @@ final class SelectedChanges {
                 let resolution = try await ConflictResolutionWriter.resolve(request, with: setup.agent, run: run)
                 try Task.checkCancellation()
                 // Someone may have resolved some of them meanwhile, and those stay.
-                update(file, failure: "Can't write what \(setup.kind.name) sent for \(file.name)") { progress in
+                update(file, failure: "Unable to save \(setup.kind.name) output for \(file.name)") { progress in
                     for (asked, index) in open.enumerated() where progress.choices[index] == nil {
                         guard let text = resolution.lines[asked] else { continue }
                         progress.choices[index] = .lines(ConflictedFile.lines(typed: text))

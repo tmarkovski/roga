@@ -94,15 +94,15 @@ struct HooksDialog: View {
     private func alsoRow(_ other: AgentKind) -> some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Install in \(other.name) too")
+                Text("Also install in \(other.name)")
                     .fontWeight(.medium)
-                Text("\(other.name) was found, and its hooks work the same way.")
+                Text("Enable status updates for \(other.name).")
                     .font(.system(size: 12.5))
                     .foregroundStyle(SettingsColors.note)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            Toggle("Install in \(other.name) too", isOn: $alsoOther)
+            Toggle("Also install in \(other.name)", isOn: $alsoOther)
                 .toggleStyle(.settings)
                 .disabled(isWorking)
         }
@@ -155,13 +155,13 @@ struct HooksDialog: View {
         switch request.action {
         case .install:
             let trust = request.kind == .codex ? " Codex asks you to trust them the first time they run." : ""
-            return "\(name) will tell Roga when a session starts, works, asks you something and stops, and in which folder. The hooks only report, so they never change what \(name) does.\(trust)"
+            return "Enable session status updates from \(name) for each worktree. Hooks report activity without changing agent behavior.\(trust)"
         case .remove:
             let stays = switch request.kind {
-            case .claude: "Its settings keep nothing of Roga's, and it deletes its own copy of the plugin later."
-            case .codex: "Codex keeps in its config.toml any trust you gave Roga's hooks, so if you install the same hooks again, it won't ask again."
+            case .claude: "Roga's plugin settings are removed. Claude Code deletes its cached copy of the plugin later."
+            case .codex: "Codex retains hook trust in config.toml, so reinstalling the same hooks requires no new approval."
             }
-            return "\(name) will stop telling Roga what its sessions are doing, so the sidebar won't mark the worktrees it works in. \(stays)"
+            return "Disable session status updates from \(name) in the sidebar. \(stays)"
         }
     }
 
@@ -176,23 +176,23 @@ struct HooksDialog: View {
         switch request.action {
         case .install:
             let removal = switch request.kind {
-            case .claude: "Runs claude plugin uninstall, which leaves nothing of Roga's in its settings."
-            case .codex: "Runs codex plugin remove. Codex keeps any trust you gave the hooks."
+            case .claude: "Run claude plugin uninstall to remove Roga's plugin settings."
+            case .codex: "Run codex plugin remove. Existing hook trust is retained."
             }
             return [
-                ("roga-hooks", "A plugin, kept with Roga's files in Application Support."),
-                (file, "Gets the plugin's folder and turns it on, through \(name)'s own commands."),
+                ("roga-hooks", "Plugin stored in Roga's Application Support folder."),
+                (file, "Register and enable the plugin using \(name)'s CLI."),
                 ("Remove", removal),
             ]
         case .remove:
             let loses = switch request.kind {
-            case .claude: "Loses the plugin and its folder, through Claude Code's own commands."
-            case .codex: "Loses the plugin and its folder, through Codex's own commands, but keeps any trust you gave its hooks."
+            case .claude: "Remove the plugin registration using Claude Code's CLI."
+            case .codex: "Remove the plugin registration using Codex's CLI. Existing hook trust is retained."
             }
             return [
-                ("roga-hooks", "Comes out of \(name), and stays with Roga's files in Application Support."),
+                ("roga-hooks", "Uninstalled from \(name). Plugin files remain in Roga's Application Support folder."),
                 (file, loses),
-                ("Install…", "Puts them back whenever you want the sidebar's marks again."),
+                ("Install…", "Reinstall to restore sidebar status updates."),
             ]
         }
     }

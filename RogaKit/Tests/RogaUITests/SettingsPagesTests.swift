@@ -111,7 +111,7 @@ struct SettingsPagesTests {
     // MARK: The agents' rows
 
     @Test func anAgentsRowSaysWhereItsProgramIs() {
-        #expect(AgentSummaries.programLine(nil) == ProgramLine(text: "Looking…", tone: .plain))
+        #expect(AgentSummaries.programLine(nil) == ProgramLine(text: "Searching…", tone: .plain))
         #expect(AgentSummaries.programLine(.found(Self.homeClaude)) == ProgramLine(text: "~/nonexistent/bin/claude · 2.1.286", tone: .path))
         #expect(AgentSummaries.programLine(.found(Self.claude)) == ProgramLine(text: "/nonexistent/bin/claude · 2.1.286", tone: .path))
         #expect(AgentSummaries.programLine(.notFound) == ProgramLine(text: "Not found in your login shell's PATH.", tone: .plain))
@@ -121,7 +121,7 @@ struct SettingsPagesTests {
         let old = SkippedAgent(kind: .codex, executable: NSHomeDirectory() + "/nonexistent/bin/codex", reason: .tooOld(AgentVersion(major: 0, minor: 120, patch: 0)))
         #expect(AgentSummaries.programLine(.unusable([old])) == ProgramLine(text: "~/nonexistent/bin/codex is Codex 0.120.0, older than 0.131.0.", tone: .warn))
         #expect(AgentSummaries.programLine(.configuredUnusable(old)).tone == .warn)
-        #expect(AgentSummaries.programLine(.configuredMissing("/nonexistent/local/bin/codex")) == ProgramLine(text: "Roga can't find or run /nonexistent/local/bin/codex, which you chose.", tone: .warn))
+        #expect(AgentSummaries.programLine(.configuredMissing("/nonexistent/local/bin/codex")) == ProgramLine(text: "Custom executable not found or cannot be run: /nonexistent/local/bin/codex.", tone: .warn))
     }
 
     @Test func theProgramRowSaysHowRogaCameToIt() {
@@ -130,17 +130,17 @@ struct SettingsPagesTests {
         #expect(found.version == "Claude Code 2.1.286")
         #expect(found.sentence == "Found in your login shell's PATH.")
         #expect(found.plain == "~/nonexistent/bin/claude · Claude Code 2.1.286. Found in your login shell's PATH.")
-        #expect(AgentDetailPage.programDetail(.claude, lookup: .found(Self.claude), isChosen: true, isFirstInPath: false).sentence == "Chosen by you.")
-        #expect(AgentDetailPage.programDetail(.claude, lookup: .found(Self.claude), isChosen: false, isFirstInPath: false).sentence.hasPrefix("Found outside"))
+        #expect(AgentDetailPage.programDetail(.claude, lookup: .found(Self.claude), isChosen: true, isFirstInPath: false).sentence == "Custom executable.")
+        #expect(AgentDetailPage.programDetail(.claude, lookup: .found(Self.claude), isChosen: false, isFirstInPath: false).sentence.hasPrefix("Detected in a standard installation location"))
         // Codex runs the newest copy, wherever it is.
         var newest = Self.codex
         newest.others = [FoundAgent(executable: "/nonexistent/local/bin/codex", version: AgentVersion(major: 0, minor: 140, patch: 0))]
-        #expect(AgentDetailPage.programDetail(.codex, lookup: .found(newest), isChosen: false, isFirstInPath: false).sentence == "The newest of the copies Roga found.")
+        #expect(AgentDetailPage.programDetail(.codex, lookup: .found(newest), isChosen: false, isFirstInPath: false).sentence == "Latest detected version.")
         let missing = AgentDetailPage.programDetail(.codex, lookup: .configuredMissing("/nonexistent/local/bin/codex"), isChosen: true, isFirstInPath: false)
         #expect(missing.isWarning)
         #expect(missing.path == "/nonexistent/local/bin/codex")
         #expect(AgentDetailPage.programDetail(.codex, lookup: .notFound, isChosen: false, isFirstInPath: false).sentence == "Not found in your login shell's PATH.")
-        #expect(AgentDetailPage.programDetail(.codex, lookup: nil, isChosen: false, isFirstInPath: false).sentence == "Looking…")
+        #expect(AgentDetailPage.programDetail(.codex, lookup: nil, isChosen: false, isFirstInPath: false).sentence == "Searching…")
     }
 
     @Test func pathIsInTheCodeFontWithoutTheKeysGround() throws {
@@ -176,12 +176,12 @@ struct SettingsPagesTests {
         let heard = AgentProvider.Heard(date: now.addingTimeInterval(-130), cwd: "/git/acme/api")
         let installed = line(.claude, agents, heard: heard)
         #expect(installed.tone == .installed)
-        #expect(installed.text == "Installed, as the roga-hooks plugin. Last heard from 2 minutes ago, in api.")
+        #expect(installed.text == "Installed (roga-hooks plugin). Last heard from 2 minutes ago, in api.")
         #expect(installed.button == .init(action: .remove, title: "Remove…", isEnabled: true))
         // Without a word since Roga opened, it says only that it's installed.
-        #expect(line(.claude, agents).text == "Installed, as the roga-hooks plugin.")
+        #expect(line(.claude, agents).text == "Installed (roga-hooks plugin).")
         let folderless = AgentProvider.Heard(date: now.addingTimeInterval(-30), cwd: nil)
-        #expect(line(.claude, agents, heard: folderless).text == "Installed, as the roga-hooks plugin. Last heard from less than a minute ago.")
+        #expect(line(.claude, agents, heard: folderless).text == "Installed (roga-hooks plugin). Last heard from less than a minute ago.")
     }
 
     @Test func installedButNotRunningSaysWhatToDo() {
@@ -190,7 +190,7 @@ struct SettingsPagesTests {
             lookups: [.claude: .found(Self.claude), .codex: .found(Self.codex)],
             hookStatus: [.claude: .disabled, .codex: .needsTrust]
         )
-        #expect(line(.claude, agents) == HookLine(tone: .warn, text: "Installed, but turned off in Claude Code.", button: .init(action: .remove, title: "Remove…", isEnabled: true)))
+        #expect(line(.claude, agents) == HookLine(tone: .warn, text: "Installed, but disabled in Claude Code.", button: .init(action: .remove, title: "Remove…", isEnabled: true)))
         #expect(line(.codex, agents).text == "Installed, but Codex hasn't trusted it yet. Open /hooks in Codex to trust it.")
         #expect(line(.codex, agents).tone == .warn)
     }
@@ -221,7 +221,7 @@ struct SettingsPagesTests {
         #expect(line(.claude, agents) == HookLine(tone: .plain, text: "Checking…"))
         #expect(line(.codex, agents) == HookLine(tone: .plain, text: "Checking…"))
         let missing = provider(lookups: [.codex: .notFound])
-        #expect(line(.codex, missing) == HookLine(tone: .plain, text: "Roga needs to find Codex before it can install its hooks."))
+        #expect(line(.codex, missing) == HookLine(tone: .plain, text: "Install or select Codex to enable hook installation."))
     }
 
     @Test func theButtonWaitsWhileInstallOrRemoveRuns() {
@@ -315,7 +315,7 @@ struct SettingsPagesTests {
             hookStatus: [.codex: .notInstalled],
             hookWork: [.codex: .failed(.install, "Error: marketplace `roga` is already added from a different source")]
         )
-        #expect(line(.codex, agents).spoken == "Not installed. Codex asks you to trust a new hook the first time it runs. This copy of Roga has no roga helper, so it can't install hooks. Error: marketplace `roga` is already added from a different source.")
+        #expect(line(.codex, agents).spoken == "Not installed. Codex asks you to trust a new hook the first time it runs. Hook installation unavailable: roga helper missing. Error: marketplace `roga` is already added from a different source.")
         // With a detail, the row reads its help as the value; without one,
         // the help shows as it is and isn't read twice.
         let detailed = SettingsRow(title: "Hooks", help: "Not installed.", namesControl: false) { Text("Not installed.") } control: { EmptyView() }
@@ -328,7 +328,7 @@ struct SettingsPagesTests {
         let agents = provider(helper: false, lookups: [.claude: .found(Self.claude), .codex: .found(Self.codex)], hookStatus: [.claude: .notInstalled, .codex: .installed])
         let claude = line(.claude, agents)
         #expect(claude.button == .init(action: .install, title: "Install…", isEnabled: false))
-        #expect(claude.note == "This copy of Roga has no roga helper, so it can't install hooks.")
+        #expect(claude.note == "Hook installation unavailable: roga helper missing.")
         // Removing needs no helper.
         #expect(line(.codex, agents).button?.isEnabled == true)
         #expect(line(.codex, agents).note == nil)
@@ -465,7 +465,7 @@ struct SettingsPagesTests {
         let agents = provider(lookups: [.claude: .found(Self.claude)])
         let install = HooksDialog.Request(kind: .claude, action: .install, offers: .codex)
         #expect(HooksDialog.title(install) == "Install Roga's hooks in Claude Code")
-        #expect(HooksDialog.message(install).hasPrefix("Claude Code will tell Roga when a session starts"))
+        #expect(HooksDialog.message(install).hasPrefix("Enable session status updates from Claude Code"))
         #expect(HooksDialog.facts(install, agents: agents).map(\.name) == ["roga-hooks", "~/.claude/settings.json", "Remove"])
         let codex = HooksDialog.Request(kind: .codex, action: .install)
         #expect(HooksDialog.message(codex).hasSuffix("Codex asks you to trust them the first time they run."))
@@ -495,14 +495,14 @@ struct SettingsPagesTests {
             #expect(!words.contains("nothing"), "\(words)")
             #expect(!words.contains("Nothing"), "\(words)")
         }
-        #expect(HooksDialog.message(codexRemove).hasSuffix("Codex keeps in its config.toml any trust you gave Roga's hooks, so if you install the same hooks again, it won't ask again."))
-        #expect(HooksDialog.facts(codexInstall, agents: agents).last?.what == "Runs codex plugin remove. Codex keeps any trust you gave the hooks.")
-        #expect(HooksDialog.facts(codexRemove, agents: agents)[1].what.hasSuffix("but keeps any trust you gave its hooks."))
+        #expect(HooksDialog.message(codexRemove).hasSuffix("Codex retains hook trust in config.toml, so reinstalling the same hooks requires no new approval."))
+        #expect(HooksDialog.facts(codexInstall, agents: agents).last?.what == "Run codex plugin remove. Existing hook trust is retained.")
+        #expect(HooksDialog.facts(codexRemove, agents: agents)[1].what.hasSuffix("Existing hook trust is retained."))
         // Claude Code's settings keep nothing of Roga's, and it deletes its
         // copy of the plugin by itself.
         let claudeRemove = HooksDialog.Request(kind: .claude, action: .remove)
-        #expect(HooksDialog.message(claudeRemove).hasSuffix("Its settings keep nothing of Roga's, and it deletes its own copy of the plugin later."))
-        #expect(HooksDialog.facts(HooksDialog.Request(kind: .claude, action: .install), agents: agents).last?.what == "Runs claude plugin uninstall, which leaves nothing of Roga's in its settings.")
+        #expect(HooksDialog.message(claudeRemove).hasSuffix("Roga's plugin settings are removed. Claude Code deletes its cached copy of the plugin later."))
+        #expect(HooksDialog.facts(HooksDialog.Request(kind: .claude, action: .install), agents: agents).last?.what == "Run claude plugin uninstall to remove Roga's plugin settings.")
     }
 
     @Test func theDialogShowsTheExactCommands() async throws {
@@ -614,11 +614,11 @@ struct SettingsPagesTests {
         #expect(GenerateChoices.shownAgent(none) == .claude)
         #expect(GenerateChoices.noAgentTitle(none) == "None found")
         let looking = provider(lookups: [:])
-        #expect(GenerateChoices.noAgentTitle(looking) == "Looking…")
+        #expect(GenerateChoices.noAgentTitle(looking) == "Searching…")
         defaults.set(false, forKey: AgentPreferences.enabledKey(.claude))
         let off = provider(lookups: [.claude: .found(Self.claude), .codex: .notFound])
         #expect(off.usableAgents.isEmpty)
-        #expect(GenerateChoices.noAgentTitle(off) == "Turned off")
+        #expect(GenerateChoices.noAgentTitle(off) == "Disabled")
         // Its model and effort are still the found one's.
         #expect(GenerateChoices.shownAgent(off) == .claude)
     }
@@ -710,11 +710,11 @@ struct SettingsPagesTests {
     @Test func theModelsHelpSaysWhereCodexsDefaultComesFrom() {
         defer { clean() }
         let agents = provider(lookups: [:])
-        #expect(GenerateChoices.modelHelp(.claude, onAgentPage: false, agents: agents) == "Something fast is plenty for a commit message.")
+        #expect(GenerateChoices.modelHelp(.claude, onAgentPage: false, agents: agents) == "Model used for commit message generation.")
         #expect(GenerateChoices.modelHelp(.claude, onAgentPage: true, agents: agents).hasPrefix("Passed as --model."))
-        #expect(GenerateChoices.modelHelp(.codex, onAgentPage: true, agents: agents) == "Passed as -m. Default is the model in ~/.codex/config.toml.")
+        #expect(GenerateChoices.modelHelp(.codex, onAgentPage: true, agents: agents) == "Passed as -m. Default uses the model in ~/.codex/config.toml.")
         agents.setStateForTests(codexDefaultModel: .some("gpt-6-astra"))
-        #expect(GenerateChoices.modelHelp(.codex, onAgentPage: true, agents: agents) == "Passed as -m. Default is the model in ~/.codex/config.toml (gpt-6-astra).")
+        #expect(GenerateChoices.modelHelp(.codex, onAgentPage: true, agents: agents) == "Passed as -m. Default uses the model in ~/.codex/config.toml (gpt-6-astra).")
     }
 
     @Test func theCommandIsWhatGenerateRuns() async throws {
@@ -725,7 +725,7 @@ struct SettingsPagesTests {
         let agents = try await started()
         let lines = GenerateChoices.terminal(for: .claude, agents: agents, style: "Be brief.")
         let setup = try #require(agents.generation(with: .claude))
-        #expect(lines.first == .comment("The staged changes go to its standard input"))
+        #expect(lines.first == .comment("Staged diff supplied via standard input"))
         guard case .program(let command, let showsPath)? = lines.last else {
             Issue.record("There's no command")
             return
@@ -898,17 +898,17 @@ struct SettingsPagesTests {
         }
         #expect(found("Generate button") == [.showsGenerateButton])
         #expect(found("instructions").contains(.instructions))
-        #expect(found("Reset to Roga").contains(.instructions))
+        #expect(found("Restore Defaults").contains(.instructions))
         #expect(found("subjects") == [.matchesStyle])
         #expect(found("roga-hooks") == [.hooks])
         // Git and the agents each have one.
-        #expect(found("Look Again") == [.gitProgram, .agentList])
+        #expect(found("Rescan") == [.gitProgram, .agentList])
         #expect(found("Homebrew") == [.gitProgram])
         #expect(SettingsGroup.allCases.filter { $0.page == .git } == [.installation, .fetching])
         #expect(found("Codex").contains(.agentList))
         #expect(found("Codex").contains(.hooks))
         #expect(found("sidebar").contains(.showsMarks))
-        #expect(found("Waiting for you") == [.marksLegend])
+        #expect(found("response") == [.marksLegend])
         #expect(found("plugins").contains(.generateCommand))
         // A page's name finds everything on it.
         #expect(Set(found("Agents")).isSuperset(of: [.agentList, .hooks, .showsMarks, .marksLegend]))

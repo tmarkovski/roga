@@ -100,7 +100,7 @@ struct ConflictDocumentTests {
     @Test func showsWhatBothStartedFromWhenTheFileHasIt() {
         let file = ConflictedFile.parse(Array("<<<<<<< HEAD\nours\n||||||| 18f3a41\nbase\n=======\ntheirs\n>>>>>>> x\n".utf8))
         let document = DiffTextBuilder.build(file, choices: [:], sides: sides)
-        #expect(rows(document).contains("What both started from, 18f3a41"))
+        #expect(rows(document).contains("Common ancestor, 18f3a41"))
         #expect(rows(document).contains("base"))
     }
 }

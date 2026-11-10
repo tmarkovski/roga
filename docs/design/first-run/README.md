@@ -1,5 +1,7 @@
 # First run
 
+Interface wording follows [decision 72](../../decisions/0072-use-standard-interface-terminology.md). The boards retain their original labels as layout references.
+
 Boards for what Roga asks the first time it runs: which Git to use, whether to use agents and which copies, whether to install their hooks, and automatic updates. They're on the First run page of the design canvas [yaga layout options](https://claude.ai/artifact/4WQVua6gwKqSBoiRdf2FhX), and [`boards.py`](boards.py) draws every board, borrowing the styles, the window and the rows of [`../settings/boards.py`](../settings/boards.py).
 
 The whole-window setup on the page's first rows is built, as [decision 69](../../decisions/0069-set-roga-up-in-the-whole-window-the-first-time-it-runs.md) records, in [`RogaKit/Sources/RogaUI/Setup`](../../../RogaKit/Sources/RogaUI/Setup). The GitHub step and the first draft's sheets aren't. The boards show what this Mac had on November 9, 2026, read with each program's `--version`.

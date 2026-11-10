@@ -34,11 +34,11 @@ enum SetupWords {
 
     /// What the login shell's `PATH` row says.
     static func pathLook(_ searchPath: (path: String, fromLoginShell: Bool)?, shell: String) -> Look {
-        guard let searchPath else { return Look(name: "Your PATH", state: .looking, detail: "Asking \(shellName(shell))…") }
+        guard let searchPath else { return Look(name: "Shell PATH", state: .looking, detail: "Reading from \(shellName(shell))…") }
         let detail = searchPath.fromLoginShell
             ? "Read from your login shell, \(shellName(shell))"
-            : "\(shellName(shell)) didn't say, so Roga uses the one it started with"
-        return Look(name: "Your PATH", state: .found, detail: detail)
+            : "Login shell PATH unavailable; using Roga's environment"
+        return Look(name: "Shell PATH", state: .found, detail: detail)
     }
 
     /// A shell's name, from its path, as in zsh.
@@ -56,7 +56,7 @@ enum SetupWords {
             let source = ProgramSource.of(git.installation.executable, developerToolsFolder: survey.developerToolsFolder)
             return Look(name: "Git", state: .found, detail: "\(found) · \(git.installation.version) \(source.phrase)")
         case .failed, .locating:
-            let detail = survey.copies.isEmpty ? "None found" : "\(found), none Roga can use"
+            let detail = survey.copies.isEmpty ? "None found" : "\(found), none compatible"
             return Look(name: "Git", state: .missing, detail: detail)
         }
     }
@@ -75,7 +75,7 @@ enum SetupWords {
         case .notFound:
             return Look(name: kind.name, state: .found, detail: "Not found")
         case .unusable, .configuredUnusable, .configuredMissing:
-            return Look(name: kind.name, state: .missing, detail: "\(found), none Roga can use")
+            return Look(name: kind.name, state: .missing, detail: "\(found), none compatible")
         }
     }
 
@@ -145,8 +145,8 @@ enum SetupWords {
             return NoGit(
                 heading: "Roga needs Git \(minimumGit) or newer",
                 sub: "Roga runs the Git on your Mac, and \(foundWords). Apple's comes with the Command Line Tools, which take a few minutes to install.",
-                say: "opens Apple's installer, which is what this command does:",
-                note: "Homebrew's Git works too. Install one, or choose one, then Look Again.",
+                say: "opens Apple's installer using this command:",
+                note: "Homebrew Git is also supported. Install Git or select an existing installation, then Rescan.",
                 offersTools: true
             )
         }
@@ -154,16 +154,16 @@ enum SetupWords {
             heading: "Roga needs Git \(minimumGit) or newer",
             sub: "Roga runs the Git on your Mac, and \(foundWords).",
             say: nil,
-            note: "Homebrew's Git is new enough. Install one, or choose one, then Look Again.",
+            note: "Install a compatible Git version with Homebrew or select an existing installation, then Rescan.",
             offersTools: false
         )
     }
 
     // MARK: Agents
 
-    static let agentsSub = "Roga can ask an agent to write a commit message, resolve a conflict or fix what Git refused. It only runs one when you press a button for it."
-    static let noAgentsHeading = "Roga didn't find a coding agent"
-    static let noAgentsSub = "Roga looked for Claude Code and Codex in your PATH and where their installers put them. It works without one, and you can add one later in Settings › Agents."
+    static let agentsSub = "Generate commit messages, resolve conflicts and troubleshoot Git errors with a coding agent. Agents run only when requested."
+    static let noAgentsHeading = "No coding agents found"
+    static let noAgentsSub = "No Claude Code or Codex installations were detected in PATH or standard installation locations. Agents are optional and can be configured later in Settings › Agents."
 
     /// The question, which names the agents Roga would use: the ones it
     /// found and that their rows leave on, or all it found when none is on.
@@ -187,10 +187,10 @@ enum SetupWords {
 
     // MARK: Hooks
 
-    static let hooksHeading = "See what your agents are doing"
-    static let hooksSub = "Roga's hooks let your agents tell Roga when a session is working, waiting for you or finished. The sidebar then shows it on the worktree:"
-    static let hooksInstalled = "The roga-hooks plugin is in. You can remove it any time in Settings › Agents."
-    static let noHelper = "This copy of Roga has no roga helper, so it can't install hooks."
+    static let hooksHeading = "Agent status"
+    static let hooksSub = "Install hooks to show working, waiting and finished states beside each worktree in the sidebar."
+    static let hooksInstalled = "The roga-hooks plugin is installed. Manage hooks in Settings › Agents."
+    static let noHelper = "Hook installation unavailable: roga helper missing."
 
     /// What an agent's row on the Hooks screen says.
     struct HookRow: Equatable {
@@ -229,37 +229,37 @@ enum SetupWords {
             if kind == .codex { row.aside = "asks you to trust the hooks before it runs them" }
         case .installed?:
             let works = switch kind {
-            case .claude: "It works in the sessions you start from now on."
+            case .claude: "Active in new sessions."
             case .codex: "Codex trusts Roga's hooks."
             }
             row = HookRow(status: "Installed", mark: .ok, notes: [works])
         case .needsTrust?:
             row = HookRow(
-                status: "Waiting for your OK",
+                status: "Approval required",
                 mark: .warn,
                 notes: ["Codex won't run a new hook until you trust it. Run /hooks in Codex, or use Review hooks in the Codex app."],
                 checksAgain: true
             )
         case .disabled?:
             row = HookRow(
-                status: "Turned off in \(kind.name)",
+                status: "Disabled in \(kind.name)",
                 mark: .warn,
-                notes: ["The plugin is installed, but someone turned it off in \(kind.name). Turn it on there, then check again."],
+                notes: ["Enable the installed plugin in \(kind.name), then check again."],
                 checksAgain: true
             )
         case .anotherCopy(let folder)?:
             let fix = switch kind {
-            case .claude: "Install Hooks points them at this copy instead."
-            case .codex: "Remove them in that copy of Roga first, since Codex keeps only one."
+            case .claude: "Install Hooks to use this copy instead."
+            case .codex: "Remove hooks from that copy of Roga first; Codex supports one installation."
             }
             row = HookRow(
-                status: "Another copy of Roga's",
+                status: "Installed by another copy of Roga",
                 mark: .warn,
                 notes: ["\(kind.name) runs the hooks of another copy of Roga, from \(AgentSummaries.abbreviated(folder)). \(fix)"],
                 checksAgain: kind == .codex
             )
         case .unknown(let words)?:
-            row = HookRow(status: "Roga couldn't tell", mark: .warn, notes: [AgentSummaries.sentence(words)], checksAgain: true)
+            row = HookRow(status: "Status unavailable", mark: .warn, notes: [AgentSummaries.sentence(words)], checksAgain: true)
         }
         switch work {
         case .installing?:
@@ -327,7 +327,7 @@ enum SetupWords {
 
     static func chosenGit(_ installation: GitInstallation?, developerToolsFolder: String?, home: String = NSHomeDirectory()) -> Chosen {
         guard let installation else {
-            return Chosen(mark: .warn, value: "None Roga can use", detail: "Roga needs Git \(minimumGit) or newer.")
+            return Chosen(mark: .warn, value: "No compatible installation", detail: "Requires Git \(minimumGit) or later.")
         }
         let source = ProgramSource.of(installation.executable, developerToolsFolder: developerToolsFolder, home: home)
         return Chosen(
@@ -372,13 +372,13 @@ enum SetupWords {
             }
         }
         guard !installed.isEmpty || !waiting.isEmpty else {
-            return Chosen(mark: .off, value: "Not installed", detail: "The sidebar won't show what your agents are doing.")
+            return Chosen(mark: .off, value: "Not installed", detail: "Agent status updates are disabled.")
         }
         var details: [String] = []
         if !waiting.isEmpty {
             details.append(installed.isEmpty && waiting.count == 1
-                ? "It's waiting for you to trust them."
-                : "\(and(waiting)) \(waiting.count == 1 ? "is" : "are") waiting for you to trust them.")
+                ? "Hook approval required."
+                : "Hook approval required in \(and(waiting)).")
         }
         if !missing.isEmpty { details.append("Not installed in \(and(missing)).") }
         return Chosen(

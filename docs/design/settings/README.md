@@ -1,5 +1,7 @@
 # Settings
 
+Interface wording follows [decision 72](../../decisions/0072-use-standard-interface-terminology.md). The boards retain their original labels as layout references.
+
 Wireframes for a Settings window with a sidebar of pages, laid out like the Claude app's own settings and styled like Roga's dialogs ([decision 29](../../decisions/0029-dialogs-that-say-what-happens-and-show-the-command.md)). They're on the Settings page of the design canvas [yaga layout options](https://claude.ai/artifact/4WQVua6gwKqSBoiRdf2FhX), and [`boards.py`](boards.py) draws every board.
 
 Settings is built as a sheet, in [`SettingsSheet.swift`](../../../RogaKit/Sources/RogaUI/Settings/SettingsSheet.swift) and [`SettingsControls.swift`](../../../RogaKit/Sources/RogaUI/Settings/SettingsControls.swift), drawn to the boards' measurements and colors rather than with the system's lists and forms. It has the options Roga already had, on Appearance, Git and Advanced, the theme, and the agents' pages that [decision 41](../../decisions/0041-agents-status-from-their-hooks-and-messages-from-their-clis.md) added: the Commit page's Generate section, the Agents page, and a page for Claude Code and for Codex. The other pages and every other proposal on the boards wait until they're decided.

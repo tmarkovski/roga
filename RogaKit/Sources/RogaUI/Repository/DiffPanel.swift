@@ -163,7 +163,7 @@ struct DiffPanel: View {
     private static func agentHelp(_ setup: GenerationSetup, worktree: String, left: Int) -> String {
         let conflicts = left == 1 ? "the conflict" : "the \(left) conflicts"
         let command = CommandBlock.copied([.program(ConflictResolutionWriter.command(for: setup.agent, worktree: worktree), showsPath: setup.showsPath)])
-        return "Ask \(setup.label) to resolve \(conflicts) left. It reads them on its standard input, and Roga writes what it sends back for you to read over.\n\n" + command
+        return "Resolve \(conflicts) with \(setup.label). Conflicts are supplied via standard input. Review the result before marking the file resolved.\n\n" + command
     }
 
     /// The worktree the uncommitted changes are in, for opening a file there.
@@ -319,7 +319,7 @@ private struct ConflictFileMenu: View {
             }
             Button("\(sides.ours.keepTitle) version") { keep(.ours) }
             Button("\(sides.theirs.keepTitle) version") { keep(.theirs) }
-            Button("Put conflicts back", action: putBack)
+            Button("Restore conflicts", action: putBack)
             if let url {
                 Divider()
                 Button("Open in \(Self.appName(opening: url) ?? "default app")") {
@@ -431,7 +431,7 @@ private struct AgentNote: View {
         case .done(_, let resolved, let duration):
             let seconds = max(1, Int(Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18 + 0.5))
             let which = resolved == work.asked ? conflicts : "\(resolved) of \(work.asked) conflicts"
-            Text("\(work.label) resolved \(which) in \(seconds) s. Read them over before marking the file resolved.")
+            Text("\(work.label) resolved \(which) in \(seconds) s. Review the changes before marking the file resolved.")
         case .failed:
             Text("\(work.kind.name) didn't resolve them")
         }
@@ -451,7 +451,7 @@ private struct AgentNote: View {
             case .working:
                 noteButton("Stop", action: stop)
             case .done:
-                noteButton("Put Conflicts Back", action: putBack)
+                noteButton("Restore Conflicts", action: putBack)
                 closeButton
             case .failed:
                 if let tryAgain { noteButton("Try Again", action: tryAgain) }

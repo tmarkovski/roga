@@ -55,7 +55,7 @@ struct CommitPanel: View {
         } content: {
             switch commit.subject {
             case nil:
-                note("Select a commit to see what it changed.")
+                note("Select a commit to view its changes.")
             case .scattered(let count):
                 note("These \(count.formatted()) commits aren't one after another on one line, so they don't make one diff. Select a run of commits, or two to compare.")
             case .commit, .comparison, .stash:

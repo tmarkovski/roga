@@ -732,7 +732,7 @@ struct AgentSummary: Equatable {
         let words: String
         switch (state, activity) {
         case (.working, let activity?): words = "\(agent): \(activity)"
-        case (.waiting(.permission), let activity?): words = "\(agent) needs your OK: \(activity)"
+        case (.waiting(.permission), let activity?): words = "\(agent): approval required: \(activity)"
         case (.waiting(.question), let activity?): words = "\(agent): \(activity)"
         case (.working, nil): words = "\(agent) working"
         case (.waiting, nil): words = "\(agent) waiting for you"
@@ -754,10 +754,10 @@ struct AgentSummary: Equatable {
         let words: String
         switch (state, activity) {
         case (.working, let activity?), (.waiting(.question), let activity?): words = activity
-        case (.waiting(.permission), let activity?): words = "Needs your OK: \(activity)"
+        case (.waiting(.permission), let activity?): words = "Approval required: \(activity)"
         case (.finished, let activity?): return (activity, nil)
         case (.working, nil): words = sessions == 1 ? "\(agent) is working" : "\(agent) working"
-        case (.waiting(.permission), nil) where sessions == 1: words = "\(agent) needs your OK"
+        case (.waiting(.permission), nil) where sessions == 1: words = "\(agent): approval required"
         case (.waiting(.question), nil) where sessions == 1: words = "\(agent) is waiting for you"
         case (.waiting, nil): words = "\(agent) are waiting for you"
         case (.finished, nil): return ("\(agent) finished", nil)

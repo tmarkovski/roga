@@ -90,9 +90,9 @@ private enum Found {
         #expect(choices.map(\.tag) == [.tooOld, .recommended, nil])
         #expect(choices.map(\.canChoose) == [false, true, true])
         #expect(choices[0].why == "Your terminal runs this one, but Roga needs 2.44 or later.")
-        #expect(choices[1].why == "The first Git in your PATH that's new enough.")
+        #expect(choices[1].why == "First compatible Git in PATH.")
         #expect(choices[2].why == "Not in your PATH.")
-        #expect(choices[1].spoken == "Xcode 2.54.0, Recommended, /usr/bin/git, The first Git in your PATH that's new enough.")
+        #expect(choices[1].spoken == "Xcode 2.54.0, Recommended, /usr/bin/git, First compatible Git in PATH.")
     }
 
     @Test func theFirstGitInPathIsTheOneATerminalRuns() {
@@ -100,7 +100,7 @@ private enum Found {
         survey.copies = [Found.applesGit, Found.oldGit]
         survey.firstInPath = "/usr/bin/git"
         let choices = ProgramChoices.git(survey, chosenPath: nil, current: Found.git, failure: nil, home: Found.home)
-        #expect(choices[0].why == "Your terminal runs this one too.")
+        #expect(choices[0].why == "Default in your shell's PATH.")
         #expect(choices[1].why == "Roga needs 2.44 or later.")
     }
 
@@ -109,11 +109,11 @@ private enum Found {
         let current = GitInstallation(executable: chosen, version: GitVersion(major: 2, minor: 47, patch: 0), searchPath: Found.searchPath)
         let used = ProgramChoices.git(Found.gits, chosenPath: chosen, current: current, failure: nil, home: Found.home)
         #expect(used.count == 4)
-        #expect(used[0] == ProgramChoice(executable: chosen, source: "/opt/tools/bin", version: "2.47.0", tag: .chosen, path: chosen, why: "From somewhere Roga doesn't look by itself."))
+        #expect(used[0] == ProgramChoice(executable: chosen, source: "/opt/tools/bin", version: "2.47.0", tag: .chosen, path: chosen, why: "Custom installation location."))
 
         let missing = ProgramChoices.git(Found.gits, chosenPath: chosen, current: nil, failure: .configuredGitMissing(chosen), home: Found.home)
         #expect(missing[0].tag == .unusable)
-        #expect(missing[0].why == "Roga can't find or run it.")
+        #expect(missing[0].why == "File not found or cannot be executed.")
         #expect(!missing[0].canChoose)
 
         let old = ProgramChoices.git(
@@ -134,7 +134,7 @@ private enum Found {
         let choices = ProgramChoices.agent(Found.claudes, program: nil, lookup: Found.claudes.lookup, home: Found.home)
         #expect(choices.map(\.source) == ["~/.local/bin", "nvm, Node 25", "nvm, Node 20"])
         #expect(choices.map(\.tag) == [.recommended, .tooOld, .tooOld])
-        #expect(choices[0].why == "Your terminal runs this one too.")
+        #expect(choices[0].why == "Default in your shell's PATH.")
         #expect(choices[1].why == "Roga needs 2.1.169 or later.")
         #expect(choices[1].version == "2.1.29")
         #expect(choices[0].path == "~/.local/bin/claude")
@@ -144,8 +144,8 @@ private enum Found {
         let choices = ProgramChoices.agent(Found.codexes, program: nil, lookup: Found.codexes.lookup, home: Found.home)
         #expect(choices.map(\.source) == ["Homebrew", "ChatGPT app"])
         #expect(choices.map(\.tag) == [nil, .recommended])
-        #expect(choices[0].why == "Your terminal runs this one.")
-        #expect(choices[1].why == "The newest copy, which new models need.")
+        #expect(choices[0].why == "Default in your shell's PATH.")
+        #expect(choices[1].why == "Latest detected version.")
     }
 
     @Test func aCopyThatDidntAnswerSaysHow() {
@@ -405,9 +405,9 @@ struct SetupModelTests {
     }
 
     @Test func lookingSaysWhatRogaFoundAsItFindsIt() {
-        #expect(SetupWords.pathLook(nil, shell: "/bin/zsh") == .init(name: "Your PATH", state: .looking, detail: "Asking zsh…"))
+        #expect(SetupWords.pathLook(nil, shell: "/bin/zsh") == .init(name: "Shell PATH", state: .looking, detail: "Reading from zsh…"))
         #expect(SetupWords.pathLook(("/usr/bin", true), shell: "/opt/homebrew/bin/fish").detail == "Read from your login shell, fish")
-        #expect(SetupWords.pathLook(("/usr/bin", false), shell: "/bin/zsh").detail == "zsh didn't say, so Roga uses the one it started with")
+        #expect(SetupWords.pathLook(("/usr/bin", false), shell: "/bin/zsh").detail == "Login shell PATH unavailable; using Roga's environment")
 
         let ready = GitProvider.State.ready(Git(installation: Found.git))
         #expect(SetupWords.gitLook(state: .locating, survey: nil, isLooking: true, hasPath: false).state == .waiting)
@@ -473,14 +473,14 @@ struct SetupModelTests {
         #expect(SetupWords.hookRow(.claude, status: nil, work: nil) == .init(status: "Checking…", mark: .spinner))
         #expect(SetupWords.hookRow(.claude, status: .notInstalled, work: nil) == .init(status: "Not installed"))
         #expect(SetupWords.hookRow(.codex, status: .notInstalled, work: nil).aside == "asks you to trust the hooks before it runs them")
-        #expect(SetupWords.hookRow(.claude, status: .installed, work: nil) == .init(status: "Installed", mark: .ok, notes: ["It works in the sessions you start from now on."]))
+        #expect(SetupWords.hookRow(.claude, status: .installed, work: nil) == .init(status: "Installed", mark: .ok, notes: ["Active in new sessions."]))
 
         let trust = SetupWords.hookRow(.codex, status: .needsTrust, work: nil)
-        #expect(trust.status == "Waiting for your OK")
+        #expect(trust.status == "Approval required")
         #expect(trust.mark == .warn)
         #expect(trust.checksAgain)
 
-        #expect(SetupWords.hookRow(.claude, status: .disabled, work: nil).status == "Turned off in Claude Code")
+        #expect(SetupWords.hookRow(.claude, status: .disabled, work: nil).status == "Disabled in Claude Code")
         // Claude Code takes another copy's hooks over, and Codex can't.
         #expect(!SetupWords.hookRow(.claude, status: .anotherCopy(folder: "/x/plugins"), work: nil).checksAgain)
         #expect(SetupWords.hookRow(.codex, status: .anotherCopy(folder: "/x/plugins"), work: nil).checksAgain)
@@ -530,10 +530,10 @@ struct SetupModelTests {
             SetupWords.chosenHooks(usable: [.claude, .codex], status: status)
         }
         #expect(hooks([.claude: .installed, .codex: .installed]) == .init(mark: .ok, value: "Installed in Claude Code and Codex"))
-        #expect(hooks([.claude: .installed, .codex: .needsTrust]) == .init(mark: .warn, value: "Installed in Claude Code and Codex", detail: "Codex is waiting for you to trust them."))
+        #expect(hooks([.claude: .installed, .codex: .needsTrust]) == .init(mark: .warn, value: "Installed in Claude Code and Codex", detail: "Hook approval required in Codex."))
         #expect(hooks([.claude: .installed, .codex: .notInstalled]) == .init(mark: .ok, value: "Installed in Claude Code", detail: "Not installed in Codex."))
-        #expect(hooks([.claude: .notInstalled, .codex: .notInstalled]) == .init(mark: .off, value: "Not installed", detail: "The sidebar won't show what your agents are doing."))
-        #expect(SetupWords.chosenHooks(usable: [.codex], status: [.codex: .needsTrust]).detail == "It's waiting for you to trust them.")
+        #expect(hooks([.claude: .notInstalled, .codex: .notInstalled]) == .init(mark: .off, value: "Not installed", detail: "Agent status updates are disabled."))
+        #expect(SetupWords.chosenHooks(usable: [.codex], status: [.codex: .needsTrust]).detail == "Hook approval required.")
     }
 }
 

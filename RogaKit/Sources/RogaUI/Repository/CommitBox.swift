@@ -295,7 +295,7 @@ private struct CommitBoxWriting: View {
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(Palette.action)
                 .fixedSize()
-                .help("Stop \(writing.kind.name), and leave the message as it was")
+                .help("Stop generation and restore the previous message")
         }
         .font(.system(size: 12))
         .foregroundStyle(.secondary)
@@ -320,7 +320,7 @@ private struct CommitBoxBars: View {
         }
         .frame(height: 54, alignment: .top)
         .accessibilityElement()
-        .accessibilityLabel("The message is being written")
+        .accessibilityLabel("Generating commit message")
     }
 
     private func bar(_ width: CGFloat) -> some View {
@@ -347,7 +347,7 @@ private struct CommitBoxWritten: View {
                 .buttonStyle(.plain)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(Palette.action)
-                .help("Put back what was in the box before")
+                .help("Restore the previous commit message")
             Spacer(minLength: 0)
         }
         .font(.system(size: 12))
@@ -386,7 +386,7 @@ private struct CommitBoxGenerateFailure: View {
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
                         Chevron(pointsDown: showsOutput)
                             .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
-                        Text("What \(failure.kind.name) printed")
+                        Text("\(failure.kind.name) output")
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .contentShape(Rectangle())
@@ -394,7 +394,7 @@ private struct CommitBoxGenerateFailure: View {
                 .buttonStyle(.plain)
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
-                .accessibilityLabel(showsOutput ? "Hide what \(failure.kind.name) printed" : "Show what \(failure.kind.name) printed")
+                .accessibilityLabel(showsOutput ? "Hide \(failure.kind.name) output" : "Show \(failure.kind.name) output")
                 if showsOutput {
                     ScrollView {
                         Text(output)

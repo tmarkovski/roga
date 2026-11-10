@@ -202,7 +202,7 @@ nonisolated extension DiffTextBuilder {
                 case .ours: sides.ours.keptTitle
                 case .theirs: sides.theirs.keptTitle
                 case .both: "Kept both"
-                case .lines: writtenBy[index].map { "\($0) wrote this" } ?? "Kept what you wrote"
+                case .lines: writtenBy[index].map { "Resolved by \($0)" } ?? "Manual resolution"
                 }
                 let showsSides = shownSides.contains(index)
                 addBand(.band(index, isResolved: true, showsSides: showsSides, kept: kept))
@@ -216,7 +216,7 @@ nonisolated extension DiffTextBuilder {
                 if showsSides {
                     _ = addSide(.ours, sides.ours.name + " · " + sides.ours.detail, file.bytes[conflict.ours], from: 0, numbered: false)
                     if let base = conflict.base {
-                        _ = addSide(.base, conflict.baseLabel.map { "What both started from, \($0)" } ?? "What both started from", file.bytes[base], from: 0, numbered: false)
+                        _ = addSide(.base, conflict.baseLabel.map { "Common ancestor, \($0)" } ?? "Common ancestor", file.bytes[base], from: 0, numbered: false)
                     }
                     _ = addSide(.theirs, sides.theirs.name + " · " + sides.theirs.detail, file.bytes[conflict.theirs], from: 0, numbered: false)
                 }
@@ -232,7 +232,7 @@ nonisolated extension DiffTextBuilder {
             number = addSide(.ours, sides.ours.name + " · " + sides.ours.detail, file.bytes[conflict.ours], from: number)
             if let base = conflict.base {
                 number += 1
-                let label = conflict.baseLabel.map { "What both started from, \($0)" } ?? "What both started from"
+                let label = conflict.baseLabel.map { "Common ancestor, \($0)" } ?? "Common ancestor"
                 number = addSide(.base, label, file.bytes[base], from: number)
             }
             number += 1
