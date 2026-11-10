@@ -278,6 +278,15 @@ struct HouseAnimationTests {
         #expect(defaults.houseAnimationSpeed == 3)
     }
 
+    /// Settings doesn't offer the speed for now, so a speed saved before
+    /// doesn't count.
+    @Test func theHousePlaysAtNormalSpeedWhileSettingsDoesntOfferIt() {
+        #expect(!HouseAnimationView.offersSpeed)
+        #expect(HouseAnimationView.playingSpeed(2.5) == 1)
+        #expect(HouseAnimationView.playingSpeed(0.25) == 1)
+        #expect(HouseAnimationView.playingSpeed(1) == 1)
+    }
+
     @Test func aStoredSpeedStaysWithinWhatSettingsOffers() {
         #expect(HouseAnimationView.clamped(2) == 2)
         #expect(HouseAnimationView.clamped(0) == HouseAnimationView.speeds.lowerBound)

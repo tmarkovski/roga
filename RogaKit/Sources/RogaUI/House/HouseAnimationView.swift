@@ -24,12 +24,12 @@ extension BranchModel.Action {
         }
     }
 
-    /// How long the house takes to play once at the speed in Settings. With no
+    /// How long the house takes to play once at the speed it plays at. With no
     /// house, or for someone who asked for less motion and sees a still pose,
     /// there's nothing to wait for.
     var timeToPlayHouse: Duration {
         guard let houseAnimation, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return .zero }
-        return houseAnimation.timeToPlay(atSpeed: HouseAnimationView.clamped(UserDefaults.standard.houseAnimationSpeed))
+        return houseAnimation.timeToPlay(atSpeed: HouseAnimationView.playingSpeed(UserDefaults.standard.houseAnimationSpeed))
     }
 }
 
@@ -39,6 +39,12 @@ extension BranchModel.Action {
 struct HouseAnimationView: View {
     /// The speeds Settings offers, as multiples of normal speed.
     static let speeds = 0.25 ... 3.0
+
+    /// Whether Settings offers the speed, under Motion on its Appearance page,
+    /// with the house's animations to look at above it. It doesn't for now,
+    /// so the house plays at normal speed whatever was saved, and a saved
+    /// speed stays in the defaults for when it's offered again.
+    static let offersSpeed = false
 
     let animation: HouseAnimation
     let height: CGFloat
@@ -61,12 +67,12 @@ struct HouseAnimationView: View {
         TimelineView(.animation(minimumInterval: 1 / framesPerSecond, paused: reducesMotion)) { timeline in
             let time = reducesMotion
                 ? motion.stillPhase * motion.duration
-                : clock.time(at: timeline.date, speed: Self.clamped(speed))
+                : clock.time(at: timeline.date, speed: Self.playingSpeed(speed))
             HouseFigure(pose: motion.pose(at: time), color: color)
         }
         .frame(width: height * HouseRig.frame.width / HouseRig.frame.height, height: height)
         .accessibilityHidden(true)
-        .onChange(of: Self.clamped(speed)) { oldSpeed, _ in
+        .onChange(of: Self.playingSpeed(speed)) { oldSpeed, _ in
             clock.rebase(at: .now, speed: oldSpeed)
         }
     }
@@ -80,6 +86,12 @@ struct HouseAnimationView: View {
     /// A stored speed, in case something else wrote a value Settings wouldn't.
     static func clamped(_ speed: Double) -> Double {
         min(max(speed, speeds.lowerBound), speeds.upperBound)
+    }
+
+    /// The speed the house plays at, from the stored one: that one while
+    /// Settings offers it, and normal speed while it doesn't.
+    static func playingSpeed(_ stored: Double) -> Double {
+        offersSpeed ? clamped(stored) : 1
     }
 }
 

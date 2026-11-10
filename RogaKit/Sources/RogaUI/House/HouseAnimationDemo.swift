@@ -3,8 +3,8 @@ import SwiftUI
 
 /// A window for looking at the house's animations up close: each one large, with
 /// its joints if you want them, and at the sizes it runs at. It starts at the
-/// speed in Settings but keeps its own after that, so that slowing an animation
-/// down to look at it doesn't slow down the app.
+/// speed the app plays it at but keeps its own after that, so that slowing an
+/// animation down to look at it doesn't slow down the app.
 public struct HouseAnimationDemo: View {
     /// The sizes the small versions are drawn at, in points.
     private static let sizes: [CGFloat] = [18, 22, 28]
@@ -16,7 +16,7 @@ public struct HouseAnimationDemo: View {
     @State private var clocks: [HouseAnimation: HouseClock]
 
     public init() {
-        _speed = State(initialValue: HouseAnimationView.clamped(UserDefaults.standard.houseAnimationSpeed))
+        _speed = State(initialValue: HouseAnimationView.playingSpeed(UserDefaults.standard.houseAnimationSpeed))
         _clocks = State(initialValue: Dictionary(uniqueKeysWithValues: HouseAnimation.allCases.map { animation in
             let motion = animation.motion
             return (animation, HouseClock(startDate: .now, startTime: motion.startPhase * motion.duration))

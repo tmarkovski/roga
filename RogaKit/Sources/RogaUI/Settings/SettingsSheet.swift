@@ -123,6 +123,28 @@ enum SettingsGroup: CaseIterable {
     var items: [SettingsItem] {
         SettingsItem.allCases.filter { $0.group == self }
     }
+
+    /// Whether Settings shows it, on its page and when searching. Motion is
+    /// left out for now, with the house's animations and their speed, which
+    /// stays normal (`HouseAnimationView.offersSpeed`). Its code stays, for
+    /// when it comes back.
+    var isShown: Bool {
+        self != .motion || HouseAnimationView.offersSpeed
+    }
+
+    /// The groups Settings shows, in order.
+    static var shown: [SettingsGroup] {
+        allCases.filter(\.isShown)
+    }
+
+    /// What a search finds: each group Settings shows that has a setting
+    /// whose words match, with those settings.
+    static func found(_ query: String) -> [(group: SettingsGroup, items: [SettingsItem])] {
+        shown.compactMap { group in
+            let items = group.items.filter { $0.matches(query) }
+            return items.isEmpty ? nil : (group, items)
+        }
+    }
 }
 
 /// Every setting, in the order the pages show them, so that search can find
@@ -410,23 +432,20 @@ struct SettingsSheet: View {
                 AgentsPage(show: show)
             case .page(let page):
                 VStack(alignment: .leading, spacing: 30) {
-                    ForEach(SettingsGroup.allCases.filter { $0.page == page }, id: \.self) { group in
+                    ForEach(SettingsGroup.shown.filter { $0.page == page }, id: \.self) { group in
                         section(group, items: group.items, namesPage: false)
                     }
                 }
             }
         } else {
-            let found = SettingsGroup.allCases.compactMap { group -> (SettingsGroup, [SettingsItem])? in
-                let items = group.items.filter { $0.matches(trimmedQuery) }
-                return items.isEmpty ? nil : (group, items)
-            }
+            let found = SettingsGroup.found(trimmedQuery)
             if found.isEmpty {
                 Text("No settings match “\(trimmedQuery)”.")
                     .foregroundStyle(SettingsColors.note)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 VStack(alignment: .leading, spacing: 30) {
-                    ForEach(found, id: \.0) { group, items in
+                    ForEach(found, id: \.group) { group, items in
                         section(group, items: items, namesPage: true)
                     }
                 }

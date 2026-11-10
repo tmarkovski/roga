@@ -915,6 +915,18 @@ struct SettingsPagesTests {
         #expect(SettingsGroup.generate.items.allSatisfy { $0.group.page == .commit })
         #expect(SettingsGroup.allCases.filter { $0.page == .agents } == [.commandLineAgents, .workingStatus])
     }
+
+    /// Motion, with the house's animations and their speed, is left out for
+    /// now, so Appearance shows Interface and Lists, and search can't find it.
+    @Test func motionIsLeftOutForNow() {
+        #expect(!HouseAnimationView.offersSpeed)
+        #expect(SettingsGroup.shown.filter { $0.page == .appearance } == [.interface, .lists])
+        #expect(SettingsGroup.found("Animation speed").isEmpty)
+        #expect(SettingsGroup.found("Motion").isEmpty)
+        // A search still finds the rest of the page.
+        #expect(SettingsGroup.found("Appearance").map(\.group) == [.interface, .lists])
+        #expect(SettingsGroup.found("Monokai").map(\.items) == [[.colors]])
+    }
 }
 
 /// What someone typed in a box, for a binding to write to.
