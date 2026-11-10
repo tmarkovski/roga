@@ -76,7 +76,12 @@ struct RepositoryView: View {
                         CommitPanel(model: model)
                     }
                 } trailing: {
-                    DiffPanel(selection: model.selectedFile, changes: showsChanges ? model.selectedChanges : nil, size: $lowerPanelSize)
+                    DiffPanel(
+                        selection: model.selectedFile,
+                        changes: showsChanges ? model.selectedChanges : nil,
+                        submoduleCommands: SubmoduleCommands(stage: model.stageSubmodule, update: model.updateSubmodule),
+                        size: $lowerPanelSize
+                    )
                 }
             }
         }

@@ -94,29 +94,143 @@ enum SubmoduleLoader {
     /// submodule's path. One that can't be read is left out.
     @concurrent
     static func changes(of files: [DiffFile], comparingCheckout: Bool, in worktree: String, git: Git) async throws -> [String: SubmoduleChange] {
-        try await withThrowingTaskGroup(of: (String, SubmoduleChange?).self) { group in
-            var waiting = files.makeIterator()
-            @Sendable func read(_ file: DiffFile) async throws -> (String, SubmoduleChange?) {
+        try await each(of: files, path: \.path) { file in
+            try await change(of: file, comparingCheckout: comparingCheckout, in: worktree, git: git)
+        }
+    }
+
+    /// Reads something about each of some submodules, a few at a time, by the
+    /// submodule's path. One that can't be read is left out.
+    private static func each<Item: Sendable, Value: Sendable>(
+        of items: [Item],
+        path: @escaping @Sendable (Item) -> String,
+        _ read: @escaping @Sendable (Item) async throws -> Value
+    ) async throws -> [String: Value] {
+        try await withThrowingTaskGroup(of: (String, Value?).self) { group in
+            var waiting = items.makeIterator()
+            @Sendable func attempt(_ item: Item) async throws -> (String, Value?) {
                 do {
-                    return (file.path, try await change(of: file, comparingCheckout: comparingCheckout, in: worktree, git: git))
+                    return (path(item), try await read(item))
                 } catch is CancellationError {
                     throw CancellationError()
                 } catch {
-                    return (file.path, nil)
+                    return (path(item), nil)
                 }
             }
             for _ in 0..<readsAtOnce {
-                guard let file = waiting.next() else { break }
-                group.addTask { try await read(file) }
+                guard let item = waiting.next() else { break }
+                group.addTask { try await attempt(item) }
             }
-            var changes: [String: SubmoduleChange] = [:]
-            while let (path, change) = try await group.next() {
-                changes[path] = change
-                if let file = waiting.next() {
-                    group.addTask { try await read(file) }
+            var values: [String: Value] = [:]
+            while let (path, value) = try await group.next() {
+                values[path] = value
+                if let item = waiting.next() {
+                    group.addTask { try await attempt(item) }
                 }
             }
-            return changes
+            return values
+        }
+    }
+
+    // MARK: The refs panel's section
+
+    /// Lists a worktree's submodules, from A to Z by path, each with the commit
+    /// the worktree records for it, the commit that's checked out and where
+    /// it's from (decision 75). How far the two commits are apart, and what the
+    /// checkout has uncommitted, is for `standings` to read afterward, so that
+    /// the list shows without waiting for it.
+    ///
+    /// A submodule is what `git submodule` means by one: a path that the
+    /// worktree's `.gitmodules` names and its index records a commit for. So a
+    /// worktree without that file isn't looked at, and one with it runs `git
+    /// config` for the names, `git ls-files --stage` for only those paths, and
+    /// `git rev-parse` in each checkout, a few at a time. None of that grows
+    /// with the repository's size.
+    ///
+    /// Its address is the URL in git's own settings, where `git submodule init`
+    /// puts it whole, and otherwise the one in `.gitmodules`, which can be
+    /// relative to the parent's remote.
+    @concurrent
+    static func list(in worktree: String, git: Git) async throws -> [Submodule] {
+        guard FileManager.default.fileExists(atPath: (worktree as NSString).appendingPathComponent(".gitmodules")) else { return [] }
+        var named = GitCommand(SubmoduleConfigParser.moduleArguments, in: worktree)
+        named.successStatuses = [0, 1]
+        var settings = GitCommand(SubmoduleConfigParser.urlArguments, in: worktree)
+        settings.successStatuses = [0, 1]
+        async let set = git.run(settings).output
+
+        // The index has a submodule's path without a slash at its end.
+        var modules = try parse(named, try await git.run(named).output, with: SubmoduleConfigParser.parse).compactMapValues { module in
+            module.path.map { path in
+                var path = path[...]
+                while path.hasSuffix("/") { path = path.dropLast() }
+                return SubmoduleConfigParser.Module(path: String(path), url: module.url)
+            }
+        }
+        let urls = try parse(settings, try await set, with: SubmoduleConfigParser.parse)
+        for name in modules.keys {
+            if let url = urls[name]?.url { modules[name]?.url = url }
+        }
+        let paths = modules.values.compactMap(\.path)
+        guard !paths.isEmpty else { return [] }
+
+        var index = GitCommand(SubmoduleListParser.arguments + ["--"] + paths, in: worktree)
+        // Each path is a name rather than a pattern.
+        index.environment["GIT_LITERAL_PATHSPECS"] = "1"
+        let recorded = try parse(index, try await git.run(index).output, with: SubmoduleListParser.recorded)
+        let listed = modules.compactMap { name, module -> Submodule? in
+            guard let path = module.path, let commit = recorded[path] else { return nil }
+            return Submodule(name: name, path: path, address: module.url.map(RemoteAddress.shown), recorded: commit, checkedOut: nil)
+        }
+        // One that can't be read is listed as one that isn't checked out.
+        let heads = try await each(of: listed, path: \.path) { submodule in
+            try await checkout(of: submodule.path, in: worktree, git: git)?.head
+        }
+        return listed
+            .map { submodule in
+                let head = heads[submodule.path] ?? nil
+                return Submodule(name: submodule.name, path: submodule.path, address: submodule.address, recorded: submodule.recorded, checkedOut: head)
+            }
+            .sorted { $0.path.compare($1.path, options: [.numeric, .caseInsensitive]) == .orderedAscending }
+    }
+
+    /// Reads how each listed submodule's checkout stands against what's
+    /// recorded, a few at a time, by the submodule's path: how far apart the
+    /// two commits are, and how many uncommitted files the checkout has. One
+    /// that isn't checked out has nothing to read and is left out, and so is
+    /// one that can't be read.
+    ///
+    /// It's what `change(of:comparingCheckout:in:git:)` reads for a row under
+    /// Unstaged. There, the parent's `git status` has already said whether a
+    /// checkout has files of its own. A listed submodule may have no such row,
+    /// so this asks each checkout itself, with a `git status` there.
+    @concurrent
+    static func standings(of submodules: [Submodule], in worktree: String, git: Git) async throws -> [String: SubmoduleChange] {
+        try await each(of: submodules.filter { $0.checkedOut != nil }, path: \.path) { submodule in
+            try await standing(of: submodule, in: worktree, git: git)
+        }
+    }
+
+    /// Reads how one listed submodule's checkout stands, from the commit it was
+    /// listed with, so that the row's hash and its words are about the same
+    /// commit.
+    static func standing(of submodule: Submodule, in worktree: String, git: Git) async throws -> SubmoduleChange {
+        guard let head = submodule.checkedOut else { return Submodule.unread(recorded: submodule.recorded, checkedOut: nil) }
+        let checkout = Checkout(folder: (worktree as NSString).appendingPathComponent(submodule.path), head: head)
+        let sides = Sides(from: submodule.recorded, to: head, comparesCheckout: true)
+        let distance = try await distance(sides, in: checkout, git: git)
+        let files = try await filesInside(checkout, git: git)
+        var said: SubmoduleChange.Checkout = head == submodule.recorded ? [] : [.commitChanged]
+        if files.contains(where: { $0.status == .untracked }) { said.insert(.untrackedFiles) }
+        if files.contains(where: { $0.status != .untracked }) { said.insert(.modifiedFiles) }
+        return SubmoduleChange(checkout: said, distance: distance, filesInside: files.isEmpty ? nil : files.count)
+    }
+
+    private static func parse<Result>(_ command: GitCommand, _ output: [UInt8], with parser: ([UInt8]) throws(ParseError) -> Result) throws -> Result {
+        do {
+            return try parser(output)
+        } catch {
+            throw RepositoryError.unexpectedOutput(command, error.description)
         }
     }
 

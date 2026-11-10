@@ -4,8 +4,8 @@ import SwiftUI
 
 /// Shows what's selected in history or the refs panel (decision 56): a commit, with
 /// its message, who wrote it and when, its parents and the files it changed;
-/// several commits as one diff; a branch since it left the main branch; or what a
-/// stash holds.
+/// several commits as one diff; a branch since it left the main branch; what a
+/// stash holds; or where one of the worktree's submodules stands (decision 75).
 struct CommitPanel: View {
     let model: RepositoryModel
     @FocusState private var isFocused: Bool
@@ -16,7 +16,7 @@ struct CommitPanel: View {
     /// Whether there are files to list, or will be once they're read.
     private var hasFiles: Bool {
         switch commit.subject {
-        case nil, .scattered: false
+        case nil, .scattered, .submodule: false
         case .commit, .comparison, .stash: true
         }
     }
@@ -58,6 +58,10 @@ struct CommitPanel: View {
                 note("Select a commit to view its changes.")
             case .scattered(let count):
                 note("These \(count.formatted()) commits aren't one after another on one line, so they don't make one diff. Select a run of commits, or two to compare.")
+            case .submodule(let submodule):
+                ScrollView {
+                    SubmoduleSummary(submodule: submodule)
+                }
             case .commit, .comparison, .stash:
                 if let problem = commit.problem {
                     note(problem)
@@ -110,7 +114,7 @@ struct CommitPanel: View {
                 .padding(.leading, 4)
             if let detail = titleDetail, showingHash {
                 Text(detail)
-                    .font(.system(size: 12, design: commit.stash == nil && commit.comparison == nil ? .monospaced : .default))
+                    .font(.system(size: 12, design: commit.id != nil ? .monospaced : .default))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .padding(.leading, 4)
@@ -131,6 +135,7 @@ struct CommitPanel: View {
         switch commit.subject {
         case nil, .commit: "Commit"
         case .stash: "Stash"
+        case .submodule: "Submodule"
         case .scattered(let count): "\(count.formatted()) Commits"
         case .comparison(let comparison):
             switch comparison.kind {
@@ -146,6 +151,7 @@ struct CommitPanel: View {
         switch commit.subject {
         case .commit(let id): String(id.hex.prefix(8))
         case .stash(let stash): stash.name
+        case .submodule(let submodule): submodule.path
         case .comparison(let comparison):
             switch comparison.kind {
             case .run: nil
@@ -260,7 +266,7 @@ private struct CommitDetails: View {
             .font(.system(size: 12))
         case .comparison(let comparison):
             ComparisonSummary(comparison: comparison, info: info, fromInfo: commit.fromInfo, model: model)
-        case .commit, .scattered, nil:
+        case .commit, .scattered, .submodule, nil:
             message
             people
             parents
@@ -347,6 +353,81 @@ private struct CommitDetails: View {
             }
             .font(.system(size: 12))
         }
+    }
+}
+
+/// What the panel says about one of the worktree's submodules (decision 75):
+/// its path, the commit that the worktree records for it, the commit that's
+/// checked out and where that stands, and where it's from. The commits are the
+/// submodule's own, which history doesn't have, so they're text to select
+/// rather than links. It has no files to list, because the parent has none in
+/// it, and the diff panel shows its commits and its own uncommitted files.
+private struct SubmoduleSummary: View {
+    let submodule: Submodule
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(submodule.path)
+                .fontWeight(.semibold)
+                .textSelection(.enabled)
+            Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 8, verticalSpacing: 6) {
+                GridRow {
+                    Text("Recorded").foregroundStyle(.secondary)
+                    hash(submodule.recorded)
+                }
+                GridRow {
+                    Text("Checked out").foregroundStyle(.secondary)
+                    if let checkedOut = submodule.checkedOut {
+                        if let standing = submodule.standing {
+                            // Beside the hash when it fits there, and under
+                            // it otherwise, on as many lines as it takes.
+                            ViewThatFits(in: .horizontal) {
+                                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                    hash(checkedOut)
+                                    Text(standing)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                                VStack(alignment: .leading, spacing: 2) {
+                                    hash(checkedOut)
+                                    Text(standing)
+                                        .foregroundStyle(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                        } else {
+                            hash(checkedOut)
+                        }
+                    } else {
+                        Text("Not checked out in this worktree")
+                    }
+                }
+                GridRow {
+                    Text("From").foregroundStyle(.secondary)
+                    if let address = submodule.address {
+                        Text(address)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .textSelection(.enabled)
+                            .help(address)
+                    } else {
+                        Text("No URL in .gitmodules")
+                    }
+                }
+            }
+            .font(.system(size: 12))
+        }
+        .font(.system(size: 13))
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// A commit's short hash, with all of it in the tooltip.
+    private func hash(_ id: ObjectID) -> some View {
+        Text(id.hex.prefix(8))
+            .font(.system(size: 12, design: .monospaced))
+            .textSelection(.enabled)
+            .help(id.hex)
     }
 }
 

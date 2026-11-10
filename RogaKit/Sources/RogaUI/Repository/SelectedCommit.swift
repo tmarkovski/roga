@@ -5,7 +5,8 @@ import RepositoryEngine
 
 /// What's selected in history or the refs panel, and what the commit panel shows
 /// about it: one commit, several commits as one diff, a branch since it left the
-/// main branch, or a stash (decision 56). It's commits rather than rows, so that
+/// main branch, a stash (decision 56), or one of the worktree's submodules
+/// (decision 75). It's commits rather than rows, so that
 /// it stays selected when history loads again in another order. The previous
 /// files stay until the new ones arrive, because a list that emptied on every
 /// step through history would flash.
@@ -20,6 +21,9 @@ final class SelectedCommit {
         /// so that they don't make one diff, and how many.
         case scattered(Int)
         case stash(StashDetails)
+        /// One of the worktree's submodules, as the refs panel lists it, which
+        /// has no files of the parent's to list.
+        case submodule(Submodule)
     }
 
     /// Commits shown as one diff, from `from` to `to`.
@@ -118,6 +122,11 @@ final class SelectedCommit {
         if case .stash(let stash) = subject { stash } else { nil }
     }
 
+    /// The submodule selected, if one is.
+    var submodule: Submodule? {
+        if case .submodule(let submodule) = subject { submodule } else { nil }
+    }
+
     /// The comparison selected, if one is.
     var comparison: Comparison? {
         if case .comparison(let comparison) = subject { comparison } else { nil }
@@ -128,7 +137,7 @@ final class SelectedCommit {
         switch subject {
         case .commit(let id): id
         case .stash(let stash): stash.commit
-        case .comparison, .scattered, nil: nil
+        case .comparison, .scattered, .submodule, nil: nil
         }
     }
 
@@ -224,7 +233,37 @@ final class SelectedCommit {
                 self.stashBase = contents.base
                 return contents.parts.map { FileGroup(group: $0.group, files: $0.files, source: $0.source) }
             }
+        case .submodule(let submodule):
+            // Its commits are its own repository's, so there's none of the
+            // parent's to read, and no files to list.
+            info = nil
+            fromInfo = nil
+            stashBase = nil
+            problem = nil
+            files = .loaded([])
+            selectedFile.show(submodule.file, from: worktree.map(PatchSource.submodule))
         }
+    }
+
+    /// Shows the selected submodule as the refs panel lists it now, since what
+    /// it records, what's checked out and how the two stand can all have
+    /// changed, as after Update. One that isn't listed any more leaves the
+    /// panels with nothing.
+    ///
+    /// - Parameters:
+    ///   - submodules: The worktree's submodules as they were just listed.
+    ///   - isRead: Whether each one's own repository has been read for this
+    ///     list. Until then, a submodule that lists as it did keeps what the
+    ///     panels show of it, so that they don't change twice for one look.
+    func follow(_ submodules: [Submodule], isRead: Bool) {
+        guard case .submodule(let shown) = subject, let worktree else { return }
+        guard let listed = submodules.first(where: { $0.path == shown.path }) else {
+            show(nil)
+            return
+        }
+        guard isRead || listed != shown else { return }
+        subject = .submodule(listed)
+        selectedFile.refresh(listed.file, from: .submodule(worktree: worktree))
     }
 
     /// Reads the commits the panel says something about, the first of them into

@@ -324,6 +324,10 @@ public actor RepositorySession {
             )
         case .worktree(let path, let group, let head):
             try await ChangesLoader.patch(of: file, in: group, head: head, wholeFile: wholeFile, directory: path, format: location.format, git: git)
+        case .submodule(let path):
+            // git's own patch for it, which is what its row under Unstaged has,
+            // though the panels show its commits instead.
+            try await ChangesLoader.patch(of: file, in: .unstaged, head: nil, wholeFile: wholeFile, directory: path, format: location.format, git: git)
         }
     }
 
@@ -1038,26 +1042,39 @@ public enum PatchSource: Sendable, Hashable {
     /// The group of a worktree's changes or a stash's that the file is in.
     public var group: WorktreeChanges.Group? {
         switch self {
-        case .commit: nil
+        case .commit, .submodule: nil
         case .commits(_, _, let group): group
         case .worktree(_, let group, _): group
         }
     }
 
     /// Whether a submodule's row from here compares what's recorded with the
-    /// commit checked out, which only a worktree's unstaged changes do. Every
-    /// other row compares two commits that are recorded.
+    /// commit checked out, which a worktree's unstaged changes do, and a
+    /// submodule that the refs panel lists. Every other row compares two
+    /// commits that are recorded.
     public var comparesSubmoduleCheckout: Bool {
-        if case .worktree(_, .unstaged, _) = self { true } else { false }
+        switch self {
+        case .worktree(_, .unstaged, _), .submodule: true
+        case .commit, .commits, .worktree: false
+        }
     }
 
-    /// The worktree whose uncommitted files these are, if they're a worktree's.
+    /// The worktree whose uncommitted files these are, if they're a worktree's,
+    /// or whose submodule this is.
     public var worktree: String? {
-        if case .worktree(let path, _, _) = self { path } else { nil }
+        switch self {
+        case .worktree(let path, _, _), .submodule(let path): path
+        case .commit, .commits: nil
+        }
     }
     /// A group of a worktree's uncommitted files. `head` is the commit that
     /// the worktree's staged changes compare with, or nil when there's none yet.
     case worktree(path: String, group: WorktreeChanges.Group, head: ObjectID?)
+    /// One of a worktree's submodules as the refs panel lists it, which
+    /// compares the commit the worktree records with the one checked out, as
+    /// its row under Unstaged does, whether or not they differ (decision 75).
+    /// It's under no heading, because it may have no uncommitted change at all.
+    case submodule(worktree: String)
 }
 
 // MARK: - Submodules
@@ -1096,6 +1113,30 @@ extension RepositorySession {
             in: source.worktree ?? worktree,
             git: git
         )
+    }
+
+    /// Lists a worktree's submodules, from A to Z by path, each with the commit
+    /// the worktree records for it, the commit checked out there and where
+    /// it's from, for the refs panel's section (decision 75). They're the
+    /// worktree's own, since each worktree has its own index and checkouts.
+    /// A worktree without a `.gitmodules` file has none, and runs nothing.
+    ///
+    /// - Parameter worktree: The worktree's folder.
+    @concurrent
+    public nonisolated func submodules(in worktree: String) async throws -> [Submodule] {
+        try await SubmoduleLoader.list(in: worktree, git: git)
+    }
+
+    /// Reads how each listed submodule's checkout stands against what's
+    /// recorded: how far apart the two commits are, and how many uncommitted
+    /// files the checkout has. It reads each submodule's own repository, so it
+    /// runs after the list shows.
+    ///
+    /// - Returns: How each one stands, by its path. One that isn't checked out
+    ///   or couldn't be read is missing.
+    @concurrent
+    public nonisolated func submoduleStandings(of submodules: [Submodule], in worktree: String) async throws -> [String: SubmoduleChange] {
+        try await SubmoduleLoader.standings(of: submodules, in: worktree, git: git)
     }
 
     /// What `updateSubmodule` runs, for a tooltip that says so.
