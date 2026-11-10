@@ -123,15 +123,7 @@ struct CommitBox: View {
                 Spacer(minLength: 4)
                 if composer.canSkipHooks {
                     Button("Skip Hooks") { composer.commit(skippingHooks: true) }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 12))
-                        .padding(.horizontal, 10)
-                        .frame(height: 26)
-                        .background {
-                            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                .strokeBorder(Palette.separator)
-                        }
-                        .contentShape(Rectangle())
+                        .buttonStyle(OutlinedButtonStyle(height: 26, horizontalPadding: 10))
                         .help("git commit --no-verify")
                 }
                 primaryButton
@@ -229,6 +221,12 @@ struct CommitBox: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .strokeBorder(Palette.separator)
         }
+        // The light goes around what the agent is working on (decision 68).
+        .overlay {
+            if isWriting {
+                AgentOutline(shape: .outline(cornerRadius: 8), showsLine: false, isWorking: true)
+            }
+        }
         .overlay(alignment: .bottomTrailing) {
             if case .shown(let agent, let rewrites, let readiness) = generateButton, let agents {
                 GenerateButton(agent: agent, rewrites: rewrites, readiness: readiness, isChoosing: $isChoosingAgent) {
@@ -270,15 +268,15 @@ struct CommitBox: View {
     }
 }
 
-/// The line under the box while an agent writes: a small spinner, the agent and
-/// the seconds so far, and Stop, which gives the box back as it was.
+/// The line under the box while an agent writes: the sidebar's ring, the agent
+/// and the seconds so far, and Stop, which gives the box back as it was.
 private struct CommitBoxWriting: View {
     let writing: MessageGenerator.Writing
     let stop: () -> Void
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 7) {
-            CommitBoxSpinner()
+            AgentMark(state: .working)
                 // Centered on the first line's letters, as it is on a line of its own.
                 .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
             // In a narrow panel the words go onto a second line rather than
@@ -300,30 +298,6 @@ private struct CommitBoxWriting: View {
         .foregroundStyle(.secondary)
         .padding(.horizontal, 12)
         .padding(.top, 8)
-    }
-}
-
-/// The canvas's spinner: a gray ring with its top quarter darker, which turns.
-private struct CommitBoxSpinner: View {
-    @State private var isTurning = false
-    @Environment(\.accessibilityReduceMotion) private var reducesMotion
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .strokeBorder(SettingsColors.line, lineWidth: 1.5)
-            // A circle's outline starts on the right and goes clockwise, so the
-            // top quarter is from five eighths of the way round to seven.
-            Circle()
-                .inset(by: 0.75)
-                .trim(from: 0.625, to: 0.875)
-                .stroke(Color.secondary, lineWidth: 1.5)
-        }
-        .frame(width: 12, height: 12)
-        .rotationEffect(.degrees(isTurning ? 360 : 0))
-        .animation(isTurning ? .linear(duration: 0.9).repeatForever(autoreverses: false) : nil, value: isTurning)
-        .onAppear { isTurning = !reducesMotion }
-        .accessibilityHidden(true)
     }
 }
 
@@ -353,17 +327,17 @@ private struct CommitBoxBars: View {
     }
 }
 
-/// The line under the box once an agent has written the message: sparkles, who
-/// wrote it and how fast, and Undo, which puts back what was there.
+/// The line under the box once an agent has written the message: the sidebar's
+/// dot for what finished, who wrote it and how fast, and Undo, which puts back
+/// what was there.
 private struct CommitBoxWritten: View {
     let written: MessageGenerator.Written
     let undo: () -> Void
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Icon.sparkles.image
-                .font(.system(size: 13 / 1.128))
-                .foregroundStyle(Palette.action)
+            AgentMark(state: .finished)
+                .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
             Text(MessageGenerator.writtenWords(written))
                 .fixedSize(horizontal: false, vertical: true)
             Button("Undo", action: undo)

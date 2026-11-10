@@ -26,14 +26,30 @@ public final class DiffTextController: NSObject {
         didSet { updateConflictBars() }
     }
 
+    /// Makes what goes around each unresolved conflict in view, while an agent is
+    /// working on them, or nil while none is (decision 68). The view that's made
+    /// shouldn't take clicks, since it sits over the conflict's buttons.
+    public var makeConflictOutline: (() -> NSView)? {
+        didSet {
+            conflictOutlines.forEach { $0.removeFromSuperview() }
+            conflictOutlines = []
+            updateConflictOutlines()
+        }
+    }
+
     /// The bars on the conflicts' bands in view, and spare ones, which stay
     /// rather than being made again as the text scrolls.
     private var conflictBars: [ConflictBar] = []
+    /// What's around the unresolved conflicts in view, and spare ones.
+    private var conflictOutlines: [NSView] = []
     /// Where someone is writing the lines that resolve a conflict.
     private var editor: NSPopover?
 
     /// The space above and below the text.
     private static let inset: CGFloat = 4
+    /// How far a conflict's outline stays from the view's sides, so that the
+    /// light's glow isn't cut off along them.
+    static let outlineInset: CGFloat = 2
 
     override public init() {
         // Made this way, it uses TextKit 1, and it doesn't own its text system.
@@ -64,6 +80,7 @@ public final class DiffTextController: NSObject {
         hunkButton.action = #selector(hunkButtonPressed)
         sides.pointerChanged = { [weak self] in self?.updateHunkButton() }
         textView.menuItem = { [weak self] point in self?.hunkMenuItem(atTextY: point.y) }
+        textView.isCovered = { [weak self] point in self?.isCovered(atWindowPoint: point) ?? false }
 
         configureTextView()
         let clipView = scrollView.contentView
@@ -190,10 +207,18 @@ public final class DiffTextController: NSObject {
 
     // MARK: Conflicts
 
-    /// Puts a bar on each conflict's band in view, at the edge of the view, so that
-    /// the buttons stay put as the text scrolls sideways.
+    private func isCovered(atWindowPoint point: NSPoint) -> Bool {
+        let inView = view.convert(point, from: nil)
+        let controls: [NSView] = conflictBars + [hunkButton]
+        return controls.contains { !$0.isHidden && $0.frame.contains(inView) }
+    }
+
+    /// Puts a bar on each conflict's band in view, as wide as the view, so that its
+    /// label and buttons stay put as the text scrolls sideways. A bar has no buttons
+    /// while the conflicts can't be resolved from here.
     func updateConflictBars() {
-        guard let document, let conflicts = document.conflicts, resolveConflict != nil, !document.conflictBands.isEmpty else {
+        updateConflictOutlines()
+        guard let document, let conflicts = document.conflicts, !document.conflictBands.isEmpty else {
             conflictBars.forEach { $0.isHidden = true }
             return
         }
@@ -203,11 +228,12 @@ public final class DiffTextController: NSObject {
         let shown = textView.visibleRect
         let firstRow = Int(((shown.minY - origin) / DiffStyle.lineHeight).rounded(.down))
         let lastRow = Int(((shown.maxY - origin) / DiffStyle.lineHeight).rounded(.up))
-        let bands = document.conflictBands.filter { $0.row >= firstRow && $0.row <= lastRow }
+        let bands = document.conflictBands.filter { $0.row + ConflictBand.rowCount > firstRow && $0.row <= lastRow }
         let count = document.conflictBands.count
         while conflictBars.count < bands.count {
             let bar = ConflictBar()
             bar.onAction = { [weak self] bar, action, button in self?.conflictAction(action, of: bar, from: button) }
+            bar.scrollTarget = scrollView
             sides.addSubview(bar)
             conflictBars.append(bar)
         }
@@ -217,12 +243,45 @@ public final class DiffTextController: NSObject {
                 continue
             }
             let band = bands[index]
-            bar.show(band, sides: conflicts.sides, of: count)
+            bar.show(band, sides: conflicts.sides, of: count, canResolve: resolveConflict != nil)
             let top = origin + CGFloat(band.row) * DiffStyle.lineHeight
-            let row = view.convert(NSRect(x: 0, y: top, width: 1, height: DiffStyle.lineHeight), from: textView)
-            let size = bar.size
-            bar.frame = NSRect(x: visible.maxX - size.width - 6, y: (row.midY - size.height / 2).rounded(), width: size.width, height: size.height)
-            bar.isHidden = !(visible.minY...visible.maxY ~= row.midY)
+            let row = view.convert(NSRect(x: 0, y: top, width: 1, height: ConflictBar.height), from: textView)
+            bar.place(in: NSRect(x: 0, y: row.minY, width: visible.maxX, height: row.height), textStart: gutter.thickness + DiffStyle.textPadding)
+            bar.isHidden = row.maxY <= visible.minY || row.minY >= visible.maxY
+        }
+    }
+
+    /// Puts an outline around each unresolved conflict in view: the whole section,
+    /// line numbers included, as wide as the view whichever way the text is
+    /// scrolled sideways, and cut off where it runs past the view's top or bottom.
+    private func updateConflictOutlines() {
+        guard let make = makeConflictOutline, let document else {
+            conflictOutlines.forEach { $0.isHidden = true }
+            return
+        }
+        let origin = textView.textContainerOrigin.y
+        let shown = textView.visibleRect
+        let firstRow = Int(((shown.minY - origin) / DiffStyle.lineHeight).rounded(.down))
+        let lastRow = Int(((shown.maxY - origin) / DiffStyle.lineHeight).rounded(.up))
+        let blocks = document.unresolvedConflictRows.filter { $0.upperBound > firstRow && $0.lowerBound <= lastRow }
+        while conflictOutlines.count < blocks.count {
+            let outline = make()
+            // Under the bars and the hunk's button, which it mustn't draw across.
+            sides.addSubview(outline, positioned: .above, relativeTo: scrollView)
+            conflictOutlines.append(outline)
+        }
+        for (index, outline) in conflictOutlines.enumerated() {
+            guard index < blocks.count else {
+                outline.isHidden = true
+                continue
+            }
+            let rows = blocks[index]
+            let block = view.convert(
+                NSRect(x: 0, y: origin + CGFloat(rows.lowerBound) * DiffStyle.lineHeight, width: 1, height: CGFloat(rows.count) * DiffStyle.lineHeight),
+                from: textView
+            )
+            outline.frame = NSRect(x: Self.outlineInset, y: block.minY, width: max(view.bounds.width - 2 * Self.outlineInset, 0), height: block.height)
+            outline.isHidden = false
         }
     }
 

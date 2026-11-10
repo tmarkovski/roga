@@ -223,4 +223,29 @@ enum AgentColors {
     static let finished = DialogColors.appearanceColor(light: 0x2F6DE1, dark: 0x2F6DE1)
     /// The track of the ring, in the canvas's line gray.
     static let ringTrack = SettingsColors.line
+    /// The still line around an agent's command, the brand's orange at about
+    /// half strength (decision 68).
+    static let outline = orange(light: 0.42, dark: 0.45)
+    /// The same line under the pointer or while an agent works, and the tail of
+    /// the light that runs along it.
+    static let outlineLit = orange(light: 0.85, dark: 0.9)
+    /// The front of the light, which is brighter than the brand's orange in dark
+    /// mode so that it catches the eye, and redder in light mode, where a lighter
+    /// orange would fade into the white around it.
+    static let light = DialogColors.appearanceColor(light: 0xE8590C, dark: 0xFFB27D)
+    /// The soft glow around the front of the light.
+    static let glow = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(srgbRed: 1, green: 160 / 255, blue: 100 / 255, alpha: 0.6)
+            : NSColor(srgbRed: 232 / 255, green: 89 / 255, blue: 12 / 255, alpha: 0.45)
+    })
+
+    /// `Palette.action` at a strength for each appearance.
+    private static func orange(light: CGFloat, dark: CGFloat) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                ? NSColor(srgbRed: 240 / 255, green: 129 / 255, blue: 63 / 255, alpha: dark)
+                : NSColor(srgbRed: 201 / 255, green: 68 / 255, blue: 2 / 255, alpha: light)
+        })
+    }
 }

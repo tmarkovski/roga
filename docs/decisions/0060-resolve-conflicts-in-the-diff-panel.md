@@ -52,6 +52,7 @@ A side's row adds the commit's short hash and subject, or says that a rebase has
 - A file's conflicts are read in full, up to 16 MiB. A bigger file shows its patch.
 - Markers are found by their shape, with seven characters or the size the first marker has, so a file whose `conflict-marker-size` attribute differs between markers isn't recognized. A stray `=======` outside a conflict, as in a Markdown heading, stays text.
 - The sides are named from the first conflict's labels, which are the same for every conflict in a file.
+- A band is two rows of text tall, because every row of the diff has to be the same height for a position in the view to become a row. Its rows are empty and `ConflictBar` draws what it says over them, centered and in the canvas's type, so "Conflict 2 of 3" isn't part of the text someone selects or searches.
 - Edit… is a box under the button rather than the band turning into a text box in place, because the diff's text view can't be edited (decision 9). It's the part most likely to change.
 - What both sides started from only shows when the repository's conflict style writes it into the file. Reading it from the index for the default style isn't built.
 - The bands' buttons have no keyboard commands yet, and VoiceOver reaches them only as the buttons they are. Moving between conflicts would bring both, like moving between hunks.
