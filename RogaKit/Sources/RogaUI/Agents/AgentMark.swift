@@ -2,6 +2,7 @@ import AppKit
 import IconUI
 import QuartzCore
 import SwiftUI
+import ThemeUI
 
 /// The mark a sidebar row shows for an agent (decision 41): a turning ring
 /// while it works, the amber circle-alert while it waits for you, and a blue
@@ -216,8 +217,8 @@ enum AgentColors {
     /// Amber, for an agent that waits for you, and for a warning that isn't an
     /// error.
     static let warn = DialogColors.appearanceColor(light: 0x9A5200, dark: 0xF0A54A)
-    /// Green, for what works, such as hooks that are installed.
-    static let ok = DialogColors.appearanceColor(light: 0x3F7D00, dark: 0xA6E22E)
+    /// The color theme's green, for what works, such as hooks that are installed.
+    static var ok: Color { Palette.themed(\.ok) }
     /// The blue of a dot for what finished and nobody has looked at yet, the
     /// same in both appearances.
     static let finished = DialogColors.appearanceColor(light: 0x2F6DE1, dark: 0x2F6DE1)

@@ -2,6 +2,7 @@ import AppKit
 import HistoryUI
 import IconUI
 import SwiftUI
+import ThemeUI
 
 /// The colors of panels. Surfaces are plain, sections are separated by thin
 /// lines, and selection is a soft gray rather than the accent color
@@ -29,14 +30,28 @@ enum Palette {
     /// appearances.
     static let actionFill = Color(nsColor: NSColor(srgbRed: 201 / 255, green: 68 / 255, blue: 2 / 255, alpha: 1))
 
+    // The color theme's colors (decision 71). Each reads the theme as a view's
+    // body asks for it, so the view draws again when the theme changes.
+
     /// The current branch, in the color of its badge in history (decision 27).
-    static let current = Color(nsColor: GitColors.current)
+    static var current: Color { themed(\.current) }
     /// What was added, and commits ahead of the upstream.
-    static let green = Color(nsColor: GitColors.green)
+    static var green: Color { themed(\.added) }
     /// What was removed, and commits behind the upstream.
-    static let red = Color(nsColor: GitColors.red)
+    static var red: Color { themed(\.removed) }
     /// What was moved or copied.
-    static let blue = Color(nsColor: GitColors.blue)
+    static var blue: Color { themed(\.moved) }
+
+    /// A graph lane's color, which a picture of a graph uses.
+    static func lane(_ index: Int) -> Color {
+        let lanes = ColorTheme.observed.colors.lanes
+        return Color(nsColor: lanes[index % lanes.count].color)
+    }
+
+    /// The color the theme in use gives a role.
+    static func themed(_ role: KeyPath<ThemeColors, ThemeColor>) -> Color {
+        Color(nsColor: ColorTheme.observed.colors[keyPath: role].color)
+    }
 
     static func gray(light: CGFloat, dark: CGFloat) -> Color {
         Color(nsColor: NSColor(name: nil) { appearance in

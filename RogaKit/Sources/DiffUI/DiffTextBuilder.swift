@@ -1,5 +1,6 @@
 import AppKit
 import GitCore
+import ThemeUI
 
 /// How diffs look. Every line has the same height, whatever fonts its
 /// characters fall back on, and lines don't wrap, so each line of a patch is
@@ -22,10 +23,21 @@ nonisolated enum DiffStyle {
     /// The width of one column of text.
     static let columnWidth = ("M" as NSString).size(withAttributes: [.font: font]).width
 
+    // A changed line's tints are the color theme's (decision 71). They follow
+    // the theme as they're drawn, so a document built in one theme shows in another.
+    private static let addedBackground = ColorTheme.following(alpha: 0.14, \.diffAdded)
+    private static let removedBackground = ColorTheme.following(alpha: 0.14, \.diffRemoved)
+    private static let addedWordBackground = ColorTheme.following(alpha: 0.28, \.diffAdded)
+    private static let removedWordBackground = ColorTheme.following(alpha: 0.28, \.diffRemoved)
+    /// The bar beside an added line.
+    static let addedBar = ColorTheme.following(\.diffAdded)
+    /// The stripes beside a removed line.
+    static let removedBar = ColorTheme.following(\.diffRemoved)
+
     static func background(_ kind: FilePatch.Line.Kind) -> NSColor? {
         switch kind {
-        case .added: NSColor.systemGreen.withAlphaComponent(0.14)
-        case .removed: NSColor.systemRed.withAlphaComponent(0.14)
+        case .added: addedBackground
+        case .removed: removedBackground
         case .hunkHeader: NSColor.systemBlue.withAlphaComponent(0.09)
         case .context, .noNewline: nil
         }
@@ -35,8 +47,8 @@ nonisolated enum DiffStyle {
     /// background.
     static func changedWordBackground(_ kind: FilePatch.Line.Kind) -> NSColor? {
         switch kind {
-        case .added: NSColor.systemGreen.withAlphaComponent(0.28)
-        case .removed: NSColor.systemRed.withAlphaComponent(0.28)
+        case .added: addedWordBackground
+        case .removed: removedWordBackground
         case .hunkHeader, .context, .noNewline: nil
         }
     }

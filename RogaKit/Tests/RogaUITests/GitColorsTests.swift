@@ -1,10 +1,12 @@
 import AppKit
+import Foundation
 import Testing
 @testable import CommitGraph
 @testable import HistoryUI
+import ThemeUI
 
 /// The graph's and the branches' colors, which have to read in both appearances
-/// (decision 27).
+/// in every color theme (decisions 27 and 71).
 @Suite(.timeLimit(.minutes(1)))
 struct GitColorsTests {
     /// An appearance, with what a graph's lines and a row's text sit on.
@@ -20,10 +22,12 @@ struct GitColorsTests {
         Look(name: .darkAqua, surface: 0.135, selection: 0.245, plainFill: 0x2A2A29),
     ]
 
+    /// A color's components in extended sRGB, so that a Display P3 color outside
+    /// sRGB, as several of Xcode's are, keeps its value rather than being clipped.
     private func components(_ color: NSColor, in look: Look) throws -> [CGFloat] {
         var result: [CGFloat] = []
         NSAppearance(named: look.name)?.performAsCurrentDrawingAppearance {
-            if let resolved = color.usingColorSpace(.sRGB) {
+            if let resolved = color.usingColorSpace(.extendedSRGB) {
                 result = [resolved.redComponent, resolved.greenComponent, resolved.blueComponent]
             }
         }
@@ -31,7 +35,11 @@ struct GitColorsTests {
     }
 
     private func luminance(_ components: [CGFloat]) -> CGFloat {
-        let linear = components.map { $0 <= 0.04045 ? $0 / 12.92 : pow(($0 + 0.055) / 1.055, 2.4) }
+        let linear = components.map { value in
+            let magnitude = abs(value)
+            let linear = magnitude <= 0.04045 ? magnitude / 12.92 : pow((magnitude + 0.055) / 1.055, 2.4)
+            return value < 0 ? -linear : linear
+        }
         return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
     }
 
@@ -43,36 +51,77 @@ struct GitColorsTests {
         luminance([white, white, white])
     }
 
-    @Test func everyLaneReadsOnARowAndOnASelectedOne() throws {
+    private func luminance(_ color: NSColor, in look: Look) throws -> CGFloat {
+        try luminance(components(color, in: look))
+    }
+
+    @Test(arguments: ColorTheme.allCases)
+    func everyLaneReadsOnARowAndOnASelectedOne(theme: ColorTheme) throws {
+        let colors = theme.colors
         for look in Self.looks {
-            for lane in GitColors.lanes + [GitColors.current] {
-                let value = try luminance(components(lane, in: look))
-                #expect(contrast(value, luminance(ofGray: look.surface)) >= 3)
-                #expect(contrast(value, luminance(ofGray: look.selection)) >= 3)
+            for lane in colors.lanes + [colors.current] {
+                let value = try luminance(lane.color, in: look)
+                #expect(contrast(value, luminance(ofGray: look.surface)) >= 3, "\(theme) in \(look.name.rawValue)")
+                #expect(contrast(value, luminance(ofGray: look.selection)) >= 3, "\(theme) in \(look.name.rawValue)")
             }
         }
     }
 
-    @Test func textInTheseColorsIsReadable() throws {
+    @Test(arguments: ColorTheme.allCases)
+    func textInTheseColorsIsReadable(theme: ColorTheme) throws {
+        let colors = theme.colors
         for look in Self.looks {
-            let onCurrent = try contrast(luminance(components(GitColors.onCurrent, in: look)), luminance(components(GitColors.current, in: look)))
-            #expect(onCurrent >= 4.5)
-            let plain = try luminance(components(GitColors.color(light: look.plainFill, dark: look.plainFill), in: look))
-            #expect(try contrast(luminance(components(GitColors.otherBranch, in: look)), plain) >= 4.5)
-            for color in [GitColors.green, GitColors.red, GitColors.blue] {
-                #expect(try contrast(luminance(components(color, in: look)), luminance(ofGray: look.surface)) >= 4.5)
+            let surface = luminance(ofGray: look.surface)
+            #expect(try contrast(luminance(colors.onCurrent.color, in: look), luminance(colors.current.color, in: look)) >= 4.5)
+            #expect(try contrast(luminance(colors.onDanger.color, in: look), luminance(colors.removed.color, in: look)) >= 4.5)
+            let plain = try luminance(GitColors.color(light: look.plainFill, dark: look.plainFill), in: look)
+            #expect(try contrast(luminance(colors.otherBranch.color, in: look), plain) >= 4.5)
+            for color in [colors.added, colors.removed, colors.moved, colors.ok, colors.ours, colors.theirs] {
+                #expect(try contrast(luminance(color.color, in: look), surface) >= 4.5, "\(theme) in \(look.name.rawValue)")
             }
         }
     }
 
-    @Test func neighboringColumnsDiffer() throws {
+    /// The terminal block is dark in both appearances, and so are its colors.
+    @Test(arguments: ColorTheme.allCases)
+    func commandsReadInTheTerminal(theme: ColorTheme) throws {
+        let colors = theme.colors
+        let command = colors.command
         for look in Self.looks {
-            let lanes = try GitColors.lanes.map { try components($0, in: look) }
+            let terminal = try luminance(colors.terminal.color, in: look)
+            for color in [command.program, command.option, command.dangerousOption, command.value, command.text, command.prompt, command.output] {
+                #expect(try contrast(luminance(color, in: look), terminal) >= 4.5, "\(theme) in \(look.name.rawValue)")
+            }
+        }
+    }
+
+    @Test(arguments: ColorTheme.allCases)
+    func neighboringColumnsDiffer(theme: ColorTheme) throws {
+        for look in Self.looks {
+            let lanes = try theme.colors.lanes.map { try components($0.color, in: look) }
             #expect(lanes.count == LaneLayout.colors)
             for (index, lane) in lanes.enumerated() {
                 #expect(lane != lanes[(index + 1) % lanes.count])
             }
         }
+    }
+
+    /// Roga starts in Monokai, and keeps a theme it doesn't know as Monokai.
+    @Test func aStoredThemeIsMonokaiUnlessItSaysXcode() throws {
+        let defaults = try #require(UserDefaults(suiteName: "ColorThemeTests.\(UUID().uuidString)"))
+        #expect(ColorTheme.stored(in: defaults) == .monokai)
+        defaults.set("xcode", forKey: ColorTheme.key)
+        #expect(ColorTheme.stored(in: defaults) == .xcode)
+        defaults.set("dracula", forKey: ColorTheme.key)
+        #expect(ColorTheme.stored(in: defaults) == .monokai)
+    }
+
+    /// What AppKit views keep follows the theme in use, which is Monokai unless
+    /// something chose another.
+    @Test func colorsThatFollowTheThemeAreTheThemesOwn() throws {
+        let look = Self.looks[1]
+        #expect(try components(GitColors.current, in: look) == components(ColorTheme.current.colors.current.color, in: look))
+        #expect(try components(GitColors.lanes[0], in: look) == components(ColorTheme.current.colors.lanes[0].color, in: look))
     }
 
     /// The ring is the color of the current branch's badge, and the dot inside it

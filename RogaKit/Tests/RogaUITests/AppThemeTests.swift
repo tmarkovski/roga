@@ -40,11 +40,21 @@ struct AppThemeTests {
     @Test func settingsShowsItFirstOnAppearance() {
         #expect(AppTheme.allCases.map(\.title) == ["System", "Light", "Dark"])
         #expect(SettingsGroup.allCases.first { $0.page == .appearance } == .interface)
-        #expect(SettingsGroup.interface.items == [.theme])
+        #expect(SettingsGroup.interface.items == [.theme, .colors])
         #expect(SettingsItem.theme.title == "Theme")
         // Search finds it by any of its choices, and by what people call them.
         for query in ["theme", "Dark", "light mode", "System", "Appearance"] {
             #expect(SettingsItem.theme.matches(query), "\(query)")
         }
+    }
+
+    /// The color themes are under Theme, and search finds them by name
+    /// (decision 71).
+    @Test func settingsShowsTheColorThemesUnderTheTheme() {
+        #expect(SettingsItem.colors.title == "Colors")
+        for query in ["Monokai", "xcode", "color theme", "graph"] {
+            #expect(SettingsItem.colors.matches(query), "\(query)")
+        }
+        #expect(!SettingsItem.colors.matches("light mode"))
     }
 }

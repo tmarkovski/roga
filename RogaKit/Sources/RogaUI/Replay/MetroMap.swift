@@ -3,6 +3,7 @@ import CommitGraph
 import GitCore
 import HistoryUI
 import SwiftUI
+import ThemeUI
 
 /// A replay drawn as a metro map: the main line across the middle in ink, each
 /// branch in a lane above or below it, and merges as interchanges (decision 62).
@@ -1229,15 +1230,21 @@ struct MetroTheme {
     var added: Color
     var removed: Color
 
-    private static let light = theme(isDark: false, appearance: .aqua)
-    private static let dark = theme(isDark: true, appearance: .darkAqua)
+    /// Each color theme's, in light and in dark. The paper, ink and tiles are
+    /// the departure board's whichever theme is chosen, and the lanes and
+    /// what changed are the theme's (decision 71).
+    private static let themes = Dictionary(uniqueKeysWithValues: ColorTheme.allCases.map { colors in
+        (colors, (light: theme(isDark: false, appearance: .aqua, colors: colors), dark: theme(isDark: true, appearance: .darkAqua, colors: colors)))
+    })
 
-    static func of(_ scheme: ColorScheme) -> MetroTheme {
-        scheme == .dark ? dark : light
+    static func of(_ scheme: ColorScheme, colors: ColorTheme = ColorTheme.observed) -> MetroTheme {
+        let theme = themes[colors] ?? themes[.monokai]!
+        return scheme == .dark ? theme.dark : theme.light
     }
 
-    private static func theme(isDark: Bool, appearance: NSAppearance.Name) -> MetroTheme {
-        let git = resolved(GitColors.lanes + [GitColors.green, GitColors.red], appearance)
+    private static func theme(isDark: Bool, appearance: NSAppearance.Name, colors: ColorTheme) -> MetroTheme {
+        let palette = colors.colors
+        let git = resolved((palette.lanes + [palette.added, palette.removed]).map(\.color), appearance)
         return MetroTheme(
             isDark: isDark,
             paper: Color(hex: isDark ? 0x16150E : 0xFAF6EE),
@@ -1251,9 +1258,9 @@ struct MetroTheme {
             tileSplit: isDark ? Color.black.opacity(0.55) : Color(hex: 0x16150E).opacity(0.14),
             card: Color(hex: isDark ? 0x1C1A12 : 0xFFFDF8),
             house: Color(hex: 0xD54802),
-            lanes: Array(git.prefix(GitColors.lanes.count)),
-            added: git[GitColors.lanes.count],
-            removed: git[GitColors.lanes.count + 1]
+            lanes: Array(git.prefix(palette.lanes.count)),
+            added: git[palette.lanes.count],
+            removed: git[palette.lanes.count + 1]
         )
     }
 

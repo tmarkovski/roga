@@ -1,6 +1,7 @@
 import AgentEngine
 import IconUI
 import SwiftUI
+import ThemeUI
 
 extension UserDefaults {
     static let keepsCommitGraphCurrentKey = "keepsCommitGraphCurrent"
@@ -132,6 +133,7 @@ enum SettingsItem: CaseIterable {
     case checksForUpdates
     case downloadsUpdates
     case theme
+    case colors
     case animationSpeed
     case fileLayout
     case refsSort
@@ -155,7 +157,7 @@ enum SettingsItem: CaseIterable {
         switch self {
         case .terminal: .openIn
         case .checksForUpdates, .downloadsUpdates: .updates
-        case .theme: .interface
+        case .theme, .colors: .interface
         case .animationSpeed: .motion
         case .fileLayout, .refsSort, .foldsDescriptions: .lists
         case .gitProgram: .installation
@@ -173,6 +175,7 @@ enum SettingsItem: CaseIterable {
         case .checksForUpdates: "Check for updates automatically"
         case .downloadsUpdates: "Download updates automatically"
         case .theme: "Theme"
+        case .colors: "Colors"
         case .animationSpeed: "Animation speed"
         case .fileLayout: "Show files as"
         case .refsSort: "Sort branches by"
@@ -202,6 +205,8 @@ enum SettingsItem: CaseIterable {
             "Roga looks at roga.sh once a day, and the sidebar says when there's a new version. Nothing installs until you say so."
         case .downloadsUpdates:
             "A new version downloads in the background and installs when Roga quits. Restart to Update installs it straight away."
+        case .colors:
+            "For the graph, branches, diffs and commands."
         case .animationSpeed:
             "How fast the house moves while git runs."
         case .fileLayout:
@@ -238,6 +243,7 @@ enum SettingsItem: CaseIterable {
         case .checksForUpdates: ["Sparkle", "version"]
         case .downloadsUpdates: ["install", "Restart to Update", "version"]
         case .theme: AppTheme.allCases.map(\.title) + ["Dark mode", "Light mode"]
+        case .colors: ColorTheme.allCases.map(\.title) + ["Color theme", "Palette", "Graph"]
         case .gitProgram: ["Look Again", "Choose another", "program", "version", "PATH", "Xcode", "Command Line Tools", "Homebrew"]
         case .instructions: ["Reset to Roga's", "prompt"]
         case .agentList: ["Look Again", "Use", "program", "PATH"]
@@ -270,6 +276,7 @@ struct SettingsSheet: View {
     @State private var hasCheckedHooks = false
 
     @AppStorage(AppTheme.key) private var theme = AppTheme.system
+    @AppStorage(ColorTheme.key) private var colorTheme = ColorTheme.monokai
     @AppStorage(UserDefaults.houseAnimationSpeedKey) private var speed = 1.0
     @AppStorage(FileListSettings.layout) private var fileLayout = FileLayout.list
     @AppStorage(RefsPanelSettings.sort) private var refsSort = RefsModel.Sort.name
@@ -313,6 +320,9 @@ struct SettingsSheet: View {
         .presentationSizing(.fitted)
         .onChange(of: theme) { _, theme in
             theme.apply()
+        }
+        .onChange(of: colorTheme) { _, colorTheme in
+            colorTheme.use()
         }
         .onChange(of: destination.page == .agents, initial: true) { _, showsAgents in
             guard showsAgents, !hasCheckedHooks else { return }
@@ -462,6 +472,8 @@ struct SettingsSheet: View {
             switch item {
             case .theme:
                 SettingsSegments(selection: $theme, options: AppTheme.allCases.map { ($0, $0.title) }, icon: \.icon)
+            case .colors:
+                SettingsSegments(selection: $colorTheme, options: ColorTheme.allCases.map { ($0, $0.title) })
             case .animationSpeed:
                 SettingsSlider(value: $speed, range: HouseAnimationView.speeds, step: 0.25) { "\($0.formatted())×" }
             case .fileLayout:

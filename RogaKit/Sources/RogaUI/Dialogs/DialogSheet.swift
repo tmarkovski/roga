@@ -1,6 +1,7 @@
 import AppKit
 import IconUI
 import SwiftUI
+import ThemeUI
 
 /// The colors of a dialog, which are its own so that it reads the same over any
 /// window: a plain surface, gray cards and a dark terminal block.
@@ -12,11 +13,10 @@ enum DialogColors {
     static let note = Palette.gray(light: 0.42, dark: 0.663)
     static let ink = Palette.ink
     static let onInk = Palette.onInk
-    static let danger = Palette.red
-    static let onDanger = appearanceColor(light: 0xFFFFFF, dark: 0x272822)
-    /// Monokai's background, which nearly matches the surface in dark mode, so that
-    /// goes darker.
-    static let terminal = appearanceColor(light: 0x272822, dark: 0x1A1B17)
+    static var danger: Color { Palette.red }
+    static var onDanger: Color { Palette.themed(\.onDanger) }
+    /// The color theme's terminal, which is dark in both appearances.
+    static var terminal: Color { Palette.themed(\.terminal) }
 
     /// A color that's one hex value in light mode and another in dark mode.
     static func appearanceColor(light: Int, dark: Int) -> Color {
