@@ -31,23 +31,9 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
         public var checkOut: (CommitRowContent.Badge) -> Void
         /// Says that the user double-clicked a row anywhere else.
         public var goToRow: (Int) -> Void
-        /// Says that the user chose to delete some of the branches on a commit, by
-        /// the full names of all of them.
-        public var deleteBranches: ([String]) -> Void
-        /// Says that the user chose to replay a branch's history, by its full name.
-        public var replayHistory: (String) -> Void = { _ in }
-        /// Whether something's running that deleting a branch has to wait for.
-        public var isBusy: () -> Bool
-        /// The commit of a row, or nil for the row for uncommitted changes.
-        public var commitOfRow: (Int) -> ObjectID?
-        /// Says that the user chose to revert a commit.
-        public var revert: (ObjectID) -> Void
-        /// Whether a commit can be reverted now.
-        public var canRevert: () -> Bool
-        /// Says that the user chose to discard everything uncommitted.
-        public var discardChanges: () -> Void
-        /// Whether everything uncommitted can go now.
-        public var canDiscardChanges: () -> Bool
+        /// What right-clicking a row offers, given the badge under the pointer if
+        /// there's one that names a ref (decision 65).
+        public var menuEntries: (_ row: Int, _ badge: CommitRowContent.Badge?) -> [RefMenu.Entry] = { _, _ in [] }
 
         public init(
             count: @escaping () -> Int,
@@ -56,13 +42,7 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
             selectRows: @escaping (IndexSet) -> Void,
             checkOut: @escaping (CommitRowContent.Badge) -> Void = { _ in },
             goToRow: @escaping (Int) -> Void = { _ in },
-            deleteBranches: @escaping ([String]) -> Void = { _ in },
-            isBusy: @escaping () -> Bool = { false },
-            commitOfRow: @escaping (Int) -> ObjectID? = { _ in nil },
-            revert: @escaping (ObjectID) -> Void = { _ in },
-            canRevert: @escaping () -> Bool = { true },
-            discardChanges: @escaping () -> Void = {},
-            canDiscardChanges: @escaping () -> Bool = { true }
+            menuEntries: @escaping (_ row: Int, _ badge: CommitRowContent.Badge?) -> [RefMenu.Entry] = { _, _ in [] }
         ) {
             self.count = count
             self.content = content
@@ -70,13 +50,7 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
             self.selectRows = selectRows
             self.checkOut = checkOut
             self.goToRow = goToRow
-            self.deleteBranches = deleteBranches
-            self.isBusy = isBusy
-            self.commitOfRow = commitOfRow
-            self.revert = revert
-            self.canRevert = canRevert
-            self.discardChanges = discardChanges
-            self.canDiscardChanges = canDiscardChanges
+            self.menuEntries = menuEntries
         }
     }
 
@@ -123,7 +97,7 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
         tableView.action = #selector(clicked)
         tableView.doubleAction = #selector(doubleClicked)
         tableView.pointerMoved = { [unowned self] in updateHoveredBadge(atWindowLocation: $0) }
-        tableView.menuForRow = { [unowned self] in menu(forRow: $0) }
+        tableView.menuForRow = { [unowned self] in menu(forRow: $0, at: $1) }
 
         scrollView.documentView = tableView
         scrollView.drawsBackground = false
@@ -226,6 +200,12 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
     /// something. It works from what the row shows, because the row may not have
     /// a view yet while rows are being reloaded.
     func badge(at point: NSPoint) -> BadgePlace? {
+        guard let place = anyBadge(at: point), source.content(place.row).badges[place.index].canCheckOut else { return nil }
+        return place
+    }
+
+    /// Finds the badge at a point in the table, whatever it can do.
+    private func anyBadge(at point: NSPoint) -> BadgePlace? {
         let row = tableView.row(at: point)
         guard row >= 0 else { return nil }
         let content = source.content(row)
@@ -233,7 +213,7 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
         let frame = tableView.frameOfCell(atColumn: 0, row: row)
         let layout = CommitRowLayout(content: content, size: frame.size)
         let inRow = NSPoint(x: point.x - frame.minX, y: point.y - frame.minY)
-        guard let index = layout.badges.firstIndex(where: { $0.contains(inRow) }), content.badges[index].canCheckOut else { return nil }
+        guard let index = layout.badges.firstIndex(where: { $0.contains(inRow) }) else { return nil }
         return BadgePlace(row: row, index: index)
     }
 
@@ -279,40 +259,12 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
         }
     }
 
-    /// What right-clicking a row offers. Every commit can be reverted, with the choice
-    /// of committing that in its dialog (decision 44). A commit with a branch that could
-    /// go also has one item for deleting, whatever points to it (decision 38). Its
-    /// dialog lists the branches and holds the choice, including those whose badges
-    /// don't fit in the row.
-    func menu(forRow row: Int) -> NSMenu? {
-        let content = source.content(row)
-        if content.isWorkingTree {
-            return RefMenu.make([
-                .command("Discard All Changes…", isDestructive: true, isEnabled: source.canDiscardChanges()) { [weak self] in
-                    self?.source.discardChanges()
-                },
-            ])
-        }
-        var entries: [RefMenu.Entry] = []
-        // Local branches come first, and every branch on a row has the same history.
-        if let branch = content.branches.first {
-            entries.append(.command("Replay History") { [weak self] in
-                self?.source.replayHistory(branch)
-            })
-        }
-        // The commit, rather than the row, because history can load again while the
-        // menu is open, and the rows move.
-        if let commit = source.commitOfRow(row) {
-            entries.append(.command("Revert…", isEnabled: source.canRevert()) { [weak self] in
-                self?.source.revert(commit)
-            })
-        }
-        if content.hasBranchThatCanGo {
-            let branches = content.branches
-            entries.append(.command("Delete…", isDestructive: true, isEnabled: !source.isBusy()) { [weak self] in
-                self?.source.deleteBranches(branches)
-            })
-        }
+    /// What right-clicking a row offers, which acts on the ref under the pointer
+    /// when it's over a badge.
+    func menu(forRow row: Int, at point: NSPoint? = nil) -> NSMenu? {
+        let place = point.flatMap(anyBadge)
+        let badge = place.map { source.content($0.row).badges[$0.index] }.flatMap { $0.refName == nil ? nil : $0 }
+        let entries = source.menuEntries(row, badge)
         return entries.isEmpty ? nil : RefMenu.make(entries)
     }
 
@@ -366,7 +318,7 @@ final class CommitTableView: NSTableView {
     /// Says where in the window the pointer is, or nil once it has left.
     var pointerMoved: (NSPoint?) -> Void = { _ in }
     /// Makes the menu for right-clicking a row, if it has one.
-    var menuForRow: (Int) -> NSMenu? = { _ in nil }
+    var menuForRow: (Int, NSPoint) -> NSMenu? = { _, _ in nil }
     /// The row that last asked for a menu, which is the one to outline if it opens.
     private var rowOfMenu = -1
     /// The line around the row whose menu is open.
@@ -398,8 +350,9 @@ final class CommitTableView: NSTableView {
     /// the one that returns the menu. So this returns it without asking the table,
     /// and the row gets a line of ours while the menu is open.
     override func menu(for event: NSEvent) -> NSMenu? {
-        rowOfMenu = row(at: convert(event.locationInWindow, from: nil))
-        return rowOfMenu >= 0 ? menuForRow(rowOfMenu) : nil
+        let point = convert(event.locationInWindow, from: nil)
+        rowOfMenu = row(at: point)
+        return rowOfMenu >= 0 ? menuForRow(rowOfMenu, point) : nil
     }
 
     /// This doesn't look for the row under the event it's given, because that

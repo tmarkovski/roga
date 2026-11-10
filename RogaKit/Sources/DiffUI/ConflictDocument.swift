@@ -35,6 +35,31 @@ public struct ConflictSides: Sendable, Hashable {
     }
 }
 
+/// The colors of a file's conflicts, from the canvas's Resolving conflicts page.
+nonisolated enum ConflictColors {
+    static let ours = color(light: 0x2559B0, dark: 0x8FB4F7)
+    static let theirs = color(light: 0x7136B8, dark: 0xC4A2FF)
+    static let unresolved = color(light: 0xCD1755, dark: 0xFC5884)
+    static let kept = color(light: 0x4D7000, dark: 0xA6E22E)
+    static let action = color(light: 0xC94402, dark: 0xF0813F)
+    static let band = color(light: 0xF4F4F2, dark: 0x2A2A29)
+    static let line = color(light: 0xE2E2E2, dark: 0x393939)
+    static let text = color(light: 0x1F1F1E, dark: 0xECECEA)
+    static let secondaryText = color(light: 0x67675F, dark: 0xB3B3AE)
+    static let button = color(light: 0xFFFFFF, dark: 0x222222)
+    static let buttonHover = color(light: 0xECECEC, dark: 0x333333)
+    static let buttonPressed = color(light: 0xE3E3E3, dark: 0x3A3A3A)
+
+    private static func color(light: Int, dark: Int) -> NSColor {
+        NSColor(name: nil) { appearance in
+            let hex = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light
+            return NSColor(
+                srgbRed: CGFloat(hex >> 16 & 0xFF) / 255, green: CGFloat(hex >> 8 & 0xFF) / 255, blue: CGFloat(hex & 0xFF) / 255, alpha: 1
+            )
+        }
+    }
+}
+
 /// What a row of a conflicted file is, beyond a line of the file.
 nonisolated enum ConflictRow: Sendable, Hashable {
     enum Part: Sendable, Hashable {
@@ -45,8 +70,11 @@ nonisolated enum ConflictRow: Sendable, Hashable {
         case kept
     }
 
-    /// The band that starts a conflict, by its index, which has the buttons.
-    case band(Int, isResolved: Bool, showsSides: Bool = false)
+    /// The band that starts a conflict, by its index, which has the buttons, and
+    /// what a resolved one says it kept.
+    case band(Int, isResolved: Bool, showsSides: Bool = false, kept: String? = nil)
+    /// The rest of a band, which is taller than a row of text.
+    case bandRest
     /// The row that names a side.
     case label(Part)
     /// One of a side's lines.
@@ -56,7 +84,7 @@ nonisolated enum ConflictRow: Sendable, Hashable {
 
     var background: NSColor? {
         switch self {
-        case .band: NSColor.secondaryLabelColor.withAlphaComponent(0.09)
+        case .band, .bandRest: ConflictColors.band
         case .label(.ours): NSColor.systemBlue.withAlphaComponent(0.18)
         case .label(.theirs): NSColor.systemPurple.withAlphaComponent(0.18)
         case .label(.base): NSColor.secondaryLabelColor.withAlphaComponent(0.06)
@@ -69,23 +97,29 @@ nonisolated enum ConflictRow: Sendable, Hashable {
     /// The color of the bar beside it in the gutter.
     var bar: NSColor? {
         switch self {
-        case .line(.ours), .empty(.ours): .systemBlue
-        case .line(.theirs), .empty(.theirs): .systemPurple
+        case .line(.ours), .empty(.ours): ConflictColors.ours
+        case .line(.theirs), .empty(.theirs): ConflictColors.theirs
         case .line(.kept), .empty(.kept): .systemGreen
-        case .band, .label, .line(.base), .empty(.base): nil
+        case .band, .bandRest, .label, .line(.base), .empty(.base): nil
         }
     }
 }
 
 /// A conflict's band, and which conflict it starts.
 nonisolated struct ConflictBand: Sendable, Hashable {
-    /// The band's row.
+    /// How many rows of text a band takes up. Every row of a diff is the same
+    /// height, which is how a position in the view becomes a row.
+    static let rowCount = 2
+
+    /// The band's first row.
     var row: Int
     /// The conflict's index in the file.
     var conflict: Int
     var isResolved: Bool
     /// Whether a resolved conflict shows its sides under what it kept.
     var showsSides = false
+    /// What a resolved conflict says it kept, such as `Kept main's`.
+    var kept: String?
 }
 
 /// How Roga shows a file with conflicts: its lines, and for each conflict a band
@@ -141,6 +175,12 @@ nonisolated extension DiffTextBuilder {
             return number
         }
 
+        // Its rows are empty, because `ConflictBar` says what it is.
+        func addBand(_ band: ConflictRow) {
+            add([], band, number: nil)
+            for _ in 1..<ConflictBand.rowCount { add([], .bandRest, number: nil) }
+        }
+
         func addSide(_ part: ConflictRow.Part, _ label: String, _ text: ArraySlice<UInt8>, from number: Int, numbered: Bool = true) -> Int {
             add(Array(label.utf8), .label(part), number: nil)
             if text.isEmpty {
@@ -150,13 +190,11 @@ nonisolated extension DiffTextBuilder {
             return addLines(text, .line(part), from: number, numbered: numbered)
         }
 
-        let count = file.conflicts.count
         var position = 0
         var number = 1
         for (index, conflict) in file.conflicts.enumerated() {
             number = addLines(file.bytes[position..<conflict.range.lowerBound], nil, from: number)
             position = conflict.range.upperBound
-            let which = "Conflict \(index + 1) of \(count)"
             if let choice = choices[index] {
                 let kept = switch choice {
                 case .ours: sides.ours.keptTitle
@@ -165,7 +203,7 @@ nonisolated extension DiffTextBuilder {
                 case .lines: writtenBy[index].map { "\($0) wrote this" } ?? "Kept what you wrote"
                 }
                 let showsSides = shownSides.contains(index)
-                add(Array("\(which) · \(kept)".utf8), .band(index, isResolved: true, showsSides: showsSides), number: nil)
+                addBand(.band(index, isResolved: true, showsSides: showsSides, kept: kept))
                 let keptLines = file.lines(choice, for: conflict)
                 if keptLines.isEmpty {
                     add(Array("No lines".utf8), .empty(.kept), number: nil)
@@ -186,7 +224,7 @@ nonisolated extension DiffTextBuilder {
             if startingText.last == 0x0A { startingText.removeLast() }
             edits[index] = String(decoding: startingText, as: UTF8.self)
 
-            add(Array(which.utf8), .band(index, isResolved: false), number: nil)
+            addBand(.band(index, isResolved: false))
             // Each marker is a line of the file, which the numbers count.
             number += 1
             number = addSide(.ours, sides.ours.name + " · " + sides.ours.detail, file.bytes[conflict.ours], from: number)
@@ -214,11 +252,32 @@ nonisolated struct ConflictLayout: Sendable {
     var edits: [Int: String]
     var sides: ConflictSides
 
+    /// Which rows each unresolved conflict takes up: its band, and everything up to
+    /// the next line of the file or the next conflict's band.
+    var unresolvedRows: [Range<Int>] {
+        var blocks: [Range<Int>] = []
+        var row = 0
+        while row < rows.count {
+            guard case .band(_, isResolved: false, _, _) = rows[row] else {
+                row += 1
+                continue
+            }
+            var end = row + 1
+            while end < rows.count, let next = rows[end] {
+                if case .band = next { break }
+                end += 1
+            }
+            blocks.append(row..<end)
+            row = end
+        }
+        return blocks
+    }
+
     /// The bands, in order.
     var bands: [ConflictBand] {
         rows.indices.compactMap { row in
-            if case .band(let conflict, let isResolved, let showsSides) = rows[row] {
-                ConflictBand(row: row, conflict: conflict, isResolved: isResolved, showsSides: showsSides)
+            if case .band(let conflict, let isResolved, let showsSides, let kept) = rows[row] {
+                ConflictBand(row: row, conflict: conflict, isResolved: isResolved, showsSides: showsSides, kept: kept)
             } else {
                 nil
             }
@@ -228,9 +287,9 @@ nonisolated struct ConflictLayout: Sendable {
     /// The color a row's text takes, when it isn't a line of the file.
     static func textColor(_ row: ConflictRow) -> NSColor? {
         switch row {
-        case .band(_, let isResolved, _): isResolved ? .secondaryLabelColor : .systemRed
-        case .label(.ours): .systemBlue
-        case .label(.theirs): .systemPurple
+        case .band, .bandRest: nil
+        case .label(.ours): ConflictColors.ours
+        case .label(.theirs): ConflictColors.theirs
         case .label: .secondaryLabelColor
         case .empty: .secondaryLabelColor
         case .line: nil

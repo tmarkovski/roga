@@ -82,6 +82,8 @@ nonisolated public final class DiffDocument: @unchecked Sendable {
     let conflicts: ConflictLayout?
     /// The conflicts' bands, in order.
     let conflictBands: [ConflictBand]
+    /// Which rows each unresolved conflict takes up, from its band to its last side.
+    let unresolvedConflictRows: [Range<Int>]
 
     init(text: NSAttributedString, lines: [FilePatch.Line], lineStarts: [Int], columns: Int, changedWords: [NSRange], conflicts: ConflictLayout? = nil) {
         storage = NSTextStorage(attributedString: text)
@@ -101,6 +103,7 @@ nonisolated public final class DiffDocument: @unchecked Sendable {
         hunkHeaders = lines.indices.filter { lines[$0].kind == .hunkHeader }
         self.conflicts = conflicts
         conflictBands = conflicts?.bands ?? []
+        unresolvedConflictRows = conflicts?.unresolvedRows ?? []
         layoutManager.document = self
     }
 
@@ -251,7 +254,7 @@ nonisolated public enum DiffTextBuilder {
                 let range = NSRange(location: lineStarts[index], length: end - lineStarts[index])
                 text.addAttribute(.foregroundColor, value: color, range: range)
                 switch row {
-                case .band(_, false, _), .label(.ours), .label(.theirs): text.addAttribute(.font, value: bold, range: range)
+                case .label(.ours), .label(.theirs): text.addAttribute(.font, value: bold, range: range)
                 default: break
                 }
             }

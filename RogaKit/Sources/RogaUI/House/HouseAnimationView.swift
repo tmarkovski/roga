@@ -20,7 +20,7 @@ extension BranchModel.Action {
         case .pushing, .forcePushing, .deletingFromRemote: .push
         case .pulling: .heave
         case .undoing, .aborting, .continuingRebase: .waddle
-        case .fetching, .committing, .reverting: nil
+        case .fetching, .committing, .reverting, .merging, .fastForwarding, .rebasing, .cherryPicking: nil
         }
     }
 

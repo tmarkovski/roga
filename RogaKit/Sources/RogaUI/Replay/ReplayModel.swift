@@ -23,8 +23,8 @@ final class ReplayModel {
 
         var title: String {
             switch self {
-            case .days(let days): "Last \(days) Days"
-            case .wholeHistory: "Whole History"
+            case .days(let days): "Last \(days) days"
+            case .wholeHistory: "Whole history"
             case .afterTag(let name, _): "Since \(name)"
             }
         }

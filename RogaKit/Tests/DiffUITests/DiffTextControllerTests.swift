@@ -75,6 +75,121 @@ struct DiffTextControllerTests {
         #expect(text(of: second).string == "@@ -1 +1 @@\nold\nnew\n")
     }
 
+    /// While an agent works on a file's conflicts, each one in view has what its
+    /// owner made around the whole section, from its band to its last side and
+    /// from the line numbers to the far edge (decision 68).
+    @Test func putsAnOutlineAroundEachConflictWhileAnAgentWorks() throws {
+        let sides = ConflictSides(
+            ours: .init(name: "main", detail: "a", keepTitle: "Keep main's", keptTitle: "Kept main's"),
+            theirs: .init(name: "origin/main", detail: "b", keepTitle: "Keep theirs", keptTitle: "Kept theirs")
+        )
+        let file = ConflictedFile.parse(Array("top\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> origin/main\nend\n".utf8))
+        let controller = DiffTextController()
+        controller.view.frame = NSRect(x: 0, y: 0, width: 400, height: 200)
+        controller.view.layoutSubtreeIfNeeded()
+        controller.show(DiffTextBuilder.build(file, choices: [:], sides: sides))
+        let textView = text(of: controller)
+        let others = controller.view.subviews.count
+
+        final class Outline: NSView {}
+        controller.makeConflictOutline = { Outline() }
+        let outlines = controller.view.subviews.compactMap { $0 as? Outline }
+        #expect(outlines.count == 1)
+        let outline = try #require(outlines.first)
+        #expect(!outline.isHidden)
+        #expect(outline.frame.height == 6 * DiffStyle.lineHeight)
+        #expect(controller.view.convert(outline.frame, to: textView).minY == textView.textContainerOrigin.y + DiffStyle.lineHeight)
+        #expect(outline.frame.minX == DiffTextController.outlineInset)
+        #expect(outline.frame.maxX == controller.view.bounds.width - DiffTextController.outlineInset)
+        // The text starts after the line numbers, which the outline has to go around.
+        #expect(outline.frame.minX < controller.scrollView.frame.minX)
+
+        controller.makeConflictOutline = nil
+        #expect(controller.view.subviews.count == others)
+    }
+
+    private func conflicted() -> (controller: DiffTextController, file: ConflictedFile, sides: ConflictSides) {
+        let sides = ConflictSides(
+            ours: .init(name: "main", detail: "a", keepTitle: "Keep main's", keptTitle: "Kept main's"),
+            theirs: .init(name: "origin/main", detail: "b", keepTitle: "Keep theirs", keptTitle: "Kept theirs")
+        )
+        let file = ConflictedFile.parse(Array("top\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> origin/main\nend\n".utf8))
+        let controller = DiffTextController()
+        controller.view.frame = NSRect(x: 0, y: 0, width: 600, height: 200)
+        controller.view.layoutSubtreeIfNeeded()
+        return (controller, file, sides)
+    }
+
+    private func bar(of controller: DiffTextController) throws -> ConflictBar {
+        try #require(controller.view.subviews.compactMap { $0 as? ConflictBar }.first { !$0.isHidden })
+    }
+
+    private func titles(of bar: ConflictBar) -> [String] {
+        bar.subviews.compactMap { $0 as? NSButton }.map(\.title)
+    }
+
+    private func label(of bar: ConflictBar) throws -> String {
+        try #require(bar.subviews.compactMap { $0 as? NSTextField }.first).stringValue
+    }
+
+    /// A band is as tall as the canvas draws it, with room around its buttons,
+    /// and it starts on its row.
+    @Test func aConflictsBandIsTallerThanARow() throws {
+        let (controller, file, sides) = conflicted()
+        controller.resolveConflict = { _ in }
+        controller.show(DiffTextBuilder.build(file, choices: [:], sides: sides))
+        let bar = try bar(of: controller)
+        let textView = text(of: controller)
+        #expect(bar.frame.height == 34)
+        #expect(controller.view.convert(bar.frame, to: textView).minY == textView.textContainerOrigin.y + DiffStyle.lineHeight)
+        #expect(bar.frame.minX == 0)
+        #expect(titles(of: bar) == ["Keep main's", "Keep theirs", "Keep Both", "Edit…"])
+        #expect(try label(of: bar) == "Conflict 1 of 1")
+        let buttons = bar.subviews.compactMap { $0 as? NSButton }
+        #expect(buttons.allSatisfy { $0.frame.height == 22 && $0.frame.minY == 6 })
+        #expect(try #require(buttons.last).frame.maxX == bar.bounds.width - 8)
+    }
+
+    @Test func aResolvedBandSaysWhatItKept() throws {
+        let (controller, file, sides) = conflicted()
+        controller.resolveConflict = { _ in }
+        controller.show(DiffTextBuilder.build(file, choices: [0: .ours], sides: sides))
+        let bar = try bar(of: controller)
+        #expect(try label(of: bar) == "Kept main's  Conflict 1 of 1")
+        #expect(titles(of: bar) == ["Show Sides", "Undo"])
+    }
+
+    /// While an agent works there's nothing to press, and the band still says
+    /// which conflict it is.
+    @Test func aBandKeepsItsLabelWhenItCantBeResolved() throws {
+        let (controller, file, sides) = conflicted()
+        controller.show(DiffTextBuilder.build(file, choices: [:], sides: sides))
+        let bar = try bar(of: controller)
+        #expect(try label(of: bar) == "Conflict 1 of 1")
+        #expect(titles(of: bar).isEmpty)
+    }
+
+    /// What's on a band isn't text, whichever way the pointer got there.
+    @Test func theTextViewLeavesTheCursorAloneOverABand() throws {
+        let (controller, file, sides) = conflicted()
+        controller.resolveConflict = { _ in }
+        controller.show(DiffTextBuilder.build(file, choices: [:], sides: sides))
+        let window = NSWindow(contentRect: controller.view.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = controller.view
+        let bar = try bar(of: controller)
+        let textView = text(of: controller)
+        func moved(to point: NSPoint) throws -> NSEvent {
+            try #require(NSEvent.mouseEvent(
+                with: .mouseMoved, location: controller.view.convert(point, to: nil), modifierFlags: [], timestamp: 0,
+                windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 0, pressure: 0
+            ))
+        }
+        NSCursor.iBeam.set()
+        textView.mouseMoved(with: try moved(to: NSPoint(x: bar.frame.maxX - 20, y: bar.frame.midY)))
+        #expect(NSCursor.current == .arrow)
+    }
+
     @Test func goesBackToADocumentItShowedBefore() throws {
         let one = try document()
         let two = try document("@@ -1 +1,2 @@\n a\n+b\n")
@@ -256,7 +371,7 @@ struct DiffTextControllerTests {
         controller.discardHunk = { discarded.append($0) }
         let y = text(of: controller).textContainerOrigin.y + DiffStyle.lineHeight * 30
         let item = try #require(controller.hunkMenuItem(atTextY: y))
-        #expect(item.title == "Discard Hunk")
+        #expect(item.title == "Discard hunk")
         _ = (item.target as? NSObject)?.perform(item.action, with: item)
         #expect(discarded == [21])
     }

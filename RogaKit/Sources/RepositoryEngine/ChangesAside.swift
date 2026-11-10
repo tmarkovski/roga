@@ -17,6 +17,14 @@ public struct ChangesAside: Sendable, Hashable {
         case reset(to: ObjectID)
         /// Detaching `HEAD` at a commit with `git switch --detach`.
         case detach(at: ObjectID)
+        /// Merging a branch or fast-forwarding to it, by its name. Like a pull that
+        /// merges, it only refuses to overwrite the files that branch changes.
+        case merge(String)
+        /// Rebasing onto a branch, which refuses to start with any uncommitted change.
+        case rebase(onto: String)
+        /// Applying a commit, which refuses to overwrite the files it changes, and
+        /// to start with anything staged.
+        case cherryPick(ObjectID)
     }
 
     /// How putting the changes back went.
@@ -75,7 +83,7 @@ public struct ChangesAside: Sendable, Hashable {
     public func undoArguments(stopped: StoppedWork?) -> [[String]] {
         var commands: [[String]] = stopped.map { [$0.abortArguments] } ?? []
         switch move {
-        case .pull, .reset:
+        case .pull, .reset, .merge, .rebase, .cherryPick:
             commands.append(["reset", "--hard", head.hex])
         case .detach:
             if let branch {
@@ -101,11 +109,21 @@ public struct ChangesAside: Sendable, Hashable {
         guard try await conflicted(in: worktree, git: git).isEmpty else { return nil }
         var incoming: [String]?
         switch move {
-        case .pull(_, rebases: true):
+        case .pull(_, rebases: true), .rebase:
             break
-        case .pull(let upstream, rebases: false):
+        case .pull(let upstream, rebases: false), .merge(let upstream):
             // What the upstream changed since the two lines parted is what a merge brings in.
             incoming = try await names(["diff", "--name-only", "-z", "--no-renames", "HEAD..." + upstream, "--"], in: worktree, git: git)
+        case .cherryPick(let commit):
+            // git won't start with anything staged, whichever files it's in.
+            let staged = try await names(["diff", "--cached", "--name-only", "-z", "--no-renames"], in: worktree, git: git)
+            if staged.isEmpty {
+                incoming = try await names(
+                    ["diff-tree", "--diff-merges=first-parent", "--root", "-r", "--no-commit-id", "--name-only", "-z", "--no-renames", commit.hex],
+                    in: worktree,
+                    git: git
+                )
+            }
         case .reset(let commit), .detach(let commit):
             incoming = try await names(["diff", "--name-only", "-z", "--no-renames", "HEAD", commit.hex, "--"], in: worktree, git: git)
         }

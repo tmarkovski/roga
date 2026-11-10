@@ -73,22 +73,10 @@ struct DiffPanel: View {
                 if group == .conflicted, let conflicts = selection.shown?.conflicts, selection.shown?.file.path == file.path {
                     let setup = conflicts.left > 0 && changes.agentWork[file.path]?.isWorking != true ? agents?.generation() : nil
                     if let setup, let worktree {
-                        Button {
+                        ResolveWithAgentButton(title: "Resolve with \(setup.kind.shortName)") {
                             changes.askAgent(setup)
-                        } label: {
-                            Label("Resolve with \(setup.kind.shortName)", icon: .sparkles)
                         }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 12))
-                        .padding(.horizontal, 8)
-                        .frame(height: 24)
-                        .background {
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .strokeBorder(Palette.separator)
-                        }
-                        .contentShape(Rectangle())
                         .help(Self.agentHelp(setup, worktree: worktree, left: conflicts.left))
-                        .fixedSize()
                     }
                     ConflictFileMenu(
                         file: file,
@@ -103,23 +91,8 @@ struct DiffPanel: View {
                 // is what's next, so it's orange, as a button that runs now is.
                 let isNext = group == .conflicted && selection.shown?.conflicts?.left == 0 && selection.shown?.file.path == file.path
                 Button(group.stageTitle) { changes.toggle(file, in: group) }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 12, weight: isNext ? .medium : .regular))
-                    .foregroundStyle(isNext ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
-                    .padding(.horizontal, 8)
-                    .frame(height: 24)
-                    .background {
-                        if isNext {
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(Palette.actionFill)
-                        } else {
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .strokeBorder(Palette.separator)
-                        }
-                    }
-                    .contentShape(Rectangle())
+                    .buttonStyle(OutlinedButtonStyle(height: 24, cornerRadius: 6, isNext: isNext))
                     .help("\(group.stageTitle) (\(RepositoryCommands.stageShortcut.symbols))")
-                    .fixedSize()
             }
             if selection.isFindShown, hasRoomForMatchButtons {
                 Button("Previous Match", icon: .chevronUp, action: selection.findPrevious)
@@ -160,7 +133,8 @@ struct DiffPanel: View {
                         matchSteps: selection.matchSteps,
                         findCloses: selection.findCloses,
                         discardHunk: changes?.hunkDiscard,
-                        resolveConflict: changes?.conflictResolve
+                        resolveConflict: changes?.conflictResolve,
+                        agentIsResolving: selection.file.flatMap { changes?.agentWork[$0.path]?.isWorking } == true
                     )
                 case .note(let text):
                     note(text)
@@ -273,6 +247,8 @@ private struct DiffText: NSViewRepresentable {
     let findCloses: Int
     let discardHunk: ((Int) -> Void)?
     let resolveConflict: ((ConflictRequest) -> Void)?
+    /// Whether an agent is working on the conflicts showing.
+    let agentIsResolving: Bool
 
     func makeCoordinator() -> Coordinator {
         Coordinator(matchSteps: matchSteps, findCloses: findCloses)
@@ -287,6 +263,9 @@ private struct DiffText: NSViewRepresentable {
         controller.show(document, keepingPosition: isUpdate)
         controller.discardHunk = discardHunk
         controller.resolveConflict = resolveConflict
+        if (controller.makeConflictOutline != nil) != agentIsResolving {
+            controller.makeConflictOutline = agentIsResolving ? { AgentOutlineView.aroundWork(cornerRadius: 6) } : nil
+        }
         // Before the marks go away, since closing selects the current one.
         context.coordinator.update(findCloses: findCloses)
         // What's marked can be from the document before this one, until the
@@ -338,12 +317,12 @@ private struct ConflictFileMenu: View {
                 Button(agent.title, action: agent.ask)
                 Divider()
             }
-            Button("\(sides.ours.keepTitle) Version") { keep(.ours) }
-            Button("\(sides.theirs.keepTitle) Version") { keep(.theirs) }
-            Button("Put Conflicts Back", action: putBack)
+            Button("\(sides.ours.keepTitle) version") { keep(.ours) }
+            Button("\(sides.theirs.keepTitle) version") { keep(.theirs) }
+            Button("Put conflicts back", action: putBack)
             if let url {
                 Divider()
-                Button("Open in \(Self.appName(opening: url) ?? "Default App")") {
+                Button("Open in \(Self.appName(opening: url) ?? "default app")") {
                     NSWorkspace.shared.open(url)
                 }
             }
@@ -366,6 +345,28 @@ private struct ConflictFileMenu: View {
     private static func appName(opening url: URL) -> String? {
         guard let app = NSWorkspace.shared.urlForApplication(toOpen: url) else { return nil }
         return FileManager.default.displayName(atPath: app.path(percentEncoded: false)).replacing(/\.app$/, with: "")
+    }
+}
+
+/// The button in the header for asking an agent to resolve a file's conflicts,
+/// with the orange line that marks an agent's command (decision 68).
+private struct ResolveWithAgentButton: View {
+    let title: String
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(title, action: action)
+            .buttonStyle(.plain)
+            .font(.system(size: 12))
+            .padding(.horizontal, 8)
+            .frame(height: 24)
+            .contentShape(Rectangle())
+            .overlay {
+                AgentOutline(shape: .outline(cornerRadius: 6), isHovering: isHovering)
+            }
+            .onHover { isHovering = $0 }
+            .fixedSize()
     }
 }
 
@@ -413,8 +414,8 @@ private struct AgentNote: View {
 
     @ViewBuilder private var icon: some View {
         switch work.phase {
-        case .working: ProgressView().controlSize(.small)
-        case .done: Icon.sparkles.image.foregroundStyle(Palette.action)
+        case .working: AgentMark(state: .working)
+        case .done: AgentMark(state: .finished)
         case .failed: Icon.warning.image.foregroundStyle(Palette.red)
         }
     }
@@ -461,22 +462,14 @@ private struct AgentNote: View {
 
     private func noteButton(_ title: String, action: @escaping () -> Void) -> some View {
         Button(title, action: action)
-            .buttonStyle(.plain)
-            .font(.system(size: 12))
-            .padding(.horizontal, 8)
-            .frame(height: 22)
-            .background {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .strokeBorder(Palette.separator)
-            }
-            .contentShape(Rectangle())
-            .fixedSize()
+            .buttonStyle(.outlined)
     }
 
+    /// As tall as the button beside it.
     private var closeButton: some View {
         Button("Close", icon: .x) { close() }
             .labelStyle(.iconOnly)
-            .buttonStyle(.icon)
+            .buttonStyle(.icon(size: 22))
             .help("Close")
     }
 }

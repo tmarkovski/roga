@@ -67,9 +67,18 @@ jobs:
 
       # Tests run before anything is signed. A build that fails its own tests
       # has no business being notarized.
+      #
+      # They run a few at a time, as many as the runner has cores. Left alone,
+      # every test in a target starts at once, and each one's time limit then
+      # covers the whole target, which takes the runner more than the minute
+      # most suites allow. The variable is Swift Testing's, and still named
+      # experimental in Xcode 27.2: if a later Xcode drops it, the limits fail
+      # again by the hundred.
       - name: Run the tests
         run: |
           swift build --package-path RogaKit --build-tests
+          export SWT_EXPERIMENTAL_MAXIMUM_PARALLELIZATION_WIDTH="$(sysctl -n hw.ncpu)"
+          echo "Running $SWT_EXPERIMENTAL_MAXIMUM_PARALLELIZATION_WIDTH tests at a time."
           swift test --package-path RogaKit --skip-build
 
       - name: Derive version numbers

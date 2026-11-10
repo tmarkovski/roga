@@ -3,13 +3,12 @@ import IconUI
 import SwiftUI
 
 /// The Generate button at the bottom right of the message box (decision 41).
-/// It's sparkles and Generate while the box is empty, and the sparkles alone
-/// once the box has words for the agent to start from, with a chevron beside
-/// it that opens the popover for choosing the agent, its model and its effort.
+/// It says Generate with the agent's name while the box is empty, and Rewrite
+/// once the box has words for the agent to start from, with a chevron beside it
+/// that opens the popover for choosing the agent, its model and its effort.
 ///
-/// It's drawn as the design canvas's Settings boards draw it: a gray tile cut
-/// in two by a thin line, the sparkles in the brand's orange, and a ring
-/// around it while the pointer is over it or its popover is open.
+/// It's a gray tile cut in two by a thin line, with the orange line around it
+/// that marks an agent's command (decision 68).
 struct GenerateButton<Choices: View>: View {
     /// The agent a click runs.
     let agent: AgentKind
@@ -50,17 +49,10 @@ struct GenerateButton<Choices: View>: View {
     var body: some View {
         HStack(spacing: 0) {
             Button(action: generate) {
-                HStack(spacing: 5) {
-                    Icon.sparkles.image
-                        .font(.system(size: Self.iconFontSize(13)))
-                        .foregroundStyle(isEnabled ? Palette.action : DialogColors.note)
-                    if !rewrites {
-                        Text(Self.title(agent: agent))
-                    }
-                }
-                .padding(.horizontal, 8)
-                .frame(maxHeight: .infinity)
-                .contentShape(Rectangle())
+                Text(rewrites ? Self.rewriteTitle : Self.title(agent: agent))
+                    .padding(.horizontal, 8)
+                    .frame(maxHeight: .infinity)
+                    .contentShape(Rectangle())
             }
             // The tooltip goes outside what's disabled, since it's what says
             // why the button can't be pressed.
@@ -93,12 +85,8 @@ struct GenerateButton<Choices: View>: View {
         .frame(height: Self.height)
         .background(DialogColors.card)
         .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-        .background {
-            if isHovering || isChoosing {
-                RoundedRectangle(cornerRadius: 8.5, style: .continuous)
-                    .fill(SettingsColors.line)
-                    .padding(-1.5)
-            }
+        .overlay {
+            AgentOutline(shape: .outline(cornerRadius: 7), isEnabled: isEnabled, isHovering: isHovering, isLit: isChoosing)
         }
         .onHover { isHovering = $0 }
         .fixedSize()
@@ -117,6 +105,10 @@ extension GenerateButton {
     static func title(agent: AgentKind) -> String {
         "Generate with \(agent.shortName)"
     }
+
+    /// What it says once the box has words, where the chevron beside it and its
+    /// tooltip say which agent, and the box is short of room for more.
+    static var rewriteTitle: String { "Rewrite" }
 
     /// What the main button's tooltip says: why it can't run when nothing's
     /// staged or a rebase has stopped, and otherwise what a click does. While

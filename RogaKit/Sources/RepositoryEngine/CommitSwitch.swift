@@ -1,6 +1,19 @@
 import GitCore
 import GitRunner
 
+/// How far `git reset` goes, beyond moving the branch.
+public enum ResetMode: String, Sendable, Hashable, CaseIterable {
+    /// `--keep`, which carries uncommitted changes along, and refuses when they're
+    /// in the way.
+    case keep
+    /// `--soft`, which leaves the files and the index alone.
+    case soft
+    /// `--mixed`, which leaves the files alone and empties the index.
+    case mixed
+    /// `--hard`, which makes the files and the index match the commit.
+    case hard
+}
+
 /// What going to a commit would come to, which says whether to ask first
 /// (decision 37).
 public struct CommitSwitch: Sendable, Hashable {
@@ -35,8 +48,11 @@ public struct CommitSwitch: Sendable, Hashable {
     /// Whether the branch itself leads to the commit, which makes everything since
     /// then the branch's own. An upstream can lead there without the branch doing so.
     public var goesBack: Bool
+    /// How far a reset goes. Going to a commit by double-clicking it is always `.keep`.
+    public private(set) var mode = ResetMode.keep
+
     /// Whether this leaves the files and the index as they are.
-    public private(set) var keepsChanges = false
+    public var keepsChanges: Bool { mode == .soft }
 
     public init(commit: ObjectID, way: Way, head: ObjectID? = nil, lostCount: Int = 0, lost: [ObjectID] = [], goesBack: Bool = false) {
         self.commit = commit
@@ -55,7 +71,7 @@ public struct CommitSwitch: Sendable, Hashable {
     /// carries uncommitted changes along, and refuses when they're in the way.
     public var arguments: [String] {
         switch way {
-        case .movingBranch: ["reset", keepsChanges ? "--soft" : "--keep", commit.hex]
+        case .movingBranch: ["reset", "--" + mode.rawValue, commit.hex]
         case .detaching: ["switch", "--detach", commit.hex]
         }
     }
@@ -65,15 +81,23 @@ public struct CommitSwitch: Sendable, Hashable {
     /// those changes would also undo whatever is on the other side.
     public var keepingChanges: CommitSwitch? {
         guard goesBack else { return nil }
-        var keeping = self
-        keeping.keepsChanges = true
-        return keeping
+        return resetting(.soft)
+    }
+
+    /// The same move, going as far as `mode` says.
+    public func resetting(_ mode: ResetMode) -> CommitSwitch {
+        var reset = self
+        reset.mode = mode
+        return reset
     }
 
     /// Finds out what going to a commit would come to.
     ///
-    /// - Parameter limit: The most commits to list.
-    static func prepare(to commit: ObjectID, limit: Int, in worktree: String, worktrees: [Worktree], git: Git) async throws -> CommitSwitch {
+    /// - Parameters:
+    ///   - limit: The most commits to list.
+    ///   - movingTheBranch: Whether the branch moves wherever the commit is, as a
+    ///     reset someone asked for by name does, rather than `HEAD` leaving it.
+    static func prepare(to commit: ObjectID, limit: Int, in worktree: String, worktrees: [Worktree], movingTheBranch: Bool = false, git: Git) async throws -> CommitSwitch {
         let refs = try await RefsLoader.load(git: git, in: worktree)
         var way = Way.detaching
         var goesBack = false
@@ -81,7 +105,7 @@ public struct CommitSwitch: Sendable, Hashable {
         if let branch = refs.currentBranch {
             let upstream = refs.refs.first { $0.name == branch }?.upstream
             let holders = try await holders(of: commit, among: [branch, upstream].compactMap(\.self), in: worktree, git: git)
-            if !holders.isEmpty {
+            if !holders.isEmpty || movingTheBranch {
                 way = .movingBranch(branch)
                 goesBack = holders.contains(branch)
                 leaving = LostCommits.leaving([branch], among: refs.refs)

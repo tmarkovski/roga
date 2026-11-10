@@ -143,6 +143,18 @@ private struct NewBranchButton: View {
         .popover(isPresented: $branch.isCreatingBranch, arrowEdge: .bottom) {
             NewBranchPopover(branch: branch, showWorktree: showWorktree)
         }
+        // On a view of its own, because a view is only sure of showing one popover.
+        .background {
+            Color.clear.popover(isPresented: Binding {
+                branch.newTagStart != nil
+            } set: { isShown in
+                if !isShown { branch.newTagStart = nil }
+            }, arrowEdge: .bottom) {
+                if let start = branch.newTagStart {
+                    NewTagPopover(branch: branch, start: start)
+                }
+            }
+        }
     }
 
     /// Where the new branch starts, as in `New Branch from main`.
@@ -158,10 +170,11 @@ private struct NewBranchButton: View {
 struct BranchMenuItems: View {
     let branch: BranchModel
     let switchBranch: (() -> Void)?
-    /// Whether New Worktree… follows New Branch…, which only the menu bar's
-    /// Branch menu has, since the branch's own menu leaves worktrees to the
-    /// menu of the repository's worktrees.
-    var listsNewWorktree = false
+    /// Whether this is the menu bar's Branch menu, which has New Worktree… after
+    /// New Branch…, since the branch's own menu leaves worktrees to the menu of
+    /// the repository's worktrees. Its rows are in title case, as macOS's own
+    /// are, where the menus in the window are in sentence case.
+    var isInMenuBar = false
     /// What New Worktree… does, or nil while it can't start.
     var newWorktree: (() -> Void)?
 
@@ -178,7 +191,7 @@ struct BranchMenuItems: View {
                 .keyboardShortcut(RepositoryCommands.pushShortcut)
                 .disabled(status.push == nil || branch.isBusy)
                 .modifierKeyAlternate(.option) {
-                    item("Force Push with Lease…", icon: .push, action: branch.askToForcePush)
+                    item(isInMenuBar ? "Force Push with Lease…" : "Force push with lease…", icon: .push, action: branch.askToForcePush)
                         .disabled(status.upstream == nil || branch.isBusy)
                 }
             item("Fetch", icon: .fetch, action: branch.fetch)
@@ -186,15 +199,15 @@ struct BranchMenuItems: View {
                 .disabled(status.remote == nil || branch.isBusy)
             Divider()
         }
-        item("New Branch…", icon: .newBranch) { branch.isCreatingBranch = true }
+        item(isInMenuBar ? "New Branch…" : "New branch…", icon: .newBranch) { branch.isCreatingBranch = true }
             .keyboardShortcut(RepositoryCommands.newBranchShortcut)
             .disabled(branch.isBusy)
-        if listsNewWorktree {
+        if isInMenuBar {
             item("New Worktree…", icon: .worktree) { newWorktree?() }
                 .keyboardShortcut(RepositoryCommands.newWorktreeShortcut)
                 .disabled(newWorktree == nil)
         }
-        item("Switch Branch…", icon: nil) { switchBranch?() }
+        item(isInMenuBar ? "Switch Branch…" : "Switch branch…", icon: nil) { switchBranch?() }
             .disabled(switchBranch == nil)
     }
 
@@ -429,7 +442,7 @@ private struct UnfinishedWorkControl: View {
     var body: some View {
         Menu {
             if unfinished.hasConflicts {
-                Button("Resolve Conflicts", action: branch.showConflicts)
+                Button("Resolve conflicts", action: branch.showConflicts)
             }
             if let work = unfinished.work {
                 if unfinished.hasConflicts { Divider() }
@@ -589,13 +602,15 @@ private struct NewBranchPopover: View {
     @FocusState private var isNameFocused: Bool
 
     private var newBranch: NewBranch {
-        NewBranch(name: name.trimmingCharacters(in: .whitespaces), inNewWorktree: inNewWorktree)
+        NewBranch(name: name.trimmingCharacters(in: .whitespaces), inNewWorktree: inNewWorktree, startPoint: branch.newBranchStart?.commit)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("New Branch")
+            Text(branch.newBranchStart.map { "New Branch from \($0.label)" } ?? "New Branch")
                 .font(.system(size: 13, weight: .medium))
+                .lineLimit(1)
+                .truncationMode(.middle)
             TextField("Name", text: $name)
                 .textFieldStyle(.roundedBorder)
                 .focused($isNameFocused)
@@ -626,6 +641,9 @@ private struct NewBranchPopover: View {
                 branch.startsInNewWorktree = false
             }
         }
+        // Only here, because this is what tells it to start from where the worktree
+        // is again, once it has gone.
+        .onDisappear { branch.newBranchStart = nil }
     }
 
     private func create() {
@@ -633,6 +651,59 @@ private struct NewBranchPopover: View {
         isCreating = true
         Task {
             refusal = await branch.create(newBranch, showWorktree: showWorktree)
+            isCreating = false
+        }
+    }
+}
+
+/// Puts a new tag on a commit someone chose in a menu, and shows the exact command
+/// as it's typed.
+private struct NewTagPopover: View {
+    let branch: BranchModel
+    let start: BranchModel.NewRefStart
+    @State private var name = ""
+    @State private var refusal: String?
+    @State private var isCreating = false
+    @FocusState private var isNameFocused: Bool
+
+    private var newTag: NewTag {
+        NewTag(name: name.trimmingCharacters(in: .whitespaces), commit: start.commit)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("New Tag on \(start.label)")
+                .font(.system(size: 13, weight: .medium))
+                .lineLimit(1)
+                .truncationMode(.middle)
+            TextField("Name", text: $name)
+                .textFieldStyle(.roundedBorder)
+                .focused($isNameFocused)
+                .onSubmit(create)
+                .onChange(of: name) { refusal = nil }
+            Text(BranchModel.command(newTag.arguments))
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
+            if let refusal {
+                Text(refusal)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(12)
+        .frame(width: 320)
+        .onAppear { isNameFocused = true }
+    }
+
+    private func create() {
+        guard !newTag.name.isEmpty, !isCreating else { return }
+        isCreating = true
+        Task {
+            refusal = await branch.create(newTag)
             isCreating = false
         }
     }

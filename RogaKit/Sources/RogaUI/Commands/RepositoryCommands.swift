@@ -162,7 +162,8 @@ public struct RepositoryCommands: Commands {
                 .keyboardShortcut(Self.groupByOrganizationShortcut)
             Picker("Sort Repositories", selection: $sidebarSort) {
                 ForEach(SidebarSort.allCases, id: \.self) { sort in
-                    Text(sort.title).tag(sort)
+                    // The menu bar's rows are in title case, as macOS's own are.
+                    Text(sort.title.capitalized).tag(sort)
                 }
             }
             Button(refsPanelVisibility?.commandTitle ?? "Hide Refs") {
@@ -261,7 +262,7 @@ public struct RepositoryCommands: Commands {
                         refsPanelVisibility?.isWanted.wrappedValue = true
                         repository?.refs.showFilter()
                     } : nil,
-                    listsNewWorktree: true,
+                    isInMenuBar: true,
                     newWorktree: worktreeCommands?.newWorktree
                 )
             } else {

@@ -32,6 +32,9 @@ It was planned as a read-only viewer, and it grew while it was built. Several of
 - The title row fetches, pulls, pushes and starts new branches (decisions 19, 20 and 45). When uncommitted changes are in the way of a pull or a reset, Roga sets them aside and puts them back afterward (decision 59).
 - The panels for uncommitted changes stage files, commit and amend (decision 30), and discard files and hunks, with Undo (decision 39).
 - Right-clicking a commit reverts it, either committing the revert or leaving its changes staged (decision 44), and right-clicking a branch or its commit deletes the branch (decision 38).
+- Right-clicking a commit or a branch also checks it out, resets to it, merges it, rebases onto it, fast-forwards to it, cherry-picks it, and starts a branch, a worktree or a tag there (decision 65).
+- Right-clicking a branch chooses which remote it pushes to and pulls from, when there's more than one (decision 66).
+- The refs panel adds a remote, with its own push URL if it needs one, and removes one (decision 67).
 - The sidebar makes new worktrees, repairs a worktree whose folder moved, and deletes linked worktrees.
 
 Roga also follows the agents working in each worktree. Settings installs hooks for Claude Code and Codex, and the sidebar then marks the worktrees where an agent is working, waiting or finished, with a line saying what it's doing (decisions 41, 46 and 47). Either agent can write the commit message (decision 41).
@@ -81,7 +84,7 @@ Release 1 was also going to have file history, search and blame, and to pass the
 ## Release 2: working with changes
 
 - Stage and unstage by hunk or line. Staging by file, committing and amending came first (decision 30), and discarding after that (decision 39).
-- Rename branches, start a branch from any commit, and switch branches from the keyboard.
+- Rename branches and switch branches from the keyboard. Starting a branch from any commit came first (decision 65).
 - Ask for a passphrase when git needs one to fetch, pull or push (decision 20).
 - Clone a repository into a folder the user chooses, using the user's own credential helpers and SSH setup, and add it to the sidebar. Its action goes under opening a repository at the top of the sidebar.
 - Create, apply and drop stashes.

@@ -17,6 +17,9 @@ struct CommandBlock: View {
     /// the commands it usually shows would each wrap by a few letters at the
     /// compact size, as on setup's screens.
     var fontSize: CGFloat?
+    /// How tall it always is, for commands that change while a sheet can't. What
+    /// doesn't fit scrolls.
+    var fixedHeight: CGFloat? = nil
     @State private var isCopied = false
     @State private var clearing: Task<Void, Never>?
 
@@ -71,7 +74,7 @@ struct CommandBlock: View {
     }
 
     var body: some View {
-        ClampedHeight(maximum: maximumHeight) {
+        ClampedHeight(maximum: fixedHeight ?? maximumHeight) {
             ScrollView(.vertical) {
                 VStack(alignment: .leading, spacing: lineGap.between) {
                     ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
@@ -84,6 +87,7 @@ struct CommandBlock: View {
             }
             .scrollBounceBehavior(.basedOnSize)
         }
+        .frame(height: fixedHeight, alignment: .top)
         .font(.system(size: fontSize ?? (isCompact ? Self.compactFontSize : 12), design: .monospaced))
         .overlay(alignment: .topTrailing) {
             Button(action: copy) {

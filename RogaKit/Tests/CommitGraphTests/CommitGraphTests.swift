@@ -20,6 +20,19 @@ struct CommitGraphTests {
         }
     }
 
+    @Test func findsACommitByFollowingParentsAndGivesUpAtItsLimit() async throws {
+        let history = Fixture.History.single
+        let graph = try await history.graph()
+        let commits = try await GitCommits(history.repository())
+        let child = try #require(commits.oldestFirst.last { commits.parents[$0]?.isEmpty == false })
+        let newest = try #require(graph.position(of: child))
+        let parent = try #require(try graph.parent(of: newest, at: 0))
+        #expect(graph.reaches(parent, from: newest, visitLimit: 100) == true)
+        #expect(graph.reaches(newest, from: newest, visitLimit: 100) == true)
+        #expect(graph.reaches(newest, from: parent, visitLimit: 100) == false)
+        #expect(graph.reaches(parent, from: newest, visitLimit: 0) == nil)
+    }
+
     @Test func readsEveryLayerOfAChain() async throws {
         let chain = try await Fixture.History.chain.graph()
         let single = try await Fixture.History.single.graph()
