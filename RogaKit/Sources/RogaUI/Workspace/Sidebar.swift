@@ -51,7 +51,13 @@ struct Sidebar: View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 2) {
                 SidebarCommandRow(title: "Add Repositories", icon: .plus, isOpen: isAddingRepositories, isEnabled: list.isConnected) {
-                    isAddingRepositories = true
+                    // With nothing listed and no folder picked, the popover
+                    // has nowhere to look, so the row asks for a folder first.
+                    if list.repositories.isEmpty && adding.pickedFolders.isEmpty {
+                        lookInAnotherFolder()
+                    } else {
+                        isAddingRepositories = true
+                    }
                 }
                 .popover(isPresented: $isAddingRepositories, arrowEdge: .trailing) {
                     AddRepositories(list: list, state: $adding, lookInAnotherFolder: lookInAnotherFolder) { selection = $0 }
@@ -121,15 +127,17 @@ struct Sidebar: View {
         )
     }
 
-    /// Closes the popover while the open panel is up, because a popover can
-    /// close by itself when another window takes over, and reopens it after.
+    /// Asks for a folder to look in, then shows the popover with the clones in
+    /// it. The popover closes while the open panel is up, because a popover
+    /// can close by itself when another window takes over, and opens again
+    /// after, unless the panel was cancelled before the popover was ever open.
     private func lookInAnotherFolder() {
+        let wasOpen = isAddingRepositories
         isAddingRepositories = false
         Task {
-            if let folder = chooseRepositoryFolder(message: "Choose a folder to look in, or a repository.") {
-                adding.pickedFolders.append(folder)
-            }
-            isAddingRepositories = true
+            let folder = chooseRepositoryFolder(message: "Choose a folder to look in, or a repository.")
+            if let folder { adding.pickedFolders.append(folder) }
+            if folder != nil || wasOpen { isAddingRepositories = true }
         }
     }
 
