@@ -107,8 +107,8 @@ enum ReplaySaving {
 
     /// The last frame as the video's cover, which is the picture Save Image
     /// writes. Finder and Quick Look show a video's cover in place of its
-    /// first frame, which here is the board before anything has happened.
-    /// Apps that make their own thumbnail from the frames don't read it.
+    /// first frame. Apps that make their own thumbnail from the frames don't
+    /// read it, and show the title card the replay opens on.
     private static func artwork<Picture: ReplayPicture>(of picture: Picture, colorScheme: ColorScheme) throws -> AVMetadataItem {
         guard let image = render(picture, at: picture.duration, colorScheme: colorScheme, scale: videoScale),
               let data = NSBitmapImageRep(cgImage: image).representation(using: .jpeg, properties: [.compressionFactor: 0.9])

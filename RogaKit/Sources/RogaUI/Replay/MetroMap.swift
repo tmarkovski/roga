@@ -33,6 +33,9 @@ struct MetroMap: ReplayPicture {
     private static let smallWidth = 640.0
     private static let smallSpacing = 26.0
     private static let largeSpacing = 34.0
+    /// How far apart lanes are when there's room, in a narrow window and a wider one.
+    static let smallLaneGap = 34.0
+    static let largeLaneGap = 46.0
 
     struct Marker {
         var x: Double
@@ -63,8 +66,12 @@ struct MetroMap: ReplayPicture {
         var lane: Int
     }
 
+    /// The replay, starting once the title card has cleared.
     let replay: HistoryReplay
     let repositoryName: String
+    /// What the title card says above the repository's name, which is the
+    /// range being replayed, such as THE LAST 7 DAYS OF.
+    let rangeLine: String
     /// Whether the house walks along the line, in front of the newest commit.
     var showsHouse: Bool
     let markers: [Marker]
@@ -107,9 +114,14 @@ struct MetroMap: ReplayPicture {
         return formatter
     }
 
-    init(replay: HistoryReplay, repositoryName: String, showsHouse: Bool = false) {
+    init(replay: HistoryReplay, repositoryName: String, rangeLine: String = "THE HISTORY OF", showsHouse: Bool = false) {
+        // Every time in the picture is the replay's, so the replay waits
+        // for the title card rather than the picture keeping two clocks.
+        var replay = replay
+        if !replay.commits.isEmpty { replay.start(at: Self.intro) }
         self.replay = replay
         self.repositoryName = repositoryName
+        self.rangeLine = rangeLine
         self.showsHouse = showsHouse
         let zoom = max(0.35, min(1, replay.pace * 2))
         self.zoom = zoom
@@ -262,6 +274,7 @@ struct MetroMap: ReplayPicture {
         let frame = layout(time, size: size, theme: theme)
         let color = colorsByBranch(theme)
         let tour = tourMoment(at: time)
+        let intro = introMoment(at: time)
         // The tour turns the map down, so that what it stops at stands out.
         withOpacity(1 - 0.8 * (tour?.dimming ?? 0), context) { map in
             drawDays(map, frame)
@@ -272,8 +285,10 @@ struct MetroMap: ReplayPicture {
         if let tour { drawTourFocus(context, frame, color, tour) }
 
         var addedCount: CGPoint?
-        withOpacity(1 - frame.posterProgress, context) { shell in
-            addedCount = drawBand(shell, frame)
+        // The board comes in as the title card clears, and the card brings
+        // the repository's name to it.
+        withOpacity((1 - frame.posterProgress) * (intro?.board ?? 1), context) { shell in
+            addedCount = drawBand(shell, frame, arriving: intro)
             drawStrip(shell, frame, color, tour)
             if frame.showsPulse { drawPulse(shell, frame) }
         }
@@ -281,6 +296,7 @@ struct MetroMap: ReplayPicture {
         if let addedCount { drawFlights(context, frame, to: addedCount) }
         if showsHouse { drawHouse(context, frame) }
         drawPoster(context, frame)
+        if let intro { drawIntro(context, frame, color, intro) }
     }
 
     /// Draws something all at one opacity, so that where its pieces overlap
@@ -302,7 +318,7 @@ struct MetroMap: ReplayPicture {
         let count = replay.commits.count
         let isSmall = width < Self.smallWidth
         let spacing = (isSmall ? Self.smallSpacing : Self.largeSpacing) * zoom
-        let laneGap = isSmall ? 34.0 : 46.0
+        let laneGap = isSmall ? Self.smallLaneGap : Self.largeLaneGap
         let showsPulse = height >= Self.pulseLeastHeight
         let playTop = Self.bandHeight + 8 + (showsPulse ? Self.pulseHeight : 0)
         let playBottom = Self.stripHeight + 12
@@ -394,7 +410,7 @@ struct MetroMap: ReplayPicture {
         branch == 0 ? MetroTheme.laneCount : replay.branches[branch].color
     }
 
-    private func drawDays(_ context: GraphicsContext, _ frame: Frame) {
+    func drawDays(_ context: GraphicsContext, _ frame: Frame) {
         var lastLabel = -Double.infinity
         for marker in markers where marker.time <= frame.time && marker.x >= frame.xMin && marker.x <= frame.xMax {
             let x = frame.x(marker.x)
@@ -897,11 +913,36 @@ struct MetroMap: ReplayPicture {
         baseline: Double,
         alpha: Double = 1
     ) -> Double {
-        let font = Font.system(size: size, weight: weight, design: design)
-        let measured = Double(context.resolve(Text(string).font(font)).measure(in: CGSize(width: CGFloat.infinity, height: .infinity)).width)
+        let fitted = fitting(context, string, width: width, size: size, weight: weight, design: design)
+        return Double(drawText(context, fitted.text, size: fitted.size, weight: weight, design: design, color: color, x: x, baseline: baseline, alpha: alpha).width)
+    }
+
+    /// Text made to fit in `width`: at a smaller size if it wouldn't
+    /// otherwise, and cut short if it's still too wide at half the size.
+    func fitting(
+        _ context: GraphicsContext,
+        _ string: String,
+        width: Double,
+        size: Double,
+        weight: Font.Weight = .regular,
+        design: Font.Design = .default
+    ) -> (text: String, size: Double) {
+        let measured = textWidth(context, string, size: size, weight: weight, design: design)
         let fitting = measured > width ? max(size * width / measured, size * 0.5) : size
         let text = measured * fitting / size > width ? fitted(string, width: width, size: fitting) : string
-        return Double(drawText(context, text, size: fitting, weight: weight, design: design, color: color, x: x, baseline: baseline, alpha: alpha).width)
+        return (text, fitting)
+    }
+
+    func textWidth(
+        _ context: GraphicsContext,
+        _ string: String,
+        size: Double,
+        weight: Font.Weight = .regular,
+        design: Font.Design = .default,
+        tracking: Double = 0
+    ) -> Double {
+        let text = Text(string).font(.system(size: size, weight: weight, design: design)).tracking(tracking)
+        return Double(context.resolve(text).measure(in: CGSize(width: CGFloat.infinity, height: .infinity)).width)
     }
 
     /// Breaks text into at most `maxLines` lines that fit `width`, and ends
