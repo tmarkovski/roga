@@ -82,4 +82,4 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [72](0072-use-standard-interface-terminology.md) | Use standard interface terminology | Accepted |
 | [73](0073-choose-the-code-font-and-its-size.md) | Choose the code font and its size | Accepted |
 | [74](0074-switch-a-diff-between-its-hunks-and-the-whole-file.md) | Switch a diff between its hunks and the whole file | Accepted |
-| [75](0075-list-submodules-in-the-refs-panel-and-go-into-one-in-the-window.md) | List submodules in the refs panel, and go into one in the window | Accepted, and the first of its three steps is built |
+| [75](0075-list-submodules-in-the-refs-panel-and-go-into-one-in-the-window.md) | List submodules in the refs panel, and go into one in the window | Accepted, and the first two of its three steps are built |

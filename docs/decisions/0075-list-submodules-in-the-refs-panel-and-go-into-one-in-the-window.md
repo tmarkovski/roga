@@ -1,6 +1,6 @@
 # 75. List submodules in the refs panel, and go into one in the window
 
-Accepted on 2026-11-10. The first of its three steps was built the same day, and the other two aren't built. Building it added two cases that this doesn't name, which [the main window](../main-window.md#the-commit-and-diff-panels) describes: a checkout that hasn't fetched the commit that's recorded, which is treated as one that's behind, and a checkout with commits of its own that's missing some too, which has Update and Stage in a menu and neither as a button.
+Accepted on 2026-11-10. The first two of its three steps were built the same day, and the third isn't built. Building the first added two cases that this doesn't name, which [the main window](../main-window.md#the-commit-and-diff-panels) describes: a checkout that hasn't fetched the commit that's recorded, which is treated as one that's behind, and a checkout with commits of its own that's missing some too, which has Update and Stage in a menu and neither as a button. Building the second settled three things this leaves unsaid, which [the refs panel](../main-window.md#the-refs-panel) describes: a submodule is a path that `.gitmodules` names and the index records a commit for, a row whose checkout is in two states at once says both, and a submodule that isn't checked out has no button yet. A row's **Open** and its double-click wait for the third step.
 
 ## Context
 

@@ -64,6 +64,56 @@ nonisolated extension DiffFile {
     }
 }
 
+nonisolated extension Submodule {
+    /// What names its row in the refs panel among the rows of refs, which a
+    /// ref's name can't be, since none has a colon in it.
+    var refsRow: String {
+        "submodule:" + path
+    }
+
+    /// The second line of its row in the refs panel: the short hash that's
+    /// checked out and where that stands against what the worktree records, as
+    /// in `52e8a1b0 · 3 behind what's recorded` (decision 75). Until its own
+    /// repository has been read, which follows the list, it's the hash alone.
+    /// One that isn't checked out in the worktree has no hash to show.
+    var subtitle: String {
+        guard let checkedOut else { return "not checked out" }
+        return ([short(checkedOut)] + [standing].compactMap(\.self)).joined(separator: " · ")
+    }
+
+    /// Where the checkout stands, or nil until that's been read.
+    var standing: String? {
+        var parts: [String] = []
+        switch change.distance {
+        case nil:
+            return nil
+        case .notCheckedOut:
+            return "not checked out"
+        case .commitMissing:
+            parts.append("recorded commit not fetched")
+        case .counted(let ahead, let behind):
+            switch (ahead, behind) {
+            case (0, 0): break
+            case (_, 0): parts.append(counted(ahead, "new commit"))
+            case (0, _): parts.append("\(behind.formatted()) behind what's recorded")
+            default: parts.append("\(ahead.formatted()) new, \(behind.formatted()) behind what's recorded")
+            }
+        }
+        if let files = change.filesInside, files > 0 { parts.append(counted(files, "uncommitted file")) }
+        return parts.isEmpty ? "as recorded" : parts.joined(separator: ", ")
+    }
+
+    /// What shows beside its name: how many commits the checkout has that
+    /// aren't recorded, how many recorded ones it's missing, and how many
+    /// uncommitted files it has. They're all zero until it's been read, and
+    /// for one whose recorded commit isn't fetched, which nothing can count.
+    var counts: (ahead: Int, behind: Int, files: Int) {
+        var counts = (ahead: 0, behind: 0, files: change.filesInside ?? 0)
+        if case .counted(let ahead, let behind) = change.distance { (counts.ahead, counts.behind) = (ahead, behind) }
+        return counts
+    }
+}
+
 /// A number and what it counts, as in `1 commit` and `3 commits`.
 nonisolated private func counted(_ count: Int, _ noun: String) -> String {
     count == 1 ? "1 \(noun)" : "\(count.formatted()) \(noun)s"

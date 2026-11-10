@@ -33,6 +33,9 @@ final class RefsModel {
         case remotes
         case tags
         case stashes
+        /// The worktree's submodules, which is the one section that belongs to
+        /// the worktree rather than the repository (decision 75).
+        case submodules
 
         var title: String {
             switch self {
@@ -40,19 +43,27 @@ final class RefsModel {
             case .remotes: "Remotes"
             case .tags: "Tags"
             case .stashes: "Stashes"
+            case .submodules: "Submodules"
             }
         }
 
         /// Whether the section has a place in the panel with `count` rows. A section
         /// with none says only that there are none, as a list with no files would
-        /// (decision 61), so Tags and Stashes go. Remotes has to stay for its plus,
-        /// which adds the first one. A filter that leaves any of them empty hides it.
+        /// (decision 61), so Tags, Stashes and Submodules go. Remotes has to stay
+        /// for its plus, which adds the first one. A filter that leaves any of them
+        /// empty hides it.
         func isShown(count: Int, isFiltering: Bool) -> Bool {
             count > 0 || (!isFiltering && (self == .branches || self == .remotes))
         }
     }
 
     private(set) var content = Content.loading
+    /// The worktree's submodules, from A to Z by path (decision 75). They're
+    /// read apart from the refs, because they're the worktree's rather than the
+    /// repository's, and they change with its files as well as its refs. A
+    /// worktree that has none, or whose submodules can't be read, has an empty
+    /// list, and so no section.
+    private(set) var submodules: [Submodule] = []
     /// The text that narrows every section at once.
     var filter = ""
     /// The full name of the ref whose row the user selected. It only shows as
@@ -67,6 +78,18 @@ final class RefsModel {
     /// Whether the filter field shows, which it doesn't until someone asks for it.
     private(set) var isFilterShown = false
 
+    /// Says that the submodules have been listed again, and whether each one's
+    /// own repository has been read for that list yet, so that the panels can
+    /// follow one that's showing in them.
+    @ObservationIgnored var onSubmodules: (_ submodules: [Submodule], _ isRead: Bool) -> Void = { _, _ in }
+    /// Reading the submodules, which a newer look waits for rather than
+    /// running alongside.
+    @ObservationIgnored private(set) var readingSubmodules: Task<Void, Never>?
+    /// The latest look at the worktree that the submodules have been read for,
+    /// or are being read for, by its number.
+    @ObservationIgnored private var submodulesReadAsOf: Int?
+    /// A newer look that arrived while the submodules were being read.
+    @ObservationIgnored private var submodulesWantedAsOf: Int?
     @ObservationIgnored private let session: RepositorySession
     @ObservationIgnored private let worktree: String
     /// The latest sorted lists, because sorting all of Linux's tags on every
@@ -113,6 +136,68 @@ final class RefsModel {
         content = new
         sorted = nil
         grouped = nil
+    }
+
+    /// Lists the worktree's submodules again, and then reads how each one's
+    /// checkout stands, unless they've been read for this look at the worktree
+    /// already (decision 75). The refs panel asks while it's showing, and the
+    /// worktree's model asks while a submodule is showing in the panels under
+    /// history, which can be when the refs panel isn't there. Both ask about
+    /// the same look, and it's read once.
+    ///
+    /// - Parameter look: The number of the latest look at the worktree's refs
+    ///   or files, which is `RepositoryModel.worktreeLooks`.
+    func readSubmodules(asOf look: Int) {
+        guard look != submodulesReadAsOf else { return }
+        guard readingSubmodules == nil else {
+            submodulesWantedAsOf = look
+            return
+        }
+        submodulesReadAsOf = look
+        readingSubmodules = Task {
+            await loadSubmodules()
+            readingSubmodules = nil
+            if let next = submodulesWantedAsOf {
+                submodulesWantedAsOf = nil
+                readSubmodules(asOf: next)
+            }
+        }
+    }
+
+    /// The list shows as soon as it's read, with what was said of each
+    /// submodule the time before for as long as it lists the same. How each
+    /// one stands follows, since that takes reading its own repository.
+    private func loadSubmodules() async {
+        do {
+            var listed = try await session.submodules(in: worktree)
+            for index in listed.indices {
+                guard let before = submodules.first(where: { $0.path == listed[index].path }),
+                      before.recorded == listed[index].recorded, before.checkedOut == listed[index].checkedOut
+                else { continue }
+                listed[index].change = before.change
+            }
+            show(listed, isRead: false)
+            let standings = try await session.submoduleStandings(of: listed, in: worktree)
+            for index in listed.indices {
+                if let standing = standings[listed[index].path] { listed[index].change = standing }
+            }
+            show(listed, isRead: true)
+        } catch {
+            // A `.gitmodules` file that git can't read, for one. What listed
+            // before stays, and a worktree that never listed any has no section.
+        }
+    }
+
+    private func show(_ listed: [Submodule], isRead: Bool) {
+        if listed != submodules { submodules = listed }
+        onSubmodules(listed, isRead)
+    }
+
+    /// The submodules the panel lists, which are the ones whose paths `filter`
+    /// leaves.
+    var shownSubmodules: [Submodule] {
+        guard !filter.isEmpty else { return submodules }
+        return submodules.filter { $0.path.range(of: filter, options: .caseInsensitive) != nil }
     }
 
     /// What the panel lists, in `sort` order, with what `filter` leaves.

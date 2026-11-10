@@ -92,6 +92,11 @@ final class RepositoryModel {
     let gitFix: GitFixModel
     /// Goes up when the refs panel should read its lists again, if it's showing.
     private(set) var refsChecks = 0
+    /// Goes up whenever the worktree has been looked at again, whether its refs
+    /// moved or only its files changed. The refs panel reads the worktree's
+    /// submodules again then, if it's showing, because how a submodule stands
+    /// changes with either (decision 75).
+    private(set) var worktreeLooks = 0
     /// How many files have uncommitted changes. While there are any, a row for
     /// them comes before the first commit.
     private(set) var uncommittedFiles = 0
@@ -245,6 +250,7 @@ final class RepositoryModel {
         selectedChanges.lookAgain = { [weak self] in self?.lookAgain() }
         selectedChanges.onLeftOut = { [weak branch] words in branch?.announce(words, undo: nil, lingers: true) }
         selectedChanges.runSubmoduleUpdate = { [weak self] file in self?.updateSubmodule(file) }
+        refs.onSubmodules = { [weak self] submodules, isRead in self?.selectedCommit.follow(submodules, isRead: isRead) }
         gitFix.lookAgain = { [weak self] in self?.lookAgain() }
         selectedChanges.showChanges = { [weak self] in self?.selectChangesOnceTheyShow() }
         composer.currentBranch = { [weak self] in self?.history?.refs.currentBranch }
@@ -281,6 +287,14 @@ final class RepositoryModel {
         }
     }
 
+    /// Records the commit that's checked out in a submodule that the refs
+    /// panel lists, which is what **Stage** does for one with new commits
+    /// (decision 75). It goes to git behind any staging that's waiting, and the
+    /// worktree is looked at again afterward.
+    func stageSubmodule(_ file: DiffFile) {
+        selectedChanges.stageSubmodule(file)
+    }
+
     /// The file selected in whichever panel is showing, which the diff panel
     /// shows.
     var selectedFile: SelectedFile { selectedCommit.selectedFile }
@@ -292,7 +306,7 @@ final class RepositoryModel {
     var canFilterFiles: Bool {
         if selectedChanges.isSelected { return true }
         switch selectedCommit.subject {
-        case nil, .scattered: return false
+        case nil, .scattered, .submodule: return false
         case .commit, .comparison, .stash: return true
         }
     }
@@ -902,6 +916,11 @@ final class RepositoryModel {
         show(unfinished: UnfinishedWork(work: stopped, conflicts: status?.conflicted.count ?? 0, subject: subject))
         composer.worktreeIsPartway(through: stopped)
         selectedChanges.refresh()
+        worktreeLooks += 1
+        // The refs panel reads the submodules while it's showing. One that's
+        // showing in the panels has to follow whether or not the refs panel
+        // is there, as it isn't while the panels are maximized.
+        if selectedCommit.submodule != nil { refs.readSubmodules(asOf: worktreeLooks) }
     }
 
     /// Says what the worktree is stuck partway through, which the row for
@@ -1003,14 +1022,14 @@ final class RepositoryModel {
         selectedRows.count == 1 ? selectedRows.first : nil
     }
 
-    /// Whether the panels show what the selected rows are, rather than a branch
-    /// or a stash, which select rows of their own or none.
+    /// Whether the panels show what the selected rows are, rather than a branch,
+    /// a stash or a submodule, which select rows of their own or none.
     private var panelsFollowRows: Bool {
         switch selectedCommit.subject {
         case nil, .commit, .scattered: true
         case .comparison(let comparison):
             if case .branch = comparison.kind { false } else { true }
-        case .stash: false
+        case .stash, .submodule: false
         }
     }
 
@@ -1124,6 +1143,19 @@ final class RepositoryModel {
             guard let base = (try? await session.commits([stash.commit]))?.first??.parents.first, !Task.isCancelled else { return }
             setMark((base, stash.name))
         }
+    }
+
+    /// Shows one of the worktree's submodules in the panels, with no row
+    /// selected, as a stash shows (decision 75): what the worktree records for
+    /// it and what's checked out in the commit panel, and what its row under
+    /// Unstaged would show in the diff panel.
+    func select(submodule: Submodule) {
+        refs.select(ref: submodule.refsRow)
+        guard selectedCommit.submodule?.path != submodule.path else { return }
+        selectedRows = []
+        leaveSeveralCommits()
+        selectedChanges.deselect()
+        selectedCommit.show(subject: .submodule(submodule))
     }
 
     /// The branches a branch is reviewed against: the main branch and its upstream,

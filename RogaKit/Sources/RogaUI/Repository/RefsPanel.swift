@@ -5,9 +5,9 @@ import MenuUI
 import SwiftUI
 
 /// The panel on the right of the window, which lists the repository's branches,
-/// remotes, tags and stashes (docs/main-window.md). Clicking a ref selects its
-/// commit in history, and double-clicking a branch checks it out, as double-clicking
-/// its badge there does.
+/// remotes, tags and stashes, and the worktree's submodules (docs/main-window.md).
+/// Clicking a ref selects its commit in history, and double-clicking a branch
+/// checks it out, as double-clicking its badge there does.
 ///
 /// It draws its own rows rather than using a `List`, for the same reason as the
 /// sidebar: its rows swap their label for commands on hover. So it handles the
@@ -50,6 +50,12 @@ struct RefsPanel: View {
             }
             .task(id: model.refsChecks) {
                 await refs.load()
+            }
+            // The submodules are the worktree's, and change with its files as
+            // well as its refs, so they follow every look at it (decision 75).
+            // Another worktree in the window is another panel, which reads its own.
+            .onChange(of: model.worktreeLooks, initial: true) {
+                refs.readSubmodules(asOf: model.worktreeLooks)
             }
     }
 
@@ -126,7 +132,8 @@ struct RefsPanel: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     let isFiltering = !refs.filter.isEmpty
-                    if isFiltering, details.isEmpty {
+                    let submodules = refs.shownSubmodules
+                    if isFiltering, details.isEmpty, submodules.isEmpty {
                         Text("No refs match “\(refs.filter)”")
                             .font(.system(size: 12))
                             .foregroundStyle(.secondary)
@@ -164,6 +171,11 @@ struct RefsPanel: View {
                     section(.stashes, count: details.stashes.count) {
                         ForEach(details.stashes, id: \.position) { stash in
                             stashRow(stash)
+                        }
+                    }
+                    section(.submodules, count: submodules.count) {
+                        ForEach(submodules, id: \.path) { submodule in
+                            submoduleRow(submodule)
                         }
                     }
                 }
@@ -358,6 +370,27 @@ struct RefsPanel: View {
         .id(stash.name)
     }
 
+    /// One of the worktree's submodules, which shows where it stands in the
+    /// panels (decision 75). One that isn't checked out in the worktree is
+    /// dimmed.
+    private func submoduleRow(_ submodule: Submodule) -> some View {
+        RefRow(
+            icon: .box,
+            title: submodule.path,
+            subtitle: submodule.subtitle,
+            isSelected: model.selectedCommit.submodule?.path == submodule.path,
+            isDimmed: submodule.checkedOut == nil,
+            action: {
+                isListFocused = true
+                model.select(submodule: submodule)
+            }
+        ) {
+            SubmoduleCounts(submodule: submodule)
+        } commands: {
+        }
+        .id(submodule.refsRow)
+    }
+
     private func isSelected(_ name: String, _ commit: ObjectID) -> Bool {
         refs.selectedRef == name && model.selectedCommit.id == commit
     }
@@ -372,7 +405,7 @@ struct RefsPanel: View {
     }
 
     /// Moves the selection through the rows that show, skipping folders,
-    /// remotes and stashes, which have no commit in history.
+    /// remotes, stashes and submodules, which have no commit in history.
     private func step(by step: Int) {
         guard let details = refs.shown(sort: sort), let branchRows = refs.branchRows(sort: sort, collapsed: closedFolders) else { return }
         let rows = selectableRows(details, branchRows)
@@ -606,6 +639,9 @@ private struct RefRow<Trailing: View, Commands: View>: View {
     /// to find out whenever the row is drawn. Assistive apps get `menu`.
     var menuOnOpen: (() -> [RefMenu.Entry])?
     var isSelected = false
+    /// Whether its icon and title are gray, for something that's listed and
+    /// isn't there, such as a submodule that isn't checked out.
+    var isDimmed = false
     /// How much further in than a section's rows it starts (`RefIndent`).
     var indent = 0.0
     var hasCommands = false
@@ -621,7 +657,7 @@ private struct RefRow<Trailing: View, Commands: View>: View {
         HStack(spacing: 8) {
             icon.image
                 .font(.system(size: 13))
-                .foregroundStyle(imageColor)
+                .foregroundStyle(isDimmed ? AnyShapeStyle(.tertiary) : AnyShapeStyle(imageColor))
                 .frame(width: 16)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
@@ -632,6 +668,7 @@ private struct RefRow<Trailing: View, Commands: View>: View {
                     // button shows its own.
                     FadingText(title)
                         .font(.system(size: 13))
+                        .foregroundStyle(isDimmed ? .secondary : .primary)
                         .help(title)
                     Spacer(minLength: 0)
                     if !showsCommands {
@@ -811,6 +848,28 @@ private struct AheadBehind: View {
             }
         }
         .font(.system(size: 11, design: .monospaced))
+        .accessibilityHidden(true)
+    }
+}
+
+/// How a submodule's checkout stands against what's recorded, beside its name:
+/// the commits it's missing and the ones it has that aren't recorded, as a
+/// branch has them, and how many uncommitted files it has, in the orange that
+/// counts of uncommitted files have everywhere (decision 75). The row's second
+/// line says the same in words, which is what VoiceOver reads.
+private struct SubmoduleCounts: View {
+    let submodule: Submodule
+
+    var body: some View {
+        let counts = submodule.counts
+        HStack(spacing: 6) {
+            AheadBehind(ahead: counts.ahead, behind: counts.behind)
+            if counts.files > 0 {
+                Text(counts.files, format: .number)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(Color.orange)
+            }
+        }
         .accessibilityHidden(true)
     }
 }

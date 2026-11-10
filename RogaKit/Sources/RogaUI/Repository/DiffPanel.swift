@@ -13,6 +13,10 @@ struct DiffPanel: View {
     /// The worktree's uncommitted changes, while they're what's showing, which
     /// gives the header a button for staging the file.
     var changes: SelectedChanges?
+    /// What staging and updating do for a submodule that the refs panel lists,
+    /// which gives the header the buttons its row under Unstaged has
+    /// (decision 75). A view that's tested on its own has none.
+    var submoduleCommands: SubmoduleCommands?
     /// How much room the panels under history take, which the buttons at the
     /// right of the header change.
     @Binding var size: LowerPanelSize
@@ -72,10 +76,16 @@ struct DiffPanel: View {
                 hasRoomForTitle = hasRoom
             }
         } trailing: {
-            if let changes, let file = selection.file, let group = selection.group, file.isSubmodule {
+            if let commands = submoduleCommands, let file = selection.file, case .submodule = selection.source {
+                // Its row may be under no heading, since it can be as recorded,
+                // and its buttons are the ones it would have under Unstaged.
+                let file = selection.shownSubmodule ?? file
+                SubmoduleButtons(file: file, group: .unstaged, stage: { commands.stage(file) }, update: { commands.update(file) })
+            } else if let changes, let file = selection.file, let group = selection.group, file.isSubmodule {
                 // Once the panel has read the submodule, the buttons go by the
                 // same reading as the words under them.
-                SubmoduleButtons(file: selection.shownSubmodule ?? changes.listed(file, in: group), group: group, changes: changes)
+                let file = selection.shownSubmodule ?? changes.listed(file, in: group)
+                SubmoduleButtons(file: file, group: group, stage: { changes.toggle(file, in: group) }, update: { changes.updateSubmodule(file) })
             } else if let changes, let file = selection.file, let group = selection.group {
                 if group == .conflicted, let conflicts = selection.shown?.conflicts, selection.shown?.file.path == file.path {
                     let setup = conflicts.left > 0 && changes.agentWork[file.path]?.isWorking != true ? agents?.generation() : nil
@@ -297,8 +307,18 @@ private struct FileTitle: View {
     }
 }
 
-/// The header's buttons for a submodule's row under uncommitted changes, which
-/// go by what staging it would do (decision 75).
+/// What the header's buttons do for a submodule that the refs panel lists,
+/// which has no list of uncommitted files behind it to stage through.
+struct SubmoduleCommands {
+    /// Records the commit that's checked out.
+    var stage: (DiffFile) -> Void
+    /// Checks out the commit that's recorded.
+    var update: (DiffFile) -> Void
+}
+
+/// The header's buttons for a submodule's row under uncommitted changes, and
+/// for a submodule that the refs panel lists, which go by what staging it
+/// would do (decision 75).
 ///
 /// - A checkout with new commits has **Stage**, which records them.
 /// - One that's behind what's recorded has **Update**, in the orange of what
@@ -311,7 +331,10 @@ private struct FileTitle: View {
 private struct SubmoduleButtons: View {
     let file: DiffFile
     let group: WorktreeChanges.Group
-    let changes: SelectedChanges
+    /// Stages the row, or takes it back out if it's under Staged.
+    let stage: () -> Void
+    /// Checks out the commit that's recorded.
+    let update: () -> Void
 
     var body: some View {
         switch group == .unstaged ? file.submoduleStaging : nil {
@@ -319,26 +342,26 @@ private struct SubmoduleButtons: View {
             // Under Staged, and for a submodule whose folder is gone, it's
             // staged and unstaged as any file is.
             let title = group == .staged ? "Unstage" : "Stage"
-            Button(title) { changes.toggle(file, in: group) }
+            Button(title, action: stage)
                 .buttonStyle(OutlinedButtonStyle(height: 24, cornerRadius: 6))
                 .help("\(title) (\(RepositoryCommands.stageShortcut.symbols))")
         case .recordsNewCommits:
-            Button("Stage") { changes.toggle(file, in: group) }
+            Button("Stage", action: stage)
                 .buttonStyle(OutlinedButtonStyle(height: 24, cornerRadius: 6))
                 .help("Record the commit that's checked out (\(RepositoryCommands.stageShortcut.symbols))")
         case .takesCommitsAway:
-            Button("Update") { changes.updateSubmodule(file) }
+            Button("Update", action: update)
                 .buttonStyle(OutlinedButtonStyle(height: 24, cornerRadius: 6, isNext: true))
                 .help(SubmoduleWords.updateHelp(file))
             menu {
-                Button("Stage the checked-out commit instead") { changes.toggle(file, in: group) }
+                Button("Stage the checked-out commit instead", action: stage)
             }
         case .takesSomeAndAddsSome, .unknown:
             // One that couldn't be read has both too, so that it can still be
             // staged or updated from here by someone who knows which they want.
             menu {
-                Button("Update to the recorded commit") { changes.updateSubmodule(file) }
-                Button("Stage the checked-out commit") { changes.toggle(file, in: group) }
+                Button("Update to the recorded commit", action: update)
+                Button("Stage the checked-out commit", action: stage)
             }
         case .nothingToStage:
             EmptyView()

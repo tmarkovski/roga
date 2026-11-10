@@ -76,6 +76,9 @@ final class SelectedChanges {
     @ObservationIgnored private var discardedHunkFrom: [UInt8]?
     /// What's waiting to go to git, oldest first.
     @ObservationIgnored private var indexChanges: [IndexChange] = []
+    /// Whether the worktree is looked at again once those have gone to git,
+    /// because one of them came from somewhere other than the lists of files.
+    @ObservationIgnored private var looksAgainAfterIndexChanges = false
     /// The changes being sent to git. Only one git writes the index at a time, and
     /// nothing read in the meantime is up to date.
     @ObservationIgnored private(set) var applyingIndexChanges: Task<Void, Never>?
@@ -243,6 +246,17 @@ final class SelectedChanges {
     /// wanted for one that's behind (decision 75).
     func updateSubmodule(_ file: DiffFile) {
         runSubmoduleUpdate(file)
+    }
+
+    /// Records the commit that's checked out in a submodule that the refs
+    /// panel lists (decision 75). The lists of files aren't showing then, and
+    /// may never have been read, so nothing moves between them. The change
+    /// goes to git behind whatever is waiting, so that it can't overtake a
+    /// press of Space, and the worktree is looked at again once git is done.
+    func stageSubmodule(_ file: DiffFile) {
+        looksAgainAfterIndexChanges = true
+        indexChanges.append(.stage([file]))
+        startApplyingIndexChanges()
     }
 
     // MARK: Resolving conflicts
@@ -652,7 +666,10 @@ final class SelectedChanges {
                 }
             }
             applyingIndexChanges = nil
-            if hasDiscarded, !isSelected {
+            let looksAgain = looksAgainAfterIndexChanges
+            looksAgainAfterIndexChanges = false
+            // Looking again lists the files again too, if they're showing.
+            if looksAgain || (hasDiscarded && !isSelected) {
                 lookAgain()
             } else {
                 refresh()

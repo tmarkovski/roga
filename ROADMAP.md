@@ -109,4 +109,4 @@ These each need their own decision before they're scheduled:
 - a view of the work agents are doing, with what's waiting for review, based on the agents' hooks (decision 16)
 - a second kind of replay that shows the repository's files and the people changing them, the way Gource does, played by the same player as the replay in decision 62
 
-Submodules have their decision ([decision 75](docs/decisions/0075-list-submodules-in-the-refs-panel-and-go-into-one-in-the-window.md)), and the first of its three steps is built: a change to a submodule reads as what it is in the commit and diff panels. The other two aren't scheduled, which are a section for submodules in the refs panel and going into one in the window.
+Submodules have their decision ([decision 75](docs/decisions/0075-list-submodules-in-the-refs-panel-and-go-into-one-in-the-window.md)), and the first two of its three steps are built: a change to a submodule reads as what it is in the commit and diff panels, and the refs panel lists the worktree's submodules, each with where its checkout stands. The third isn't scheduled, which is going into one in the window.
