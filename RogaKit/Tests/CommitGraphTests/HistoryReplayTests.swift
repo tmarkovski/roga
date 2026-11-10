@@ -258,6 +258,27 @@ struct HistoryReplayTests {
         #expect(replay.commits.last!.time == lastTime)
     }
 
+    /// A picture that shows something of its own first has the replay start
+    /// after it, which the length the replay is fitted to doesn't count.
+    @Test func startsLaterWithoutChangingItsPace() async throws {
+        var replay = try await replay()
+        let natural = replay.playEnd
+        let lastTime = replay.commits.last!.time
+        #expect(replay.start == 0)
+
+        replay.start(at: 4)
+        #expect(replay.start == 4)
+        #expect(replay.pace == 1)
+        #expect(replay.commits[0].time == 4 + HistoryReplay.lead)
+        #expect(replay.commits.last!.time == 4 + lastTime)
+        #expect(abs(replay.playEnd - (4 + natural)) < 1e-9)
+
+        replay.fit(to: 2)
+        #expect(replay.start == 4)
+        #expect(replay.commits[0].time > 4)
+        #expect(abs(replay.playEnd - (4 + 2 + HistoryReplay.tail)) < 1e-9)
+    }
+
     @Test func aRepositoryOfSquashesIsAStraightLineOfInterchanges() async throws {
         let repository = try await Fixture.repository("replay")
         let replay = try await makeReplay(of: "squashes", in: repository, graph: try openGraph(repository))

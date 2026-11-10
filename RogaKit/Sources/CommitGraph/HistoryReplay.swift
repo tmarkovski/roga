@@ -124,6 +124,9 @@ public struct HistoryReplay: Sendable {
     public let farthestLane: Int
     /// How much the length made the replay speed up, from 1 down.
     public private(set) var pace = 1.0
+    /// When the replay starts, which is after 0 for a picture that shows
+    /// something of its own first. The length it's fitted to doesn't count it.
+    public private(set) var start = 0.0
     /// When the last commit has landed and the replay is done playing.
     public private(set) var playEnd: Double
     private let unfittedEnd: Double
@@ -235,10 +238,20 @@ public struct HistoryReplay: Sendable {
     /// It never slows down.
     public mutating func fit(to length: Double) {
         pace = unfittedEnd > 0 ? min(1, length / unfittedEnd) : 1
+        retime()
+    }
+
+    /// Moves the whole replay to start at `time`, at the pace it already has.
+    public mutating func start(at time: Double) {
+        start = time
+        retime()
+    }
+
+    private mutating func retime() {
         for index in commits.indices {
-            commits[index].time = commits[index].unfittedTime * pace
+            commits[index].time = start + commits[index].unfittedTime * pace
         }
-        playEnd = unfittedEnd * pace + Self.tail
+        playEnd = start + unfittedEnd * pace + Self.tail
     }
 
     /// Gives each commit the lines it added and removed, from what git

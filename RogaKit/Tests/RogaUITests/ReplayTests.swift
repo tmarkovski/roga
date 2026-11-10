@@ -282,7 +282,9 @@ struct MetroMapTests {
 
     @Test func drawsInBothAppearances() throws {
         let map = MetroMap(replay: try makeReplay(), repositoryName: "app")
-        #expect(!looksTheSame(try pixels(of: map, at: 3, colorScheme: .light), try pixels(of: map, at: 3, colorScheme: .dark)))
+        for time in [0, map.replay.commits[9].time] {
+            #expect(!looksTheSame(try pixels(of: map, at: time, colorScheme: .light), try pixels(of: map, at: time, colorScheme: .dark)))
+        }
     }
 
     @Test func holdsTheWholeHistoryAtTheEnd() throws {
@@ -319,9 +321,8 @@ struct MetroMapTests {
     }
 
     @Test func drawsTheHouseOnlyWhenAskedTo() throws {
-        let replay = try makeReplay()
-        var map = MetroMap(replay: replay, repositoryName: "app")
-        let time = replay.playEnd / 2
+        var map = MetroMap(replay: try makeReplay(), repositoryName: "app")
+        let time = (map.replay.start + map.replay.playEnd) / 2
         let without = try pixels(of: map, at: time)
         map.showsHouse = true
         #expect(!looksTheSame(without, try pixels(of: map, at: time)))
@@ -334,9 +335,62 @@ struct MetroMapTests {
         var replay = try makeReplay(flat: 40, branches: 6)
         replay.countLines([replay.commits[3].id: .init(added: 2000, removed: 34)])
         let map = MetroMap(replay: replay, repositoryName: "a-repository-with-quite-a-long-name-for-its-band", showsHouse: true)
-        for time in [0, replay.playEnd / 2, map.tourStart + 1, map.posterStart + 1, map.duration] {
+        let clearing = MetroMap.introHold + MetroMap.introClear / 2
+        for time in [0, clearing, MetroMap.intro, (MetroMap.intro + map.replay.playEnd) / 2, map.tourStart + 1, map.posterStart + 1, map.duration] {
             _ = try pixels(of: map, at: time, size: size)
         }
+    }
+
+    // MARK: - The title card
+
+    /// The first frame is what most places show for a video, so the card is
+    /// all there from the start, and says which range is coming.
+    @Test func opensOnATitleCardThatSaysTheRange() throws {
+        let replay = try makeReplay()
+        let week = MetroMap(replay: replay, repositoryName: "app", rangeLine: "THE LAST 7 DAYS OF")
+        let whole = MetroMap(replay: replay, repositoryName: "app", rangeLine: "THE WHOLE HISTORY OF")
+        #expect(!looksTheSame(try pixels(of: week, at: 0), try pixels(of: whole, at: 0)))
+        // Nothing of the card is left once it has cleared.
+        #expect(looksTheSame(try pixels(of: week, at: MetroMap.intro), try pixels(of: whole, at: MetroMap.intro)))
+        #expect(!looksTheSame(try pixels(of: week, at: 0), try pixels(of: week, at: MetroMap.intro)))
+    }
+
+    @Test func startsTheReplayOnceTheCardHasCleared() throws {
+        let replay = try makeReplay()
+        let map = MetroMap(replay: replay, repositoryName: "app")
+        #expect(map.replay.start == MetroMap.intro)
+        #expect(map.headAt(MetroMap.intro) == -1)
+        #expect(map.replay.commits[0].time == MetroMap.intro + replay.commits[0].time)
+        #expect(abs(map.replay.playEnd - (MetroMap.intro + replay.playEnd)) < 1e-9)
+        // The first commit lands within five seconds, even at the slowest pace.
+        #expect(replay.pace == 1)
+        #expect(map.replay.commits[0].time < 5.001)
+    }
+
+    /// The card brings the repository's name to exactly where the band shows
+    /// it, so nothing jumps as the band takes over.
+    @Test(arguments: [CGSize(width: 520, height: 300), CGSize(width: 1280, height: 720)])
+    func handsTheNameOverToTheBandWithoutAJump(size: CGSize) throws {
+        for name in ["app", "a-repository-with-quite-a-long-name-for-its-band-that-has-to-be-cut-short"] {
+            let map = MetroMap(replay: try makeReplay(), repositoryName: name)
+            let before = try pixels(of: map, at: MetroMap.intro - 0.001, size: size)
+            #expect(looksTheSame(before, try pixels(of: map, at: MetroMap.intro, size: size)))
+        }
+    }
+
+    @Test func showsTheLinesOnTheCardOnceTheyreCounted() throws {
+        var replay = try makeReplay()
+        let without = MetroMap(replay: replay, repositoryName: "app")
+        replay.countLines([replay.commits[3].id: .init(added: 2000, removed: 34)])
+        let with = MetroMap(replay: replay, repositoryName: "app")
+        #expect(!looksTheSame(try pixels(of: without, at: 0), try pixels(of: with, at: 0)))
+    }
+
+    @Test func aReplayWithNoCommitsHasNoCard() throws {
+        let replay = try HistoryReplay(graph: CommitGraph(format: .sha1), tip: 0, positions: [], messages: [], mainLineName: "main", length: 75)
+        let map = MetroMap(replay: replay, repositoryName: "app")
+        #expect(map.replay.start == 0)
+        #expect(map.introMoment(at: 0) == nil)
     }
 
     @Test func fitsTheBandToTheWidth() throws {
@@ -365,7 +419,7 @@ struct MetroMapTests {
         let without = MetroMap(replay: replay, repositoryName: "app")
         replay.countLines([replay.commits[9].id: .init(added: 12, removed: 3)])
         let with = MetroMap(replay: replay, repositoryName: "app")
-        let time = replay.commits[9].time + 0.5
+        let time = with.replay.commits[9].time + 0.5
         #expect(!looksTheSame(try pixels(of: without, at: time), try pixels(of: with, at: time)))
         #expect(!looksTheSame(try pixels(of: without, at: with.duration), try pixels(of: with, at: with.duration)))
     }
@@ -451,6 +505,24 @@ struct ReplayModelTests {
         #expect(ReplayModel.scopeGroups[0].contains(.days(ReplayModel.startingDays)))
         #expect(ReplayModel.lengths.contains(ReplayModel.startingLength))
     }
+
+    @Test func saysTheRangeOnTheTitleCard() async throws {
+        #expect(ReplayModel.Scope.days(7).cardLine(commits: 200) == "THE LAST 7 DAYS OF")
+        #expect(ReplayModel.Scope.commits(25).cardLine(commits: 25) == "THE LAST 25 COMMITS OF")
+        #expect(ReplayModel.Scope.wholeHistory.cardLine(commits: 200) == "THE WHOLE HISTORY OF")
+        // A tag keeps its own capitals.
+        #expect(ReplayModel.Scope.afterTag(name: "v0.0.9", commit: 0).cardLine(commits: 200) == "EVERYTHING SINCE v0.0.9 IN")
+        // A history shorter than the range says how many it has.
+        #expect(ReplayModel.Scope.commits(25).cardLine(commits: 6) == "THE LAST 6 COMMITS OF")
+        #expect(ReplayModel.Scope.commits(10).cardLine(commits: 1) == "THE LAST COMMIT OF")
+
+        let model = try await started()
+        guard case .ready(let map) = model.phase else {
+            Issue.record("The replay isn't ready")
+            return
+        }
+        #expect(map.rangeLine == "THE LAST 7 DAYS OF")
+    }
 }
 
 @Suite @MainActor
@@ -475,8 +547,8 @@ struct ReplaySavingTests {
         #expect(size == CGSize(width: 1920, height: 1080))
     }
 
-    /// The cover is what Finder shows for the file, rather than the first
-    /// frame, which has nothing on the board yet.
+    /// The cover is what Finder shows for the file: the poster the replay
+    /// ends on, rather than the title card it opens on.
     @Test func givesAVideoItsLastFrameAsItsCover() async throws {
         let map = MetroMap(replay: try makeReplay(flat: 3, branches: 1, length: 2), repositoryName: "app")
         let url = temporaryFile("cover.mp4")

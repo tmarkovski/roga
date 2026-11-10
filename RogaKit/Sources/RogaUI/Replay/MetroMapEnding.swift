@@ -219,12 +219,15 @@ extension MetroMap {
         drawBrandLine(context, frame, baseline: frame.height - 16, alpha: alpha)
     }
 
-    private func drawBrandLine(_ context: GraphicsContext, _ frame: Frame, baseline: Double, alpha: Double) {
+    /// Says where the replay came from, in the middle of the picture, or
+    /// ending at `right`.
+    func drawBrandLine(_ context: GraphicsContext, _ frame: Frame, baseline: Double, alpha: Double, right: Double? = nil) {
         let label = "Replayed in Roga"
         let height = 20.0
         let houseWidth = HouseRig.frame.width * height / HouseRig.frame.height
-        let labelWidth = Double(context.resolve(Text(label).font(.system(size: 13, weight: .medium))).measure(in: CGSize(width: CGFloat.infinity, height: .infinity)).width)
-        let left = frame.width / 2 - (houseWidth + 6 + labelWidth) / 2
+        let labelWidth = textWidth(context, label, size: 13, weight: .medium)
+        let width = houseWidth + 6 + labelWidth
+        let left = right.map { $0 - width } ?? frame.width / 2 - width / 2
         withOpacity(alpha, context) { faded in
             drawHouse(faded, .mark, height: height, color: frame.theme.house, centeredAt: left + houseWidth / 2, floor: baseline + 3)
         }

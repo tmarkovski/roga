@@ -100,15 +100,40 @@ extension MetroMap {
         return found
     }
 
+    /// The repository's name as it rests in the band.
+    struct NamePlace {
+        var text: String
+        var size: Double
+        var weight: Font.Weight
+        var x: Double
+        var baseline: Double
+    }
+
+    /// Where the repository's name goes in the band, which is also where the
+    /// title card brings it to.
+    func namePlace(_ context: GraphicsContext, _ frame: Frame) -> NamePlace {
+        guard let fit = frame.band else {
+            let name = fitting(context, repositoryName, width: frame.width * 0.6, size: 17, weight: .bold)
+            return NamePlace(text: name.text, size: name.size, weight: .bold, x: 16, baseline: 32)
+        }
+        let numbers = bandCells.reduce(0) { $0 + width(of: $1, fit.tiles) + Self.cellInset * 2 }
+        let room = frame.width - numbers - (fit.showsDate ? Self.dateCellWidth : 0)
+        let name = fitting(context, repositoryName, width: room - 32, size: 30, weight: .heavy)
+        return NamePlace(text: name.text, size: name.size, weight: .heavy, x: 16, baseline: 50)
+    }
+
     /// Draws the band, and returns where the count of lines added is, once
-    /// there's one for big commits to fly to.
-    func drawBand(_ context: GraphicsContext, _ frame: Frame) -> CGPoint? {
+    /// there's one for big commits to fly to. While the title card is
+    /// bringing the repository's name over, the band leaves it out, and the
+    /// branch's name waits for it.
+    func drawBand(_ context: GraphicsContext, _ frame: Frame, arriving: IntroMoment? = nil) -> CGPoint? {
         let theme = frame.theme
         context.fill(Path(CGRect(x: 0, y: 0, width: frame.width, height: Self.bandHeight)), with: .color(theme.band))
         context.fill(Path(CGRect(x: 0, y: Self.bandHeight - 1, width: frame.width, height: 1)), with: .color(theme.line))
         let counts = counts(frame)
+        let name = namePlace(context, frame)
         guard let fit = frame.band else {
-            drawNarrowBand(context, frame, counts)
+            drawNarrowBand(context, frame, counts, name, arriving: arriving)
             return nil
         }
 
@@ -151,17 +176,21 @@ extension MetroMap {
         }
         context.fill(dividers, with: .color(theme.line))
 
-        drawFittingText(context, repositoryName, width: x - 32, size: 30, weight: .heavy, color: theme.ink, x: 16, baseline: 50)
-        drawFittingText(context, replay.mainLineName, width: x - 32, size: 12, weight: .medium, color: theme.muted, x: 17, baseline: 76)
+        if arriving == nil {
+            drawText(context, name.text, size: name.size, weight: name.weight, color: theme.ink, x: name.x, baseline: name.baseline)
+        }
+        drawFittingText(context, replay.mainLineName, width: x - 32, size: 12, weight: .medium, color: theme.muted, x: 17, baseline: 76, alpha: arriving?.branch ?? 1)
         return addedCount
     }
 
     /// The band of a picture too narrow for tiles, with the numbers on a line
     /// under the date.
-    private func drawNarrowBand(_ context: GraphicsContext, _ frame: Frame, _ counts: Counts) {
+    private func drawNarrowBand(_ context: GraphicsContext, _ frame: Frame, _ counts: Counts, _ name: NamePlace, arriving: IntroMoment?) {
         let theme = frame.theme
-        let nameWidth = drawFittingText(context, repositoryName, width: frame.width * 0.6, size: 17, weight: .bold, color: theme.ink, x: 16, baseline: 32)
-        drawFittingText(context, replay.mainLineName, width: frame.width - 48 - nameWidth, size: 12, weight: .medium, color: theme.muted, x: 16 + nameWidth + 8, baseline: 32)
+        // Drawn see-through while it's left out, since the branch's name
+        // goes by how wide it is.
+        let nameWidth = Double(drawText(context, name.text, size: name.size, weight: name.weight, color: theme.ink, x: name.x, baseline: name.baseline, alpha: arriving == nil ? 1 : 0).width)
+        drawFittingText(context, replay.mainLineName, width: frame.width - 48 - nameWidth, size: 12, weight: .medium, color: theme.muted, x: 16 + nameWidth + 8, baseline: 32, alpha: arriving?.branch ?? 1)
         if frame.head >= 0 {
             let date = Date(timeIntervalSince1970: Double(replay.commits[frame.head].commitTime))
             let text = Self.weekdayAndDayFormatter.string(from: date) + ", " + Self.timeFormatter.string(from: date)

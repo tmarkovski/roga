@@ -30,6 +30,24 @@ final class ReplayModel {
             case .afterTag(let name, _): "Since \(name)"
             }
         }
+
+        /// What the replay's title card says above the repository's name,
+        /// when the range has `commits` commits in it.
+        func cardLine(commits: Int) -> String {
+            switch self {
+            case .days(let days):
+                return "THE LAST \(days) DAYS OF"
+            case .commits(let count):
+                // A history shorter than the range is all there is to show.
+                let shown = min(count, commits)
+                return shown == 1 ? "THE LAST COMMIT OF" : "THE LAST \(shown) COMMITS OF"
+            case .wholeHistory:
+                return "THE WHOLE HISTORY OF"
+            // A tag keeps its own capitals, since they're part of its name.
+            case .afterTag(let name, _):
+                return "EVERYTHING SINCE \(name) IN"
+            }
+        }
     }
 
     enum Phase {
@@ -136,9 +154,18 @@ final class ReplayModel {
         guard var replay else { return }
         replay.fit(to: length)
         self.replay = replay
-        let map = MetroMap(replay: replay, repositoryName: repositoryName, showsHouse: showsHouse)
+        let map = map(of: replay)
         phase = .ready(map)
         player.changeDuration(to: map.duration)
+    }
+
+    private func map(of replay: HistoryReplay) -> MetroMap {
+        MetroMap(
+            replay: replay,
+            repositoryName: repositoryName,
+            rangeLine: (scope ?? .wholeHistory).cardLine(commits: replay.commits.count),
+            showsHouse: showsHouse
+        )
     }
 
     func stop() {
@@ -165,7 +192,7 @@ final class ReplayModel {
         isCountingLines = false
         phase = .loading
         let range = range(for: scope)
-        loading = Task { [session, graph, tip, branchName, length, repositoryName, showsHouse] in
+        loading = Task { [session, graph, tip, branchName, length] in
             do {
                 let replay = try await session.replay(of: tip, in: graph, range: range, mainLineName: branchName, length: length)
                 guard !Task.isCancelled else { return }
@@ -174,7 +201,7 @@ final class ReplayModel {
                     phase = .nothing
                     return
                 }
-                let map = MetroMap(replay: replay, repositoryName: repositoryName, showsHouse: showsHouse)
+                let map = map(of: replay)
                 phase = .ready(map)
                 player.load(duration: map.duration, reducesMotion: reducesMotion)
                 countLines(of: replay)
@@ -193,7 +220,7 @@ final class ReplayModel {
     private func countLines(of replay: HistoryReplay) {
         isCountingLines = true
         let commits = replay.commits.map(\.id)
-        counting = Task { [session, repositoryName] in
+        counting = Task { [session] in
             let counts = try? await session.lineCounts(of: commits)
             guard !Task.isCancelled else { return }
             isCountingLines = false
@@ -202,7 +229,7 @@ final class ReplayModel {
             guard let counts, var replay = self.replay else { return }
             replay.countLines(counts)
             self.replay = replay
-            let map = MetroMap(replay: replay, repositoryName: repositoryName, showsHouse: showsHouse)
+            let map = map(of: replay)
             phase = .ready(map)
             player.moveEnd(to: map.duration)
         }
