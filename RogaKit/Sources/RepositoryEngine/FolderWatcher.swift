@@ -44,14 +44,16 @@ final class FolderWatcher: Sendable {
     private let queue: DispatchQueue
     private nonisolated(unsafe) let stream: FSEventStreamRef
 
-    /// The handler, kept alive by the stream until it's released.
+    /// The handler, kept alive by the stream from when it's made until it's
+    /// released.
     private final class Box: Sendable {
         let handler: Handler
         init(_ handler: @escaping Handler) { self.handler = handler }
     }
 
     /// Starts watching, or returns nil when FSEvents can't, as on a volume that
-    /// doesn't record changes.
+    /// doesn't record changes, or when Roga has no file descriptors left for
+    /// the folders FSEvents opens.
     ///
     /// - Parameter excluding: Folders inside `folders` whose changes nobody
     ///   needs, such as git's objects, so that they don't wake the watcher. At
@@ -60,11 +62,19 @@ final class FolderWatcher: Sendable {
         guard !folders.isEmpty else { return nil }
         self.folders = folders
         queue = DispatchQueue(label: "sh.roga.folder-watcher", qos: .utility)
-        let box = Unmanaged.passRetained(Box(handler))
+        // The stream retains the box for itself and releases it when it goes,
+        // which is straight away when it can't be made. Nothing here releases
+        // the box for it: doing that as well crashed Roga when it ran out of
+        // file descriptors.
+        let box = Box(handler)
         var context = FSEventStreamContext(
             version: 0,
-            info: box.toOpaque(),
-            retain: nil,
+            info: Unmanaged.passUnretained(box).toOpaque(),
+            retain: { info in
+                guard let info else { return nil }
+                _ = Unmanaged<Box>.fromOpaque(info).retain()
+                return info
+            },
             release: { info in
                 guard let info else { return }
                 Unmanaged<Box>.fromOpaque(info).release()
@@ -86,24 +96,28 @@ final class FolderWatcher: Sendable {
         let options = FSEventStreamCreateFlags(
             kFSEventStreamCreateFlagUseCFTypes | kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagWatchRoot
         )
-        guard let stream = FSEventStreamCreate(
-            kCFAllocatorDefault,
-            callback,
-            &context,
-            folders as CFArray,
-            FSEventStreamEventId(kFSEventStreamEventIdSinceNow),
-            latency,
-            options
-        ) else {
-            box.release()
-            return nil
+        // The box has to last until the stream has retained it.
+        let made = withExtendedLifetime(box) {
+            FSEventStreamCreate(
+                kCFAllocatorDefault,
+                callback,
+                &context,
+                folders as CFArray,
+                FSEventStreamEventId(kFSEventStreamEventIdSinceNow),
+                latency,
+                options
+            )
         }
+        guard let stream = made else { return nil }
         self.stream = stream
         if !excluding.isEmpty {
             FSEventStreamSetExclusionPaths(stream, Array(excluding.prefix(8)) as CFArray)
         }
         FSEventStreamSetDispatchQueue(stream, queue)
         guard FSEventStreamStart(stream) else {
+            // Every property is set by now, so `deinit` runs as this returns,
+            // and it mustn't stop and release the stream a second time.
+            stopped.store(true, ordering: .relaxed)
             FSEventStreamInvalidate(stream)
             FSEventStreamRelease(stream)
             return nil
