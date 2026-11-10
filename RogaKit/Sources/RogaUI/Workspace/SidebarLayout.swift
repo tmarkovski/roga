@@ -211,6 +211,14 @@ struct SidebarLayout {
         func listedGroup(of repository: ListedRepository) -> SidebarGroup {
             repository.owners.lazy.map { $0.lowercased() }.first(where: organizations.contains).map(SidebarGroup.organization) ?? .other
         }
+        // With no organization, Other would be the only label, with nothing
+        // to separate it from, so its repositories are listed without one.
+        guard !groups.organizations.isEmpty else {
+            for repository in groups.repositories(in: .other) {
+                append(repository, title: repository.nameWithOwner, to: &items)
+            }
+            return items
+        }
         for group in groups.groups {
             let repositories = groups.repositories(in: group).filter { listedGroup(of: $0) == group }
             guard !repositories.isEmpty else { continue }
