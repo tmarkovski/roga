@@ -117,6 +117,9 @@ roga/
 │   │   │   ├── GeneratedIcons.swift    every icon's name, written by Scripts/generate-icons.swift
 │   │   │   ├── Icons.xcassets          every icon as a custom symbol, written by the same script
 │   │   │   └── LICENSE-lucide.txt      Lucide's license, which ships with the icons
+│   │   ├── ThemeUI/                    AppKit, decision 71
+│   │   │   ├── ColorTheme.swift        which theme is in use, and colors that follow it
+│   │   │   └── ThemeColors.swift       what a theme colors, and Monokai's and Xcode's values
 │   │   ├── MenuUI/                     AppKit
 │   │   │   └── RefMenu.swift           the menu for right-clicking a ref or a sidebar row, with rows of its own
 │   │   ├── HistoryUI/                  AppKit
@@ -179,9 +182,10 @@ roga/
 | `AgentHooks` | The `roga` helper's work, the socket the app listens on, finding an agent's process, and what hook events say each session is doing | nothing | Foundation, Darwin, Dispatch, Synchronization |
 | `AgentEngine` | Finding Claude Code and Codex, installing Roga's hooks in them, asking Claude Code what's running, and running an agent to write a commit message | `GitCore`, `GitRunner` | Foundation |
 | `IconUI` | The app's icons, as custom symbols, and which icon stands for what | nothing | AppKit, SwiftUI |
+| `ThemeUI` | The color themes: what each colors in both appearances, which is in use, and colors that follow it as they're drawn | nothing | AppKit, Observation, Synchronization |
 | `MenuUI` | The menu for right-clicking a ref or a sidebar row, which the commit list, the refs panel and the sidebar share, and the title row's menu of worktrees | `IconUI` | AppKit |
-| `HistoryUI` | The commit list: the table, drawing rows and graph lanes, keyboard handling and accessibility | `GitCore`, `CommitGraph`, `IconUI`, `MenuUI` | AppKit |
-| `DiffUI` | The diff view: the TextKit 1 text view, line numbers, line backgrounds, and building attributed text | `GitCore` | AppKit |
+| `HistoryUI` | The commit list: the table, drawing rows and graph lanes, keyboard handling and accessibility | `GitCore`, `CommitGraph`, `IconUI`, `MenuUI`, `ThemeUI` | AppKit |
+| `DiffUI` | The diff view: the TextKit 1 text view, line numbers, line backgrounds, and building attributed text | `GitCore`, `ThemeUI` | AppKit |
 | `RogaUI` | Windows, the sidebar, the refs panel, details, settings, menus and onboarding, and the main-actor models that connect sessions to views | all of the above | SwiftUI, AppKit, AVFoundation |
 | App target | The entry point, Sparkle, the Info.plist and assets | `RogaUI`, Sparkle | SwiftUI |
 | `RogaHelper` target | The `roga` helper, built into `Contents/Helpers` | `AgentHooks` | Foundation |

@@ -78,7 +78,7 @@ final class LineNumberGutter: NSView {
         }
         context.saveGState()
         context.clip(to: bars)
-        NSColor.systemRed.setStroke()
+        DiffStyle.removedBar.setStroke()
         context.setLineWidth(Self.stripeWidth)
         context.strokeLineSegments(between: ends)
         context.restoreGState()
@@ -145,7 +145,7 @@ final class LineNumberGutter: NSView {
             color.setFill()
             context.fill(bars)
         }
-        NSColor.systemGreen.setFill()
+        DiffStyle.addedBar.setFill()
         context.fill(solidBars)
         drawStripes(in: stripedBars, top: top, context: context)
     }

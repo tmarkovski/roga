@@ -66,6 +66,12 @@ let package = Package(
             resources: [.process("Icons.xcassets"), .copy("LICENSE-lucide.txt")],
             swiftSettings: settings
         ),
+        // The color themes (decision 71). Like IconUI, it doesn't make the main
+        // actor its default, because a diff's text is built away from it.
+        .target(
+            name: "ThemeUI",
+            swiftSettings: settings
+        ),
         .target(
             name: "MenuUI",
             dependencies: ["IconUI"],
@@ -73,17 +79,17 @@ let package = Package(
         ),
         .target(
             name: "HistoryUI",
-            dependencies: ["GitCore", "CommitGraph", "IconUI", "MenuUI"],
+            dependencies: ["GitCore", "CommitGraph", "IconUI", "MenuUI", "ThemeUI"],
             swiftSettings: viewSettings
         ),
         .target(
             name: "DiffUI",
-            dependencies: ["GitCore"],
+            dependencies: ["GitCore", "ThemeUI"],
             swiftSettings: viewSettings
         ),
         .target(
             name: "RogaUI",
-            dependencies: ["GitCore", "GitRunner", "CommitGraph", "RepositoryEngine", "AgentHooks", "AgentEngine", "HistoryUI", "DiffUI", "IconUI", "MenuUI"],
+            dependencies: ["GitCore", "GitRunner", "CommitGraph", "RepositoryEngine", "AgentHooks", "AgentEngine", "HistoryUI", "DiffUI", "IconUI", "MenuUI", "ThemeUI"],
             swiftSettings: viewSettings
         ),
         .executableTarget(
@@ -123,12 +129,12 @@ let package = Package(
         ),
         .testTarget(
             name: "DiffUITests",
-            dependencies: ["DiffUI", "GitCore"],
+            dependencies: ["DiffUI", "GitCore", "ThemeUI"],
             swiftSettings: viewSettings
         ),
         .testTarget(
             name: "RogaUITests",
-            dependencies: ["RogaUI", "HistoryUI", "DiffUI", "IconUI", "MenuUI", "RepositoryEngine", "AgentHooks", "AgentEngine", "CommitGraph", "GitCore", "GitRunner", "TestSupport"],
+            dependencies: ["RogaUI", "HistoryUI", "DiffUI", "IconUI", "MenuUI", "ThemeUI", "RepositoryEngine", "AgentHooks", "AgentEngine", "CommitGraph", "GitCore", "GitRunner", "TestSupport"],
             swiftSettings: viewSettings
         ),
         // Shared by the test targets: the git the tests run, and the test

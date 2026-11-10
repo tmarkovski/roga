@@ -13,7 +13,7 @@ enum SettingsColors {
     /// Behind a button that isn't the main one, as in a dialog.
     static let secondaryButton = DialogColors.secondaryButton
     /// What failed, in the agent's own words.
-    static let danger = DialogColors.danger
+    static var danger: Color { DialogColors.danger }
     /// The border of the search field, and a switch that's off.
     static let line = Palette.gray(light: 0.839, dark: 0.29)
     /// The lines between rows, and around the sidebar and the header.

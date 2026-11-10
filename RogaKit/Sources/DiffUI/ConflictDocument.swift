@@ -1,5 +1,6 @@
 import AppKit
 import GitCore
+import ThemeUI
 
 /// What a conflict's two sides are called, which the side's rows and the buttons
 /// on each conflict's band say (decision 60). Roga names them by where they came
@@ -36,11 +37,12 @@ public struct ConflictSides: Sendable, Hashable {
 }
 
 /// The colors of a file's conflicts, from the canvas's Resolving conflicts page.
+/// The sides, and what's unresolved or kept, are the color theme's (decision 71).
 nonisolated enum ConflictColors {
-    static let ours = color(light: 0x2559B0, dark: 0x8FB4F7)
-    static let theirs = color(light: 0x7136B8, dark: 0xC4A2FF)
-    static let unresolved = color(light: 0xCD1755, dark: 0xFC5884)
-    static let kept = color(light: 0x4D7000, dark: 0xA6E22E)
+    static let ours = ColorTheme.following(\.ours)
+    static let theirs = ColorTheme.following(\.theirs)
+    static let unresolved = ColorTheme.following(\.removed)
+    static let kept = ColorTheme.following(\.added)
     static let action = color(light: 0xC94402, dark: 0xF0813F)
     static let band = color(light: 0xF4F4F2, dark: 0x2A2A29)
     static let line = color(light: 0xE2E2E2, dark: 0x393939)
@@ -99,7 +101,7 @@ nonisolated enum ConflictRow: Sendable, Hashable {
         switch self {
         case .line(.ours), .empty(.ours): ConflictColors.ours
         case .line(.theirs), .empty(.theirs): ConflictColors.theirs
-        case .line(.kept), .empty(.kept): .systemGreen
+        case .line(.kept), .empty(.kept): DiffStyle.addedBar
         case .band, .bandRest, .label, .line(.base), .empty(.base): nil
         }
     }

@@ -1,5 +1,6 @@
 import AppKit
 import IconUI
+import ThemeUI
 
 /// Whether Roga looks light or dark, chosen in Settings › Appearance. It
 /// follows the system's appearance unless someone chooses otherwise.
@@ -48,10 +49,12 @@ public enum AppTheme: String, CaseIterable, Identifiable {
         application.appearance = appearance
     }
 
-    /// Applies the theme in user defaults. The app does this as it starts,
-    /// before its first window shows, so that a dark theme doesn't show a
-    /// light window first.
+    /// Applies the theme in user defaults, and the color theme (decision 71).
+    /// The app does this as it starts, before its first window shows, so that a
+    /// dark theme doesn't show a light window first, and Xcode's colors don't
+    /// show Monokai's first.
     @MainActor public static func applyStored() {
         stored().apply()
+        ColorTheme.useStored()
     }
 }

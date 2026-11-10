@@ -3,6 +3,7 @@ import Foundation
 import GitRunner
 import IconUI
 import SwiftUI
+import ThemeUI
 
 /// The dark block along a dialog's bottom edge, which shows the exact commands
 /// that will run, or what ran and what git said. It's dark in both appearances, in
@@ -189,18 +190,20 @@ struct CommandBlock: View {
         return text
     }
 
+    /// The color theme's color for a part of a command (decision 71).
     private static func color(of kind: ShellCommand.Token.Kind) -> Color {
-        switch kind {
-        case .command: .init(hex: 0xF8F8F2)
-        case .option: .init(hex: 0xE6DB74)
-        case .dangerousOption: .init(hex: 0xFC5884)
-        case .value: .init(hex: 0x66D9EF)
-        case .text: .init(hex: 0xAE81FF)
+        let colors = ColorTheme.observed.colors.command
+        return switch kind {
+        case .command: Color(nsColor: colors.program)
+        case .option: Color(nsColor: colors.option)
+        case .dangerousOption: Color(nsColor: colors.dangerousOption)
+        case .value: Color(nsColor: colors.value)
+        case .text: Color(nsColor: colors.text)
         }
     }
 
-    private static let promptColor = Color(hex: 0xA59F85)
-    private static let outputColor = Color(hex: 0xCFCFC2)
+    private static var promptColor: Color { Color(nsColor: ColorTheme.observed.colors.command.prompt) }
+    private static var outputColor: Color { Color(nsColor: ColorTheme.observed.colors.command.output) }
 }
 
 /// A command as someone would type it, in parts that the terminal block colors:
@@ -361,17 +364,5 @@ struct ClampedHeight: Layout {
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         subviews.first?.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size))
-    }
-}
-
-extension Color {
-    /// A fixed color from its hex value, for what doesn't follow the appearance.
-    fileprivate init(hex: Int) {
-        self.init(
-            .sRGB,
-            red: Double(hex >> 16 & 0xFF) / 255,
-            green: Double(hex >> 8 & 0xFF) / 255,
-            blue: Double(hex & 0xFF) / 255
-        )
     }
 }
