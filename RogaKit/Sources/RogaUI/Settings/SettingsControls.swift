@@ -527,7 +527,7 @@ struct SettingsSelect<Value: Hashable>: View {
 }
 
 /// The items of a popup's menu, with a check beside the chosen one.
-private struct SettingsChoices<Value: Hashable>: View {
+struct SettingsChoices<Value: Hashable>: View {
     @Binding var selection: Value
     let options: [(value: Value, title: String)]
     var detail: (Value) -> String? = { _ in nil }
@@ -545,7 +545,7 @@ private struct SettingsChoices<Value: Hashable>: View {
 }
 
 /// The small chevron at the end of a popup or a select.
-private struct SettingsChevron: View {
+struct SettingsChevron: View {
     var body: some View {
         Icon.dropdown.image
             .font(.system(size: 11))

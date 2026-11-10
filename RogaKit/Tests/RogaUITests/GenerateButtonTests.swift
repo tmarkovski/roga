@@ -94,6 +94,11 @@ struct GenerateButtonTests {
         #expect(GeneratePopover.detail(.codex, model: "", effort: "", codexDefaultModel: "gpt-6-astra") == "gpt-6-astra · default effort")
         #expect(GeneratePopover.detail(.codex, model: "", effort: "high", codexDefaultModel: nil) == "default model · high effort")
         #expect(GeneratePopover.detail(.codex, model: "o5-mini", effort: "medium", codexDefaultModel: "gpt-6-astra") == "o5-mini · medium effort")
+        // The picked agent's two menus say the same two halves.
+        #expect(GeneratePopover.modelWords(.codex, model: "", codexDefaultModel: "gpt-6-astra") == "gpt-6-astra")
+        #expect(GeneratePopover.modelWords(.claude, model: "", codexDefaultModel: "gpt-6-astra") == "default model")
+        #expect(GeneratePopover.effortWords("") == "default effort")
+        #expect(GeneratePopover.effortWords("high") == "high effort")
     }
 
     @Test func saysWhyAnAgentCantBePicked() {
@@ -115,10 +120,10 @@ struct GenerateButtonTests {
     }
 
     @Test func offersEachAgentsModels() {
-        #expect(GeneratePopover.modelChoices(.claude, stored: "haiku") == ["", "haiku", "sonnet", "opus"])
-        #expect(GeneratePopover.modelChoices(.codex, stored: "") == [""])
+        #expect(GenerateChoices.models(for: .claude, stored: "haiku") == ["", "haiku", "sonnet", "opus"])
+        #expect(GenerateChoices.models(for: .codex, stored: "") == [""])
         // A model typed on Codex's page in Settings is offered beside Default.
-        #expect(GeneratePopover.modelChoices(.codex, stored: "gpt-6-astra") == ["", "gpt-6-astra"])
+        #expect(GenerateChoices.models(for: .codex, stored: "gpt-6-astra") == ["", "gpt-6-astra"])
         #expect(GeneratePopover.modelTitle("", kind: .codex, codexDefaultModel: "gpt-6-astra") == "Default · gpt-6-astra")
         #expect(GeneratePopover.modelTitle("", kind: .codex, codexDefaultModel: nil) == "Default")
         #expect(GeneratePopover.modelTitle("", kind: .claude, codexDefaultModel: "gpt-6-astra") == "Default")
