@@ -1,9 +1,11 @@
 import AppKit
 import CommitGraph
+import DiffUI
 import GitCore
 import HistoryUI
 import SwiftUI
 import Testing
+import ThemeUI
 @testable import RogaUI
 
 /// The cutout of the window under Theme and Colors in Settings › Appearance, which
@@ -60,7 +62,8 @@ struct ThemePreviewTests {
 
     @Test func theSamplePatchIsTheSelectedFilesChange() throws {
         let patch = ThemeSample.patch
-        #expect(patch.lines.map(\.kind) == [.hunkHeader, .context, .removed, .added, .added, .context])
+        // The changed lines are first, so they show in a code font of any size.
+        #expect(patch.lines.map(\.kind) == [.hunkHeader, .removed, .added, .added, .context, .context])
         // Its counts are the ones the file's row says.
         let file = try #require(ThemeSample.files.first { $0.path == ThemeSample.selectedPath })
         #expect(file.lines?.added == patch.lines.count { $0.kind == .added })
@@ -77,6 +80,36 @@ struct ThemePreviewTests {
             let host = NSHostingView(rootView: ThemePreview().frame(width: width))
             #expect(host.fittingSize == CGSize(width: width, height: 4 + rows + 1 + ThemeSample.diffHeight))
         }
+    }
+
+    /// The diff shows in the code font chosen (decision 73), and the preview
+    /// stays as tall in a larger one, so that the font's rows under it don't
+    /// move as sizes are tried. Fewer of the diff's lines show instead.
+    @Test func thePreviewShowsTheCodeFontAtTheSameHeight() throws {
+        func preview(in font: CodeFont) throws -> (host: NSView, text: NSTextView) {
+            let host = NSHostingView(rootView: ThemePreview(font: font).frame(width: 607))
+            let window = NSWindow(contentRect: NSRect(origin: .zero, size: host.fittingSize), styleMask: .borderless, backing: .buffered, defer: false)
+            window.contentView = host
+            host.layoutSubtreeIfNeeded()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+            func all(_ view: NSView) -> [NSView] {
+                [view] + view.subviews.flatMap(all)
+            }
+            return (host, try #require(all(host).compactMap { $0 as? NSTextView }.first))
+        }
+
+        let standard = try preview(in: .standard)
+        #expect(standard.text.textStorage?.attribute(.font, at: 0, effectiveRange: nil) as? NSFont == CodeFont.standard.font())
+        // In the font Roga starts with, every line of the patch shows.
+        #expect(ThemeSample.diffHeight == DiffTextController.height(lines: ThemeSample.patch.lines.count, in: .standard))
+
+        let large = CodeFont(family: "Menlo", size: 20)
+        let larger = try preview(in: large)
+        #expect(larger.text.textStorage?.attribute(.font, at: 0, effectiveRange: nil) as? NSFont == large.font())
+        #expect(larger.host.fittingSize == standard.host.fittingSize)
+        // The hunk's header, the removed line and the first added one still
+        // show, so the preview keeps both tints.
+        #expect(DiffTextController.height(lines: 3, in: large) <= ThemeSample.diffHeight)
     }
 
     /// The diff is a real text view in a scroll view, which would otherwise take

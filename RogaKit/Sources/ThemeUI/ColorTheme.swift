@@ -85,9 +85,10 @@ public enum ColorTheme: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-/// What SwiftUI watches for the theme.
+/// What SwiftUI watches for the theme and the code font.
 @MainActor @Observable final class ThemeObservation {
     static let shared = ThemeObservation()
 
     var theme = ColorTheme.current
+    var codeFont = CodeFont.current
 }

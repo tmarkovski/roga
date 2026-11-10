@@ -4,16 +4,27 @@ import DiffUI
 import GitCore
 import HistoryUI
 import SwiftUI
+import ThemeUI
 
-/// A cutout of the window under Theme and Colors in Settings › Appearance: a few
-/// commits with their graph and branches, and under them a commit's files beside
-/// a diff. Those are where a color theme shows most, so choosing another theme,
-/// or light or dark, shows here what it does before the sheet closes.
+/// A cutout of the window in Settings › Appearance, between Theme and Colors and
+/// the code font's rows: a few commits with their graph and branches, and under
+/// them a commit's files beside a diff. Those are where a color theme shows
+/// most, and the diff is what the code font is for (decision 73), so choosing
+/// another theme, light or dark, or another font or size shows here what it
+/// does before the sheet closes.
 ///
 /// The commit list's cell, the panels' rows and the diff's text view draw it,
 /// from a history, files and a patch that are made up, so it looks like the
 /// window whatever changes there. It's a picture: nothing in it takes a click.
+///
+/// It stays the same height in every font, so that the rows under it don't move
+/// as sizes are tried. A larger font shows fewer of the diff's lines, as a
+/// cutout of the window would.
 struct ThemePreview: View {
+    /// The code font the diff shows in, or nil for the one in use, which it
+    /// then follows as it changes.
+    var font: CodeFont?
+
     /// How wide the files are, which leaves a diff's lines about 40 columns.
     private static let filesWidth: CGFloat = 220
     /// The room above and below the files, which gives them the diff's height.
@@ -39,7 +50,7 @@ struct ThemePreview: View {
                 Rectangle()
                     .fill(Palette.separator)
                     .frame(width: 1)
-                DiffSample()
+                DiffSample(font: font ?? CodeFont.observed)
             }
             .frame(height: ThemeSample.diffHeight)
         }
@@ -52,7 +63,7 @@ struct ThemePreview: View {
         .allowsHitTesting(false)
         .accessibilityElement(children: .ignore)
         // One picture to VoiceOver, since what's in it is made up.
-        .accessibilityLabel("Preview of history, changed files and a diff in the theme and colors chosen")
+        .accessibilityLabel("Preview of history, changed files and a diff in the theme, colors and code font chosen")
         .accessibilityAddTraits(.isImage)
     }
 
@@ -182,20 +193,23 @@ enum ThemeSample {
 
     /// What changed in the selected file, as git would print it. A line that's
     /// replaced has the words that differ marked, as well as the lines' tints.
+    /// The changed lines come first, so that the largest code font, which
+    /// shows about three rows, still shows a removed line and an added one.
     static let patchText = """
     @@ -18,3 +18,4 @@ struct Badge {
-         let name: String
     -    let fill = Color.green
     +    let fill = theme.current
     +    let text = theme.onCurrent
+         let name: String
          var isCurrent = false
 
     """
 
     static let patch = (try? PatchParser.parse(Array(patchText.utf8))) ?? FilePatch(bytes: [], lines: [])
 
-    /// How tall the diff is, which is what shows every line of the patch.
-    static let diffHeight = DiffTextController.height(lines: patch.lines.count)
+    /// How tall the diff is, which is what shows every line of the patch in the
+    /// code font Roga starts with. It's the same in any other.
+    static let diffHeight = DiffTextController.height(lines: patch.lines.count, in: .standard)
 }
 
 /// The sample's commits, drawn by the commit list's cell.
@@ -208,27 +222,39 @@ private struct CommitRowsSample: NSViewRepresentable {
 }
 
 /// The sample's patch in the diff panel's text view, with its line numbers and
-/// the bars beside its lines.
+/// the bars beside its lines, in the code font chosen.
 private struct DiffSample: NSViewRepresentable {
+    let font: CodeFont
+
     func makeCoordinator() -> Coordinator {
         Coordinator()
     }
 
     func makeNSView(context: Context) -> NSView {
-        context.coordinator.view
+        context.coordinator.show(in: font)
+        return context.coordinator.view
     }
 
-    func updateNSView(_ view: NSView, context: Context) {}
+    func updateNSView(_ view: NSView, context: Context) {
+        context.coordinator.show(in: font)
+    }
 
     final class Coordinator {
         private let controller = DiffTextController()
         let view: NSView
+        private var font: CodeFont?
 
         init() {
             controller.isPicture = true
-            // A document shows in one text view at a time, so each sample has its own.
-            controller.show(DiffTextBuilder.document(forShort: ThemeSample.patch))
             view = PictureView(of: controller.view)
+        }
+
+        /// Builds the patch in a font, unless that's the one it's showing in.
+        func show(in font: CodeFont) {
+            guard font != self.font else { return }
+            self.font = font
+            // A document shows in one text view at a time, so each sample has its own.
+            controller.show(DiffTextBuilder.document(forShort: ThemeSample.patch, in: font))
         }
     }
 }

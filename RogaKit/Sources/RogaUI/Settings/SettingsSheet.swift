@@ -156,6 +156,7 @@ enum SettingsItem: CaseIterable {
     case downloadsUpdates
     case theme
     case colors
+    case codeFont
     case animationSpeed
     case fileLayout
     case refsSort
@@ -179,7 +180,7 @@ enum SettingsItem: CaseIterable {
         switch self {
         case .terminal: .openIn
         case .checksForUpdates, .downloadsUpdates: .updates
-        case .theme, .colors: .interface
+        case .theme, .colors, .codeFont: .interface
         case .animationSpeed: .motion
         case .fileLayout, .refsSort, .foldsDescriptions: .lists
         case .gitProgram: .installation
@@ -198,6 +199,7 @@ enum SettingsItem: CaseIterable {
         case .downloadsUpdates: "Download updates automatically"
         case .theme: "Theme"
         case .colors: "Colors"
+        case .codeFont: "Code font"
         case .animationSpeed: "Animation speed"
         case .fileLayout: "File layout"
         case .refsSort: "Branch sorting"
@@ -229,6 +231,8 @@ enum SettingsItem: CaseIterable {
             "Download updates in the background and install when Roga quits. Use Restart to Update to install immediately."
         case .colors:
             "For the graph, branches, diffs and commands."
+        case .codeFont:
+            "For diffs and conflict resolution."
         case .animationSpeed:
             "House animation speed during Git operations."
         case .fileLayout:
@@ -266,6 +270,7 @@ enum SettingsItem: CaseIterable {
         case .downloadsUpdates: ["install", "Restart to Update", "version"]
         case .theme: AppTheme.allCases.map(\.title) + ["Dark mode", "Light mode"]
         case .colors: ColorTheme.allCases.map(\.title) + ["Color theme", "Palette", "Graph"]
+        case .codeFont: [CodeFont.systemFamilyTitle, "Monospaced", "Typeface", "Diff", "Font size", "Text size", "Points"]
         case .gitProgram: ["Rescan", "Choose another", "executable", "program", "version", "PATH", "Xcode", "Command Line Tools", "Homebrew"]
         case .instructions: ["Restore Defaults", "prompt"]
         case .agentList: ["Rescan", "Enable", "executable", "program", "PATH"]
@@ -299,6 +304,12 @@ struct SettingsSheet: View {
 
     @AppStorage(AppTheme.key) private var theme = AppTheme.system
     @AppStorage(ColorTheme.key) private var colorTheme = ColorTheme.monokai
+    /// The code font's family, or nil for the system's (decision 73).
+    @AppStorage(CodeFont.familyKey) private var codeFontFamily: String?
+    @AppStorage(CodeFont.sizeKey) private var codeFontSize = CodeFont.defaultSize
+    /// The families to choose the code font from, which are looked up as the
+    /// sheet opens, so that a font installed since then is among them.
+    @State private var codeFontFamilies: [String] = []
     @AppStorage(UserDefaults.houseAnimationSpeedKey) private var speed = 1.0
     @AppStorage(FileListSettings.layout) private var fileLayout = FileLayout.list
     @AppStorage(RefsPanelSettings.sort) private var refsSort = RefsModel.Sort.name
@@ -345,6 +356,17 @@ struct SettingsSheet: View {
         }
         .onChange(of: colorTheme) { _, colorTheme in
             colorTheme.use()
+        }
+        // What's stored is read back, since that's where a family that isn't
+        // installed gives way to the system's font.
+        .onChange(of: codeFontFamily) {
+            CodeFont.stored().use()
+        }
+        .onChange(of: codeFontSize) {
+            CodeFont.stored().use()
+        }
+        .onAppear {
+            codeFontFamilies = CodeFont.installedFamilies()
         }
         .onChange(of: destination.page == .agents, initial: true) { _, showsAgents in
             guard showsAgents, !hasCheckedHooks else { return }
@@ -479,20 +501,93 @@ struct SettingsSheet: View {
                         HouseAnimations()
                     }
                 }
-                ForEach(items, id: \.self) { item in
-                    if group == .interface, item == items.last {
-                        // The preview goes with the row above it, under whichever
-                        // of Theme and Colors shows, since it follows both. Its
-                        // border sets it apart, so no line comes between them.
-                        VStack(spacing: 0) {
-                            row(item)
-                            ThemePreview()
-                                .padding(EdgeInsets(top: 4, leading: 0, bottom: 12, trailing: 0))
-                        }
-                    } else {
-                        row(item)
+                if group == .interface {
+                    // The preview goes between the rows it follows: Theme and
+                    // Colors above it, and the code font below (decision 73).
+                    // Its border sets it apart, so no line comes between it and
+                    // the row on either side.
+                    let above = items.filter { $0 != .codeFont }
+                    let showsCodeFont = items.contains(.codeFont)
+                    ForEach(above.dropLast(), id: \.self) { row($0) }
+                    VStack(spacing: 0) {
+                        if let last = above.last { row(last) }
+                        ThemePreview()
+                            .padding(EdgeInsets(top: above.isEmpty ? 8 : 4, leading: 0, bottom: showsCodeFont ? 4 : 12, trailing: 0))
+                        if showsCodeFont { codeFontRow }
                     }
+                } else {
+                    ForEach(items, id: \.self) { row($0) }
                 }
+            }
+        }
+    }
+
+    /// The code font's choices: the system's font first, then each installed
+    /// family with a fixed width. The family chosen is among them even before
+    /// they're looked up, and when it was stored from outside Settings.
+    private var codeFontOptions: [(value: String?, title: String)] {
+        var families = codeFontFamilies
+        if let chosen = shownCodeFontFamily.wrappedValue, !families.contains(chosen) {
+            families.append(chosen)
+            families.sort { $0.localizedStandardCompare($1) == .orderedAscending }
+        }
+        return [(nil, CodeFont.systemFamilyTitle)] + families.map { ($0, $0) }
+    }
+
+    /// The family chosen, as the popup shows it. One that's stored but isn't
+    /// installed any more shows as the system's font, which is what code is
+    /// drawn in then.
+    private var shownCodeFontFamily: Binding<String?> {
+        Binding {
+            codeFontFamily.flatMap { CodeFont.isInstalled($0) ? $0 : nil }
+        } set: { family in
+            codeFontFamily = family
+        }
+    }
+
+    /// The size chosen, as the popup shows it and as code is drawn: one stored
+    /// from outside Settings is brought within the sizes Roga uses.
+    private var shownCodeFontSize: Binding<Double> {
+        Binding {
+            CodeFont.usable(size: codeFontSize)
+        } set: { size in
+            codeFontSize = size
+        }
+    }
+
+    /// The sizes to choose from, with the one chosen among them when it's a
+    /// size in between that was stored from outside Settings.
+    private var codeFontSizeOptions: [(value: Double, title: String)] {
+        var sizes = CodeFont.sizes
+        let chosen = shownCodeFontSize.wrappedValue
+        if !sizes.contains(chosen) {
+            sizes.append(chosen)
+            sizes.sort()
+        }
+        return sizes.map { ($0, "\($0.formatted()) pt") }
+    }
+
+    /// The code font's family and its size on one row, as a font's are in the
+    /// Mac's own settings, which also keeps the heading after it in view. Each
+    /// menu marks what Roga starts with, and VoiceOver calls each by what it
+    /// chooses, since the row's name is only the first one's.
+    private var codeFontRow: some View {
+        SettingsRow(title: SettingsItem.codeFont.title, help: SettingsItem.codeFont.help, namesControl: false) {
+            HStack(spacing: 0) {
+                SettingsPopup(
+                    selection: shownCodeFontFamily,
+                    options: codeFontOptions,
+                    detail: { $0 == nil ? "Default" : nil },
+                    detailInMenuOnly: true
+                )
+                .accessibilityLabel("Code font")
+                SettingsPopup(
+                    selection: shownCodeFontSize,
+                    options: codeFontSizeOptions,
+                    detail: { $0 == CodeFont.defaultSize ? "Default" : nil },
+                    detailInMenuOnly: true
+                )
+                .accessibilityLabel("Code font size")
             }
         }
     }
@@ -520,8 +615,9 @@ struct SettingsSheet: View {
                 Toggle(item.title, isOn: $keepsCommitGraphCurrent)
                     .toggleStyle(.settings)
             case .terminal, .checksForUpdates, .downloadsUpdates, .gitProgram, .showsGenerateButton, .generateAgent, .generateModel,
-                 .generateEffort, .matchesStyle, .instructions, .generateCommand, .agentList, .hooks, .showsMarks, .marksLegend:
-                // The General, Git, Commit and Agents pages draw their own.
+                 .generateEffort, .matchesStyle, .instructions, .generateCommand, .agentList, .hooks, .showsMarks, .marksLegend, .codeFont:
+                // The General, Git, Commit and Agents pages draw their own, and
+                // the code font's row has two controls.
                 EmptyView()
             }
         }

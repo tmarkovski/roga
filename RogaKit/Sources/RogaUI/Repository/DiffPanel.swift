@@ -5,6 +5,7 @@ import GitCore
 import IconUI
 import RepositoryEngine
 import SwiftUI
+import ThemeUI
 
 /// Shows what changed in the selected file, in a commit or a worktree.
 struct DiffPanel: View {
@@ -156,6 +157,12 @@ struct DiffPanel: View {
             geometry.size.width >= Self.widthForMatchButtons
         } action: { hasRoom in
             hasRoomForMatchButtons = hasRoom
+        }
+        // A diff built before another code font was chosen is built again in
+        // that one: as it's chosen, and when a panel comes back to a diff from
+        // before (decision 73).
+        .onChange(of: CodeFont.observed, initial: true) {
+            selection.followCodeFont()
         }
     }
 

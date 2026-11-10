@@ -26,7 +26,10 @@ final class ConflictBar: NSView {
         case showSides(Bool)
     }
 
-    static let height = DiffStyle.lineHeight * CGFloat(ConflictBand.rowCount)
+    /// How tall a bar is over rows of some height: as tall as its band.
+    static func height(lineHeight: CGFloat) -> CGFloat {
+        lineHeight * CGFloat(ConflictBand.rowCount)
+    }
 
     /// The conflict it's for.
     private(set) var conflict = 0
@@ -335,7 +338,9 @@ final class ConflictEditor: NSViewController {
 
     override func loadView() {
         let lines = initialText.split(separator: "\n", omittingEmptySubsequences: false).count
-        let textHeight = min(max(CGFloat(lines + 1), 4), 16) * DiffStyle.lineHeight + 10
+        // The code font in use, which is the one the conflict's lines show in.
+        let metrics = DiffMetrics.current
+        let textHeight = min(max(CGFloat(lines + 1), 4), 16) * metrics.lineHeight + 10
         let width: CGFloat = 560
         let inset: CGFloat = 14
 
@@ -347,7 +352,7 @@ final class ConflictEditor: NSViewController {
 
         textView.isRichText = false
         textView.allowsUndo = true
-        textView.font = DiffStyle.font
+        textView.font = metrics.font
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticTextReplacementEnabled = false

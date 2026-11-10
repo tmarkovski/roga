@@ -29,7 +29,7 @@ struct DiffTextControllerTests {
         #expect(controller.scrollView.contentView.bounds.minY == 0)
         controller.scrollToCurrentMatch()
 
-        let rows = controller.scrollView.contentView.bounds.minY / DiffStyle.lineHeight
+        let rows = controller.scrollView.contentView.bounds.minY / DiffMetrics.current.lineHeight
         #expect((430...451).contains(Int(rows)))
     }
 
@@ -46,7 +46,7 @@ struct DiffTextControllerTests {
         #expect(!controller.scrollView.hasVerticalScroller)
         #expect(!controller.scrollView.hasHorizontalScroller)
         // It's given the height that shows all of its lines: three rows here.
-        #expect(DiffTextController.height(lines: 3) == 3 * DiffStyle.lineHeight + 8)
+        #expect(DiffTextController.height(lines: 3) == 3 * DiffMetrics.current.lineHeight + 8)
     }
 
     @Test func selectsTheCurrentMatchWhenTheSearchEnds() throws {
@@ -113,8 +113,8 @@ struct DiffTextControllerTests {
         #expect(outlines.count == 1)
         let outline = try #require(outlines.first)
         #expect(!outline.isHidden)
-        #expect(outline.frame.height == 6 * DiffStyle.lineHeight)
-        #expect(controller.view.convert(outline.frame, to: textView).minY == textView.textContainerOrigin.y + DiffStyle.lineHeight)
+        #expect(outline.frame.height == 6 * DiffMetrics.current.lineHeight)
+        #expect(controller.view.convert(outline.frame, to: textView).minY == textView.textContainerOrigin.y + DiffMetrics.current.lineHeight)
         #expect(outline.frame.minX == DiffTextController.outlineInset)
         #expect(outline.frame.maxX == controller.view.bounds.width - DiffTextController.outlineInset)
         // The text starts after the line numbers, which the outline has to go around.
@@ -157,7 +157,7 @@ struct DiffTextControllerTests {
         let bar = try bar(of: controller)
         let textView = text(of: controller)
         #expect(bar.frame.height == 34)
-        #expect(controller.view.convert(bar.frame, to: textView).minY == textView.textContainerOrigin.y + DiffStyle.lineHeight)
+        #expect(controller.view.convert(bar.frame, to: textView).minY == textView.textContainerOrigin.y + DiffMetrics.current.lineHeight)
         #expect(bar.frame.minX == 0)
         #expect(titles(of: bar) == ["Keep main's", "Keep theirs", "Keep Both", "Edit…"])
         #expect(try label(of: bar) == "Conflict 1 of 1")
@@ -275,10 +275,10 @@ struct DiffTextControllerTests {
         controller.view.frame = NSRect(x: 0, y: 0, width: 600, height: 400)
         controller.view.layoutSubtreeIfNeeded()
         controller.show(try document("@@ -0,0 +1,2000 @@\n" + lines))
-        let rows = 2001 * DiffStyle.lineHeight
+        let rows = 2001 * DiffMetrics.current.lineHeight
         // The last line's newline makes an empty row after it, and there's a
         // little space above and below.
-        #expect(abs(text(of: controller).frame.height - rows) <= DiffStyle.lineHeight + 8)
+        #expect(abs(text(of: controller).frame.height - rows) <= DiffMetrics.current.lineHeight + 8)
     }
 
     // MARK: Hunks
@@ -318,9 +318,9 @@ struct DiffTextControllerTests {
             let glyph = document.layoutManager.glyphIndexForCharacter(at: document.lineStarts[row])
             let fragment = document.layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
             let top = text.textContainerOrigin.y + fragment.minY
-            #expect(top == text.textContainerOrigin.y + CGFloat(row) * DiffStyle.lineHeight)
+            #expect(top == text.textContainerOrigin.y + CGFloat(row) * DiffMetrics.current.lineHeight)
             #expect(controller.hunkHeader(atTextY: top + 1) == row)
-            #expect(fragment.height == DiffStyle.lineHeight)
+            #expect(fragment.height == DiffMetrics.current.lineHeight)
         }
     }
 
@@ -329,14 +329,14 @@ struct DiffTextControllerTests {
         controller.discardHunk = { _ in }
         let origin = text(of: controller).textContainerOrigin.y
         // A line of the first hunk, with its band in view.
-        controller.showHunkButton(atTextY: origin + DiffStyle.lineHeight * 5)
+        controller.showHunkButton(atTextY: origin + DiffMetrics.current.lineHeight * 5)
         #expect(!controller.hunkButton.isHidden)
         #expect(controller.hunkButton.header == 0)
         // It's in the band: the view isn't flipped, and the band is the top row.
         let clip = controller.scrollView.contentView
         let visible = controller.view.convert(clip.bounds, from: clip)
-        #expect(abs(controller.hunkButton.frame.midY - (visible.maxY - 4 - DiffStyle.lineHeight / 2)) <= 1)
-        #expect(controller.hunkButton.frame.height <= DiffStyle.lineHeight)
+        #expect(abs(controller.hunkButton.frame.midY - (visible.maxY - 4 - DiffMetrics.current.lineHeight / 2)) <= 1)
+        #expect(controller.hunkButton.frame.height <= DiffMetrics.current.lineHeight)
         #expect(abs(controller.hunkButton.frame.maxX - (visible.maxX - 6)) < 1)
     }
 
@@ -359,9 +359,9 @@ struct DiffTextControllerTests {
         controller.discardHunk = { _ in }
         let text = text(of: controller)
         let clip = controller.scrollView.contentView
-        clip.scroll(to: NSPoint(x: 0, y: DiffStyle.lineHeight * 6))
+        clip.scroll(to: NSPoint(x: 0, y: DiffMetrics.current.lineHeight * 6))
         // A line of the first hunk, whose band has gone off the top.
-        controller.showHunkButton(atTextY: text.textContainerOrigin.y + DiffStyle.lineHeight * 8)
+        controller.showHunkButton(atTextY: text.textContainerOrigin.y + DiffMetrics.current.lineHeight * 8)
         #expect(controller.hunkButton.isHidden)
     }
 
@@ -385,7 +385,7 @@ struct DiffTextControllerTests {
         let controller = controller(showing: try twoHunks())
         var discarded: [Int] = []
         controller.discardHunk = { discarded.append($0) }
-        let y = text(of: controller).textContainerOrigin.y + DiffStyle.lineHeight * 30
+        let y = text(of: controller).textContainerOrigin.y + DiffMetrics.current.lineHeight * 30
         let item = try #require(controller.hunkMenuItem(atTextY: y))
         #expect(item.title == "Discard hunk")
         _ = (item.target as? NSObject)?.perform(item.action, with: item)
@@ -403,7 +403,7 @@ struct DiffTextControllerTests {
 
     @Test func theButtonFitsInABand() {
         let button = HunkButton()
-        #expect(button.size.height < DiffStyle.lineHeight)
+        #expect(button.size.height < DiffMetrics.current.lineHeight)
         #expect(button.size.width > 30)
     }
 
@@ -420,6 +420,6 @@ struct DiffTextControllerTests {
         controller.view.frame = NSRect(x: 0, y: 0, width: 600, height: 400)
         controller.view.layoutSubtreeIfNeeded()
         controller.show(try document("@@ -0,0 +1 @@\n+" + String(repeating: "x", count: 500) + "\n"))
-        #expect(text(of: controller).frame.width >= 500 * DiffStyle.columnWidth)
+        #expect(text(of: controller).frame.width >= 500 * DiffMetrics.current.columnWidth)
     }
 }

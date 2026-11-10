@@ -436,6 +436,9 @@ struct SettingsPopup<Value: Hashable>: View {
     /// A command after the choices, for a value that isn't one of them, such
     /// as a model's name to type.
     var more: (title: String, action: () -> Void)?
+    /// Whether the gray words show only in the menu, for a popup beside
+    /// another, where both saying Default would say it twice on one row.
+    var detailInMenuOnly = false
     @State private var isHovering = false
     @Environment(\.isEnabled) private var isEnabled
 
@@ -469,7 +472,7 @@ struct SettingsPopup<Value: Hashable>: View {
 
     private var label: Text {
         let title = Text(title(of: selection))
-        guard let detail = detail(selection) else { return title }
+        guard !detailInMenuOnly, let detail = detail(selection) else { return title }
         return Text("\(title) \(Text("· \(detail)").foregroundStyle(SettingsColors.note))")
     }
 
