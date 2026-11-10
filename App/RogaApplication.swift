@@ -26,6 +26,9 @@ struct RogaApplication: App {
     @State private var agentMonitor = AgentMonitor(supportFolder: AgentProvider.standardSupportFolder)
 
     init() {
+        // Before a repository opens, because each one in the sidebar keeps
+        // about a dozen files open, and macOS starts an app with room for 256.
+        OpenFileLimit.raise()
         // Repositories are switched in the sidebar (decision 13).
         NSWindow.allowsAutomaticWindowTabbing = false
         let updates = Updates()
