@@ -577,7 +577,9 @@ private struct RefSectionHeader: View {
 /// A row in the panel. It fills with gray while the pointer is over it, if
 /// clicking it does something, and a little darker while it's selected. A label
 /// beside its first line gives way to its commands while the pointer is over
-/// it, and its second line has the whole width.
+/// it. They sit at the right, in the middle of the row's height rather than on
+/// its first line, so that a two-line row leaves room above and below them,
+/// and both lines make room for them.
 private struct RefRow<Trailing: View, Commands: View>: View {
     let icon: Icon
     var imageColor = Color.secondary
@@ -601,6 +603,7 @@ private struct RefRow<Trailing: View, Commands: View>: View {
     @State private var isHovering = false
 
     var body: some View {
+        let showsCommands = isHovering && hasCommands
         HStack(spacing: 8) {
             icon.image
                 .font(.system(size: 13))
@@ -610,20 +613,17 @@ private struct RefRow<Trailing: View, Commands: View>: View {
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
                     // A title that doesn't fit fades out at its end
-                    // (decision 51), and its tooltip has all of it.
+                    // (decision 51), and its tooltip has all of it. The
+                    // tooltip is the title's alone, so that a command's
+                    // button shows its own.
                     FadingText(title)
                         .font(.system(size: 13))
+                        .help(title)
                     Spacer(minLength: 0)
-                    // As tall as the line, so that a command's button doesn't
-                    // move the text.
-                    HStack(spacing: 0) {
-                        if isHovering && hasCommands {
-                            commands
-                        } else {
-                            trailing
-                        }
+                    if !showsCommands {
+                        HStack(spacing: 0) { trailing }
+                            .frame(height: 16)
                     }
-                    .frame(height: 16)
                 }
                 if let subtitle {
                     Text(subtitle)
@@ -632,6 +632,10 @@ private struct RefRow<Trailing: View, Commands: View>: View {
                         .lineLimit(1)
                         .truncationMode(.tail)
                 }
+            }
+            if showsCommands {
+                // Shorter than the row, so it moves no text up or down.
+                HStack(spacing: 0) { commands }
             }
         }
         .padding(.leading, 8 + indent)
@@ -651,7 +655,6 @@ private struct RefRow<Trailing: View, Commands: View>: View {
         // doesn't wait to see whether a second one is coming.
         .simultaneousGesture(TapGesture(count: 2).onEnded { doubleAction?() })
         .onHover { isHovering = $0 }
-        .help(title)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
         .accessibilityValue(subtitle ?? "")
