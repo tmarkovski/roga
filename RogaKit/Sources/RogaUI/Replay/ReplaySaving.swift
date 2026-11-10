@@ -65,6 +65,7 @@ enum ReplaySaving {
             AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: 12_000_000],
         ])
         input.expectsMediaDataInRealTime = false
+        writer.metadata = [try artwork(of: picture, colorScheme: colorScheme)]
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
             kCVPixelBufferWidthKey as String: width,
@@ -102,6 +103,21 @@ enum ReplaySaving {
         input.markAsFinished()
         await writer.finishWriting()
         guard writer.status == .completed else { throw writer.error ?? SavingError.couldNotWrite }
+    }
+
+    /// The last frame as the video's cover, which is the picture Save Image
+    /// writes. Finder and Quick Look show a video's cover in place of its
+    /// first frame, which here is the board before anything has happened.
+    /// Apps that make their own thumbnail from the frames don't read it.
+    private static func artwork<Picture: ReplayPicture>(of picture: Picture, colorScheme: ColorScheme) throws -> AVMetadataItem {
+        guard let image = render(picture, at: picture.duration, colorScheme: colorScheme, scale: videoScale),
+              let data = NSBitmapImageRep(cgImage: image).representation(using: .jpeg, properties: [.compressionFactor: 0.9])
+        else { throw SavingError.couldNotDraw }
+        let item = AVMutableMetadataItem()
+        item.identifier = .iTunesMetadataCoverArt
+        item.dataType = kCMMetadataBaseDataType_JPEG as String
+        item.value = data as NSData
+        return item
     }
 
     private static func pixelBuffer(from image: CGImage, pool: CVPixelBufferPool) -> CVPixelBuffer? {
