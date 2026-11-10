@@ -101,7 +101,7 @@ struct AgentDetailPage: View {
             }
         } control: {
             // The same menu as on the agent's row in setup: every copy Roga
-            // found, and Choose Another… for one it didn't. Roga looks at
+            // found, and Choose another… for one it didn't. Roga looks at
             // what was chosen as soon as it's stored, and says on this page
             // if it can't use it.
             if let menu = ProgramMenu.agent(kind, agents: agents, choose: { program = $0 }) {

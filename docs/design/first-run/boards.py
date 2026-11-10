@@ -166,6 +166,7 @@ s.CSS += r"""
 .fr-mi{display:flex;gap:8px;align-items:flex-start;width:100%;border:0;background:none;padding:8px 10px 8px 8px;border-radius:8px;font:inherit;color:var(--tx);text-align:left;cursor:default}
 .fr-mi:hover{background:var(--hover)}
 .fr-mi[disabled]{color:var(--tx2)}
+.fr-mi[disabled] b,.fr-mi[disabled] .ver,.fr-mi[disabled] .pth{opacity:.5}
 .fr-mi[disabled]:hover{background:none}
 .fr-mi.one{padding-top:6px;padding-bottom:6px}
 .fr-ck{width:16px;height:18px;flex:none;display:grid;place-items:center}
@@ -702,11 +703,11 @@ def menu_item(v: View, o: dict, key: str) -> str:
 
 def menu(v: View, key: str, name: str, options: list[dict], prefix: str, can_skip: bool = False) -> str:
     items = "".join(menu_item(v, o, f"{prefix}_{o['id']}") for o in options)
-    tail = '<div class="fr-ms"></div><button class="fr-mi one" role="menuitem"><span class="fr-ck"></span>Choose Another…</button>'
+    tail = '<div class="fr-ms"></div><button class="fr-mi one" role="menuitem"><span class="fr-ck"></span>Choose another…</button>'
     if can_skip:
         tail += (
             f'<button class="fr-mi one" role="menuitemradio" aria-checked="{v.text("chk.off_" + key)}"{v.click("pick.off_" + key)}>'
-            f'<span class="fr-ck">{v.when("chk.off_" + key, ic("check"))}</span>Don’t Use {esc(name)}</button>'
+            f'<span class="fr-ck">{v.when("chk.off_" + key, ic("check"))}</span>Don’t use {esc(name)}</button>'
         )
     return f'<div class="fr-menu" role="menu" aria-label="Every {esc(name)} Roga found">{items}{tail}</div>'
 
@@ -1193,11 +1194,11 @@ NOTES = {
     "FR-3-Agents.dc.html": "The heading asks, and the buttons answer: Use Agents, or Don't Use Agents. That replaces the switches on each agent and the line of text under them, which made one decision look like three. Each agent is the same row as Git's, with its own menu of copies. The rule for which copy wins is today's: first in PATH for Claude Code, newest for Codex.",
     "FR-4-Hooks.dc.html": "Read from the top, it answers why, what and how. The heading and the picture say why: three rows of the real sidebar, each with a line out to what its mark means, so it can't be mistaken for a list to click. The bold sentence says what Install Hooks does. The card under it names where the plugin goes, and ends in the exact commands, as Roga's dialogs do (decision 29).",
     "FR-5-Ready.dc.html": "Two labeled groups, so it's plain which part looks back and which asks something new. What you chose has a mark for each line, green when it's done and amber when something still waits on you, and Change goes back to that step. Updates are two switches rather than a step, since checking is already on by default.",
-    "FR-Try.dc.html": "Press Play and go through it. On Git and Agents, open a row's menu and pick another copy, or Don't Use Codex. Answer Agents with either button. On Hooks, Install Hooks shows Claude Code finish while Codex waits for your OK. On Ready, Change takes you back to a step. Theme under Tweaks switches to dark.",
-    "FR-Git-Menu.dc.html": "The menu opens on the row it belongs to, where a select would on a Mac. Each copy says where it's from, its version, its path, and why Roga would or wouldn't run it. A Git that's too old is listed but can't be picked, so nobody wonders why Roga doesn't run their terminal's Git. Choose Another… is for one outside the usual places.",
+    "FR-Try.dc.html": "Press Play and go through it. On Git and Agents, open a row's menu and pick another copy, or Don't use Codex. Answer Agents with either button. On Hooks, Install Hooks shows Claude Code finish while Codex waits for your OK. On Ready, Change takes you back to a step. Theme under Tweaks switches to dark.",
+    "FR-Git-Menu.dc.html": "The menu opens on the row it belongs to, where a select would on a Mac. Each copy says where it's from, its version, its path, and why Roga would or wouldn't run it. A Git that's too old is listed but can't be picked, so nobody wonders why Roga doesn't run their terminal's Git. Its name, version and path are faded, and Too old and the reason aren't, so the row reads as one that can't be chosen and says why. Choose another… is for one outside the usual places.",
     "FR-Git-None.dc.html": "The one screen that stops you. The bold sentence says what the dark button does, and the command under the rows is that same thing, for anyone who'd rather run it. Roga never runs /usr/bin/git before knowing the tools are there, because that's what opens Apple's dialog unannounced, which decision 3 ruled out.",
-    "FR-Agents-Menu.dc.html": "Codex's menu, open under Codex's own row. It has the copy inside the ChatGPT app and Homebrew's, with what's different about each, then Choose Another… and Don't Use Codex. Picking a copy changes the version and path in the row straight away.",
-    "FR-Agents-One.dc.html": "After Don't Use Codex from its menu. The row stays, dimmed, and says how to bring Codex back. Use Agents now means Claude Code alone, and the Hooks step will only install there. This is today's switch per agent, moved into the menu.",
+    "FR-Agents-Menu.dc.html": "Codex's menu, open under Codex's own row. It has the copy inside the ChatGPT app and Homebrew's, with what's different about each, then Choose another… and Don't use Codex. Picking a copy changes the version and path in the row straight away.",
+    "FR-Agents-One.dc.html": "After Don't use Codex from its menu. The row stays, dimmed, and says how to bring Codex back. Use Agents now means Claude Code alone, and the Hooks step will only install there. This is today's switch per agent, moved into the menu.",
     "FR-Agents-None.dc.html": "Neither agent was found. The rows say so, Choose… points Roga at one in an unusual place, and Look Again checks once more after you install one. Continue goes straight to Ready, since there's nothing to install.",
     "FR-Hooks-Done.dc.html": "After Install Hooks, the commands give way to what happened. Claude Code is done. Codex has the plugin but won't run its hooks until you trust them inside Codex, which Roga can't do for you, so its line says how and Check Again looks once more. Continue stays available, on the idea that setup shouldn't wait on another app.",
     "FR-Hooks-One.dc.html": "What was found and what wasn't. Codex's line says there's nothing to install, and only Claude Code's commands show, because those are the only ones that will run.",

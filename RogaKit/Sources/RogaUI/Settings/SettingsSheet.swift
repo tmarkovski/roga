@@ -238,7 +238,7 @@ enum SettingsItem: CaseIterable {
         case .checksForUpdates: ["Sparkle", "version"]
         case .downloadsUpdates: ["install", "Restart to Update", "version"]
         case .theme: AppTheme.allCases.map(\.title) + ["Dark mode", "Light mode"]
-        case .gitProgram: ["Look Again", "Choose Another", "program", "version", "PATH", "Xcode", "Command Line Tools", "Homebrew"]
+        case .gitProgram: ["Look Again", "Choose another", "program", "version", "PATH", "Xcode", "Command Line Tools", "Homebrew"]
         case .instructions: ["Reset to Roga's", "prompt"]
         case .agentList: ["Look Again", "Use", "program", "PATH"]
         case .hooks: ["Install", "Remove", "roga-hooks", "plugin", "Claude Code", "Codex"]

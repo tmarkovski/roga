@@ -203,7 +203,7 @@ struct GitProviderTests {
         let menu = try #require(ProgramMenu.agent(.codex, agents: agents, isOn: true, choose: { chosen.append($0) }, skip: { skipped += 1 }))
         #expect(menu.label == "Every Codex Roga found")
         #expect(menu.checked == app)
-        #expect(menu.skip?.title == "Don't Use Codex")
+        #expect(menu.skip?.title == "Don't use Codex")
         #expect(menu.skip?.isOn == false)
         menu.choose(menu.choices[0])
         // The recommended copy is stored as nothing, so Roga keeps choosing.

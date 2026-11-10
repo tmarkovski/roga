@@ -12,6 +12,10 @@ enum SetupColors {
     static let line = SettingsColors.line
     static let hairline = SettingsColors.hairline
     static let hover = SettingsColors.hover
+    /// The name, version and path of a copy Roga can't use, in its menu:
+    /// half as strong as a note, so that the row reads as one that can't be
+    /// chosen, and its reason is the easiest thing in it to read.
+    static let unavailable = SettingsColors.note.opacity(0.5)
     /// The lines between a card's rows, a shade darker than the card.
     static let rule = DialogColors.appearanceColor(light: 0xE1E1DE, dark: 0x464644)
     /// The small word over a screen's heading, in the brand's orange, dark
@@ -153,9 +157,9 @@ struct SetupCard<Content: View>: View {
 // MARK: The menu
 
 /// The menu a program's row opens: every copy Roga found, then Choose
-/// Another…, and for an agent the way to not use it.
+/// another…, and for an agent the way to not use it.
 struct ProgramMenu {
-    /// Not using the program at all, as in Don't Use Codex.
+    /// Not using the program at all, as in Don't use Codex.
     struct Skip {
         var title: String
         /// Whether it's what's chosen now.
@@ -380,7 +384,7 @@ private struct ProgramMenuView: View {
                 .frame(height: 1)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 5)
-            ProgramCommandRow(title: "Choose Another…", isChecked: false, isHighlighted: isHighlighted(.another)) {
+            ProgramCommandRow(title: "Choose another…", isChecked: false, isHighlighted: isHighlighted(.another)) {
                 pick(.another)
             }
             if let skip = menu.skip {
@@ -454,6 +458,12 @@ private struct ProgramChoiceRow: View {
     let action: () -> Void
     @State private var isHovering = false
 
+    /// The color of the version and the path. A copy Roga can't use fades
+    /// them and its name, and leaves its tag and its reason as they are.
+    private var detail: Color {
+        choice.canChoose ? SetupColors.note : SetupColors.unavailable
+    }
+
     var body: some View {
         Button(action: action) {
             HStack(alignment: .top, spacing: 8) {
@@ -469,13 +479,13 @@ private struct ProgramChoiceRow: View {
                         if let version = choice.version {
                             Text(verbatim: version)
                                 .monospacedDigit()
-                                .foregroundStyle(SetupColors.note)
+                                .foregroundStyle(detail)
                         }
                     }
                     .lineLimit(1)
                     Text(verbatim: choice.path)
                         .font(.system(size: 11.5, design: .monospaced))
-                        .foregroundStyle(SetupColors.note)
+                        .foregroundStyle(detail)
                         .fixedSize(horizontal: false, vertical: true)
                     Text(choice.why)
                         .font(.system(size: 12))
@@ -484,7 +494,7 @@ private struct ProgramChoiceRow: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .foregroundStyle(choice.canChoose ? Color.primary : SetupColors.note)
+            .foregroundStyle(choice.canChoose ? Color.primary : SetupColors.unavailable)
             .padding(EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 10))
             .background(
                 choice.canChoose && (isHovering || isHighlighted) ? SetupColors.hover : .clear,
@@ -500,8 +510,9 @@ private struct ProgramChoiceRow: View {
     }
 }
 
-/// A command in the menu, under the copies: Choose Another…, or not using
-/// the program.
+/// A command in the menu, under the copies: Choose another…, or not using
+/// the program. They're in sentence case, as menus in the window are
+/// (decision 66).
 private struct ProgramCommandRow: View {
     let title: String
     let isChecked: Bool
@@ -526,8 +537,9 @@ private struct ProgramCommandRow: View {
     }
 }
 
-/// A row of the menu as a button. A copy Roga can't use is already gray, so
-/// it isn't dimmed again the way the system dims what's turned off.
+/// A row of the menu as a button. A copy Roga can't use fades its own name,
+/// version and path and keeps its reason readable, so the row isn't dimmed
+/// as a whole the way the system dims what's turned off.
 private struct ProgramMenuRowStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label

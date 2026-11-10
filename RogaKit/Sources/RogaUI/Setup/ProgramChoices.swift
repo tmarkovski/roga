@@ -89,7 +89,7 @@ nonisolated struct ProgramChoice: Equatable, Identifiable {
         case tooOld
         /// It didn't say its version, or can't be run.
         case unusable
-        /// Chosen with Choose Another…, from somewhere Roga doesn't look.
+        /// Chosen with Choose another…, from somewhere Roga doesn't look.
         case chosen
 
         var title: String {

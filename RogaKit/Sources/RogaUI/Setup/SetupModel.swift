@@ -42,7 +42,7 @@ public final class SetupModel {
     /// Whether to use agents, as answered on the Agents screen, or nil while
     /// nobody has answered, and when Roga found none to ask about.
     private(set) var usesAgents: Bool?
-    /// Which agents the Agents screen leaves on. Don't Use Codex in its menu
+    /// Which agents the Agents screen leaves on. Don't use Codex in its menu
     /// turns one off, and picking a copy turns it back on. It's kept apart
     /// from each agent's own switch, which Don't Use Agents turns off for all
     /// of them, so that coming back to the screen shows the rows as they

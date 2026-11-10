@@ -61,7 +61,7 @@ extension ProgramMenu {
                     choose(path)
                 }
             },
-            skip: skip.map { Skip(title: "Don't Use \(kind.name)", isOn: !isOn, action: $0) }
+            skip: skip.map { Skip(title: "Don't use \(kind.name)", isOn: !isOn, action: $0) }
         )
     }
 }
