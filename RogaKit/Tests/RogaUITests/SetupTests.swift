@@ -283,6 +283,7 @@ struct SetupModelTests {
         #expect(setup.steps(found: found) == [.looking, .git, .agents, .hooks, .ready])
         setup.start()
         #expect(setup.step == .looking)
+        #expect(!setup.goesBack)
         setup.next(found: found)
         setup.next(found: found)
         #expect(setup.step == .agents)
@@ -295,11 +296,21 @@ struct SetupModelTests {
         #expect(setup.step == .ready)
         setup.back(found: found)
         #expect(setup.step == .hooks)
+        #expect(setup.goesBack)
+        // Change beside what Git set goes back too, and Continue goes on.
         setup.go(to: .git)
         #expect(setup.step == .git)
+        #expect(setup.goesBack)
+        setup.next(found: found)
+        #expect(!setup.goesBack)
         setup.back(found: found)
         setup.back(found: found)
         #expect(setup.step == .looking)
+        // Back from the first of them is Welcome, which has nothing before it.
+        setup.back(found: found)
+        #expect(setup.step == .welcome)
+        setup.back(found: found)
+        #expect(setup.step == .welcome)
     }
 
     @Test func hooksDropOutWhenNoAgentIsInUse() {
@@ -413,10 +424,11 @@ struct SetupModelTests {
     }
 
     @Test func gitsHeadingAndNoteSayWhichGitAndWhatATerminalRuns() {
-        // Where it's from stays on one line, so a long heading breaks before it.
-        #expect(SetupWords.gitHeading(Found.git, developerToolsFolder: Found.xcode, home: Found.home) == "Roga will use Git 2.54.0 from\u{00A0}Xcode")
+        // The heading leaves where the Git is from to its row, so that it's
+        // as long whichever Git it is.
+        #expect(SetupWords.gitHeading(Found.git) == "Roga will use Git 2.54.0")
         let tools = GitInstallation(executable: Found.toolsGit.executable, version: GitVersion(major: 2, minor: 50, patch: 1), searchPath: Found.searchPath)
-        #expect(SetupWords.gitHeading(tools, developerToolsFolder: Found.xcode, home: Found.home) == "Roga will use Git 2.50.1 from\u{00A0}the\u{00A0}Command\u{00A0}Line\u{00A0}Tools")
+        #expect(SetupWords.gitHeading(tools) == "Roga will use Git 2.50.1")
         #expect(SetupWords.gitNote(Found.gits, home: Found.home) == [
             "Roga found 3 Gits, and recommends the first one in your PATH that's new enough.",
             "Your terminal runs the one in /usr/local/bin, which is 2.33 and too old.",

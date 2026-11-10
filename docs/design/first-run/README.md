@@ -59,6 +59,13 @@ The app differs from the boards in a few places, each because the board was wron
 - **A screen that leaves no room for the floor goes without it,** and scrolls if it has to, so the house never stands on a button. With Codex run from inside the ChatGPT app, its path makes the Hooks screen's commands several lines longer than the board's.
 - **Looking's heading changes** to "Roga looked around your Mac" once it's done, which it often is by the time someone gets there.
 
+Going through the built setup on November 9, 2026 showed two things the boards got wrong, which the app now does differently:
+
+- **The buttons are at the column's edges, not in its middle.** The boards center each screen's buttons, so the dark one was somewhere else on every screen, depending on how many others there were and how long their words. Back is now at the left edge on every screen after Welcome, and the rest are at the right in one order: what helps, then the answer that declines, then the one that goes on, at one width. Git's "no usable Git" screen has Back too, and Choose Another… is a gray button like Look Again.
+- **Every heading is one line, and the head is one height.** The Git board's heading names where the git is from, which ran to two lines for the Command Line Tools and pushed everything under it down. The heading is now "Roga will use Git 2.54.0", and the row's button names where it's from. The sentence under a heading has room for two lines whether it needs them or not, so each screen's card starts in the same place.
+
+Two more things came from the same pass. Open Roga is in the house's orange, where the boards have it dark like the others. And setup moves: a screen comes in from the side setup is moving toward, Welcome's parts and Ready's marks come in one after another, and a row on Looking turns from a ring into a check as its answer arrives.
+
 ## Still to decide
 
 - **Which Codex is recommended.** Today's rule is newest wins, which here picks ChatGPT's `0.167.0-alpha.3.2` over Homebrew's `0.166.0`. It may be better to skip prerelease versions.

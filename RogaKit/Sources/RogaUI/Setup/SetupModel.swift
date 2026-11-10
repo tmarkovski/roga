@@ -36,6 +36,9 @@ public final class SetupModel {
     /// Whether the windows show setup rather than the sidebar and a worktree.
     public private(set) var isShowing: Bool
     private(set) var step = Step.welcome
+    /// Whether the last move went to an earlier screen, which says which
+    /// side the new screen comes in from.
+    private(set) var goesBack = false
     /// Whether to use agents, as answered on the Agents screen, or nil while
     /// nobody has answered, and when Roga found none to ask about.
     private(set) var usesAgents: Bool?
@@ -83,26 +86,31 @@ public final class SetupModel {
 
     /// From Welcome to the first screen.
     func start() {
-        step = .looking
+        move(to: .looking)
     }
 
     /// The next screen, from one whose main button only goes on.
     func next(found: [AgentKind]) {
         let steps = steps(found: found)
         guard let index = steps.firstIndex(of: step), index + 1 < steps.count else { return }
-        step = steps[index + 1]
+        move(to: steps[index + 1])
     }
 
-    /// The screen before this one.
+    /// The screen before this one, which for the first of them is Welcome.
     func back(found: [AgentKind]) {
         let steps = steps(found: found)
-        guard let index = steps.firstIndex(of: step), index > 0 else { return }
-        step = steps[index - 1]
+        guard let index = steps.firstIndex(of: step) else { return }
+        move(to: index > 0 ? steps[index - 1] : .welcome)
     }
 
     /// Goes back to a step, from Change beside what it set.
     func go(to step: Step) {
-        self.step = step
+        move(to: step)
+    }
+
+    private func move(to next: Step) {
+        goesBack = next < step
+        step = next
     }
 
     // MARK: Agents
@@ -133,7 +141,7 @@ public final class SetupModel {
         for kind in AgentKind.allCases {
             defaults.set(found.contains(kind) ? isOn[kind] != false : true, forKey: AgentPreferences.enabledKey(kind))
         }
-        step = usable(found: found).isEmpty ? .ready : .hooks
+        move(to: usable(found: found).isEmpty ? .ready : .hooks)
     }
 
     /// Don't Use Agents: every agent's switch goes off, found or not, so that
@@ -143,14 +151,14 @@ public final class SetupModel {
         for kind in AgentKind.allCases {
             defaults.set(false, forKey: AgentPreferences.enabledKey(kind))
         }
-        step = .ready
+        move(to: .ready)
     }
 
     /// Continue, when Roga found no agent. Nobody was asked, so the switches
     /// stay as they are, and an agent installed later is used.
     func continueWithoutAgents() {
         usesAgents = nil
-        step = .ready
+        move(to: .ready)
     }
 
     // MARK: Finishing

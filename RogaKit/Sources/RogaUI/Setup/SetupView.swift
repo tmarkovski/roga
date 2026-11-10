@@ -6,7 +6,7 @@ import SwiftUI
 /// found, and the buttons that answer the screen, as the design canvas's
 /// First run boards draw it. Dots at the top say how far along it is, and the
 /// house walks along a floor at the bottom as it goes, and waddles while
-/// Roga is busy.
+/// Roga is busy. A screen comes in from the side setup is moving toward.
 struct SetupView: View {
     let setup: SetupModel
     /// The row whose menu is open when the view appears, for drawing a
@@ -17,6 +17,7 @@ struct SetupView: View {
     /// How tall the screen that shows is, once it's laid out, which says
     /// whether the floor fits under it.
     @State private var screenHeight: CGFloat = 0
+    @Environment(\.accessibilityReduceMotion) private var reducesMotion
 
     /// The agents Roga found and can run.
     private var found: [AgentKind] {
@@ -33,45 +34,63 @@ struct SetupView: View {
             let titleRow = proxy.safeAreaInsets.top
             let ownRow = titleRow > 0 ? 0 : SetupLayout.titleRow
             ScrollView(.vertical) {
-                if isWelcome {
-                    // Welcome sits in the middle of the window, a little
-                    // above it.
-                    screen
-                        .frame(width: SetupLayout.column)
-                        .frame(maxWidth: .infinity, minHeight: proxy.size.height - 40)
-                } else {
-                    // The other screens start at the top, and the floor is
-                    // at the bottom of the window. A screen that leaves no
-                    // room for the floor goes without it, and scrolls if it
-                    // has to, so the house never stands on a button.
-                    let top = ownRow + SetupLayout.top
-                    let hasFloor = top + screenHeight + SetupLayout.floorGap + SetupFloor.height <= proxy.size.height
-                    VStack(spacing: 0) {
-                        screen
+                // One over the other, so that a screen on its way out
+                // doesn't push the one coming in down the window.
+                ZStack(alignment: .top) {
+                    if isWelcome {
+                        // Welcome sits in the middle of the window, a little
+                        // above it.
+                        SetupWelcome(setup: setup)
+                            .frame(width: SetupLayout.column)
+                            .frame(maxWidth: .infinity, minHeight: proxy.size.height - 40)
+                            .transition(SetupMotion.fade)
+                    } else {
+                        // The other screens start at the top, and the floor
+                        // is at the bottom of the window. A screen that
+                        // leaves no room for the floor goes without it, and
+                        // scrolls if it has to, so the house never stands on
+                        // a button.
+                        let top = ownRow + SetupLayout.top
+                        let hasFloor = top + screenHeight + SetupLayout.floorGap + SetupFloor.height <= proxy.size.height
+                        VStack(spacing: 0) {
+                            ZStack(alignment: .top) {
+                                screen
+                                    .id(setup.step)
+                                    .transition(SetupMotion.screen(goesBack: setup.goesBack, reducesMotion: reducesMotion))
+                            }
                             .frame(width: SetupLayout.column)
                             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { screenHeight = $0 }
                             .frame(maxWidth: .infinity)
                             .padding(.top, top)
-                        if hasFloor {
-                            Spacer(minLength: SetupLayout.floorGap)
-                            SetupFloor(
-                                position: Double(steps.firstIndex(of: setup.step) ?? 0) / Double(max(1, steps.count - 1)),
-                                isBusy: isBusy
-                            )
-                        } else {
-                            Color.clear
-                                .frame(height: SetupLayout.floorGap)
+                            if hasFloor {
+                                Spacer(minLength: SetupLayout.floorGap)
+                                SetupFloor(
+                                    position: Double(steps.firstIndex(of: setup.step) ?? 0) / Double(max(1, steps.count - 1)),
+                                    isBusy: isBusy
+                                )
+                                .transition(.opacity)
+                            } else {
+                                Color.clear
+                                    .frame(height: SetupLayout.floorGap)
+                            }
                         }
+                        .frame(minHeight: proxy.size.height, alignment: .top)
+                        .animation(SetupMotion.change(reducesMotion), value: hasFloor)
+                        .transition(SetupMotion.fade)
                     }
-                    .frame(minHeight: proxy.size.height, alignment: .top)
                 }
+                .animation(SetupMotion.step(reducesMotion), value: setup.step)
             }
             .scrollBounceBehavior(.basedOnSize)
             .overlay(alignment: .top) {
-                if !isWelcome {
-                    SetupDots(steps: steps, current: setup.step)
-                        .offset(y: titleRow > 0 ? -titleRow / 2 - 3 : ownRow / 2 - 3)
+                ZStack {
+                    if !isWelcome {
+                        SetupDots(steps: steps, current: setup.step)
+                            .transition(SetupMotion.fade)
+                    }
                 }
+                .animation(SetupMotion.step(reducesMotion), value: isWelcome)
+                .offset(y: titleRow > 0 ? -titleRow / 2 - 3 : ownRow / 2 - 3)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -101,7 +120,7 @@ struct SetupView: View {
 
     @ViewBuilder private var screen: some View {
         switch setup.step {
-        case .welcome: SetupWelcome(setup: setup)
+        case .welcome: EmptyView()
         case .looking: SetupLooking(setup: setup, found: found)
         case .git: SetupGit(setup: setup, found: found)
         case .agents: SetupAgents(setup: setup, found: found)
@@ -137,9 +156,80 @@ enum SetupLayout {
     static let gap: CGFloat = 14
     /// The least room between a screen's buttons and the floor under them.
     static let floorGap: CGFloat = 20
+    /// The least width of the button that goes on, so that it's the same
+    /// size and in the same place from one screen to the next.
+    static let mainButton: CGFloat = 168
     /// The size of a command in a card, at which each of the commands that
     /// install the hooks fits on one line of the column.
     static let commandFontSize: CGFloat = 11
+}
+
+// MARK: Motion
+
+/// How setup moves. Someone who asked for less motion gets the fades and
+/// none of the movement.
+enum SetupMotion {
+    /// What moving from one screen to another animates with.
+    static func step(_ reducesMotion: Bool) -> Animation {
+        .easeOut(duration: reducesMotion ? 0.2 : 0.3)
+    }
+
+    /// What something on a screen animates with when it changes what it
+    /// says or how tall it is, or nil for no animation.
+    static func change(_ reducesMotion: Bool) -> Animation? {
+        reducesMotion ? nil : .easeOut(duration: 0.22)
+    }
+
+    /// What a mark animates with as it turns into a check.
+    static func pop(_ reducesMotion: Bool) -> Animation? {
+        reducesMotion ? nil : .spring(duration: 0.4, bounce: 0.4)
+    }
+
+    /// Welcome and the screens after it are laid out differently, so one
+    /// fades out before the other fades in, and neither is read through the
+    /// other.
+    static let fade = AnyTransition.asymmetric(
+        insertion: .opacity.animation(.easeOut(duration: 0.3).delay(0.14)),
+        removal: .opacity.animation(.easeOut(duration: 0.14))
+    )
+
+    /// How far to the side a screen starts from.
+    private static let travel: CGFloat = 32
+
+    /// A screen fades out quickly where it is, and the next one comes in
+    /// from the side setup is moving toward: the right going on, the left
+    /// going back. Only the screen coming in knows the direction, since the
+    /// one going out was drawn before the move.
+    static func screen(goesBack: Bool, reducesMotion: Bool) -> AnyTransition {
+        guard !reducesMotion else { return .opacity }
+        return .asymmetric(
+            insertion: .offset(x: goesBack ? -travel : travel)
+                .combined(with: .opacity)
+                .animation(.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.42).delay(0.08)),
+            removal: .opacity.animation(.easeOut(duration: 0.12))
+        )
+    }
+}
+
+extension View {
+    /// Fades and lifts a part of a screen into place when the screen
+    /// appears, each part a little after the one before it.
+    func setupEntrance(_ isIn: Bool, order: Int) -> some View {
+        modifier(SetupEntrance(isIn: isIn, order: order))
+    }
+}
+
+private struct SetupEntrance: ViewModifier {
+    let isIn: Bool
+    let order: Int
+    @Environment(\.accessibilityReduceMotion) private var reducesMotion
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(isIn ? 1 : 0)
+            .offset(y: isIn || reducesMotion ? 0 : 14)
+            .animation(.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.6).delay(0.1 + Double(order) * 0.07), value: isIn)
+    }
 }
 
 // MARK: Dots and the house
@@ -235,11 +325,14 @@ private struct SetupHouse: View {
 // MARK: What the screens are made of
 
 /// A screen's heading: a small word in orange, the heading itself, and a
-/// sentence or two under it, all centered.
+/// sentence or two under it, all centered. It's the same height on every
+/// screen, so that what's under it starts in the same place: the heading
+/// keeps to one line, and the sentence has room for two.
 struct SetupHead: View {
     let eyebrow: String
     let title: String
     let sub: String
+    @Environment(\.accessibilityReduceMotion) private var reducesMotion
 
     var body: some View {
         VStack(spacing: 8) {
@@ -251,49 +344,70 @@ struct SetupHead: View {
             Text(title)
                 .font(.system(size: 28, weight: .semibold))
                 .tracking(-0.4)
-                .lineSpacing(1)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
+                // A heading longer than the column gets smaller rather than
+                // taking a second line.
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .contentTransition(.opacity)
+                .animation(SetupMotion.change(reducesMotion), value: title)
                 .accessibilityAddTraits(.isHeader)
-            Text(sub)
-                .font(.system(size: 14))
-                .lineSpacing(4)
-                .foregroundStyle(SetupColors.note)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: 560)
+            ZStack(alignment: .top) {
+                // Two empty lines, which keep room for two.
+                Text(verbatim: " \n ")
+                    .hidden()
+                    .accessibilityHidden(true)
+                Text(sub)
+                    .foregroundStyle(SetupColors.note)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 560)
+            }
+            .font(.system(size: 14))
+            .lineSpacing(4)
         }
         .frame(maxWidth: .infinity)
         .padding(.bottom, 6)
     }
 }
 
-/// The buttons that answer a screen, centered under it, with the dark one
-/// last.
-struct SetupActions<Content: View>: View {
-    @ViewBuilder var content: Content
+/// The buttons under a screen, in one row as wide as the column, so that
+/// each kind is in the same place on every screen. Back is at the left edge.
+/// The rest are at the right, in one order: what helps, such as Look Again,
+/// then the answer that declines, then the one that goes on.
+struct SetupActions<Answers: View>: View {
+    /// What Back does.
+    let back: () -> Void
+    /// Whether Back waits for something that's running.
+    var backIsDisabled = false
+    @ViewBuilder var answers: Answers
 
     var body: some View {
         HStack(spacing: 8) {
-            content
+            Button("Back", action: back)
+                .buttonStyle(.setup(.ghost))
+                .disabled(backIsDisabled)
+            Spacer(minLength: 0)
+            answers
         }
-        .frame(maxWidth: .infinity)
         .padding(.top, 8)
     }
 }
 
 /// Setup's buttons, which are larger than a dialog's: solid ink for the one
-/// that answers the screen, soft gray for the other answer, and words alone
-/// for going back.
+/// that goes on, the brand's orange for the one that opens Roga at the end,
+/// soft gray for the other answers, and words alone for going back.
 struct SetupButtonStyle: ButtonStyle {
     enum Kind {
         case primary
+        /// The last button of setup, which opens Roga.
+        case brand
         case secondary
         case ghost
     }
 
     var kind = Kind.secondary
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reducesMotion
 
     func makeBody(configuration: Configuration) -> some View {
         let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -303,17 +417,21 @@ struct SetupButtonStyle: ButtonStyle {
             // Its words in full, whatever room a row of buttons offers it.
             .fixedSize()
             .padding(.horizontal, kind == .ghost ? 12 : 18)
-            .frame(minWidth: kind == .primary ? 168 : nil)
+            .frame(minWidth: kind == .primary || kind == .brand ? SetupLayout.mainButton : nil)
             .frame(height: 36)
             .foregroundStyle(foreground)
             .background(background, in: shape)
-            .opacity(!isEnabled ? 0.45 : configuration.isPressed ? 0.75 : 1)
+            .opacity(!isEnabled ? 0.45 : configuration.isPressed ? 0.8 : 1)
+            .scaleEffect(configuration.isPressed && !reducesMotion ? 0.97 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+            .animation(SetupMotion.change(reducesMotion), value: isEnabled)
             .contentShape(shape)
     }
 
     private var foreground: Color {
         switch kind {
         case .primary: DialogColors.onInk
+        case .brand: .white
         case .secondary: .primary
         case .ghost: SetupColors.note
         }
@@ -322,6 +440,7 @@ struct SetupButtonStyle: ButtonStyle {
     private var background: Color {
         switch kind {
         case .primary: SetupColors.ink
+        case .brand: Palette.actionFill
         case .secondary: SettingsColors.secondaryButton
         case .ghost: .clear
         }
@@ -415,6 +534,7 @@ struct SetupGlyph: View {
                 Icon.check.image
                     .font(.system(size: size * 0.82, weight: .bold))
                     .foregroundStyle(AgentColors.ok)
+                    .transition(.scale(scale: 0.3).combined(with: .opacity))
             case .warn:
                 Icon.circleAlert.image
                     .font(.system(size: size * 0.82, weight: .medium))

@@ -69,21 +69,26 @@ extension ProgramMenu {
 // MARK: Welcome
 
 /// The first screen: the house, the wordmark, what Roga is for, and one
-/// button.
+/// button in the middle, since there's nothing to go back to. Its parts come
+/// in one after another when it appears.
 struct SetupWelcome: View {
     let setup: SetupModel
+    @State private var isIn = false
 
     var body: some View {
         VStack(spacing: 14) {
             HouseFigure(pose: .mark)
                 .frame(width: 168 * HouseRig.frame.width / HouseRig.frame.height, height: 168)
                 .accessibilityHidden(true)
+                .setupEntrance(isIn, order: 0)
             Wordmark(width: 132)
                 .padding(.top, 6)
+                .setupEntrance(isIn, order: 1)
             Text("RATHER OPINIONATED GIT APP")
                 .font(.system(size: 11.5, weight: .medium))
                 .tracking(1.8)
                 .foregroundStyle(SetupColors.note)
+                .setupEntrance(isIn, order: 2)
             Text("A fast Git app for your Mac, made for keeping an eye on your agents and reviewing what they did.")
                 .font(.system(size: 17))
                 .lineSpacing(5)
@@ -91,16 +96,19 @@ struct SetupWelcome: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: 440)
                 .padding(.top, 10)
-            SetupActions {
-                Button("Get Started") { setup.start() }
-                    .buttonStyle(.setup(.primary))
-                    .keyboardShortcut(.defaultAction)
-            }
+                .setupEntrance(isIn, order: 3)
+            Button("Get Started") { setup.start() }
+                .buttonStyle(.setup(.primary))
+                .keyboardShortcut(.defaultAction)
+                .padding(.top, 8)
+                .setupEntrance(isIn, order: 4)
             Text("Setup takes about a minute. You can change all of it later in Settings.")
                 .font(.system(size: 12.5))
                 .foregroundStyle(SetupColors.note)
+                .setupEntrance(isIn, order: 5)
         }
         .frame(maxWidth: .infinity)
+        .onAppear { isIn = true }
     }
 }
 
@@ -129,13 +137,17 @@ struct SetupLooking: View {
                     LookRow(look: look)
                 }
             }
-            SetupActions {
+            SetupActions(back: back) {
                 Button(isDone ? "Continue" : "Looking…") { setup.next(found: found) }
                     .buttonStyle(.setup(.primary))
                     .keyboardShortcut(.defaultAction)
                     .disabled(!isDone)
             }
         }
+    }
+
+    private func back() {
+        setup.back(found: found)
     }
 
     private var looks: [SetupWords.Look] {
@@ -155,19 +167,25 @@ struct SetupLooking: View {
     }
 }
 
+/// One thing Roga looks at. Its mark turns into a check, and its words
+/// change, as the answer comes in.
 private struct LookRow: View {
     let look: SetupWords.Look
+    @Environment(\.accessibilityReduceMotion) private var reducesMotion
 
     var body: some View {
         HStack(spacing: 12) {
             SetupGlyph(kind: glyph)
+                .animation(SetupMotion.pop(reducesMotion), value: look.state)
             Text(look.name)
                 .fontWeight(.medium)
                 .frame(width: 120, alignment: .leading)
             Text(look.detail)
                 .foregroundStyle(look.state == .missing ? AgentColors.warn : SetupColors.note)
                 .lineLimit(1)
+                .contentTransition(.opacity)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .animation(SetupMotion.change(reducesMotion), value: look.detail)
         }
         .padding(.horizontal, 16)
         .frame(height: 46)
@@ -229,9 +247,7 @@ struct SetupGit: View {
             if let survey = gitProvider.survey {
                 SetupNote(lines: SetupWords.gitNote(survey))
             }
-            SetupActions {
-                Button("Back") { setup.back(found: found) }
-                    .buttonStyle(.setup(.ghost))
+            SetupActions(back: back) {
                 Button("Continue") { setup.next(found: found) }
                     .buttonStyle(.setup(.primary))
                     .keyboardShortcut(.defaultAction)
@@ -243,9 +259,13 @@ struct SetupGit: View {
     private var heading: String {
         switch gitProvider.state {
         case .locating: "Looking for Git"
-        case .ready(let git): SetupWords.gitHeading(git.installation, developerToolsFolder: gitProvider.survey?.developerToolsFolder)
+        case .ready(let git): SetupWords.gitHeading(git.installation)
         case .failed: "Roga can't use the Git you chose"
         }
+    }
+
+    private func back() {
+        setup.back(found: found)
     }
 
     private func none(developerToolsMissing: Bool) -> some View {
@@ -278,9 +298,9 @@ struct SetupGit: View {
                 }
             }
             SetupNote(lines: [words.note])
-            SetupActions {
+            SetupActions(back: back) {
                 Button("Choose Another…", action: chooseAnother)
-                    .buttonStyle(.setup(.ghost))
+                    .buttonStyle(.setup(.secondary))
                 Button(gitProvider.isLooking ? "Looking…" : "Look Again") { gitProvider.lookAgain() }
                     .buttonStyle(.setup(words.offersTools ? .secondary : .primary))
                     .disabled(gitProvider.isLooking)
@@ -337,15 +357,13 @@ struct SetupAgents: View {
                 }
             }
             if agents.isLooking {
-                SetupActions {
-                    back
+                SetupActions(back: back) {
                     Button("Looking…") {}
                         .buttonStyle(.setup(.primary))
                         .disabled(true)
                 }
             } else if found.isEmpty {
-                SetupActions {
-                    back
+                SetupActions(back: back) {
                     Button("Look Again") { agents.lookAgain() }
                         .buttonStyle(.setup(.secondary))
                     Button("Continue") { setup.continueWithoutAgents() }
@@ -353,11 +371,9 @@ struct SetupAgents: View {
                         .keyboardShortcut(.defaultAction)
                 }
             } else {
-                if let hint = SetupWords.copiesHint(found.map { (kind: $0, copies: agents.surveys[$0]?.copies.count ?? 1) }) {
-                    SetupNote(lines: [hint])
-                }
-                SetupActions {
-                    back
+                let hint = SetupWords.copiesHint(found.map { (kind: $0, copies: agents.surveys[$0]?.copies.count ?? 1) })
+                SetupNote(lines: [hint, "You can change this later in Settings › Agents."].compactMap(\.self))
+                SetupActions(back: back) {
                     Button("Don't Use Agents") { setup.dontUseAgents() }
                         .buttonStyle(.setup(.secondary))
                     Button("Use Agents") { setup.useAgents(found: found) }
@@ -365,14 +381,12 @@ struct SetupAgents: View {
                         .keyboardShortcut(.defaultAction)
                         .disabled(on.isEmpty)
                 }
-                SetupNote(lines: ["You can change this later in Settings › Agents."])
             }
         }
     }
 
-    private var back: some View {
-        Button("Back") { setup.back(found: found) }
-            .buttonStyle(.setup(.ghost))
+    private func back() {
+        setup.back(found: found)
     }
 
     /// Whether Roga found copies of an agent and can't use any of them,
@@ -390,7 +404,7 @@ struct SetupAgents: View {
     private var sub: String {
         if agents.isLooking || !found.isEmpty { return SetupWords.agentsSub }
         if foundOnlyUnusable {
-            return "Each copy is too old or didn't say its version. Update one or choose another copy, then Look Again. Roga works without one, and you can add one later in Settings › Agents."
+            return "Each copy is too old or didn't say its version. Update one or choose another, then Look Again. Roga works without one too."
         }
         return SetupWords.noAgentsSub
     }
@@ -415,6 +429,7 @@ struct SetupHooks: View {
     /// The agents Install Hooks is running in, so that their commands stay
     /// while it does.
     @State private var installing: [AgentKind] = []
+    @Environment(\.accessibilityReduceMotion) private var reducesMotion
 
     var body: some View {
         let usable = setup.usable(found: found)
@@ -469,10 +484,7 @@ struct SetupHooks: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
             }
-            SetupActions {
-                Button("Back") { setup.back(found: found) }
-                    .buttonStyle(.setup(.ghost))
-                    .disabled(phase == .installing)
+            SetupActions(back: { setup.back(found: found) }, backIsDisabled: phase == .installing) {
                 switch phase {
                 case .pending(let kinds):
                     Button("Not Now") { setup.next(found: found) }
@@ -495,6 +507,10 @@ struct SetupHooks: View {
                 }
             }
         }
+        // What the screen says and how tall its card is change as the hooks
+        // go in, and the buttons with them.
+        .animation(SetupMotion.change(reducesMotion), value: phase)
+        .animation(SetupMotion.change(reducesMotion), value: agents.hookStatus)
         // Trusting Roga's hooks or turning them on happens in the agent, so
         // Roga asks again when someone comes back from there.
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -736,6 +752,9 @@ struct SetupReady: View {
     @Environment(AgentProvider.self) private var agents
     @Environment(Updates.self) private var updates: Updates?
     @Environment(\.accessibilityReduceMotion) private var reducesMotion
+    /// Whether the screen has appeared, after which the marks beside what
+    /// was chosen come in one after another.
+    @State private var isIn = false
 
     var body: some View {
         let usable = setup.usable(found: found)
@@ -745,7 +764,9 @@ struct SetupReady: View {
                 SetupCard {
                     ChosenRow(
                         name: "Git",
-                        chosen: SetupWords.chosenGit(gitProvider.git?.installation, developerToolsFolder: gitProvider.survey?.developerToolsFolder)
+                        chosen: SetupWords.chosenGit(gitProvider.git?.installation, developerToolsFolder: gitProvider.survey?.developerToolsFolder),
+                        isIn: isIn,
+                        order: 0
                     ) {
                         setup.go(to: .git)
                     }
@@ -757,12 +778,14 @@ struct SetupReady: View {
                             },
                             usable: usable,
                             declined: setup.usesAgents == false
-                        )
+                        ),
+                        isIn: isIn,
+                        order: 1
                     ) {
                         setup.go(to: .agents)
                     }
                     if !usable.isEmpty {
-                        ChosenRow(name: "Hooks", chosen: SetupWords.chosenHooks(usable: usable, status: agents.hookStatus)) {
+                        ChosenRow(name: "Hooks", chosen: SetupWords.chosenHooks(usable: usable, status: agents.hookStatus), isIn: isIn, order: 2) {
                             setup.go(to: .hooks)
                         }
                     }
@@ -801,17 +824,17 @@ struct SetupReady: View {
                         .padding(.leading, 4)
                 }
             }
-            SetupActions {
-                Button("Back") { setup.back(found: found) }
-                    .buttonStyle(.setup(.ghost))
+            SetupActions(back: { setup.back(found: found) }) {
+                // In the house's orange, since it's where setup was going.
                 Button("Open Roga") {
-                    withAnimation(reducesMotion ? nil : .easeOut(duration: 0.25)) { setup.finish() }
+                    withAnimation(.easeOut(duration: reducesMotion ? 0.2 : 0.35)) { setup.finish() }
                 }
-                .buttonStyle(.setup(.primary))
+                .buttonStyle(.setup(.brand))
                 .keyboardShortcut(.defaultAction)
                 .disabled(gitProvider.git == nil)
             }
         }
+        .onAppear { isIn = true }
     }
 
     private func section(_ title: String, @ViewBuilder content: () -> some View) -> some View {
@@ -850,16 +873,23 @@ struct SetupReady: View {
 }
 
 /// A line of What you chose: a mark, what the line is about, what was
-/// chosen, and Change.
+/// chosen, and Change. The mark pops in a little after the screen appears,
+/// each line's after the one over it.
 private struct ChosenRow: View {
     let name: String
     let chosen: SetupWords.Chosen
+    let isIn: Bool
+    let order: Int
     let change: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reducesMotion
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             SetupGlyph(kind: glyph, size: 16)
                 .frame(height: 19)
+                .scaleEffect(isIn || reducesMotion ? 1 : 0.3)
+                .opacity(isIn || reducesMotion ? 1 : 0)
+                .animation(SetupMotion.pop(reducesMotion)?.delay(0.3 + Double(order) * 0.1), value: isIn)
             Text(name)
                 .fontWeight(.semibold)
                 .frame(width: 58, height: 19, alignment: .leading)

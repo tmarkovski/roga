@@ -425,11 +425,14 @@ public final class AgentProvider {
                 hookWork[kind] = .failed(action, action == .remove ? "Roga stopped removing its hooks." : "Roga stopped installing its hooks.")
                 succeeded = false
             }
+            // Each agent is asked as soon as its own commands are done, and
+            // not after the others', so that it doesn't go on reading as it
+            // did before while they run. A part of the commands may have
+            // worked, so the status that comes next can read installed after
+            // an install failed. The failure stays all the same, until a
+            // later status shows it no longer applies.
+            refreshHookStatus(kind, keepingFailure: true)
         }
-        // A part of the commands may have worked, so the status that comes
-        // next can read installed after an install failed. The failure stays
-        // all the same, until a later status shows it no longer applies.
-        for kind in kinds { refreshHookStatus(kind, keepingFailure: true) }
         return succeeded
     }
 

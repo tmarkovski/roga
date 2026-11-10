@@ -85,11 +85,10 @@ enum SetupWords {
 
     // MARK: Git
 
-    static func gitHeading(_ installation: GitInstallation, developerToolsFolder: String?, home: String = NSHomeDirectory()) -> String {
-        let source = ProgramSource.of(installation.executable, developerToolsFolder: developerToolsFolder, home: home)
-        // With no-break spaces, so that a heading too long for one line
-        // breaks before "from the Command Line Tools" and not inside it.
-        return "Roga will use Git \(installation.version) \(source.phrase.replacingOccurrences(of: " ", with: "\u{00A0}"))"
+    /// The heading names the version and leaves where the Git is from to its
+    /// row, so that it's one line whichever Git it is.
+    static func gitHeading(_ installation: GitInstallation) -> String {
+        "Roga will use Git \(installation.version)"
     }
 
     static let gitSub = "Roga runs the Git on your Mac, with your own configuration, and needs \(minimumGit) or newer."

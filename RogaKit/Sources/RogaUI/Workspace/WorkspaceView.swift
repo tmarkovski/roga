@@ -225,12 +225,14 @@ public struct WorkspaceView: View {
 
     public var body: some View {
         Group {
+            // Setup fades out before the app fades in, since the two are
+            // laid out differently and neither reads through the other.
             if setup.isShowing {
                 SetupView(setup: setup)
-                    .transition(.opacity)
+                    .transition(SetupMotion.fade)
             } else {
                 workspace
-                    .transition(.opacity)
+                    .transition(SetupMotion.fade)
             }
         }
         .frame(minWidth: 720, minHeight: 480)
