@@ -80,7 +80,7 @@ import Testing
 
     @Test func copyingAProgramCopiesItWholeWithItsPath() {
         let command = claudeCommand
-        let lines: [TerminalLine] = [.comment("The staged changes go to its standard input"), .program(command)]
+        let lines: [TerminalLine] = [.comment("Staged diff supplied via standard input"), .program(command)]
         let copied = CommandBlock.copied(lines)
         #expect(copied == command.description)
         #expect(copied.hasPrefix(NSHomeDirectory() + "/.local/bin/claude -p --safe-mode"))

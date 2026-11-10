@@ -204,7 +204,7 @@ struct AgentProviderTests {
         #expect(command.environment == ["ROGA_GENERATING": "1"])
         #expect(command.arguments.prefix(8) == ["-p", "--safe-mode", "--setting-sources", "user", "--model", "haiku", "--effort", "low"])
         #expect(command == CommitMessageCommand.command(for: setup.agent, worktree: "/work/api", style: CommitMessagePrompt.defaultStyle, hasDraft: false))
-        #expect(setup.terminal(worktree: "/work/api", hasDraft: false) == [.comment("The staged changes go to its standard input"), .program(command, showsPath: false)])
+        #expect(setup.terminal(worktree: "/work/api", hasDraft: false) == [.comment("Staged diff supplied via standard input"), .program(command, showsPath: false)])
     }
 
     @Test func aGenerationWithTheAgentsOwnDefaultsAndExtras() async throws {
