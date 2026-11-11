@@ -301,6 +301,7 @@ public struct RepositoryCommands: Commands {
             }
             .keyboardShortcut(Self.reviewShortcut)
             .disabled(base == nil)
+            Divider()
             Button("Replay History") {
                 repository?.replayHistory()
             }
