@@ -206,14 +206,15 @@
   }
 
   /* The same shape as the "Coming in the next release" pill, in the hero's
-     colors. */
+     colors. Its text takes the accent, so it stands out from the muted name
+     beside it. */
   .beta {
     display: inline-block;
     margin-left: 0.5rem;
     padding: 0.125rem 0.625rem;
     border: 1px solid var(--line);
     border-radius: 1rem;
-    color: var(--muted);
+    color: var(--accent);
     font-size: 0.8125rem;
   }
 
@@ -642,7 +643,7 @@
           <span class="status" role="status"></span>
         </div>
       </div>
-      <p class="terms">Beta · Free and open source · Apache 2.0 · macOS 26 or later</p>
+      <p class="terms">Free and open source · Apache 2.0 · macOS 26 or later</p>
       <p class="beta-note">Roga is in beta. Things may change or break between releases, so please <a href="https://github.com/tmarkovski/roga/issues">report what you find on GitHub</a>.</p>
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="/shots/window-dark.webp">
