@@ -18,7 +18,8 @@ We read what other clients offer from their own sources, which are GitHub Deskto
 | --- | --- | --- | --- |
 | Going there and bringing it in | Check Out, then Fast-Forward main to it, or Merge… and Rebase…, then Cherry-Pick | Pull, Push, Fetch | Check Out This Commit, Cherry-Pick |
 | Changing the branch | Reset main to Here…, Revert… | | Reset main to Here…, Revert… |
-| More | Create, Remote, Copy, Review, Replay | Create, Copy, Review, Replay | Create, Copy |
+| More | Create, Remote, Copy, Review | Create, Copy, Review | Create, Copy |
+| Replaying its history | Replay | Replay | |
 | | Delete… | | |
 
 **Only three things are submenus: Create, Remote and Copy**, because each holds commands that are different from one another. Decision 33 still says that commands that differ only in how far they go share one row and put the choice in the dialog. So Reset is one row, and Soft, Mixed, Keep and Hard are in its dialog.

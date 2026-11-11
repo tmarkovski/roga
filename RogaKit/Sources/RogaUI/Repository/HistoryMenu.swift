@@ -112,6 +112,8 @@ enum HistoryMenu {
             isCurrentBranch ? currentBranchRows(target, situation, actions) : goingAndBringingIn(target, name, situation, actions),
             isCurrentBranch ? [] : resettingAndReverting(target, situation, actions),
             moreRows(target, name, situation, actions),
+            // A group of its own, so it isn't lost at the end of More.
+            actions.replay.map { [.command("Replay history", action: $0)] } ?? [],
             actions.delete.map { [.command(RefMenu.Title($0.title), isDestructive: true, isEnabled: $0.isEnabled, action: $0.action)] } ?? [],
         ]
         let heading: RefMenu.Title = target.refIsBranch ? .branch(name ?? target.shortID) : RefMenu.Title(name ?? target.shortID)
@@ -209,9 +211,6 @@ enum HistoryMenu {
         rows.append(.submenu("Copy", entries: copyRows(target, name, actions)))
         if let reviewBase = situation.reviewBase {
             rows.append(.command("Review against \(branch: reviewBase)", action: actions.review))
-        }
-        if let replay = actions.replay {
-            rows.append(.command("Replay history", action: replay))
         }
         return rows
     }

@@ -336,14 +336,31 @@ struct HistoryMenuTests {
         #expect(copied == [commit.hex, "A subject", "feature"])
     }
 
-    @Test func reviewAndReplayComeAfterTheSubmenusAndDeleteComesLast() {
+    @Test func replayHasAGroupOfItsOwnBetweenReviewAndDelete() {
         var situation = situation
         situation.reviewBase = "main"
         var actions = HistoryMenu.Actions()
         actions.replay = {}
         actions.delete = HistoryMenu.Delete(title: "Delete…", isEnabled: true) {}
         let rows = titles(entries(target(ref: feature), situation, actions: actions))
-        #expect(rows.suffix(6) == ["Create ▸", "Copy ▸", "Review against main", "Replay history", "-", "Delete…"])
+        #expect(rows.suffix(7) == ["Create ▸", "Copy ▸", "Review against main", "-", "Replay history", "-", "Delete…"])
+    }
+
+    @Test func withNothingToDeleteReplayIsTheLastGroup() {
+        var situation = HistoryMenu.Situation(currentBranch: feature, head: head)
+        situation.reviewBase = "main"
+        situation.status = BranchStatus(branch: feature, upstream: "refs/remotes/origin/feature", ahead: 1, behind: 0, remote: "origin")
+        var actions = HistoryMenu.Actions()
+        actions.replay = {}
+        let rows = titles(entries(target(ref: feature, commit: head), situation, actions: actions))
+        #expect(rows == ["# feature", "Pull", "Push", "Fetch", "-", "Create ▸", "Copy ▸", "Review against main", "-", "Replay history"])
+    }
+
+    @Test func withoutAReplayThereIsNoGroupForIt() {
+        var actions = HistoryMenu.Actions()
+        actions.delete = HistoryMenu.Delete(title: "Delete…", isEnabled: true) {}
+        let rows = titles(entries(target(ref: feature), situation, actions: actions))
+        #expect(rows.suffix(4) == ["Create ▸", "Copy ▸", "-", "Delete…"])
     }
 
     @Test func whatMovesHeadWaitsForWhatsRunningButCopyDoesnt() {
