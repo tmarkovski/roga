@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Roga: a native Git client for macOS</title>
-<meta name="description" content="A free, native Git client for macOS. Review branches, manage worktrees and track Claude Code and Codex sessions. Written in Swift and open source.">
+<title>Roga (beta): a native Git client for macOS</title>
+<meta name="description" content="A free, native Git client for macOS, in beta. Review branches, manage worktrees and track Claude Code and Codex sessions. Written in Swift and open source.">
 <link rel="canonical" href="https://roga.sh/">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
@@ -13,8 +13,8 @@
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#16150e">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://roga.sh/">
-<meta property="og:title" content="Roga: a native Git client for macOS">
-<meta property="og:description" content="A free, native Git client for macOS. Review branches, manage worktrees and track Claude Code and Codex sessions. Written in Swift and open source.">
+<meta property="og:title" content="Roga (beta): a native Git client for macOS">
+<meta property="og:description" content="A free, native Git client for macOS, in beta. Review branches, manage worktrees and track Claude Code and Codex sessions. Written in Swift and open source.">
 <meta property="og:image" content="https://roga.sh/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -205,6 +205,19 @@
     font-size: 0.9375rem;
   }
 
+  /* The same shape as the "Coming in the next release" pill, in the hero's
+     colors. Its text takes the accent, so it stands out from the muted name
+     beside it. */
+  .beta {
+    display: inline-block;
+    margin-left: 0.5rem;
+    padding: 0.125rem 0.625rem;
+    border: 1px solid var(--line);
+    border-radius: 1rem;
+    color: var(--accent);
+    font-size: 0.8125rem;
+  }
+
   .lede {
     max-width: 34em;
     margin-bottom: 2rem;
@@ -317,6 +330,12 @@
 
   .terms {
     margin-top: 1rem;
+    color: var(--muted);
+    font-size: 0.9375rem;
+  }
+
+  .beta-note {
+    margin-top: 0.25rem;
     color: var(--muted);
     font-size: 0.9375rem;
   }
@@ -608,11 +627,11 @@
 <main>
   <section class="hero">
     <div class="wide">
-      <p class="name">Rather Opinionated Git App</p>
+      <p class="name">Rather Opinionated Git App <span class="beta">Beta</span></p>
       <h1>A native Git client for macOS.</h1>
       <p class="lede">Review branch changes, manage worktrees and track coding agents in one window. Built in Swift for developers who work across the terminal and a Git client.</p>
       <div class="install">
-        <a class="button" href="/download">Download for macOS</a>
+        <a class="button" href="/download">Download the beta for macOS</a>
         <span class="or">or</span>
         <div class="command">
           <span class="prompt" aria-hidden="true">$</span>
@@ -625,6 +644,7 @@
         </div>
       </div>
       <p class="terms">Free and open source · Apache 2.0 · macOS 26 or later</p>
+      <p class="beta-note">Roga is in beta. Things may change or break between releases, so please <a href="https://github.com/tmarkovski/roga/issues">report what you find on GitHub</a>.</p>
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="/shots/window-dark.webp">
         <img class="window" src="/shots/window-light.webp" width="2400" height="1492" alt="Roga with repositories and worktrees in the sidebar, commit history, branches and the selected diff.">
@@ -719,9 +739,9 @@
 
   <section class="close">
     <div class="wide">
-      <h2>Download Roga.</h2>
+      <h2>Download the Roga beta.</h2>
       <div class="install">
-        <a class="button" href="/download">Download for macOS</a>
+        <a class="button" href="/download">Download the beta for macOS</a>
         <span class="or">or</span>
         <div class="command">
           <span class="prompt" aria-hidden="true">$</span>
