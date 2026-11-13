@@ -223,13 +223,15 @@ struct BranchMenuItems: View {
     private static let noIcon = Image(nsImage: NSImage(size: NSSize(width: 16, height: 16), flipped: false) { _ in true })
 }
 
-/// `↓3` and `↑1`, or what git is doing in their place. That goes in steps: the
-/// house zooms in, then the words come out beside it and move what's to their
-/// right along. When git is done the words change to what happened and the house
-/// zooms out, and when those words have had their moment, they close up again.
-/// A commit has no house, so only its words come and go. A fetch shows nothing
-/// here, because the house drops through the Fetch button instead (decisions 45
-/// and 55).
+/// `↓3` and `↑1`, then what git is doing or just did. A pull or a push goes in
+/// steps: the house zooms in where the counts were, then the words come out
+/// beside it and move what's to their right along. When git is done the counts
+/// come back, the words change to what happened and the house zooms out, and
+/// when those words have had their moment, they close up again. A commit or a
+/// discard has no house, so its words open after the counts, which stay, so that
+/// `↑` can push what was just committed while `Committed 9f2c1ab` and its Undo
+/// are still showing (decision 76). A fetch shows nothing here, because the house
+/// drops through the Fetch button instead (decisions 45 and 55).
 private struct BranchCounts: View {
     /// How the title row moves from one step to the next.
     private enum Motion {
@@ -270,6 +272,12 @@ private struct BranchCounts: View {
 
     var body: some View {
         HStack(spacing: 0) {
+            // Before the words, so that they stay where they always are, and so
+            // that Undo and `↑` aren't side by side, where a slip would push the
+            // commit that was meant to be taken back.
+            if shown.showsCounts {
+                counts
+            }
             // It takes no room without a house, and its room opens and closes
             // along with the zoom, so that the words never run into the house.
             ZStack {
@@ -297,33 +305,34 @@ private struct BranchCounts: View {
                     .padding(.trailing, 4)
                     .help(undo.help)
             }
-            if shown.showsCounts {
-                // A worktree that's stuck comes before anything else it could
-                // do, and during a rebase it isn't on a branch to have counts.
-                if let unfinished = branch.unfinished {
-                    UnfinishedWorkControl(branch: branch, unfinished: unfinished)
-                        .transition(Self.countsTransition)
-                } else if let status = branch.status {
-                    HStack(spacing: 2) {
-                        if status.behind > 0 {
-                            pullCount(status)
-                        }
-                        if status.ahead > 0 {
-                            pushCount(status)
-                        } else if status.upstream == nil, status.push != nil {
-                            firstPush
-                        }
-                    }
-                    .transition(Self.countsTransition)
-                }
-            }
         }
         .font(.system(size: 13))
         .lineLimit(1)
         .task(id: activity) { await show(activity) }
     }
 
-    /// Their room opens a frame at a time, as the words' room closes, or for a
+    @ViewBuilder private var counts: some View {
+        // A worktree that's stuck comes before anything else it could do, and
+        // during a rebase it isn't on a branch to have counts.
+        if let unfinished = branch.unfinished {
+            UnfinishedWorkControl(branch: branch, unfinished: unfinished)
+                .transition(Self.countsTransition)
+        } else if let status = branch.status {
+            HStack(spacing: 2) {
+                if status.behind > 0 {
+                    pullCount(status)
+                }
+                if status.ahead > 0 {
+                    pushCount(status)
+                } else if status.upstream == nil, status.push != nil {
+                    firstPush
+                }
+            }
+            .transition(Self.countsTransition)
+        }
+    }
+
+    /// Their room opens a frame at a time, as the house's room closes, or for a
     /// moment they'd have room for both, and what's to their right would jump.
     private static var countsTransition: AnyTransition {
         .asymmetric(
@@ -346,7 +355,7 @@ private struct BranchCounts: View {
                 shown.house = nil
                 shown.words = words
                 shown.showsWords = true
-                shown.showsCounts = false
+                shown.showsCounts = true
             }
         case .running(let action):
             guard let house = action.houseAnimation else {
@@ -354,12 +363,12 @@ private struct BranchCounts: View {
                 // these moves what's to the right past where it ends up.
                 shown.words = action.title
                 shown.arrival = .fade
-                // On one curve, so that what's to the right moves steadily rather
-                // than following the counts out and then the words back.
+                // The counts stay, as they do while a fetch runs, and clicking
+                // one does nothing until git is done.
                 move(Motion.words) {
                     shown.house = nil
                     shown.showsWords = true
-                    shown.showsCounts = false
+                    shown.showsCounts = true
                 }
                 return
             }
