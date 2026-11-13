@@ -165,6 +165,7 @@ roga/
 │   ├── build-git.sh                builds an old git for CI
 │   ├── generate-icons.swift        turns the SVGs in docs/design/icons into custom symbols
 │   ├── release/release.py          archives, signs, notarizes and packages a release, and writes the appcast and the cask
+│   ├── selection-latency/          times selecting a row in history, in a test copy of the app
 │   └── verify-artifact.sh          checks a release's signatures, helper and key before it's published
 ├── .github/workflows/              ci.yml, site.yml, and release.yml for releases
 ├── docs/
