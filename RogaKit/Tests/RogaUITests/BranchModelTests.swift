@@ -2052,6 +2052,146 @@ struct BranchModelTests {
         #expect((0..<model.rowCount).allSatisfy { !model.rowContent($0).isPreviewed })
     }
 
+    /// The rows of the commits whose subjects are given, as history shows them.
+    func rows(_ subjects: [String], in model: RepositoryModel, clones: Clones) async throws -> [Int] {
+        var rows: [Int] = []
+        for subject in subjects {
+            let id = try await git("log", "--all", "--format=%H", "--grep=^\(subject)$", in: clones.work)
+            let row = try #require(model.history.flatMap { history in
+                history.rows.firstIndex { history.graph.id(at: $0).hex == id }
+            })
+            rows.append(row + (model.hasWorkingTreeRow ? 1 : 0))
+        }
+        return rows
+    }
+
+    func fadedRows(_ model: RepositoryModel) -> [Int] {
+        (0..<model.rowCount).filter { model.rowContent($0).isFaded }
+    }
+
+    func rowsWithFadedLines(_ model: RepositoryModel) -> [Int] {
+        (0..<model.rowCount).filter { model.rowContent($0).lanes?.lines.contains(where: \.isFaded) == true }
+    }
+
+    @Test func fadesTheCommitsTheBranchIsMissing() async throws {
+        let clones = try await clones()
+        try await commit("First from someone else", in: clones.other)
+        try await pushFromOther(clones)
+        try await git("fetch", "--quiet", in: clones.work)
+        let model = model(clones, fetches: false)
+        await model.appear()
+        #expect(model.branch.status?.behind == 2)
+        let missing = try await rows(["From someone else", "First from someone else"], in: model, clones: clones)
+        #expect(fadedRows(model) == missing)
+        // Their lines are faded down to the branch's own commit, which isn't.
+        let head = try #require(model.history.flatMap { history in history.rows.firstIndex { $0 == history.head } })
+        #expect(rowsWithFadedLines(model) == missing + [head])
+        #expect(!model.rowContent(head).isFaded)
+        #expect(model.rowContent(head).lanes?.lines.filter(\.isFaded).count == 1)
+    }
+
+    @Test func lightsUpTheMissingCommitsWhileThePointerIsOnThePullCount() async throws {
+        let clones = try await clones()
+        try await pushFromOther(clones)
+        let mine = try await commit("Mine", in: clones.work)
+        try await git("fetch", "--quiet", in: clones.work)
+        let model = model(clones, fetches: false)
+        await model.appear()
+        let theirs = try await rows(["From someone else"], in: model, clones: clones)
+        #expect(fadedRows(model) == theirs)
+
+        model.branch.preview(.pull)
+        await model.branch.previewing?.value
+        #expect(fadedRows(model).isEmpty)
+        #expect(rowsWithFadedLines(model).isEmpty)
+        #expect(model.rowContent(theirs[0]).isPreviewed)
+
+        // `↑` tints the branch's own commit, and the missing one stays faded.
+        model.branch.preview(.push)
+        await model.branch.previewing?.value
+        #expect(fadedRows(model) == theirs)
+        #expect(!rowsWithFadedLines(model).isEmpty)
+        let row = try #require(model.history.flatMap { history in
+            history.rows.firstIndex { history.graph.id(at: $0).hex == mine }
+        })
+        #expect(model.rowContent(row).isPreviewed)
+        #expect(!model.rowContent(row).isFaded)
+
+        model.branch.preview(nil)
+        #expect(fadedRows(model) == theirs)
+    }
+
+    @Test func aPullBringsTheFadedCommitsBackToNormal() async throws {
+        let clones = try await clones()
+        try await pushFromOther(clones)
+        try await git("fetch", "--quiet", in: clones.work)
+        let model = model(clones, fetches: false)
+        await model.appear()
+        #expect(fadedRows(model).count == 1)
+
+        model.branch.pull()
+        await model.branch.running?.value
+        await model.check?.value
+        await model.load()
+        #expect(model.branch.status?.behind == 0)
+        #expect(fadedRows(model).isEmpty)
+        #expect(rowsWithFadedLines(model).isEmpty)
+    }
+
+    /// The fetch moves `origin/main` after history has loaded, so the missing
+    /// commit is listed before history has it.
+    @Test func fadesACommitAFetchBringsIn() async throws {
+        let clones = try await clones()
+        let model = model(clones, fetches: false)
+        await model.appear()
+        #expect(fadedRows(model).isEmpty)
+
+        try await pushFromOther(clones)
+        model.branch.fetch()
+        await model.branch.running?.value
+        await model.check?.value
+        await model.load()
+        #expect(model.branch.status?.behind == 1)
+        #expect(fadedRows(model) == (try await rows(["From someone else"], in: model, clones: clones)))
+    }
+
+    @Test func fadesNothingThatIsntMissing() async throws {
+        let clones = try await clones()
+        // Up to date.
+        let model = model(clones, fetches: false)
+        await model.appear()
+        #expect(fadedRows(model).isEmpty)
+
+        // Only ahead, with uncommitted changes, whose line passes no faded row.
+        try await commit("Mine", in: clones.work)
+        try "changed".write(toFile: clones.work + "/README.md", atomically: true, encoding: .utf8)
+        model.refsChanged()
+        await model.check?.value
+        await model.load()
+        #expect(model.branch.status?.ahead == 1)
+        #expect(model.hasWorkingTreeRow)
+        #expect(fadedRows(model).isEmpty)
+        #expect(rowsWithFadedLines(model).isEmpty)
+    }
+
+    @Test func fadesNothingWithoutAnUpstreamOrABranch() async throws {
+        let clones = try await clones()
+        try await pushFromOther(clones)
+        try await git("fetch", "--quiet", in: clones.work)
+        try await git("branch", "--unset-upstream", in: clones.work)
+        let model = model(clones, fetches: false)
+        await model.appear()
+        #expect(model.branch.status?.upstream == nil)
+        #expect(fadedRows(model).isEmpty)
+
+        try await git("switch", "--quiet", "--detach", in: clones.work)
+        model.refsChanged()
+        await model.check?.value
+        await model.load()
+        #expect(model.branch.status == nil)
+        #expect(fadedRows(model).isEmpty)
+    }
+
     /// The count goes away under the pointer, so nothing else would end the tint.
     @Test func clickingACountEndsTheTint() async throws {
         let clones = try await clones()

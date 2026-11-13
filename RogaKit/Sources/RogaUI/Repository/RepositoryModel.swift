@@ -137,6 +137,14 @@ final class RepositoryModel {
     /// The commits that the count under the pointer would move, which history
     /// tints.
     @ObservationIgnored private var previewedCommits: Set<CommitGraph.Position> = []
+    /// The commits the checked-out branch is missing from its upstream, which
+    /// a pull would bring in. They're IDs, since history may not have them yet.
+    @ObservationIgnored private var missingCommits: [ObjectID] = []
+    /// The missing commits that history fades, which leaves out the ones the
+    /// count under the pointer lights up.
+    @ObservationIgnored private var fadedCommits: Set<CommitGraph.Position> = []
+    /// Their lines in the graph.
+    @ObservationIgnored private var fadedLines = FadedLines()
     /// The commits of the selected rows while there's more than one, from the
     /// newest, so that they can be found again when history loads.
     @ObservationIgnored private var selectedCommits: [ObjectID] = []
@@ -268,6 +276,7 @@ final class RepositoryModel {
             selectedChanges.selectFirstFile()
         }
         branch.showPreview = { [weak self] commits in self?.preview(commits) }
+        branch.showMissing = { [weak self] commits in self?.showMissing(commits) }
         selectedCommit.selectedFile.nameConflicts = { [weak self] labels in
             guard let self else { return ConflictNaming().sides(oursLabel: labels?.ours ?? "HEAD", theirsLabel: labels?.theirs ?? "") }
             return await nameConflicts(labels)
@@ -995,6 +1004,7 @@ final class RepositoryModel {
                 }
                 self.history = history
                 if hasWorkingTreeRow { workingTreeLine = WorkingTreeLine(layout: history.lanes, head: history.head) }
+                updateFading()
                 findSelectedRows(in: history)
                 historyVersion += 1
                 phase = .ready
@@ -1008,13 +1018,38 @@ final class RepositoryModel {
         }
     }
 
-    /// Tints these commits in history, or none.
+    /// Tints these commits in history, or none. Missing commits among them
+    /// come back to full strength while they're tinted.
     private func preview(_ commits: [ObjectID]) {
         guard let history else { return }
         let positions = Set(commits.compactMap { history.graph.position(of: $0) })
         guard positions != previewedCommits else { return }
         previewedCommits = positions
+        updateFading()
         historyVersion += 1
+    }
+
+    /// Fades these commits in history, because the checked-out branch is
+    /// missing them, or none.
+    private func showMissing(_ commits: [ObjectID]) {
+        guard commits != missingCommits else { return }
+        missingCommits = commits
+        guard updateFading() else { return }
+        historyVersion += 1
+    }
+
+    /// Works out which commits and lines history fades, for the history that's
+    /// loaded, and returns whether that changed.
+    @discardableResult
+    private func updateFading() -> Bool {
+        let faded = history.map { history in
+            Set(missingCommits.compactMap { history.graph.position(of: $0) }).subtracting(previewedCommits)
+        } ?? []
+        // The layout grows as history loads, and has more of the lines.
+        guard faded != fadedCommits || !faded.isEmpty else { return false }
+        fadedCommits = faded
+        fadedLines = history.map { FadedLines(layout: $0.lanes, commits: faded) } ?? FadedLines()
+        return true
     }
 
     /// The selected row, while only one is.
@@ -1352,9 +1387,10 @@ final class RepositoryModel {
             author: text?.author,
             date: text?.date,
             lanes: hasWorkingTreeRow
-                ? workingTreeLine?.adding(to: history.lanes.row(row), at: row)
-                : history.lanes.row(row),
-            isPreviewed: previewedCommits.contains(position)
+                ? workingTreeLine?.adding(to: fadedLines.marking(history.lanes.row(row), at: row), at: row)
+                : fadedLines.marking(history.lanes.row(row), at: row),
+            isPreviewed: previewedCommits.contains(position),
+            isFaded: fadedCommits.contains(position)
         )
     }
 

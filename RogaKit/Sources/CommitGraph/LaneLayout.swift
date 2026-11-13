@@ -50,11 +50,15 @@ public struct LaneLayout: Sendable {
         /// keeps its color when it moves over, and a lane that ends at a dot
         /// keeps it right up to the dot.
         public var color: Int
+        /// Whether the line is drawn faded, because it leads down from a commit
+        /// that the checked-out branch is missing. `FadedLines` says which are.
+        public var isFaded: Bool
 
-        public init(top: End, bottom: End, color: Int = 0) {
+        public init(top: End, bottom: End, color: Int = 0, isFaded: Bool = false) {
             self.top = top
             self.bottom = bottom
             self.color = color
+            self.isFaded = isFaded
         }
     }
 

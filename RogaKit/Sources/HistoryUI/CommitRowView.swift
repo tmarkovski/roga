@@ -28,6 +28,16 @@ final class CommitRowView: NSTableRowView {
         fatalError("Rows are made in code.")
     }
 
+    /// A faded row's text is stronger while it's selected.
+    override var isSelected: Bool {
+        didSet {
+            guard isSelected != oldValue else { return }
+            for case let cell as CommitCellView in subviews where cell.content?.isFaded == true {
+                cell.needsDisplay = true
+            }
+        }
+    }
+
     /// Selected rows next to each other make one block, with rounded corners only
     /// at its ends (decision 56).
     override func drawSelection(in dirtyRect: NSRect) {
@@ -137,6 +147,13 @@ final class CommitCellView: NSView {
             : NSColor(srgbRed: 201 / 255, green: 68 / 255, blue: 2 / 255, alpha: 0.1)
     }
 
+    /// How strong a faded row's text and badges are, for a commit the checked-out
+    /// branch is missing. A selected one is stronger, to be easy to read, and still
+    /// fainter than the rows around it.
+    static func fadedOpacity(isSelected: Bool) -> CGFloat {
+        isSelected ? 0.7 : 0.45
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         guard let content else { return }
         if content.isPreviewed {
@@ -145,7 +162,24 @@ final class CommitCellView: NSView {
         }
         let layout = CommitRowLayout(content: content, size: bounds.size)
         if let lanes = content.lanes {
-            LaneRenderer.draw(lanes, at: CommitRowLayout.graphX, height: bounds.height, isHollow: content.isWorkingTree, isCurrent: content.isCurrent)
+            LaneRenderer.draw(
+                lanes, at: CommitRowLayout.graphX, height: bounds.height,
+                isHollow: content.isWorkingTree, isCurrent: content.isCurrent, isFaded: content.isFaded
+            )
+        }
+        // The text and badges are faded as one layer, so that a badge's text
+        // doesn't show its fill through it.
+        let context = content.isFaded ? NSGraphicsContext.current?.cgContext : nil
+        if let context {
+            context.saveGState()
+            context.setAlpha(Self.fadedOpacity(isSelected: (superview as? NSTableRowView)?.isSelected == true))
+            context.beginTransparencyLayer(auxiliaryInfo: nil)
+        }
+        defer {
+            if let context {
+                context.endTransparencyLayer()
+                context.restoreGState()
+            }
         }
         for column in layout.columns {
             if let text = column.text {

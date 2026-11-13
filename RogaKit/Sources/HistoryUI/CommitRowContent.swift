@@ -111,6 +111,10 @@ public struct CommitRowContent: Hashable {
     /// Whether the row is tinted, because a count in the title row would move
     /// the commit.
     public var isPreviewed: Bool
+    /// Whether the row is faded, because the checked-out branch is missing the
+    /// commit, which a pull would bring in. Its text and dot are faded, and its
+    /// lines say so for themselves.
+    public var isFaded: Bool
 
     public init(
         shortID: String,
@@ -122,7 +126,8 @@ public struct CommitRowContent: Hashable {
         lanes: LaneLayout.Row? = nil,
         isWorkingTree: Bool = false,
         isWarning: Bool = false,
-        isPreviewed: Bool = false
+        isPreviewed: Bool = false,
+        isFaded: Bool = false
     ) {
         self.shortID = shortID
         self.badges = badges
@@ -134,6 +139,7 @@ public struct CommitRowContent: Hashable {
         self.isWorkingTree = isWorkingTree
         self.isWarning = isWarning
         self.isPreviewed = isPreviewed
+        self.isFaded = isFaded
     }
 
     /// Whether the worktree's `HEAD` is on this commit, which a ring around the
