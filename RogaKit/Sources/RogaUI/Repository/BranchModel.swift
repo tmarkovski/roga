@@ -254,7 +254,8 @@ final class BranchModel {
 
     /// The most commits to list before a force push or a deletion.
     private static let overwrittenLimit = DialogContent.listLimit
-    /// The most commits to tint in history while the pointer is over a count.
+    /// The most commits to tint in history while the pointer is over a count,
+    /// and to fade because the branch is missing them.
     private static let previewLimit = 1000
     /// How long what happened stays in the title row.
     private static let finishedDuration = Duration.seconds(3)
@@ -365,6 +366,9 @@ final class BranchModel {
     @ObservationIgnored var stagedFiles: () -> Int = { 0 }
     /// Asks history to tint these commits, or none.
     @ObservationIgnored var showPreview: ([ObjectID]) -> Void = { _ in }
+    /// Asks history to fade these commits, which the branch is missing from its
+    /// upstream, or none.
+    @ObservationIgnored var showMissing: ([ObjectID]) -> Void = { _ in }
     /// How long the house takes to play once for an action, which is how long
     /// the action stays in the title row when git finishes sooner.
     @ObservationIgnored var timeToPlayHouse: (Action) -> Duration = { $0.timeToPlayHouse }
@@ -379,6 +383,8 @@ final class BranchModel {
     @ObservationIgnored private(set) var preparingIntegration: Task<Void, Never>?
     @ObservationIgnored private(set) var quietFetch: Task<Void, Never>?
     @ObservationIgnored private(set) var previewing: Task<Void, Never>?
+    /// How many times the branch has looked for the commits it's missing.
+    @ObservationIgnored private var missingLooks = 0
     @ObservationIgnored private var finishedNote: Task<Void, Never>?
 
     init(
@@ -393,11 +399,29 @@ final class BranchModel {
         self.reportBranchChange = reportBranchChange
     }
 
-    /// Reads where the branch stands. When git can't say, it keeps what it knew.
+    /// Reads where the branch stands, and which commits it's missing from its
+    /// upstream. When git can't say, it keeps what it knew.
     func refresh() async {
         guard let status = try? await session.branchStatus(in: worktree) as BranchStatus??, !Task.isCancelled else { return }
         self.status = status
+        await listMissingCommits()
         if fetchRecord == FetchRecord() { fetchRecord = await session.lastFetch() }
+    }
+
+    /// Asks history to fade the commits that `↓` counts, the ones a pull would
+    /// bring in, or none when the branch isn't behind. A branch that has no
+    /// upstream, or a detached `HEAD`, isn't.
+    private func listMissingCommits() async {
+        missingLooks += 1
+        let look = missingLooks
+        guard let status, status.behind > 0, let upstream = status.upstream else {
+            showMissing([])
+            return
+        }
+        // A later look knows better, since `HEAD` or the upstream may have moved.
+        guard let ids = try? await session.commits(from: "HEAD", to: upstream, limit: Self.previewLimit, in: worktree),
+              !Task.isCancelled, look == missingLooks else { return }
+        showMissing(ids)
     }
 
     /// The branch's short name.

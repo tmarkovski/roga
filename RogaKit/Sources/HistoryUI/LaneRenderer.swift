@@ -14,6 +14,9 @@ enum LaneRenderer {
     /// Small enough to stay clear of the edge of a selected row's fill.
     static let ringRadius: CGFloat = 6
     private static let lineWidth: CGFloat = 1.5
+    /// How strong a faded line or dot is, for a commit the checked-out branch is
+    /// missing.
+    static let fadedOpacity: CGFloat = 0.35
     private static let arrowSize: CGFloat = 3
     /// How far an arrow's tip stops short of the middle of the row, so that it
     /// doesn't touch a line running along the middle and seem to join it.
@@ -38,7 +41,10 @@ enum LaneRenderer {
     ///   - isCurrent: Whether a larger ring goes around the dot, for the commit
     ///     `HEAD` is on, in the color of the current branch's badge. Lines stop at
     ///     the ring, which leaves a gap around the dot.
-    static func draw(_ row: LaneLayout.Row, at x: CGFloat, height: CGFloat, isHollow: Bool = false, isCurrent: Bool = false) {
+    ///   - isFaded: Whether the dot is faded, for a commit the checked-out branch
+    ///     is missing. Lines that aren't faded stop at its edge, so that they
+    ///     don't show through it. Each line says whether it's faded itself.
+    static func draw(_ row: LaneLayout.Row, at x: CGFloat, height: CGFloat, isHollow: Bool = false, isCurrent: Bool = false, isFaded: Bool = false) {
         guard let context = NSGraphicsContext.current else { return }
         let columns = min(row.width, maxColumns)
 
@@ -49,18 +55,10 @@ enum LaneRenderer {
         let dot = NSPoint(x: center(min(row.column, columns - 1)), y: middle)
         let ring = NSRect(x: dot.x - ringRadius, y: dot.y - ringRadius, width: ringRadius * 2, height: ringRadius * 2)
 
-        // Only the lines are clipped to the graph, because a ring in the first
-        // or last column reaches a little past it.
-        context.saveGraphicsState()
         let graph = NSRect(x: x, y: 0, width: width(columns: columns), height: height)
-        graph.clip()
-        if isCurrent {
-            let outsideRing = NSBezierPath(rect: graph)
-            outsideRing.appendOval(in: ring)
-            outsideRing.windingRule = .evenOdd
-            outsideRing.addClip()
-        }
-        for line in row.lines {
+        let circle = NSRect(x: dot.x - dotRadius, y: dot.y - dotRadius, width: dotRadius * 2, height: dotRadius * 2)
+
+        func drawLine(_ line: LaneLayout.Line) {
             let path = NSBezierPath()
             path.lineWidth = lineWidth
             path.lineCapStyle = .round
@@ -107,15 +105,46 @@ enum LaneRenderer {
             color(line.color).setStroke()
             path.stroke()
         }
-        context.restoreGraphicsState()
 
-        let circle = NSRect(x: dot.x - dotRadius, y: dot.y - dotRadius, width: dotRadius * 2, height: dotRadius * 2)
-        if isHollow {
-            stroke(circle.insetBy(dx: lineWidth / 2, dy: lineWidth / 2), color: color(row.color))
-        } else {
-            color(row.color).setFill()
-            NSBezierPath(ovalIn: circle).fill()
+        /// Draws some of the lines. Only the lines are clipped to the graph,
+        /// because a ring in the first or last column reaches a little past it.
+        func drawLines(_ lines: [LaneLayout.Line], clearOf hole: NSRect?) {
+            context.saveGraphicsState()
+            graph.clip()
+            if let hole {
+                let outside = NSBezierPath(rect: graph)
+                outside.appendOval(in: hole)
+                outside.windingRule = .evenOdd
+                outside.addClip()
+            }
+            for line in lines { drawLine(line) }
+            context.restoreGraphicsState()
         }
+
+        func drawDot() {
+            if isHollow {
+                stroke(circle.insetBy(dx: lineWidth / 2, dy: lineWidth / 2), color: color(row.color))
+            } else {
+                color(row.color).setFill()
+                NSBezierPath(ovalIn: circle).fill()
+            }
+        }
+
+        // The faded lines and dot go in one layer, which is faded as a whole,
+        // so that a line doesn't show through the dot it ends at. Lines at full
+        // strength cross over them.
+        let fadedLines = row.lines.filter(\.isFaded)
+        if isFaded || !fadedLines.isEmpty {
+            context.saveGraphicsState()
+            context.cgContext.setAlpha(fadedOpacity)
+            context.cgContext.beginTransparencyLayer(auxiliaryInfo: nil)
+            drawLines(fadedLines, clearOf: isCurrent ? ring : nil)
+            if isFaded { drawDot() }
+            context.cgContext.endTransparencyLayer()
+            context.restoreGraphicsState()
+        }
+        drawLines(row.lines.filter { !$0.isFaded }, clearOf: isCurrent ? ring : isFaded ? circle : nil)
+        if !isFaded { drawDot() }
         if isCurrent {
             stroke(ring, color: GitColors.current)
         }
