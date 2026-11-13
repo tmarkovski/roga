@@ -954,8 +954,9 @@ public actor RepositorySession {
 
     /// Takes back a commit Roga made, leaving what it had in the index.
     ///
-    /// - Throws: `HeadMoved` when something else has moved `HEAD` since, or
-    ///   `GitError` when git refuses.
+    /// - Throws: `HeadMoved` when something else has moved `HEAD` since,
+    ///   `CommitPushed` when a remote branch has the commit, or `GitError`
+    ///   when git refuses.
     @concurrent
     public nonisolated func undo(_ commit: MadeCommit, in worktree: String) async throws {
         try await IndexCommands.undo(commit, in: worktree, git: git)

@@ -446,6 +446,6 @@ private struct ChangesMenuItems: View {
             composer?.undoLastCommit()
         }
         .keyboardShortcut(RepositoryCommands.undoCommitShortcut)
-        .disabled(composer?.lastCommit == nil || repository?.branch.isBusy == true)
+        .disabled(composer?.canUndoLastCommit != true)
     }
 }

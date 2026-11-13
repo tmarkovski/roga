@@ -442,8 +442,21 @@ final class CommitComposer {
         branch.undoFinished = made.previous == nil ? nil : .init(help: "Undo the Commit") { [weak self] in self?.undoLastCommit() }
     }
 
+    /// Whether Changes > Undo Commit can take back the latest commit made here.
+    /// It can't once the title row's counts say the branch has nothing to
+    /// push, because its upstream has the commit then, or `HEAD` has moved,
+    /// which undoing refuses anyway. Undoing asks git in any case, which also
+    /// refuses when the commit went to some other remote branch.
+    var canUndoLastCommit: Bool {
+        guard lastCommit != nil, !branch.isBusy else { return false }
+        guard let status = branch.status, status.upstream != nil else { return true }
+        return status.ahead > 0
+    }
+
     /// Takes back the latest commit made here, leaving its files staged, and puts
-    /// its message back in the box. It won't if anything has moved `HEAD` since.
+    /// its message back in the box. It won't if anything has moved `HEAD` since,
+    /// or once a remote branch has the commit, since the branch would then be
+    /// behind what's been pushed.
     ///
     /// An agent that's writing stops, since it's describing what was staged
     /// before the commit's files came back, and its message would take the
