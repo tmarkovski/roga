@@ -181,6 +181,11 @@ struct RefsPanel: View {
                 }
                 .padding(.bottom, 10)
             }
+            // A scroll view reaches up under the title row, where the panel's
+            // commands are, and the title row has no background to hide what
+            // scrolls under it. So rows that went past a section's pinned
+            // header showed behind the commands. They stop at the line instead.
+            .clipped()
             .focusable()
             .focused($isListFocused)
             .focusEffectDisabled()
