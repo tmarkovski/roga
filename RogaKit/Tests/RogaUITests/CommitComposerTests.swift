@@ -392,6 +392,52 @@ struct CommitComposerTests {
         #expect(work.model.branch.failure?.message.contains("moved HEAD") == true)
     }
 
+    /// Commits from the box, then pushes at the command line, as an agent
+    /// would, and looks at the worktree again as a change on disk makes it.
+    func commitThenPush(_ work: Worktree, to destination: String) async throws -> String {
+        try write("changed\n", to: "README.md", in: work.path)
+        try await git("add", "README.md", in: work.path)
+        try await open(work)
+        work.composer.message = "Change the app"
+        work.composer.commit()
+        await settled(work)
+        #expect(work.composer.canUndoLastCommit)
+        try await git("push", "--quiet", "origin", destination, in: work.path)
+        work.model.refsChanged()
+        await settled(work)
+        return try await head(work.path)
+    }
+
+    @Test func wontUndoACommitThatsBeenPushed() async throws {
+        let (work, remote) = try await worktreeWithRemote()
+        let pushed = try await commitThenPush(work, to: "HEAD")
+        #expect(try await git("rev-parse", "main", in: remote) == pushed)
+        // The counts say the upstream has it, so the menu item is greyed out.
+        #expect(!work.composer.canUndoLastCommit)
+
+        work.composer.undoLastCommit()
+        await settled(work)
+        #expect(try await head(work.path) == pushed)
+        #expect(try await git("diff", "--cached", "--name-only", in: work.path).isEmpty)
+        #expect(work.composer.message.isEmpty)
+        let failure = try #require(work.model.branch.failure)
+        #expect(failure.title == "Can't undo the commit")
+        #expect(failure.message.hasPrefix("origin/main has that commit now"))
+        #expect(failure.changedNothing)
+    }
+
+    @Test func wontUndoACommitPushedToAnotherBranch() async throws {
+        let (work, _) = try await worktreeWithRemote()
+        let pushed = try await commitThenPush(work, to: "HEAD:refs/heads/elsewhere")
+        // The upstream doesn't have it, so only git can tell.
+        #expect(work.composer.canUndoLastCommit)
+
+        work.composer.undoLastCommit()
+        await settled(work)
+        #expect(try await head(work.path) == pushed)
+        #expect(work.model.branch.failure?.message.hasPrefix("origin/elsewhere has that commit now") == true)
+    }
+
     // MARK: Drafts
 
     @Test func aDraftComesBackInANewModel() async throws {
@@ -494,7 +540,8 @@ struct CommitComposerTests {
 
     // MARK: Pushing
 
-    @Test func commitAndPushPushesWhatItCommitted() async throws {
+    /// A worktree cloned from a bare repository, which is its `origin`.
+    func worktreeWithRemote() async throws -> (Worktree, remote: String) {
         let folder = try makeTemporaryFolder()
         let remote = folder + "/remote.git"
         let path = folder + "/work"
@@ -502,7 +549,12 @@ struct CommitComposerTests {
         try await git("clone", "--quiet", remote, path, in: folder)
         try await git("config", "user.name", "T", in: path)
         try await git("config", "user.email", "t@example.com", in: path)
-        let work = try await worktree(at: path)
+        return (try await worktree(at: path), remote)
+    }
+
+    @Test func commitAndPushPushesWhatItCommitted() async throws {
+        let (work, remote) = try await worktreeWithRemote()
+        let path = work.path
         try write("changed\n", to: "README.md", in: path)
         try await open(work)
         await work.model.branch.refresh()

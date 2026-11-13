@@ -45,6 +45,22 @@ public struct HeadMoved: Error, Sendable, Hashable, CustomStringConvertible {
     }
 }
 
+/// The commit someone asked to undo has been pushed, whether by Roga, at the
+/// command line or by an agent.
+public struct CommitPushed: Error, Sendable, Hashable, CustomStringConvertible {
+    /// The short name of a remote branch that has it, such as `origin/main`.
+    public var remoteBranch: String
+
+    public init(remoteBranch: String) {
+        self.remoteBranch = remoteBranch
+    }
+
+    public var description: String {
+        "\(remoteBranch) has that commit now, so undoing it here would leave the branch behind what's been pushed. "
+            + "To take its changes back, revert it from its row in history."
+    }
+}
+
 /// The commands that change what's in a worktree's index, and that make commits
 /// from it. They're the only ones that write the index on purpose, so they run
 /// only because someone asked (decision 30).
@@ -106,10 +122,15 @@ enum IndexCommands {
     /// Takes back a commit Roga made, leaving what it had in the index.
     ///
     /// - Throws: `HeadMoved` when `HEAD` has moved on, because resetting then
-    ///   would lose what moved it, such as an agent's commit.
+    ///   would lose what moved it, such as an agent's commit. `CommitPushed`
+    ///   when a remote branch has the commit, because resetting then would
+    ///   leave the branch behind it.
     static func undo(_ commit: MadeCommit, in worktree: String, git: Git) async throws {
         guard let previous = commit.previous else { throw HeadMoved() }
         guard try await head(in: worktree, git: git) == commit.id else { throw HeadMoved() }
+        if let pushed = try await remoteBranches(containing: commit.id, in: worktree, git: git).first {
+            throw CommitPushed(remoteBranch: Ref.shortName(pushed))
+        }
         _ = try await runningThroughLocks(
             RemoteCommands.asked(["reset", "--quiet", "--soft", previous.hex], in: worktree),
             input: nil,
@@ -135,6 +156,17 @@ enum IndexCommands {
         let lines = text.split(separator: "\n", omittingEmptySubsequences: false).filter { !$0.hasPrefix("#") }
         let message = lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
         return message.isEmpty ? nil : message
+    }
+
+    /// The full names of the remote branches that lead to a commit, as this
+    /// repository last heard of them from a fetch or a push. That leaves out
+    /// a remote's `HEAD`, which only says which of its branches is the default.
+    private static func remoteBranches(containing commit: ObjectID, in worktree: String, git: Git) async throws -> [String] {
+        let names = try await git.text(GitCommand(
+            "for-each-ref", "--contains=" + commit.hex, "--format=%(if)%(symref)%(then)%(else)%(refname)%(end)", "refs/remotes/",
+            in: worktree
+        ))
+        return names.split(separator: "\n").map(String.init)
     }
 
     /// The commit `HEAD` is on, or nil before the first commit.
