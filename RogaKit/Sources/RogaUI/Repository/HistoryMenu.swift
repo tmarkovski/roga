@@ -125,7 +125,7 @@ enum HistoryMenu {
         return entries
     }
 
-    /// What the rows call where `HEAD` is, which only has the branch icon on a branch.
+    /// What the rows call where `HEAD` is, which is only bold when it's a branch.
     private static func headName(_ situation: Situation) -> RefMenu.Title {
         situation.currentBranch.map { .branch(Ref.shortName($0)) } ?? "HEAD"
     }

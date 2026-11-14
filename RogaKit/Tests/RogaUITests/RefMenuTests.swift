@@ -34,13 +34,26 @@ struct RefMenuTests {
         #expect(try #require(chosen.items[0].view).frame.width > (try #require(plain.items[0].view)).frame.width)
     }
 
-    @Test func aBranchNameTakesRoomForItsIconAndIsReadWithoutIt() throws {
+    @Test func aBranchNameIsBoldAndIsReadWithoutIt() throws {
         let title: RefMenu.Title = "Merge \(branch: "feature") into \(branch: "main")…"
         #expect(title.plain == "Merge feature into main…")
-        let withIcons = RefMenu.make([.command(title) {}])
-        let withoutIcons = RefMenu.make([.command(RefMenu.Title(title.plain)) {}])
-        #expect(withIcons.items[0].title == "Merge feature into main…")
-        #expect(try #require(withIcons.items[0].view).frame.width > (try #require(withoutIcons.items[0].view)).frame.width)
+        let text = title.attributed(font: .systemFont(ofSize: 13), color: .labelColor)
+        // M of Merge, f of feature, i of into, m of main, and the ellipsis.
+        #expect([0, 6, 14, 19, 23].map { isBold(text, at: $0) } == [false, true, false, true, false])
+        let bold = RefMenu.make([.command(title) {}])
+        let plain = RefMenu.make([.command(RefMenu.Title(title.plain)) {}])
+        #expect(bold.items[0].title == "Merge feature into main…")
+        #expect(try #require(bold.items[0].view).frame.width > (try #require(plain.items[0].view)).frame.width)
+    }
+
+    @Test func aHeadingIsOnlyTheNameSoItsNotBold() {
+        let text = RefMenu.Title.branch("feature").attributed(font: .systemFont(ofSize: 12, weight: .medium), color: .labelColor, isHeading: true)
+        #expect(!isBold(text, at: 0))
+    }
+
+    private func isBold(_ text: NSAttributedString, at index: Int) -> Bool {
+        let font = text.attribute(.font, at: index, effectiveRange: nil) as? NSFont
+        return font?.fontDescriptor.symbolicTraits.contains(.bold) == true
     }
 
     @Test func macOSAddsNothingOfItsOwnToAMenu() throws {
@@ -62,7 +75,7 @@ struct RefMenuTests {
         let inner = try #require(item.submenu)
         #expect(item.title == "Create")
         #expect(inner.items.map(\.title) == ["Branch Here…", "Tag Here…"])
-        inner.performActionForItem(at: 0)
+        choose(at: 0, in: inner)
         #expect(runs == 1)
     }
 
