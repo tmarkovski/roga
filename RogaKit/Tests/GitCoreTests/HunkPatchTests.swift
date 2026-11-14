@@ -77,6 +77,38 @@ struct HunkPatchTests {
         """)
     }
 
+    /// Staging puts a hunk into the index, which is the diff's old side, so the
+    /// hunk keeps the old side's numbers there.
+    @Test func aHunkForTheOldSidePutsTheOldLineOnBothSides() throws {
+        let patch = try patch(Self.header + """
+        @@ -1,3 +1,6 @@
+         one
+        +a
+        +b
+        +c
+         two
+         three
+        @@ -27,2 +30,2 @@ func thing() {
+        -old
+        +new
+         same
+
+        """)
+        let hunks = headers(patch)
+        #expect(text(patch.hunk(at: hunks[1], placedOn: .old))?.contains("@@ -27,2 +27,2 @@\n-old\n") == true)
+        #expect(text(patch.hunk(at: hunks[0], placedOn: .old))?.contains("@@ -1,3 +1,6 @@\n") == true)
+    }
+
+    @Test func aCountOfZeroSaysWhatComesBeforeItOnTheOldSideToo() throws {
+        let added = try patch(Self.header + "@@ -0,0 +1,2 @@\n+a\n+b\n")
+        #expect(text(added.hunk(at: 0, placedOn: .old))?.contains("@@ -0,0 +1,2 @@\n") == true)
+        let removed = try patch(Self.header + "@@ -1,2 +0,0 @@\n-a\n-b\n")
+        #expect(text(removed.hunk(at: 0, placedOn: .old))?.contains("@@ -1,2 +0,0 @@\n") == true)
+        // Lines added with no context, after the fifth.
+        let inserted = try patch(Self.header + "@@ -5,0 +8,1 @@\n+a\n")
+        #expect(text(inserted.hunk(at: 0, placedOn: .old))?.contains("@@ -5,0 +6,1 @@\n") == true)
+    }
+
     @Test func aCountOfZeroSaysWhatComesBeforeIt() throws {
         // Adding to an empty file, and emptying one.
         let added = try patch(Self.header + "@@ -0,0 +1,2 @@\n+a\n+b\n")

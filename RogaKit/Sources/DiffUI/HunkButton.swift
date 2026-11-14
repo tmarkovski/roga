@@ -1,12 +1,32 @@
 import AppKit
 
-/// The button that takes a hunk out of the file. It shows on the hunk's band while
-/// the pointer is anywhere in that hunk (decision 39). A band is one row of text tall,
-/// which leaves it 1 point above and below, or more in a larger code font.
+/// A button that does something to a hunk: takes it out of the file, or stages or
+/// unstages it. The buttons show on the hunk's band while the pointer is anywhere in
+/// that hunk (decision 39). A band is one row of text tall, which leaves it 1 point
+/// above and below, or more in a larger code font.
 ///
-/// It keeps its background, because it can sit over the end of the hunk's header.
-/// Its border turns red while the pointer is on it.
+/// It keeps its background and its thin border, because it can sit over the end of
+/// the hunk's header. While the pointer is on it, it fills with gray, as the buttons
+/// on a conflict's band do.
 final class HunkButton: NSButton {
+    enum Command: String {
+        case discard, stage, unstage
+
+        var title: String {
+            switch self {
+            case .discard: "Discard Hunk"
+            case .stage: "Stage Hunk"
+            case .unstage: "Unstage Hunk"
+            }
+        }
+    }
+
+    /// What it does, which is in its words.
+    var command: Command {
+        didSet {
+            if command != oldValue { updateTitle() }
+        }
+    }
     /// The index among the patch's lines of the header of the hunk it's on.
     var header: Int?
     /// How tall a row of the diff is, in the code font it's in (decision 73).
@@ -17,6 +37,9 @@ final class HunkButton: NSButton {
         didSet {
             if isHovering != oldValue { updateColors() }
         }
+    }
+    private var isPressing = false {
+        didSet { updateColors() }
     }
 
     /// How tall it is where a row has the room.
@@ -29,18 +52,14 @@ final class HunkButton: NSButton {
         NSSize(width: (attributedTitle.size().width + Self.padding * 2).rounded(.up), height: min(Self.height, rowHeight - 2))
     }
 
-    init() {
+    init(_ command: Command) {
+        self.command = command
         super.init(frame: .zero)
         isBordered = false
         isHidden = true
         wantsLayer = true
         setButtonType(.momentaryChange)
-        attributedTitle = NSAttributedString(string: "Discard Hunk", attributes: [
-            .font: NSFont.systemFont(ofSize: 11, weight: .medium),
-            .foregroundColor: NSColor.systemRed,
-        ])
-        toolTip = "Discard Hunk"
-        setAccessibilityLabel("Discard Hunk")
+        updateTitle()
         updateColors()
     }
 
@@ -49,9 +68,26 @@ final class HunkButton: NSButton {
         fatalError("Buttons aren't loaded from files")
     }
 
+    override func mouseDown(with event: NSEvent) {
+        isPressing = true
+        // This returns when the button is let go.
+        super.mouseDown(with: event)
+        isPressing = false
+    }
+
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         updateColors()
+    }
+
+    /// Discarding is in red, as it is everywhere else.
+    private func updateTitle() {
+        attributedTitle = NSAttributedString(string: command.title, attributes: [
+            .font: NSFont.systemFont(ofSize: 11, weight: .medium),
+            .foregroundColor: command == .discard ? NSColor.systemRed : NSColor.labelColor,
+        ])
+        toolTip = command.title
+        setAccessibilityLabel(command.title)
     }
 
     /// A layer's colors don't follow the appearance by themselves.
@@ -59,8 +95,9 @@ final class HunkButton: NSButton {
         effectiveAppearance.performAsCurrentDrawingAppearance {
             layer?.cornerRadius = 4
             layer?.borderWidth = 1
-            layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
-            layer?.borderColor = (isHovering ? NSColor.systemRed : NSColor.separatorColor).cgColor
+            layer?.borderColor = NSColor.separatorColor.cgColor
+            let fill = isPressing ? ConflictColors.buttonPressed : isHovering ? ConflictColors.buttonHover : NSColor.textBackgroundColor
+            layer?.backgroundColor = fill.cgColor
         }
     }
 

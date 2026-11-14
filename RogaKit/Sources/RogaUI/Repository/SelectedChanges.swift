@@ -73,7 +73,7 @@ final class SelectedChanges {
     @ObservationIgnored private(set) var preparingDiscard: Task<Void, Never>?
     /// The patch that a hunk was last taken from, because its button stays until the
     /// new one is read, and the same hunk can't come out twice.
-    @ObservationIgnored private var discardedHunkFrom: [UInt8]?
+    @ObservationIgnored private var hunkTakenFrom: [UInt8]?
     /// What's waiting to go to git, oldest first.
     @ObservationIgnored private var indexChanges: [IndexChange] = []
     /// Whether the worktree is looked at again once those have gone to git,
@@ -582,22 +582,59 @@ final class SelectedChanges {
     }
 
     /// What takes a hunk of the diff out of the file, by the index of its header among
-    /// the patch's lines, or nil when the hunks showing can't be taken out on their own:
-    /// staged ones, and the only hunk of a file that's new or gone, which is the file.
-    /// A whole file has no hunks to take out either (decision 74).
+    /// the patch's lines, or nil when the hunks showing can't be taken out on their own.
     var hunkDiscard: ((Int) -> Void)? {
-        guard let shown = selectedFile.shown, case .worktree(_, .unstaged, _) = shown.source, shown.file.status == .modified,
-              case .patch(let document) = shown.content, document.layout == .hunks
-        else { return nil }
+        guard showsHunks(under: .unstaged) else { return nil }
         return { [weak self] header in self?.discardHunk(at: header) }
     }
 
+    /// What puts a hunk of an unstaged diff into the index, or nil when the hunks
+    /// showing can't be staged on their own.
+    var hunkStage: ((Int) -> Void)? {
+        guard showsHunks(under: .unstaged) else { return nil }
+        return { [weak self] header in self?.stageHunk(at: header) }
+    }
+
+    /// What takes a hunk of a staged diff back out of the index, or nil when the
+    /// hunks showing can't be unstaged on their own.
+    var hunkUnstage: ((Int) -> Void)? {
+        guard showsHunks(under: .staged) else { return nil }
+        return { [weak self] header in self?.unstageHunk(at: header) }
+    }
+
     func discardHunk(at header: Int) {
-        guard loaded != nil, hunkDiscard != nil, let shown = selectedFile.shown, let patch = selectedFile.shownPatch,
-              patch.bytes != discardedHunkFrom, let hunk = patch.hunk(at: header)
-        else { return }
-        discardedHunkFrom = patch.bytes
-        apply(.discardHunk(hunk, of: shown.file, isLast: patch.hunkCount == 1), from: .unstaged)
+        guard showsHunks(under: .unstaged), let taken = takeHunk(at: header, placedOn: .new) else { return }
+        apply(.discardHunk(taken.hunk, of: taken.file, isLast: taken.isLast), from: .unstaged)
+    }
+
+    func stageHunk(at header: Int) {
+        guard showsHunks(under: .unstaged), let taken = takeHunk(at: header, placedOn: .old) else { return }
+        apply(.stageHunk(taken.hunk, of: taken.file, isLast: taken.isLast), from: .unstaged)
+    }
+
+    func unstageHunk(at header: Int) {
+        guard showsHunks(under: .staged), let taken = takeHunk(at: header, placedOn: .new) else { return }
+        apply(.unstageHunk(taken.hunk, of: taken.file, isLast: taken.isLast), from: .staged)
+    }
+
+    /// Whether the diff showing is a group's hunks that can each go on their own. The
+    /// only hunk of a file that's new or gone is the whole file, and a whole file has
+    /// no hunks (decision 74).
+    private func showsHunks(under group: WorktreeChanges.Group) -> Bool {
+        guard let shown = selectedFile.shown, case .worktree(_, let shownGroup, _) = shown.source, shownGroup == group,
+              shown.file.status == .modified, case .patch(let document) = shown.content, document.layout == .hunks
+        else { return false }
+        return true
+    }
+
+    /// Cuts a hunk out of the patch showing, once for each patch, because its button
+    /// stays until the next patch is read, and by then its header is another hunk's.
+    private func takeHunk(at header: Int, placedOn side: HunkPatch.Side) -> (hunk: HunkPatch, file: DiffFile, isLast: Bool)? {
+        guard loaded != nil, let shown = selectedFile.shown, let patch = selectedFile.shownPatch,
+              patch.bytes != hunkTakenFrom, let hunk = patch.hunk(at: header, placedOn: side)
+        else { return nil }
+        hunkTakenFrom = patch.bytes
+        return (hunk, shown.file, patch.hunkCount == 1)
     }
 
     /// Brings back the latest discard, whichever that is, so that one key goes back
@@ -661,7 +698,7 @@ final class SelectedChanges {
                     // because its patch is the only copy.
                     discards += ([next] + indexChanges).reversed().compactMap(\.broughtBack)
                     indexChanges = []
-                    discardedHunkFrom = nil
+                    hunkTakenFrom = nil
                     onFailure?(next.failureTitle, error)
                 }
             }
@@ -695,6 +732,8 @@ final class SelectedChanges {
         switch change {
         case .stage(let files): try await session.stage(files, in: worktree)
         case .unstage(let files): try await session.unstage(files, in: worktree)
+        case .stageHunk(let hunk, _, _): try await session.stage(hunk, in: worktree)
+        case .unstageHunk(let hunk, _, _): try await session.unstage(hunk, in: worktree)
         case .discard(let files, let group):
             remember(try await session.discard(files, from: group, in: worktree), words: IndexChange.words(discarding: files, from: group))
         case .discardHunk(let hunk, let file, _):
@@ -703,7 +742,7 @@ final class SelectedChanges {
             remember(try await session.discardEverything(trashing: files, in: worktree), words: ("Discarded all changes", "Brought back the changes"))
         case .bringBack(let discard):
             try await session.bringBack(discard.changes, in: worktree)
-            discardedHunkFrom = nil
+            hunkTakenFrom = nil
             onDiscard?(discard.broughtBackWords, false)
             showChanges()
         }
@@ -748,7 +787,7 @@ final class SelectedChanges {
                 // the same hunk twice has done its job. The file could come back to
                 // exactly this patch later.
                 await selectedFile.loading?.value
-                discardedHunkFrom = nil
+                hunkTakenFrom = nil
                 return
             }
             // A filter that leaves none of them leaves the diff panel the first
@@ -800,8 +839,12 @@ private enum IndexChange {
     case stage([DiffFile])
     case unstage([DiffFile])
     case discard([DiffFile], from: WorktreeChanges.Group)
-    /// `isLast` says that it's the file's only hunk, so the file goes from the list too.
+    /// `isLast`, here and in the two below, says that it's the file's only hunk, so
+    /// the file leaves its list too.
     case discardHunk(HunkPatch, of: DiffFile, isLast: Bool)
+    /// A hunk from `hunk(at:placedOn: .old)`, so that it goes into the index.
+    case stageHunk(HunkPatch, of: DiffFile, isLast: Bool)
+    case unstageHunk(HunkPatch, of: DiffFile, isLast: Bool)
     case discardEverything(trashing: [DiffFile])
     case bringBack(SelectedChanges.Discard)
 
@@ -809,14 +852,15 @@ private enum IndexChange {
     var files: [DiffFile] {
         switch self {
         case .stage(let files), .unstage(let files), .discard(let files, _): files
-        case .discardHunk(_, let file, let isLast): isLast ? [file] : []
+        case .discardHunk(_, let file, let isLast), .stageHunk(_, let file, let isLast), .unstageHunk(_, let file, let isLast):
+            isLast ? [file] : []
         case .discardEverything, .bringBack: []
         }
     }
 
     var isDiscard: Bool {
         switch self {
-        case .stage, .unstage: false
+        case .stage, .unstage, .stageHunk, .unstageHunk: false
         case .discard, .discardHunk, .discardEverything, .bringBack: true
         }
     }
@@ -831,6 +875,8 @@ private enum IndexChange {
         case .unstage(let files): files.count == 1 ? "Can't unstage \(files[0].name)" : "Can't unstage the files"
         case .discard(let files, _): files.count == 1 ? "Can't discard \(files[0].name)" : "Can't discard the files"
         case .discardHunk(_, let file, _): "Can't discard the hunk of \(file.name)"
+        case .stageHunk(_, let file, _): "Can't stage the hunk of \(file.name)"
+        case .unstageHunk(_, let file, _): "Can't unstage the hunk of \(file.name)"
         case .discardEverything: "Can't discard the changes"
         case .bringBack: "Can't undo the discard"
         }
@@ -859,6 +905,10 @@ private enum IndexChange {
         case .unstage(let files): changes.unstaging(files)
         case .discard(let files, _): changes.discarding(files)
         case .discardHunk(_, let file, let isLast): isLast ? changes.discarding([file]) : changes
+        // A file's other hunks stay where they are, and the next list says where
+        // the moved one went.
+        case .stageHunk(_, let file, let isLast): isLast ? changes.staging([file]) : changes
+        case .unstageHunk(_, let file, let isLast): isLast ? changes.unstaging([file]) : changes
         case .discardEverything: changes.discardingEverything()
         case .bringBack: changes
         }

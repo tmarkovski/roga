@@ -165,6 +165,8 @@ struct DiffPanel: View {
                         matchSteps: selection.matchSteps,
                         findCloses: selection.findCloses,
                         discardHunk: changes?.hunkDiscard,
+                        stageHunk: changes?.hunkStage,
+                        unstageHunk: changes?.hunkUnstage,
                         resolveConflict: changes?.conflictResolve,
                         agentIsResolving: selection.file.flatMap { changes?.agentWork[$0.path]?.isWorking } == true
                     )
@@ -405,6 +407,8 @@ private struct DiffText: NSViewRepresentable {
     let matchSteps: Int
     let findCloses: Int
     let discardHunk: ((Int) -> Void)?
+    let stageHunk: ((Int) -> Void)?
+    let unstageHunk: ((Int) -> Void)?
     let resolveConflict: ((ConflictRequest) -> Void)?
     /// Whether an agent is working on the conflicts showing.
     let agentIsResolving: Bool
@@ -421,6 +425,8 @@ private struct DiffText: NSViewRepresentable {
         let controller = context.coordinator.controller
         controller.show(document, keepingPosition: isUpdate)
         controller.discardHunk = discardHunk
+        controller.stageHunk = stageHunk
+        controller.unstageHunk = unstageHunk
         controller.resolveConflict = resolveConflict
         if (controller.makeConflictOutline != nil) != agentIsResolving {
             controller.makeConflictOutline = agentIsResolving ? { AgentOutlineView.aroundWork(cornerRadius: 6) } : nil

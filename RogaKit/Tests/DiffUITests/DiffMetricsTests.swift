@@ -180,7 +180,7 @@ struct DiffMetricsTests {
         controller.view.layoutSubtreeIfNeeded()
         controller.discardHunk = { _ in }
         controller.show(DiffTextBuilder.build(try patch(lines: 30), metrics: smallest))
-        controller.showHunkButton(atTextY: text(of: controller).textContainerOrigin.y + smallest.lineHeight * 3)
+        controller.showHunkButtons(atTextY: text(of: controller).textContainerOrigin.y + smallest.lineHeight * 3)
         #expect(!controller.hunkButton.isHidden)
         #expect(controller.hunkButton.frame.height == smallest.lineHeight - 2)
 

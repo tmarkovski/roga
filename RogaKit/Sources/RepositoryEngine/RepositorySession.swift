@@ -858,6 +858,26 @@ public actor RepositorySession {
         try await IndexCommands.unstage(files.flatMap { [$0.path, $0.oldPath].compactMap(\.self) }, in: worktree, git: git)
     }
 
+    /// Puts one hunk of a file's unstaged changes into a worktree's index, from
+    /// `hunk(at:placedOn: .old)`.
+    ///
+    /// - Throws: `GitError` when the index has changed under the hunk since, which
+    ///   changes nothing.
+    @concurrent
+    public nonisolated func stage(_ hunk: HunkPatch, in worktree: String) async throws {
+        try await IndexCommands.stage(hunk, in: worktree, git: git)
+    }
+
+    /// Takes one hunk of a file's staged changes back out of a worktree's index,
+    /// from `hunk(at:)`.
+    ///
+    /// - Throws: `GitError` when the index has changed under the hunk since, which
+    ///   changes nothing.
+    @concurrent
+    public nonisolated func unstage(_ hunk: HunkPatch, in worktree: String) async throws {
+        try await IndexCommands.unstage(hunk, in: worktree, git: git)
+    }
+
     /// Reads a conflicted file in a worktree and finds its conflicts (decision 60).
     /// It's nil when the path isn't a regular file, or is too big to read.
     ///

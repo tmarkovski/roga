@@ -108,6 +108,27 @@ enum IndexCommands {
         try await run(["reset", "--quiet", "--pathspec-from-file=-", "--pathspec-file-nul"], paths: paths, in: worktree, git: git)
     }
 
+    /// Puts one hunk of a file's unstaged changes into the index, leaving the
+    /// file on disk as it is. The hunk is placed on the diff's old side, which
+    /// is what the index has.
+    static func stage(_ hunk: HunkPatch, in worktree: String, git: Git) async throws {
+        try await applyToIndex(hunk, reversed: false, in: worktree, git: git)
+    }
+
+    /// Takes one hunk of a file's staged changes back out of the index, leaving
+    /// the file on disk as it is. The hunk is placed on the diff's new side,
+    /// which is what the index has.
+    static func unstage(_ hunk: HunkPatch, in worktree: String, git: Git) async throws {
+        try await applyToIndex(hunk, reversed: true, in: worktree, git: git)
+    }
+
+    /// `--whitespace=nowarn` because `apply.whitespace` is about patches coming
+    /// in, and these are someone's own lines moving between the file and the index.
+    private static func applyToIndex(_ hunk: HunkPatch, reversed: Bool, in worktree: String, git: Git) async throws {
+        let arguments = ["apply", "--cached", "--whitespace=nowarn"] + (reversed ? ["--reverse"] : [])
+        _ = try await runningThroughLocks(RemoteCommands.asked(arguments, in: worktree), input: hunk.bytes, git: git)
+    }
+
     /// Makes a commit from the index, and says which.
     static func commit(_ request: CommitRequest, in worktree: String, git: Git) async throws -> MadeCommit {
         let previous = try await head(in: worktree, git: git)
