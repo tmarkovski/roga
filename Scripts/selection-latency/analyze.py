@@ -115,15 +115,65 @@ def timings(log: Log, step: Step):
     m["selected"] = step.first("row-selected", start, step.row)
     if m["selected"] is None:
         return None
-    m["model told"] = step.first("did-change-begin", m["selected"])
-    m["model done"] = step.first("did-change-end", m["selected"])
+    # A build that tells the model once the frame is drawn does it from
+    # sendReport, which the probe records, rather than when the selection changes.
+    if any(k == "report-begin" for _, k, _, _ in step.events):
+        m["model told"] = step.first("report-begin", m["selected"])
+        m["model done"] = step.first("report-end", m["selected"])
+    else:
+        m["model told"] = step.first("did-change-begin", m["selected"])
+        m["model done"] = step.first("did-change-end", m["selected"])
     m["drawn"] = step.first("draw-selection-end", m["selected"], step.row)
     m["draw began"] = step.first("draw-selection-begin", m["selected"], step.row)
     if m["drawn"] is None:
         return None
-    m["committed"] = step.first("rl-committed", m["drawn"])
+    # AppKit draws inside a Core Animation commit, so the frame with the
+    # highlight is committed once the run-loop stage that drew it is over. Logs
+    # from before the probe watched every stage only have Core Animation's own.
+    if any(k == "rl-done" for _, k, _, _ in step.events):
+        m["committed"] = step.first("rl-done", m["drawn"])
+    else:
+        m["committed"] = step.first("rl-committed", m["drawn"])
+    # 0 when the probe didn't look, 1 when it found none and 2 when it found one.
+    looked = next((b for t, k, a, b in step.events if k == "draw-selection-begin" and a == step.row and t == m["draw began"]), 0)
+    m["drawn inside a commit"] = looked - 1 if looked else None
     m["shown"] = on_screen(log, m["committed"]) if m["committed"] else None
     return m
+
+
+def hold_report(log: Log):
+    """What holding down an arrow key did, hold by hold, and the medians."""
+    deferred = any(k == "report-begin" for s in log.steps for _, k, _, _ in s.events)
+    report_kind = "report-begin" if deferred else "did-change-begin"
+    rows = []
+    for step in log.steps:
+        direction, presses = next(((a, b) for _, k, a, b in step.events if k == "hold"), (1, 0))
+        posted = [t for t, k, _, _ in step.events if k == "post-key-down"]
+        handled = [t for t, k, a, _ in step.events if k == "send-begin" and a == KEY_DOWN]
+        waits = [h - p for p, h in zip(posted, handled)]
+        released = step.first("post-key-up")
+        # Each change of selection, which the list hears about in both kinds of
+        # build. Row views report being selected again as they scroll into view.
+        selections = [t for t, k, _, _ in step.events if k in ("did-change-begin", "did-change-deferred")]
+        reports = [t for t, k, _, _ in step.events if k == report_kind]
+        end_row = next((b for _, k, _, b in step.events if k == "step-end"), None)
+        moved = (end_row - step.row) * direction if end_row is not None else None
+        rows.append({
+            "presses": len(posted), "handled": len(handled), "moved": moved, "reports": len(reports),
+            "median wait": statistics.median(waits) if waits else None, "longest wait": max(waits) if waits else None,
+            "moving after release": max(0.0, selections[-1] - released) if selections and released else None,
+            "last report after release": reports[-1] - released if reports and released else None,
+        })
+    click.echo(f"  {'hold':4s} {'keys':>5s} {'handled':>8s} {'rows':>5s} {'reports':>8s} {'median wait':>12s} "
+               f"{'longest wait':>13s} {'moving after':>13s} {'last report':>12s}")
+    for index, r in enumerate(rows):
+        def f(v):
+            return f"{v:.1f}" if isinstance(v, float) else ("–" if v is None else str(v))
+        click.echo(f"  {index:4d} {r['presses']:5d} {r['handled']:8d} {f(r['moved']):>5s} {r['reports']:8d} "
+                   f"{f(r['median wait']):>12s} {f(r['longest wait']):>13s} {f(r['moving after release']):>13s} "
+                   f"{f(r['last report after release']):>12s}")
+    for key in ["reports", "median wait", "longest wait", "moving after release", "last report after release"]:
+        click.echo(f"  {key:38s} {summary([r[key] for r in rows])}")
 
 
 def summary(values):
@@ -226,6 +276,11 @@ def main(logs, show_steps, show_profile, top):
     for path in logs:
         log = read_log(path)
         keys = log.header.get("mode") == "keys"
+        if log.header.get("mode") == "hold":
+            click.echo(f"{path.name}: hold, {len(log.steps)} holds, experiment {log.header.get('experiment', 'none')}")
+            hold_report(log)
+            click.echo()
+            continue
         if log.header.get("mode") == "checks":
             click.echo(f"{path.name}: checks, experiment {log.header.get('experiment', 'none')}")
             for line in log.header.get("checks", []):
@@ -269,6 +324,12 @@ def main(logs, show_steps, show_profile, top):
                       ("released → main thread free again", "released", "free after release")]
         for title, a, b in lines:
             click.echo(f"  {title:38s} {summary([since(m, a, b) for _, m in done])}")
+        watches_every_stage = any(k == "rl-done" for s in log.steps for _, k, _, _ in s.events)
+        inside = [m["drawn inside a commit"] for _, m in done if watches_every_stage and m.get("drawn inside a commit") is not None]
+        if inside:
+            told_after = sum(1 for _, m in done if m["model told"] is not None and m["model told"] >= m["committed"])
+            click.echo(f"  highlight drawn inside a commit in {sum(inside)} of {len(inside)} steps, "
+                       f"model told after that commit in {told_after} of {len(done)}")
 
         if show_profile and log.samples:
             names = symbolicate(log)

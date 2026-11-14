@@ -21,12 +21,18 @@
 //   ROGA_PROBE_LOG     where to write the log (required)
 //   ROGA_PROBE_MODE    click (default) or keys, or checks, which clicks,
 //                      Shift-clicks, Command-clicks, drags and double-clicks
-//                      and writes down what ends up selected (see runChecks)
+//                      and writes down what ends up selected (see runChecks),
+//                      or hold, which holds down an arrow key (see runHolds)
+//   ROGA_PROBE_REPEAT  in hold mode, milliseconds between key repeats (default 33)
+//   ROGA_PROBE_HOLDS   in hold mode, how many times to hold a key (default 4),
+//                      with ROGA_PROBE_STEPS repeats each time
 //   ROGA_PROBE_STEPS   how many rows to select (default 30)
 //   ROGA_PROBE_HOLD    milliseconds between mouse-down and mouse-up (default 90)
 //   ROGA_PROBE_GAP     milliseconds from one step to the next (default 700)
 //   ROGA_PROBE_SAMPLE  1 to sample the main thread's stack during each step
 //   ROGA_PROBE_SETTLE  seconds to wait after history shows (default 3)
+//   ROGA_PROBE_COMMITS 1 to note whether each highlight is drawn inside a Core
+//                      Animation commit, which adds a few milliseconds to it
 //   ROGA_PROBE_EXPERIMENT  nopan, nodelay, defer, nomodel, press, mousedown or
 //                      override, or several separated by commas, to try changes
 //                      without building the app (see experimentNoPan and the rest)
@@ -35,6 +41,7 @@
 #import <CoreVideo/CoreVideo.h>
 #import <QuartzCore/QuartzCore.h>
 #import <dlfcn.h>
+#import <execinfo.h>
 #import <mach-o/dyld.h>
 #import <mach-o/loader.h>
 #import <mach/mach.h>
@@ -202,10 +209,27 @@ static void probeSetSelected(id self, SEL _cmd, BOOL selected) {
     if (selected != was) record(selected ? "row-selected" : "row-deselected", rowOf(self), 0);
 }
 
+/// Whether to look for a commit on the stack whenever the highlight is drawn,
+/// from ROGA_PROBE_COMMITS. Looking takes a few milliseconds each time.
+static BOOL checkingCommits;
+
+/// Whether a Core Animation commit is on the stack. AppKit lays out and draws
+/// from the commit's handlers, so drawing inside one means that commit sends
+/// the drawing to the screen once it ends.
+static BOOL insideCommit(void) {
+    void *frames[256];
+    int count = backtrace(frames, 256);
+    for (int index = 0; index < count; index++) {
+        Dl_info info;
+        if (dladdr(frames[index], &info) && info.dli_sname && strstr(info.dli_sname, "Transaction6commit")) return YES;
+    }
+    return NO;
+}
+
 static IMP originalDrawSelection;
 static void probeDrawSelection(id self, SEL _cmd, NSRect rect) {
     long row = rowOf(self);
-    record("draw-selection-begin", row, 0);
+    record("draw-selection-begin", row, armed && checkingCommits ? insideCommit() + 1 : 0);
     ((void (*)(id, SEL, NSRect))originalDrawSelection)(self, _cmd, rect);
     record("draw-selection-end", row, 0);
 }
@@ -242,9 +266,12 @@ static void probeCellDraw(id self, SEL _cmd, NSRect rect) {
 /// the row to the model a second time (see probeClicked).
 static BOOL experimentNoPan, experimentDefer, experimentNoModel, experimentNoDelay, experimentPress, experimentMouseDown, experimentOverride;
 
-/// How many times the model was told about a selection, from
-/// tableViewSelectionDidChange: and from clicked, for the checks.
+/// How many times the model was told about a selection, for the checks: from
+/// tableViewSelectionDidChange: and from clicked, or from sendReport in a build
+/// that tells the model later.
 static long modelReports;
+/// Whether the build tells the model from sendReport, after the frame.
+static BOOL reportsAreDeferred;
 
 /// The row the last press selected, or -1, so that its mouse-up doesn't report
 /// it again.
@@ -304,7 +331,7 @@ static void probeDidChange(id self, SEL _cmd, NSNotification *note) {
         return;
     }
     record("did-change-begin", (long)historyTable.selectedRow, 0);
-    modelReports++;
+    if (!reportsAreDeferred) modelReports++;
     ((void (*)(id, SEL, NSNotification *))originalDidChange)(self, _cmd, note);
     record("did-change-end", 0, 0);
 }
@@ -322,8 +349,18 @@ static void probeClicked(id self, SEL _cmd) {
         && !(flags & (NSEventModifierFlagCommand | NSEventModifierFlagShift));
     record(selectedByPress ? "clicked-skipped" : "clicked", row, wouldReport);
     if (selectedByPress) return;
-    if (wouldReport) modelReports++;
+    if (wouldReport && !reportsAreDeferred) modelReports++;
     ((void (*)(id, SEL))originalClicked)(self, _cmd);
+}
+
+static IMP originalSendReport;
+/// The controller's timer telling the model what's selected, in a build that
+/// waits for the frame.
+static void probeSendReport(id self, SEL _cmd) {
+    record("report-begin", (long)historyTable.selectedRow, (long)historyTable.selectedRowIndexes.count);
+    modelReports++;
+    ((void (*)(id, SEL))originalSendReport)(self, _cmd);
+    record("report-end", 0, 0);
 }
 
 static IMP originalDoubleClicked;
@@ -393,6 +430,13 @@ static void observeRunLoop(void) {
         // Core Animation commits at 2,000,000, so this comes right after it.
         {kCFRunLoopBeforeWaiting, 2000001, "rl-committed"},
         {kCFRunLoopExit, 2000001, "rl-exit"},
+        // After everything else at each stage, including a commit made by an
+        // observer other than Core Animation's own, as on macOS 27.
+        {kCFRunLoopBeforeTimers, LONG_MAX, "rl-done"},
+        {kCFRunLoopBeforeSources, LONG_MAX, "rl-done"},
+        {kCFRunLoopBeforeWaiting, LONG_MAX, "rl-done"},
+        {kCFRunLoopAfterWaiting, LONG_MAX, "rl-done"},
+        {kCFRunLoopExit, LONG_MAX, "rl-done"},
     };
     for (size_t index = 0; index < sizeof observers / sizeof observers[0]; index++) {
         CFRunLoopObserverContext context = {0, (void *)observers[index].name, NULL, NULL, NULL};
@@ -558,11 +602,15 @@ static void postMouse(NSEventType type, NSPoint location, NSInteger windowNumber
     postMouseWith(type, location, windowNumber, row, 0, 1);
 }
 
-static void postKey(NSEventType type, unsigned short keyCode, unichar character, NSInteger windowNumber) {
+static void postKeyRepeating(NSEventType type, unsigned short keyCode, unichar character, NSInteger windowNumber, BOOL isARepeat) {
     NSString *characters = [NSString stringWithCharacters:&character length:1];
-    NSEvent *event = [NSEvent keyEventWithType:type location:NSZeroPoint modifierFlags:NSEventModifierFlagFunction | NSEventModifierFlagNumericPad timestamp:NSProcessInfo.processInfo.systemUptime windowNumber:windowNumber context:nil characters:characters charactersIgnoringModifiers:characters isARepeat:NO keyCode:keyCode];
+    NSEvent *event = [NSEvent keyEventWithType:type location:NSZeroPoint modifierFlags:NSEventModifierFlagFunction | NSEventModifierFlagNumericPad timestamp:NSProcessInfo.processInfo.systemUptime windowNumber:windowNumber context:nil characters:characters charactersIgnoringModifiers:characters isARepeat:isARepeat keyCode:keyCode];
     record(type == NSEventTypeKeyDown ? "post-key-down" : "post-key-up", keyCode, 0);
     dispatch_async(dispatch_get_main_queue(), ^{ [NSApp postEvent:event atStart:NO]; });
+}
+
+static void postKey(NSEventType type, unsigned short keyCode, unichar character, NSInteger windowNumber) {
+    postKeyRepeating(type, keyCode, character, windowNumber, NO);
 }
 
 static void sleepMs(double ms) {
@@ -695,6 +743,43 @@ static void readExperiments(void) {
     }
 }
 
+#pragma mark - Holding a key
+
+/// Holds down the down arrow, then the up arrow, and so on: a key-down, then
+/// after a quarter of a second a repeat every ROGA_PROBE_REPEAT milliseconds,
+/// then the key-up. Each hold is a step, from the first key-down until things
+/// have settled, and analyze.py says how long each key event waited, how many
+/// reports reached the model and how long the selection kept moving after the
+/// key came up.
+static void runHolds(NSInteger windowNumber, int repeats, int gap) {
+    NSDictionary *environment = NSProcessInfo.processInfo.environment;
+    int interval = environment[@"ROGA_PROBE_REPEAT"] ? [environment[@"ROGA_PROBE_REPEAT"] intValue] : 33;
+    int holds = environment[@"ROGA_PROBE_HOLDS"] ? [environment[@"ROGA_PROBE_HOLDS"] intValue] : 4;
+    for (int hold = 0; hold < holds; hold++) {
+        BOOL down = hold % 2 == 0;
+        unsigned short keyCode = down ? 125 : 126;
+        unichar character = down ? NSDownArrowFunctionKey : NSUpArrowFunctionKey;
+        __block long startRow = 0;
+        dispatch_sync(dispatch_get_main_queue(), ^{ startRow = historyTable.selectedRow; });
+        armed = 1;
+        record("step", hold, startRow);
+        record("hold", down ? 1 : -1, repeats + 1);
+        postKeyRepeating(NSEventTypeKeyDown, keyCode, character, windowNumber, NO);
+        sleepMs(250);
+        for (int repeat = 0; repeat < repeats; repeat++) {
+            postKeyRepeating(NSEventTypeKeyDown, keyCode, character, windowNumber, YES);
+            sleepMs(interval);
+        }
+        postKey(NSEventTypeKeyUp, keyCode, character, windowNumber);
+        sleepMs(MAX(gap, 1500));
+        __block long endRow = 0;
+        dispatch_sync(dispatch_get_main_queue(), ^{ endRow = historyTable.selectedRow; });
+        record("step-end", hold, endRow);
+        armed = 0;
+        sleepMs(300);
+    }
+}
+
 static void runScenario(void) {
     NSDictionary *environment = NSProcessInfo.processInfo.environment;
     NSString *mode = environment[@"ROGA_PROBE_MODE"] ?: @"click";
@@ -759,6 +844,12 @@ static void runScenario(void) {
     });
     sleepMs(gap);
 
+    if ([mode isEqualToString:@"hold"]) {
+        runHolds(windowNumber, steps, gap);
+        dispatch_sync(dispatch_get_main_queue(), ^{ writeLog(mode, hold, gap); });
+        [@"" writeToFile:[logPath stringByAppendingString:@".done"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
+        return;
+    }
     if ([mode isEqualToString:@"checks"]) {
         runChecks(windowNumber, visibleRows, hold, gap);
         dispatch_sync(dispatch_get_main_queue(), ^{ writeLog(mode, hold, gap); });
@@ -821,6 +912,10 @@ static void install(void) {
     originalDidChange = hook(controller, @selector(tableViewSelectionDidChange:), (IMP)probeDidChange);
     originalClicked = hook(controller, NSSelectorFromString(@"clicked"), (IMP)probeClicked);
     originalDoubleClicked = hook(controller, NSSelectorFromString(@"doubleClicked"), (IMP)probeDoubleClicked);
+    if (class_getInstanceMethod(controller, NSSelectorFromString(@"sendReport"))) {
+        reportsAreDeferred = YES;
+        originalSendReport = hook(controller, NSSelectorFromString(@"sendReport"), (IMP)probeSendReport);
+    }
     if (!NSClassFromString(@"_TtC9HistoryUI15CommitTableView")) NSLog(@"probe: CommitTableView wasn't found");
     recognizerNames = [NSMutableArray array];
     originalSetState = hook(NSGestureRecognizer.class, @selector(setState:), (IMP)probeSetState);
@@ -840,6 +935,7 @@ static void install(void) {
 __attribute__((constructor)) static void start(void) {
     logPath = NSProcessInfo.processInfo.environment[@"ROGA_PROBE_LOG"];
     if (!logPath) return;
+    checkingCommits = [NSProcessInfo.processInfo.environment[@"ROGA_PROBE_COMMITS"] isEqualToString:@"1"];
     mach_timebase_info(&timebase);
     records = calloc(recordCapacity, sizeof(Record));
     samples = calloc(sampleCapacity, sizeof(Sample));

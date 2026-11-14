@@ -34,6 +34,8 @@ uv run Scripts/selection-latency/analyze.py /tmp/click.log /tmp/keys.log
 
 The mode `checks` doesn't time anything. It clicks a row, clicks it again, Shift-clicks, Command-clicks, clicks a row inside several selected, drags from one row to another and double-clicks, and `analyze.py` lists what each left selected, how many times the model was told and how many double-clicks the list reported. Run it with and without an experiment to see whether the experiment changes what a click does. The probe counts double-clicks rather than passing them on, because going to a commit would check it out in the test repository. Control-clicks aren't among the checks, because the menu they open would stop the probe.
 
+The mode `hold` holds down the down arrow, then the up arrow, and so on, four times: a key-down, a repeat every `ROGA_PROBE_REPEAT` milliseconds after a quarter of a second, and the key-up, with the fifth argument to `measure.sh` as the number of repeats. `analyze.py` says, for each hold, how many key events were posted and handled, how many rows the selection moved, how many reports reached the model, how long the key events waited, how long the selection kept changing after the key-up, and when the last report came, from the key-up.
+
 The window opens on screen and takes the keyboard for about half a minute. The probe asks `measure.sh` to activate the copy with `open -a`, because an app started in the background can't make itself active.
 
 Settings go through the environment:
@@ -44,6 +46,9 @@ Settings go through the environment:
 | `ROGA_PROBE_GAP` | Milliseconds from one step to the next. The default is 700, which lets each commit's details load. |
 | `ROGA_PROBE_SETTLE` | Seconds to wait once history shows. Give a large repository time to finish loading, such as 15 for Linux. |
 | `ROGA_PROBE_SAMPLE` | `1` samples the main thread's stack about every half millisecond during each step, for `analyze.py --profile`. It slows the app slightly, so time without it. |
+| `ROGA_PROBE_COMMITS` | `1` notes whether each highlight is drawn inside a Core Animation commit, by looking for one on the stack, which adds a few milliseconds to each draw. |
+| `ROGA_PROBE_REPEAT` | In `hold` mode, milliseconds between key repeats. The default is 33. The fastest key repeat System Settings offers is about 30 ms. |
+| `ROGA_PROBE_HOLDS` | In `hold` mode, how many times to hold a key. The default is 4. |
 | `ROGA_PROBE_EXPERIMENT` | Changes to try without building the app, several separated by commas. See the list below. |
 
 The experiments:
@@ -58,19 +63,23 @@ The experiments:
 
 `press` and `mousedown` act only on a plain single click on a row that isn't already the only one selected. Command-, Shift-, Control- and Option-clicks, double-clicks and clicks below the last row are left to AppKit. When the press has selected the row, its mouse-up doesn't report it to the model a second time.
 
+The app itself now selects on the press and reports after the frame (see the numbers from 2026-11-14 with the change), so `press`, `mousedown`, `override` and `defer` only mean something against builds from before that. On a later build they find the work done already.
+
 ## What the numbers mean
 
 `analyze.py` reports each stage as a median, minimum and maximum over the steps, in milliseconds:
 
 - **pressed → row selected**: from posting the mouse-down or key-down until AppKit marks the row's view as selected.
 - **row selected → highlight drawn**: until the row view's `drawSelection(in:)` has run, which happens in the next frame AppKit draws.
-- **highlight drawn → committed**: until the Core Animation commit with that drawing is done, as seen by a run-loop observer just after Core Animation's.
+- **highlight drawn → committed**: until the Core Animation commit with that drawing is done. AppKit lays out and draws from a commit's handlers, so the drawing is sent once the run-loop stage that drew it is over, which observers placed last at every stage see. On macOS 27 that stage isn't always the one before the run loop waits, where Core Animation's own observer commits. Logs from before 2026-11-14 10:47 only watched that one, so their commit times are the next commit there, which is later when the highlight was drawn at another stage. That made a few steps of the `press,defer` runs look about 50 ms slower than they were.
 - **released → main thread free again**: from posting the mouse-up until the run loop next waits, after handling the mouse-up and committing whatever it set off.
 - **on screen (estimate)**: the screen shows a frame about one refresh after the window server picks it up, so this is the output time that the `CVDisplayLink` gives for the first refresh after the commit. It's an estimate, not a capture of the screen.
 
 A frame is 16.7 ms at 60 Hz and 8.3 ms at 120 Hz.
 
-The probe hooks classes by their Objective-C names, such as `_TtC9HistoryUI13CommitRowView`, and the controller's `tableViewSelectionDidChange:`. Renaming those types or that module needs the same change in `probe.m`, and the probe says in the app's output (`<log>.app.txt`) when it can't find them.
+In a build where the list reports its selection from a timer once the frame is drawn, "model told" is when the controller's `sendReport` runs, which the probe hooks. In an older build it's when `tableViewSelectionDidChange:` runs.
+
+The probe hooks classes by their Objective-C names, such as `_TtC9HistoryUI13CommitRowView`, and the controller's `tableViewSelectionDidChange:`, `clicked`, `doubleClicked` and `sendReport`. Renaming those types, methods or that module needs the same change in `probe.m`, and the probe says in the app's output (`<log>.app.txt`) when it can't find them.
 
 ## Numbers from 2026-11-13
 
@@ -115,9 +124,42 @@ With `press`, SwiftUI's update for the new selection moves to the press along wi
 
 On 2026-11-13, `defer` and `nomodel` didn't make clicks faster because `clicked()` reports the row to the model again on the mouse-up, and neither experiment holds that back.
 
+## Numbers from 2026-11-14, with the change in the app
+
+The list selects a clicked row on the press, from a local event monitor, and tells the model once the frame is drawn, from a timer, replacing a report that's already waiting. "Today's app" is `39f7ec2`, built the same way and run alternately with the change. Release builds, 30 steps a run, medians in milliseconds, with "committed" measured as the end of the run-loop stage that drew the highlight (see [What the numbers mean](#what-the-numbers-mean)).
+
+| Run | Pressed → row selected | Row selected → highlight drawn | Pressed → committed | Pressed → on screen (estimate) | Released → free |
+| --- | --: | --: | --: | --: | --: |
+| Small, click, today's app | 101 | 47 | 148 | 179 | 53 |
+| Small, click, with the change | 4.7 | 2.7 | 8.8 | 43 | 3.4 |
+| Linux, click, today's app | 100 | 43 | 144 | 174 | 48 |
+| Linux, click, with the change | 5.6 | 4.8 | 12 | 43 | 0.5 |
+| Small, arrow key, today's app | 3.7 | 39 | 44 | 73 | |
+| Small, arrow key, with the change | 4.1 | 1.1 | 7.0 | 39 | |
+| Linux, arrow key, today's app | 4.7 | 44 | 50 | 79 | |
+| Linux, arrow key, with the change | 3.5 | 0.9 | 6.1 | 42 | |
+
+With the change, the model heard about the selection after the commit with the highlight in all 120 steps, and no step took more than 17 ms to commit it. A run with `ROGA_PROBE_COMMITS=1` found every highlight, in both builds, drawn inside a Core Animation commit.
+
+Holding down an arrow key, four holds a run, medians of the holds:
+
+| Run | Key events | Reports to the model | Median wait for a key event | Longest wait | Selection changing after key-up | Ended on the right row |
+| --- | --: | --: | --: | --: | --: | --: |
+| Small, 83 ms repeats, today's app | 21 | 21 | 0.9 | 17 | 0 | 4 of 4 |
+| Small, 83 ms repeats, with the change | 21 | 21 | 0.1 | 16 | 0 | 4 of 4 |
+| Small, 33 ms repeats, today's app | 31 | 31 | 9.2 | 24 | 0 | 4 of 4 |
+| Small, 33 ms repeats, with the change | 31 | 31 | 10 | 23 | 0 | 4 of 4 |
+| Linux, 33 ms repeats, today's app | 31 | 31 | 9.8 | 25 | 0 | 4 of 4 |
+| Linux, 33 ms repeats, with the change | 31 | 30.5 | 7.9 | 25 | 0 | 4 of 4 |
+| Linux, 15 ms repeats, today's app | 41 | 41 | 17 | 36 | 3.8 | 4 of 4 |
+| Linux, 15 ms repeats, with the change | 41 | 23.5 | 13 | 41 | 0 | 4 of 4 |
+
+At the speeds System Settings offers, the model finishes with each row before the next key comes, so each key still gets its report, and neither build falls behind. Replacing a waiting report only comes into play at 15 ms repeats, which is faster than System Settings allows. With the change, the last report named the row the selection ended on in every hold.
+
 ## What it doesn't cover
 
-- Posted events skip the window server, so the time from the hardware to the app isn't included, for the probe or for the baseline.
+- Posted events skip the window server, so the time from the hardware to the app isn't included, for the probe or for the baseline. Posted key repeats also reach AppKit's queue differently from real ones, so a held key in `hold` mode is close to, but not the same as, a real one.
+- How often the screen updates while a key is held isn't measured. On macOS 27, frames can be committed outside the run-loop observer the probe watches, so the time from a key to the next commit it sees isn't the time until the screen shows it.
 - A posted click has no real mouse button, so the probe answers `+[NSEvent pressedMouseButtons]` for it while it holds the button.
 - On 2026-11-14, three timing runs selected nothing, and the app's output said the click hit `CommitTableView` rather than one of its rows. Frames weren't being drawn during them. Running them again worked. The cause wasn't found, but all three were runs where AppKit tracked clicks without its gesture recognizers, so if a run reports that no steps selected their row, look for that line in `<log>.app.txt` and run it again.
 - The screen here was a 60 Hz Studio Display. On a 120 Hz screen the commit times are the same, and the time from the commit to the screen is about half.
