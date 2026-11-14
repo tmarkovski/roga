@@ -30,9 +30,10 @@ public enum RefMenu {
         case divider
     }
 
-    /// What a row says. A branch's name has the branch icon in front of it, so
-    /// that a row that names two branches shows at a glance which words are
-    /// branches. Write one as `"Merge \(branch: name) into \(branch: head)…"`.
+    /// What a row says. A branch's name is bold, so that a row that names two
+    /// branches shows at a glance which words are branches, except in a
+    /// heading, which is only the name. Write one as
+    /// `"Merge \(branch: name) into \(branch: head)…"`.
     public struct Title: ExpressibleByStringInterpolation {
         public enum Part: Equatable {
             case text(String)
@@ -53,12 +54,12 @@ public enum RefMenu {
             parts = stringInterpolation.parts
         }
 
-        /// Only a branch's name, with its icon.
+        /// Only a branch's name.
         public static func branch(_ name: String) -> Title {
             "\(branch: name)"
         }
 
-        /// The words without the icons, for VoiceOver and typing to select.
+        /// The words without the bold, for VoiceOver and typing to select.
         public var plain: String {
             parts.map { part in
                 switch part {
@@ -224,7 +225,7 @@ public enum RefMenu {
                     color: Colors.header,
                     inset: inset,
                     size: NSSize(width: width, height: Metrics.headerHeight),
-                    iconColor: Colors.header
+                    isHeading: true
                 )
                 menu.addItem(item)
             case let .command(title, isDestructive, isEnabled, shortcut, action):
@@ -324,8 +325,6 @@ private enum Metrics {
     static let arrowRoom = 16.0
     /// The least room between a row's title and the value before its arrow.
     static let valueGap = 24.0
-    /// The room after the branch icon in front of a branch's name.
-    static let branchIconGap = 4.0
     /// A longer name gets cut short in its middle, where branch names differ least.
     static let maximumWidth = 480.0
     /// What a choice's last part, such as a folder, keeps when the parts
@@ -346,7 +345,7 @@ private enum Metrics {
     static func width(fitting entries: [RefMenu.Entry], inset: Double, shortcuts: ShortcutColumn) -> Double {
         let widest = entries.map { entry -> Double in
             switch entry {
-            case let .header(title): inset + titleWidth(title, font: headerFont)
+            case let .header(title): inset + titleWidth(title, font: headerFont, isHeading: true)
             case let .command(title, _, _, shortcut, _): inset + titleWidth(title, font: commandFont) + (shortcut == nil ? 0 : shortcuts.room)
             case let .option(title, _, _): inset + titleWidth(title, font: commandFont) + optionCheckRoom
             case let .choice(choice): choiceTextInset + choiceWidth(choice) + shortcuts.room
@@ -374,8 +373,8 @@ private enum Metrics {
         (text as NSString).size(withAttributes: [.font: font]).width
     }
 
-    static func titleWidth(_ title: RefMenu.Title, font: NSFont) -> Double {
-        title.attributed(font: font, color: .labelColor, iconColor: .labelColor).size().width
+    static func titleWidth(_ title: RefMenu.Title, font: NSFont, isHeading: Bool = false) -> Double {
+        title.attributed(font: font, color: .labelColor, isHeading: isHeading).size().width
     }
 
     static func lineHeight(_ font: NSFont) -> Double {
@@ -420,8 +419,6 @@ private enum Colors {
         light: NSColor(srgbRed: 192 / 255, green: 57 / 255, blue: 43 / 255, alpha: 1)
     )
     static let highlight = adaptive(dark: NSColor(white: 1, alpha: 0.15), light: NSColor(white: 0, alpha: 0.08))
-    /// The branch icon in a row's text, between the text's color and the dim one.
-    static let branchIcon = adaptive(dark: NSColor(white: 0.75, alpha: 1), light: NSColor(white: 0.32, alpha: 1))
 
     static func row(isDestructive: Bool, isEnabled: Bool) -> NSColor {
         !isEnabled ? disabled : isDestructive ? destructive : command
@@ -433,39 +430,24 @@ private enum Colors {
 }
 
 extension RefMenu.Title {
-    /// The title to draw, with each branch's icon in the text, so that a name
-    /// too long for the row is cut short along with its icon.
-    func attributed(font: NSFont, color: NSColor, iconColor: NSColor) -> NSAttributedString {
+    /// The title to draw, with each branch's name bold in the words' own font,
+    /// or as the words are in a heading.
+    func attributed(font: NSFont, color: NSColor, isHeading: Bool = false) -> NSAttributedString {
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineBreakMode = .byTruncatingMiddle
         let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color, .paragraphStyle: paragraph]
+        var branchAttributes = attributes
+        if !isHeading { branchAttributes[.font] = NSFont.systemFont(ofSize: font.pointSize, weight: .bold) }
         let text = NSMutableAttributedString()
         for part in parts {
             switch part {
             case let .text(words):
                 text.append(NSAttributedString(string: words, attributes: attributes))
             case let .branch(name):
-                if let icon = Self.branchIcon(font: font, color: iconColor) {
-                    let attachment = NSMutableAttributedString(attachment: icon)
-                    attachment.addAttributes(attributes, range: NSRange(location: 0, length: attachment.length))
-                    attachment.addAttribute(.kern, value: Metrics.branchIconGap, range: NSRange(location: 0, length: attachment.length))
-                    text.append(attachment)
-                }
-                text.append(NSAttributedString(string: name, attributes: attributes))
+                text.append(NSAttributedString(string: name, attributes: branchAttributes))
             }
         }
         return text
-    }
-
-    /// The icon, centered on the height of the capitals beside it.
-    private static func branchIcon(font: NSFont, color: NSColor) -> NSTextAttachment? {
-        let configuration = NSImage.SymbolConfiguration(pointSize: font.pointSize, weight: .regular)
-            .applying(NSImage.SymbolConfiguration(paletteColors: [color]))
-        guard let image = Icon.branch.nsImage?.withSymbolConfiguration(configuration) else { return nil }
-        let attachment = NSTextAttachment()
-        attachment.image = image
-        attachment.bounds = NSRect(x: 0, y: ((font.capHeight - image.size.height) / 2).rounded(), width: image.size.width, height: image.size.height)
-        return attachment
     }
 }
 
@@ -673,8 +655,8 @@ private final class RowView: MenuRowView {
     private let shortcut: (RefMenu.Shortcut, ShortcutColumn)?
     private let value: String?
     private let color: NSColor
-    /// For a heading, whose item macOS always marks as disabled.
-    private let iconColor: NSColor?
+    /// Whether it's a heading, which keeps a branch's name as its words are.
+    private let isHeading: Bool
 
     init(
         title: RefMenu.Title,
@@ -685,7 +667,7 @@ private final class RowView: MenuRowView {
         isChecked: Bool = false,
         shortcut: (RefMenu.Shortcut, ShortcutColumn)? = nil,
         value: String? = nil,
-        iconColor: NSColor? = nil
+        isHeading: Bool = false
     ) {
         self.title = title
         self.font = font
@@ -694,7 +676,7 @@ private final class RowView: MenuRowView {
         self.isChecked = isChecked
         self.shortcut = shortcut
         self.value = value
-        self.iconColor = iconColor
+        self.isHeading = isHeading
         super.init(size: size)
     }
 
@@ -715,7 +697,7 @@ private final class RowView: MenuRowView {
         drawHighlight()
         let hasArrow = enclosingMenuItem?.hasSubmenu == true
         let valueRoom = value.map { ceil(Metrics.textWidth($0, font: font)) + Metrics.valueGap } ?? 0
-        let text = title.attributed(font: font, color: color, iconColor: iconColor ?? (isEnabled ? Colors.branchIcon : Colors.disabled))
+        let text = title.attributed(font: font, color: color, isHeading: isHeading)
         let height = Metrics.lineHeight(font)
         text.draw(
             in: NSRect(
