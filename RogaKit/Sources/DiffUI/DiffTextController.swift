@@ -248,9 +248,12 @@ public final class DiffTextController: NSObject {
     private func updateHunkButton() {
         guard sides.isPointerInside, let window = view.window else {
             hunkButton.isHidden = true
+            hunkButton.isHovering = false
             return
         }
-        showHunkButton(atTextY: textView.convert(window.mouseLocationOutsideOfEventStream, from: nil).y)
+        let pointer = window.mouseLocationOutsideOfEventStream
+        showHunkButton(atTextY: textView.convert(pointer, from: nil).y)
+        hunkButton.isHovering = !hunkButton.isHidden && hunkButton.frame.contains(view.convert(pointer, from: nil))
     }
 
     /// Shows the button for the hunk at a height in the text view, if it can be
@@ -284,7 +287,7 @@ public final class DiffTextController: NSObject {
     /// What right-clicking a hunk offers, if it can be discarded.
     func hunkMenuItem(atTextY y: CGFloat) -> NSMenuItem? {
         guard discardHunk != nil, let header = hunkHeader(atTextY: y) else { return nil }
-        let item = NSMenuItem(title: "Discard hunk", action: #selector(hunkMenuItemChosen), keyEquivalent: "")
+        let item = NSMenuItem(title: "Discard Hunk", action: #selector(hunkMenuItemChosen), keyEquivalent: "")
         item.target = self
         item.representedObject = header
         return item

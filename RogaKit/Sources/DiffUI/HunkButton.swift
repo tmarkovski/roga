@@ -3,11 +3,21 @@ import AppKit
 /// The button that takes a hunk out of the file. It shows on the hunk's band while
 /// the pointer is anywhere in that hunk (decision 39). A band is one row of text tall,
 /// which leaves it 1 point above and below, or more in a larger code font.
+///
+/// It keeps its background, because it can sit over the end of the hunk's header.
+/// Its border turns red while the pointer is on it.
 final class HunkButton: NSButton {
     /// The index among the patch's lines of the header of the hunk it's on.
     var header: Int?
     /// How tall a row of the diff is, in the code font it's in (decision 73).
     var rowHeight: CGFloat = 17
+    /// Whether the pointer is on it, which the view that places it says, since
+    /// it moves under a pointer that stays put as the text scrolls.
+    var isHovering = false {
+        didSet {
+            if isHovering != oldValue { updateColors() }
+        }
+    }
 
     /// How tall it is where a row has the room.
     private static let height: CGFloat = 15
@@ -25,7 +35,7 @@ final class HunkButton: NSButton {
         isHidden = true
         wantsLayer = true
         setButtonType(.momentaryChange)
-        attributedTitle = NSAttributedString(string: "Discard", attributes: [
+        attributedTitle = NSAttributedString(string: "Discard Hunk", attributes: [
             .font: NSFont.systemFont(ofSize: 11, weight: .medium),
             .foregroundColor: NSColor.systemRed,
         ])
@@ -50,7 +60,7 @@ final class HunkButton: NSButton {
             layer?.cornerRadius = 4
             layer?.borderWidth = 1
             layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
-            layer?.borderColor = NSColor.separatorColor.cgColor
+            layer?.borderColor = (isHovering ? NSColor.systemRed : NSColor.separatorColor).cgColor
         }
     }
 

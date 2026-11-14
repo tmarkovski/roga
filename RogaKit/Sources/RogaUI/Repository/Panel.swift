@@ -339,6 +339,11 @@ struct OutlinedButtonStyle: ButtonStyle {
     var horizontalPadding: CGFloat = 8
     /// Whether it's what comes next, which fills it with the brand's orange.
     var isNext = false
+    /// Whether the outline shows while the pointer is elsewhere. Without it, the
+    /// button is only its word until the pointer is over it, for one beside a
+    /// file's path, where an outline would weigh more than the path does. What
+    /// comes next is orange either way, because the orange is what says so.
+    var isOutlinedAtRest = true
 
     func makeBody(configuration: Configuration) -> some View {
         HoverOutline(style: self, isPressed: configuration.isPressed) {
@@ -380,7 +385,7 @@ private struct HoverOutline<Label: View>: View {
             .background {
                 if style.isNext {
                     shape.fill(Palette.actionFill)
-                } else {
+                } else if style.isOutlinedAtRest || isHovering || isPressed {
                     shape.strokeBorder(Palette.separator)
                 }
             }

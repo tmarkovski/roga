@@ -108,7 +108,7 @@ struct DiffPanel: View {
                 // is what's next, so it's orange, as a button that runs now is.
                 let isNext = group == .conflicted && selection.shown?.conflicts?.left == 0 && selection.shown?.file.path == file.path
                 Button(group.stageTitle) { changes.toggle(file, in: group) }
-                    .buttonStyle(OutlinedButtonStyle(height: 24, cornerRadius: 6, isNext: isNext))
+                    .buttonStyle(.diffHeader(isNext: isNext))
                     .help("\(group.stageTitle) (\(RepositoryCommands.stageShortcut.symbols))")
             }
             if selection.isFindShown, hasRoomForMatchButtons {
@@ -343,15 +343,15 @@ private struct SubmoduleButtons: View {
             // staged and unstaged as any file is.
             let title = group == .staged ? "Unstage" : "Stage"
             Button(title, action: stage)
-                .buttonStyle(OutlinedButtonStyle(height: 24, cornerRadius: 6))
+                .buttonStyle(.diffHeader())
                 .help("\(title) (\(RepositoryCommands.stageShortcut.symbols))")
         case .recordsNewCommits:
             Button("Stage", action: stage)
-                .buttonStyle(OutlinedButtonStyle(height: 24, cornerRadius: 6))
+                .buttonStyle(.diffHeader())
                 .help("Record the commit that's checked out (\(RepositoryCommands.stageShortcut.symbols))")
         case .takesCommitsAway:
             Button("Update", action: update)
-                .buttonStyle(OutlinedButtonStyle(height: 24, cornerRadius: 6, isNext: true))
+                .buttonStyle(.diffHeader(isNext: true))
                 .help(SubmoduleWords.updateHelp(file))
             menu {
                 Button("Stage the checked-out commit instead", action: stage)
@@ -378,6 +378,14 @@ private struct SubmoduleButtons: View {
         .fixedSize()
         .help("Update or Stage the Submodule")
         .accessibilityLabel("Update or Stage the Submodule")
+    }
+}
+
+extension ButtonStyle where Self == OutlinedButtonStyle {
+    /// A command in words in the header, beside the file's path: only its word
+    /// until the pointer is over it, or orange when it's what comes next.
+    static func diffHeader(isNext: Bool = false) -> OutlinedButtonStyle {
+        OutlinedButtonStyle(height: 24, cornerRadius: 6, isNext: isNext, isOutlinedAtRest: false)
     }
 }
 

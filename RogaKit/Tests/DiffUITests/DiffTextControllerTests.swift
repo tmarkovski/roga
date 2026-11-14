@@ -482,7 +482,7 @@ struct DiffTextControllerTests {
         controller.discardHunk = { discarded.append($0) }
         let y = text(of: controller).textContainerOrigin.y + DiffMetrics.current.lineHeight * 30
         let item = try #require(controller.hunkMenuItem(atTextY: y))
-        #expect(item.title == "Discard hunk")
+        #expect(item.title == "Discard Hunk")
         _ = (item.target as? NSObject)?.perform(item.action, with: item)
         #expect(discarded == [21])
     }
@@ -500,6 +500,34 @@ struct DiffTextControllerTests {
         let button = HunkButton()
         #expect(button.size.height < DiffMetrics.current.lineHeight)
         #expect(button.size.width > 30)
+    }
+
+    @Test func theButtonSaysWhatItDiscards() {
+        let button = HunkButton()
+        #expect(button.attributedTitle.string == "Discard Hunk")
+        #expect(button.accessibilityLabel() == "Discard Hunk")
+    }
+
+    @Test func theButtonsBorderTurnsRedUnderThePointer() throws {
+        let button = HunkButton()
+        let rest = try #require(button.layer?.borderColor)
+        button.isHovering = true
+        let hovered = try #require(button.layer?.borderColor)
+        #expect(hovered != rest)
+        #expect(button.layer?.backgroundColor != nil)
+        button.isHovering = false
+        #expect(button.layer?.borderColor == rest)
+    }
+
+    @Test func aButtonThatGoesAwayIsntLeftLookingHovered() throws {
+        let controller = controller(showing: try twoHunks())
+        controller.discardHunk = { _ in }
+        controller.showHunkButton(atTextY: text(of: controller).textContainerOrigin.y + 1)
+        controller.hunkButton.isHovering = true
+        // Outside a window, nothing says the pointer is inside, as once it has left.
+        controller.show(try twoHunks())
+        #expect(controller.hunkButton.isHidden)
+        #expect(!controller.hunkButton.isHovering)
     }
 
     @Test func staysAsWideAsTheViewForShortLines() throws {

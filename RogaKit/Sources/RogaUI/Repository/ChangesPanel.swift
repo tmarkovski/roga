@@ -345,19 +345,16 @@ private struct GroupOfFiles: View {
     }
 
     private func headingButton(_ title: String, help: String, action: @escaping () -> Void) -> some View {
-        Button(title, action: action)
-            .buttonStyle(.plain)
-            .fontWeight(.medium)
-            .lineLimit(1)
-            .padding(.horizontal, 6)
-            .frame(height: 20)
-            .background {
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .fill(Palette.hover)
-            }
-            .contentShape(Rectangle())
-            .fixedSize()
-            .help(help)
+        Button(action: action) {
+            Text(title)
+                .fontWeight(.medium)
+                .lineLimit(1)
+                .padding(.horizontal, 6)
+                .frame(height: 20)
+        }
+        .buttonStyle(HeadingButtonStyle())
+        .fixedSize()
+        .help(help)
     }
 
     private func headingIconButton(_ icon: Icon, title: String, action: @escaping () -> Void) -> some View {
@@ -365,13 +362,8 @@ private struct GroupOfFiles: View {
             icon.image
                 .font(.system(size: 13))
                 .frame(width: 20, height: 20)
-                .background {
-                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                        .fill(Palette.hover)
-                }
-                .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(HeadingButtonStyle())
         .help(title)
     }
 
@@ -380,6 +372,35 @@ private struct GroupOfFiles: View {
         let matching = list.filter.isEmpty ? "" : "matching "
         let files = count == 1 ? "1 \(matching)file" : "\(count.formatted()) \(matching)files"
         return added + removed > 0 ? "\(files), \(added.formatted()) lines added and \(removed.formatted()) removed" : files
+    }
+}
+
+/// Words or an icon beside a list's heading, with nothing around them until the
+/// pointer is over them, when they get a rounded gray fill. That way the buttons
+/// weigh no more than the heading's title, in words or as icons.
+private struct HeadingButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HoverFill(isPressed: configuration.isPressed) {
+            configuration.label
+        }
+    }
+}
+
+private struct HoverFill<Label: View>: View {
+    let isPressed: Bool
+    @ViewBuilder var label: Label
+    @State private var isHovering = false
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        label
+            .background {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(isPressed ? Palette.selection : isHovering ? Palette.hover : .clear)
+            }
+            .contentShape(Rectangle())
+            .opacity(isEnabled ? 1 : 0.4)
+            .onHover { isHovering = $0 && isEnabled }
     }
 }
 
