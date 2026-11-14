@@ -61,7 +61,9 @@ def read_log(path: Path) -> Log:
             continue
         if parts[0] == "#":
             if parts[1] == "mode":
-                header = dict(zip(parts[1::2], parts[2::2]))
+                header = {**dict(zip(parts[1::2], parts[2::2])), "checks": header.get("checks", [])}
+            elif parts[1] == "check":
+                header.setdefault("checks", []).append(line[len("# check "):])
             continue
         if parts[0] == "symbol":
             symbols[int(parts[1], 16)] = (parts[2], " ".join(parts[3:]))
@@ -105,6 +107,11 @@ def timings(log: Log, step: Step):
     if not keys:
         m["released"] = step.first("post-up", start)
         m["up dispatched"] = step.first("send-begin", start, MOUSE_UP)
+        # Once the main thread has handled the mouse-up and drawn whatever it
+        # set off, the run loop goes back to waiting. When the table tracks the
+        # mouse itself, the mouse-up ends the mouse-down's dispatch instead.
+        ends = [t for t, k, _, _ in step.events if k == "send-end" and m["released"] is not None and t >= m["released"]]
+        m["free after release"] = step.first("rl-committed", ends[0]) if ends else None
     m["selected"] = step.first("row-selected", start, step.row)
     if m["selected"] is None:
         return None
@@ -219,6 +226,12 @@ def main(logs, show_steps, show_profile, top):
     for path in logs:
         log = read_log(path)
         keys = log.header.get("mode") == "keys"
+        if log.header.get("mode") == "checks":
+            click.echo(f"{path.name}: checks, experiment {log.header.get('experiment', 'none')}")
+            for line in log.header.get("checks", []):
+                click.echo(f"  {line}")
+            click.echo()
+            continue
         click.echo(f"{path.name}: {log.header.get('mode')}, hold {log.header.get('hold')} ms, "
                    f"{len(log.steps)} steps, sampling {log.header.get('sampling')}, "
                    f"experiment {log.header.get('experiment', 'none')}")
@@ -252,7 +265,8 @@ def main(logs, show_steps, show_profile, top):
                   (f"{first} → on screen (estimate)", "start", "shown")]
         if not keys:
             lines += [("released → committed", "released", "committed"),
-                      ("released → on screen (estimate)", "released", "shown")]
+                      ("released → on screen (estimate)", "released", "shown"),
+                      ("released → main thread free again", "released", "free after release")]
         for title, a, b in lines:
             click.echo(f"  {title:38s} {summary([since(m, a, b) for _, m in done])}")
 
@@ -260,6 +274,9 @@ def main(logs, show_steps, show_profile, top):
             names = symbolicate(log)
             profile(log, names, [(m["model done"], m["draw began"]) for _, m in done],
                     "From telling the model until the highlight is drawn", top)
+            if not keys:
+                profile(log, names, [(m.get("up dispatched"), m.get("free after release")) for _, m in done],
+                        "From the mouse-up until the main thread is free again", top)
             profile(log, names, [(m["draw began"], m["committed"]) for _, m in done],
                     "From drawing the highlight until the commit", top)
             if not keys:

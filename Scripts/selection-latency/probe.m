@@ -19,15 +19,17 @@
 // turns into timings. Settings come from the environment:
 //
 //   ROGA_PROBE_LOG     where to write the log (required)
-//   ROGA_PROBE_MODE    click (default) or keys
+//   ROGA_PROBE_MODE    click (default) or keys, or checks, which clicks,
+//                      Shift-clicks, Command-clicks, drags and double-clicks
+//                      and writes down what ends up selected (see runChecks)
 //   ROGA_PROBE_STEPS   how many rows to select (default 30)
 //   ROGA_PROBE_HOLD    milliseconds between mouse-down and mouse-up (default 90)
 //   ROGA_PROBE_GAP     milliseconds from one step to the next (default 700)
 //   ROGA_PROBE_SAMPLE  1 to sample the main thread's stack during each step
 //   ROGA_PROBE_SETTLE  seconds to wait after history shows (default 3)
-//   ROGA_PROBE_EXPERIMENT  nopan, defer or nomodel, or several separated by
-//                      commas, to try changes without building the app (see
-//                      probeDidChange)
+//   ROGA_PROBE_EXPERIMENT  nopan, nodelay, defer, nomodel, press, mousedown or
+//                      override, or several separated by commas, to try changes
+//                      without building the app (see experimentNoPan and the rest)
 
 #import <AppKit/AppKit.h>
 #import <CoreVideo/CoreVideo.h>
@@ -37,6 +39,7 @@
 #import <mach-o/loader.h>
 #import <mach/mach.h>
 #import <mach/mach_time.h>
+#import <objc/message.h>
 #import <objc/runtime.h>
 #import <os/lock.h>
 #import <pthread.h>
@@ -216,11 +219,70 @@ static void probeCellDraw(id self, SEL _cmd, NSRect rect) {
 }
 
 /// Experiments, from ROGA_PROBE_EXPERIMENT, a list separated by commas:
-/// nopan stops the table's pan gesture recognizer holding back the mouse-down,
-/// defer tells the model only once the frame with the highlight is committed,
-/// nomodel doesn't tell the model at all, and nodelay stops every gesture
-/// recognizer from the table up to the window's frame holding back the mouse-down.
-static BOOL experimentNoPan, experimentDefer, experimentNoModel, experimentNoDelay;
+///
+/// - nopan stops the table's pan gesture recognizer holding back the mouse-down.
+/// - nodelay stops every gesture recognizer from the table up to the window's
+///   frame holding back the mouse-down.
+/// - defer tells the model only once the frame with the highlight is committed.
+/// - nomodel doesn't tell the model at all.
+/// - press selects the clicked row when the button goes down, from a local
+///   event monitor, which runs before the gesture recognizers see the event.
+/// - mousedown selects it when the table's mouseDown: runs instead. It changes
+///   NSTableView's own method, for this table only, so that CommitTableView
+///   doesn't look as if it overrides mouseDown:. The table gets the press in
+///   time only with nopan as well.
+/// - override gives CommitTableView a mouseDown: that only calls
+///   NSTableView's, as `override func mouseDown(with:)` calling super would.
+///   AppKit then handles clicks on the table the way it did before gesture
+///   recognizers: it selects the row on the press and tracks the mouse until
+///   the release.
+///
+/// press and mousedown act only on a plain single click on a row that isn't
+/// already the only one selected, and the click's mouse-up then doesn't report
+/// the row to the model a second time (see probeClicked).
+static BOOL experimentNoPan, experimentDefer, experimentNoModel, experimentNoDelay, experimentPress, experimentMouseDown, experimentOverride;
+
+/// How many times the model was told about a selection, from
+/// tableViewSelectionDidChange: and from clicked, for the checks.
+static long modelReports;
+
+/// The row the last press selected, or -1, so that its mouse-up doesn't report
+/// it again.
+static long rowSelectedByPress = -1;
+
+/// The row a press should select now, or -1: a plain single click on a row of
+/// the list that isn't already the only one selected. Command-, Shift-, Control-
+/// and Option-clicks, double-clicks and clicks below the last row are left to
+/// AppKit.
+static long rowToSelectOnPress(NSEvent *event) {
+    NSTableView *table = historyTable;
+    if (!table || event.type != NSEventTypeLeftMouseDown || event.window != table.window) return -1;
+    if (event.clickCount != 1) return -1;
+    NSEventModifierFlags flags = NSEventModifierFlagCommand | NSEventModifierFlagShift | NSEventModifierFlagControl | NSEventModifierFlagOption;
+    if (event.modifierFlags & flags) return -1;
+    // Only when the list itself is under the pointer, not a scroller over it.
+    NSView *frameView = table.window.contentView.superview ?: table.window.contentView;
+    NSView *hit = [frameView hitTest:event.locationInWindow];
+    if (!hit || ![hit isDescendantOf:table]) return -1;
+    long row = [table rowAtPoint:[table convertPoint:event.locationInWindow fromView:nil]];
+    if (row < 0) return -1;
+    if (table.selectedRowIndexes.count == 1 && table.selectedRow == row) return -1;
+    return row;
+}
+
+/// Selects the pressed row, the way a click selects it on mouse-up. The table
+/// says the selection changed, which tells the model, as for a click.
+static void selectOnPress(NSEvent *event, const char *where) {
+    rowSelectedByPress = -1;
+    if (event.type != NSEventTypeLeftMouseDown) return;
+    record("press-check-begin", 0, 0);
+    long row = rowToSelectOnPress(event);
+    record("press-check-end", row, 0);
+    if (row < 0) return;
+    record(where, row, 0);
+    rowSelectedByPress = row;
+    [historyTable selectRowIndexes:[NSIndexSet indexSetWithIndex:row] byExtendingSelection:NO];
+}
 
 static IMP originalDidChange;
 static void probeDidChange(id self, SEL _cmd, NSNotification *note) {
@@ -242,8 +304,53 @@ static void probeDidChange(id self, SEL _cmd, NSNotification *note) {
         return;
     }
     record("did-change-begin", (long)historyTable.selectedRow, 0);
+    modelReports++;
     ((void (*)(id, SEL, NSNotification *))originalDidChange)(self, _cmd, note);
     record("did-change-end", 0, 0);
+}
+
+static IMP originalClicked;
+/// The table's action, which reports the clicked row again when it's the only
+/// one selected, for panels that show something else for it. When the press
+/// selected that row, the model has heard about it already.
+static void probeClicked(id self, SEL _cmd) {
+    long row = historyTable.clickedRow;
+    BOOL selectedByPress = (experimentPress || experimentMouseDown) && row >= 0 && row == rowSelectedByPress;
+    rowSelectedByPress = -1;
+    NSEventModifierFlags flags = NSApp.currentEvent.modifierFlags;
+    BOOL wouldReport = row >= 0 && historyTable.selectedRowIndexes.count == 1 && historyTable.selectedRow == row
+        && !(flags & (NSEventModifierFlagCommand | NSEventModifierFlagShift));
+    record(selectedByPress ? "clicked-skipped" : "clicked", row, wouldReport);
+    if (selectedByPress) return;
+    if (wouldReport) modelReports++;
+    ((void (*)(id, SEL))originalClicked)(self, _cmd);
+}
+
+static IMP originalDoubleClicked;
+static long doubleClicks;
+/// Going to a commit would check it out in the test repository, so this only
+/// counts double-clicks.
+static void probeDoubleClicked(id self, SEL _cmd) {
+    record("double-clicked", historyTable.clickedRow, 0);
+    doubleClicks++;
+}
+
+static IMP originalTableMouseDown;
+/// Takes the place of NSTableView's own mouseDown:, for mousedown.
+static void probeTableMouseDown(id self, SEL _cmd, NSEvent *event) {
+    BOOL ours = self == historyTable;
+    if (ours) record("table-mouse-down-begin", event.clickCount, 0);
+    if (ours) selectOnPress(event, "mouse-down-select");
+    ((void (*)(id, SEL, NSEvent *))originalTableMouseDown)(self, _cmd, event);
+    if (ours) record("table-mouse-down-end", 0, 0);
+}
+
+/// CommitTableView's mouseDown:, for override, which only calls NSTableView's.
+static void probeOverriddenMouseDown(id self, SEL _cmd, NSEvent *event) {
+    record("table-mouse-down-begin", event.clickCount, 0);
+    struct objc_super parent = {self, NSTableView.class};
+    ((void (*)(struct objc_super *, SEL, NSEvent *))objc_msgSendSuper)(&parent, _cmd, event);
+    record("table-mouse-down-end", 0, 0);
 }
 
 static IMP originalSetState;
@@ -375,12 +482,15 @@ static uintptr_t textSize(const struct mach_header_64 *header) {
 #pragma mark - The run
 
 static NSString *logPath;
+/// What each of the checks found, in checks mode.
+static NSMutableArray<NSString *> *checkResults;
 
 static void writeLog(NSString *mode, int hold, int gap) {
     NSMutableString *text = [NSMutableString string];
     [text appendFormat:@"# mode %@ hold %d gap %d sampling %d experiment %@\n", mode, hold, gap, sampling,
         NSProcessInfo.processInfo.environment[@"ROGA_PROBE_EXPERIMENT"].length ? NSProcessInfo.processInfo.environment[@"ROGA_PROBE_EXPERIMENT"] : @"none"];
     [text appendFormat:@"# screen %@ %ld fps\n", historyTable.window.screen.localizedName, (long)historyTable.window.screen.maximumFramesPerSecond];
+    for (NSString *line in checkResults) [text appendFormat:@"# %@\n", line];
     for (long index = 0; index < recordCount; index++) {
         Record r = records[index];
         [text appendFormat:@"%.4f %s %ld %ld\n", r.t, r.kind, r.a, r.b];
@@ -434,14 +544,18 @@ static NSPoint clickPoint(long row) {
     return [historyTable convertPoint:point toView:nil];
 }
 
-static void postMouse(NSEventType type, NSPoint location, NSInteger windowNumber, long row) {
-    NSEvent *event = [NSEvent mouseEventWithType:type location:location modifierFlags:0 timestamp:NSProcessInfo.processInfo.systemUptime windowNumber:windowNumber context:nil eventNumber:0 clickCount:1 pressure:type == NSEventTypeLeftMouseDown ? 1 : 0];
+static void postMouseWith(NSEventType type, NSPoint location, NSInteger windowNumber, long row, NSEventModifierFlags flags, NSInteger clickCount) {
+    NSEvent *event = [NSEvent mouseEventWithType:type location:location modifierFlags:flags timestamp:NSProcessInfo.processInfo.systemUptime windowNumber:windowNumber context:nil eventNumber:0 clickCount:clickCount pressure:type == NSEventTypeLeftMouseUp ? 0 : 1];
     if (!event) NSLog(@"probe: no event");
-    record(type == NSEventTypeLeftMouseDown ? "post-down" : "post-up", row, 0);
+    record(type == NSEventTypeLeftMouseDown ? "post-down" : type == NSEventTypeLeftMouseUp ? "post-up" : "post-drag", row, 0);
     dispatch_async(dispatch_get_main_queue(), ^{
         record("main-posting", type, 0);
         [NSApp postEvent:event atStart:NO];
     });
+}
+
+static void postMouse(NSEventType type, NSPoint location, NSInteger windowNumber, long row) {
+    postMouseWith(type, location, windowNumber, row, 0, 1);
 }
 
 static void postKey(NSEventType type, unsigned short keyCode, unichar character, NSInteger windowNumber) {
@@ -455,6 +569,132 @@ static void sleepMs(double ms) {
     usleep((useconds_t)(ms * 1000));
 }
 
+#pragma mark - Checks
+
+static NSString *describeRows(NSIndexSet *rows) {
+    NSMutableArray *parts = [NSMutableArray array];
+    [rows enumerateRangesUsingBlock:^(NSRange range, BOOL *stop) {
+        [parts addObject:range.length == 1 ? [NSString stringWithFormat:@"%lu", (unsigned long)range.location]
+                                           : [NSString stringWithFormat:@"%lu-%lu", (unsigned long)range.location, (unsigned long)NSMaxRange(range) - 1]];
+    }];
+    return parts.count ? [parts componentsJoinedByString:@","] : @"none";
+}
+
+/// Waits for things to settle, then writes down what's selected and how many
+/// times the model was told since the check began.
+static void finishCheck(NSString *name, NSString *expected, long reportsBefore, long doubleClicksBefore, int gap) {
+    sleepMs(gap);
+    __block NSString *selected;
+    dispatch_sync(dispatch_get_main_queue(), ^{ selected = describeRows(historyTable.selectedRowIndexes); });
+    NSString *line = [NSString stringWithFormat:@"check %@ | selected %@ | expected %@ | model told %ld | double-clicks %ld",
+        name, selected, expected, modelReports - reportsBefore, doubleClicks - doubleClicksBefore];
+    [checkResults addObject:line];
+    NSLog(@"probe: %@", line);
+}
+
+static void click(long row, NSEventModifierFlags flags, NSInteger windowNumber, int hold) {
+    __block NSPoint location;
+    dispatch_sync(dispatch_get_main_queue(), ^{ location = clickPoint(row); });
+    holdingButton = 1;
+    postMouseWith(NSEventTypeLeftMouseDown, location, windowNumber, row, flags, 1);
+    sleepMs(hold);
+    holdingButton = 0;
+    postMouseWith(NSEventTypeLeftMouseUp, location, windowNumber, row, flags, 1);
+}
+
+/// Clicks, Shift-clicks, Command-clicks, drags and double-clicks rows, and
+/// writes down what each leaves selected, so that an experiment can be
+/// compared with what AppKit does by itself. Control-clicks open a menu, which
+/// would stop the probe, so they aren't among them.
+static void runChecks(NSInteger windowNumber, long visibleRows, int hold, int gap) {
+    checkResults = [NSMutableArray array];
+    armed = 1;
+    long reports, doubles;
+
+    reports = modelReports; doubles = doubleClicks;
+    click(3, 0, windowNumber, hold);
+    finishCheck(@"click a row that isn't selected", @"3, told once", reports, doubles, gap);
+
+    reports = modelReports; doubles = doubleClicks;
+    click(3, 0, windowNumber, hold);
+    finishCheck(@"click the only selected row", @"3, told once", reports, doubles, gap);
+
+    reports = modelReports; doubles = doubleClicks;
+    click(6, NSEventModifierFlagShift, windowNumber, hold);
+    finishCheck(@"Shift-click", @"3-6", reports, doubles, gap);
+
+    reports = modelReports; doubles = doubleClicks;
+    click(8, NSEventModifierFlagCommand, windowNumber, hold);
+    finishCheck(@"Command-click", @"3-6,8", reports, doubles, gap);
+
+    reports = modelReports; doubles = doubleClicks;
+    click(5, 0, windowNumber, hold);
+    finishCheck(@"click a row inside several selected", @"5, told once", reports, doubles, gap);
+
+    // Down on row 2, along to row 7 a few points at a time, and up there.
+    reports = modelReports; doubles = doubleClicks;
+    __block NSPoint from, to;
+    dispatch_sync(dispatch_get_main_queue(), ^{ from = clickPoint(2); to = clickPoint(7); });
+    holdingButton = 1;
+    postMouseWith(NSEventTypeLeftMouseDown, from, windowNumber, 2, 0, 1);
+    sleepMs(60);
+    int moves = 30;
+    for (int move = 1; move <= moves; move++) {
+        NSPoint point = NSMakePoint(from.x, from.y + (to.y - from.y) * move / moves);
+        postMouseWith(NSEventTypeLeftMouseDragged, point, windowNumber, -1, 0, 1);
+        sleepMs(16);
+    }
+    sleepMs(60);
+    holdingButton = 0;
+    postMouseWith(NSEventTypeLeftMouseUp, to, windowNumber, 7, 0, 1);
+    finishCheck(@"drag from row 2 to row 7", @"what AppKit does", reports, doubles, gap);
+
+    reports = modelReports; doubles = doubleClicks;
+    __block NSPoint location;
+    dispatch_sync(dispatch_get_main_queue(), ^{ location = clickPoint(4); });
+    holdingButton = 1;
+    postMouseWith(NSEventTypeLeftMouseDown, location, windowNumber, 4, 0, 1);
+    sleepMs(60);
+    holdingButton = 0;
+    postMouseWith(NSEventTypeLeftMouseUp, location, windowNumber, 4, 0, 1);
+    sleepMs(80);
+    holdingButton = 1;
+    postMouseWith(NSEventTypeLeftMouseDown, location, windowNumber, 4, 0, 2);
+    sleepMs(60);
+    holdingButton = 0;
+    postMouseWith(NSEventTypeLeftMouseUp, location, windowNumber, 4, 0, 2);
+    finishCheck(@"double-click", @"4, one double-click", reports, doubles, gap);
+    armed = 0;
+}
+
+/// Reads ROGA_PROBE_EXPERIMENT and makes the changes that have to be in place
+/// from the start, on the main thread, once the app has finished launching.
+static void readExperiments(void) {
+    NSDictionary *environment = NSProcessInfo.processInfo.environment;
+    NSArray *experiments = [environment[@"ROGA_PROBE_EXPERIMENT"] ?: @"" componentsSeparatedByString:@","];
+    experimentNoPan = [experiments containsObject:@"nopan"];
+    experimentDefer = [experiments containsObject:@"defer"];
+    experimentNoModel = [experiments containsObject:@"nomodel"];
+    experimentNoDelay = [experiments containsObject:@"nodelay"];
+    experimentPress = [experiments containsObject:@"press"];
+    experimentMouseDown = [experiments containsObject:@"mousedown"];
+    experimentOverride = [experiments containsObject:@"override"];
+    Class tableClass = NSClassFromString(@"_TtC9HistoryUI15CommitTableView");
+    if (experimentOverride && !class_addMethod(tableClass, @selector(mouseDown:), (IMP)probeOverriddenMouseDown, "v@:@")) {
+        NSLog(@"probe: CommitTableView already has a mouseDown:");
+    }
+    if (experimentMouseDown) {
+        Method method = class_getInstanceMethod(NSTableView.class, @selector(mouseDown:));
+        originalTableMouseDown = method_setImplementation(method, (IMP)probeTableMouseDown);
+    }
+    if (experimentPress) {
+        [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskLeftMouseDown handler:^NSEvent *(NSEvent *event) {
+            selectOnPress(event, "press-select");
+            return event;
+        }];
+    }
+}
+
 static void runScenario(void) {
     NSDictionary *environment = NSProcessInfo.processInfo.environment;
     NSString *mode = environment[@"ROGA_PROBE_MODE"] ?: @"click";
@@ -463,12 +703,6 @@ static void runScenario(void) {
     int gap = environment[@"ROGA_PROBE_GAP"] ? [environment[@"ROGA_PROBE_GAP"] intValue] : 700;
     double settle = environment[@"ROGA_PROBE_SETTLE"] ? [environment[@"ROGA_PROBE_SETTLE"] doubleValue] : 3;
     sampling = [environment[@"ROGA_PROBE_SAMPLE"] isEqualToString:@"1"];
-    NSArray *experiments = [environment[@"ROGA_PROBE_EXPERIMENT"] ?: @"" componentsSeparatedByString:@","];
-    experimentNoPan = [experiments containsObject:@"nopan"];
-    experimentDefer = [experiments containsObject:@"defer"];
-    experimentNoModel = [experiments containsObject:@"nomodel"];
-    experimentNoDelay = [experiments containsObject:@"nodelay"];
-
     __block NSWindow *window = nil;
     for (int attempt = 0; attempt < 240 && !window; attempt++) {
         dispatch_sync(dispatch_get_main_queue(), ^{ window = findWindow(); });
@@ -525,6 +759,13 @@ static void runScenario(void) {
     });
     sleepMs(gap);
 
+    if ([mode isEqualToString:@"checks"]) {
+        runChecks(windowNumber, visibleRows, hold, gap);
+        dispatch_sync(dispatch_get_main_queue(), ^{ writeLog(mode, hold, gap); });
+        [@"" writeToFile:[logPath stringByAppendingString:@".done"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
+        return;
+    }
+
     long first = 1, last = MAX(2, MIN(visibleRows - 2, 14));
     long previous = 1;
     for (int step = 0; step < steps; step++) {
@@ -578,6 +819,9 @@ static void install(void) {
     originalDrawSelection = hook(commitRowViewClass, @selector(drawSelectionInRect:), (IMP)probeDrawSelection);
     originalCellDraw = hook(commitCellViewClass, @selector(drawRect:), (IMP)probeCellDraw);
     originalDidChange = hook(controller, @selector(tableViewSelectionDidChange:), (IMP)probeDidChange);
+    originalClicked = hook(controller, NSSelectorFromString(@"clicked"), (IMP)probeClicked);
+    originalDoubleClicked = hook(controller, NSSelectorFromString(@"doubleClicked"), (IMP)probeDoubleClicked);
+    if (!NSClassFromString(@"_TtC9HistoryUI15CommitTableView")) NSLog(@"probe: CommitTableView wasn't found");
     recognizerNames = [NSMutableArray array];
     originalSetState = hook(NSGestureRecognizer.class, @selector(setState:), (IMP)probeSetState);
     Class eventMeta = object_getClass(NSEvent.class);
@@ -585,6 +829,7 @@ static void install(void) {
     [NSNotificationCenter.defaultCenter addObserverForName:NSTableViewSelectionIsChangingNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
         if (note.object == historyTable) record("is-changing", (long)historyTable.selectedRow, 0);
     }];
+    readExperiments();
     observeRunLoop();
     CVDisplayLinkCreateWithActiveCGDisplays(&displayLink);
     CVDisplayLinkSetOutputCallback(displayLink, screenRefreshed, NULL);
