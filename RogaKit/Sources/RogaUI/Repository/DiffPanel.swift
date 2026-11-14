@@ -383,9 +383,10 @@ private struct SubmoduleButtons: View {
 
 extension ButtonStyle where Self == OutlinedButtonStyle {
     /// A command in words in the header, beside the file's path: only its word
-    /// until the pointer is over it, or orange when it's what comes next.
+    /// until the pointer is over it, when it gets a gray fill with no outline,
+    /// or orange when it's what comes next.
     static func diffHeader(isNext: Bool = false) -> OutlinedButtonStyle {
-        OutlinedButtonStyle(height: 24, cornerRadius: 6, isNext: isNext, isOutlinedAtRest: false)
+        OutlinedButtonStyle(height: 24, cornerRadius: 6, isNext: isNext, isOutlined: false)
     }
 }
 
