@@ -73,7 +73,7 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [63](0063-ask-an-agent-to-fix-what-git-refused.md) | Ask an agent to fix what git refused | Accepted |
 | [64](0064-dress-the-replay-as-a-departure-board-and-end-it-on-a-poster.md) | Dress the replay as a departure board, and end it on a poster | Accepted |
 | [65](0065-one-menu-for-a-commit-or-a-branch.md) | One menu for a commit or a branch | Rows reworded by [66](0066-sentence-case-branch-icons-and-the-value-on-a-row.md), and pushing a tag added by [70](0070-push-a-tag-from-its-menu-or-as-its-made.md) |
-| [66](0066-sentence-case-branch-icons-and-the-value-on-a-row.md) | Sentence case, branch icons and the value on a row | Accepted |
+| [66](0066-sentence-case-branch-icons-and-the-value-on-a-row.md) | Sentence case, branch icons and the value on a row | Branch icons replaced by bold names in [77](0077-bold-branch-names-in-menus.md) |
 | [67](0067-add-and-remove-remotes-in-the-refs-panel.md) | Add and remove remotes in the refs panel | Accepted |
 | [68](0068-mark-an-agents-commands-with-an-orange-line-rather-than-sparkles.md) | Mark an agent's commands with an orange line, rather than sparkles | Accepted |
 | [69](0069-set-roga-up-in-the-whole-window-the-first-time-it-runs.md) | Set Roga up in the whole window, the first time it runs | Interface wording revised by [72](0072-use-standard-interface-terminology.md) |
@@ -84,3 +84,4 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [74](0074-switch-a-diff-between-its-hunks-and-the-whole-file.md) | Switch a diff between its hunks and the whole file | Accepted |
 | [75](0075-list-submodules-in-the-refs-panel-and-go-into-one-in-the-window.md) | List submodules in the refs panel, and go into one in the window | Accepted, and the first two of its three steps are built |
 | [76](0076-keep-the-counts-in-view-while-the-title-row-says-what-happened.md) | Keep the counts in view while the title row says what just happened | Accepted |
+| [77](0077-bold-branch-names-in-menus.md) | Bold branch names in menus, in place of the branch icon | Accepted |

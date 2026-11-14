@@ -1,6 +1,6 @@
 # 66. Sentence case, branch icons and the value on a row
 
-Accepted on 2026-11-09. This changes the wording of the rows in [decision 65](0065-one-menu-for-a-commit-or-a-branch.md), and extends what [decision 29](0029-dialogs-that-say-what-happens-and-show-the-command.md) says about sentence case from dialogs to menus.
+Accepted on 2026-11-09. This changes the wording of the rows in [decision 65](0065-one-menu-for-a-commit-or-a-branch.md), and extends what [decision 29](0029-dialogs-that-say-what-happens-and-show-the-command.md) says about sentence case from dialogs to menus. Its branch icons are replaced by bold names in [decision 77](0077-bold-branch-names-in-menus.md).
 
 ## Context
 
