@@ -44,6 +44,9 @@ struct CommitList: NSViewRepresentable {
                 loadText: { await model.loadText(for: $0) },
                 selectRows: { model.selectRows($0) }
             ))
+            // The window builds a new list each time it shows the worktree, and
+            // a list that's gone shows nothing.
+            model.rowsInView = { [weak controller = self.controller] in controller?.rowsInView ?? 0..<0 }
             controller.source.checkOut = { [unowned self] badge in
                 model.checkOut(badge) { [unowned self] in showWorktree($0, $1) }
             }

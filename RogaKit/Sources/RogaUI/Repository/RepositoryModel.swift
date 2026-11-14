@@ -129,6 +129,8 @@ final class RepositoryModel {
 
     /// The request whose history has loaded completely.
     @ObservationIgnored private var loaded: LoadRequest?
+    /// The rows the commit list has in view, which it says while it's showing.
+    @ObservationIgnored var rowsInView: () -> Range<Int> = { 0..<0 }
     /// The text of commits the list has drawn, by commit. A commit's message
     /// never changes, so the text stays when history loads again, and the rows
     /// that were showing have theirs at once.
@@ -993,17 +995,16 @@ final class RepositoryModel {
     func load() async {
         let request = loadRequest
         guard request != loaded else { return }
-        // A history in the same order stays on screen until the new one is
-        // complete, so that the list goes from one to the other in one step.
-        // The new first screen alone would shrink the list, which moves it when
-        // it's scrolled further down and drops a commit selected further down.
-        // Another order moves every row anyway, so its first screen shows at once.
-        let waitsForEveryRow = history?.sort == request.sort
+        // A history loading again in the same order shows its first screen only
+        // when that holds what the list shows, and otherwise stays on screen
+        // until the new one is complete. Another order moves every row anyway,
+        // so its first screen shows at once.
+        let isLoadingAgain = history?.sort == request.sort
         do {
             var firstSnapshot = true
             var isComplete = false
             for try await history in session.history(in: worktree, sort: request.sort) {
-                if waitsForEveryRow, !history.isComplete { continue }
+                if isLoadingAgain, !history.isComplete, !holdsWhatsShowing(history) { continue }
                 if firstSnapshot {
                     firstSnapshot = false
                     graphGeneration += 1
@@ -1352,6 +1353,22 @@ final class RepositoryModel {
         guard let id = selectedCommit.id else { return }
         selectedRows = Self.row(of: id, in: history).map { IndexSet(integer: $0 + rowOffset) } ?? []
         if selectedRows.isEmpty, history.isComplete { selectedCommit.show(nil) }
+    }
+
+    /// Whether the first rows of a history that's loading again hold what the
+    /// list shows of the one on screen: the rows in view, and the selected
+    /// commits wherever they are. Showing them early then changes only what
+    /// moved, as it does after a checkout at the top of a large history, which
+    /// takes about a second more to complete. Otherwise the list would shrink to
+    /// those rows, which moves it, and a selected commit would lose its highlight
+    /// and be scrolled to once the rest arrived.
+    private func holdsWhatsShowing(_ first: History) -> Bool {
+        guard rowsInView().upperBound <= first.rows.count + rowOffset else { return false }
+        if !selectedCommits.isEmpty {
+            return rows(of: selectedCommits, in: first).count == selectedCommits.count
+        }
+        guard !selectedRows.isEmpty, !selectedChanges.isSelected, let id = selectedCommit.id else { return true }
+        return Self.row(of: id, in: first) != nil
     }
 
     /// Goes through the rows, which takes up to a millisecond for as many as

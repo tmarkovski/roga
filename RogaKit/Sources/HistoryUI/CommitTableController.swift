@@ -145,6 +145,13 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
         updateHoveredBadge()
     }
 
+    /// The rows in view, or none while the list has no height.
+    public var rowsInView: Range<Int> {
+        let rows = tableView.rows(in: tableView.visibleRect)
+        guard rows.location != NSNotFound, rows.length > 0 else { return 0..<0 }
+        return rows.location..<rows.location + rows.length
+    }
+
     /// The selected row, or nil when there's none or more than one.
     public var selectedRow: Int? {
         selectedRows.count == 1 ? selectedRows.first : nil

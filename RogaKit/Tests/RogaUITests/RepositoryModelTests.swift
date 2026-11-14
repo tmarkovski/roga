@@ -774,25 +774,67 @@ struct RepositoryModelTests {
         }
     }
 
-    @Test func showsHistoryThatLoadsAgainOnceItsComplete() async throws {
+    /// Moves `HEAD` and loads history again, and returns how many histories the
+    /// model showed on the way: 2 for the first screen and then the rest, 1 for
+    /// only the complete one.
+    func historiesShownAfterACheckout(_ model: RepositoryModel, in repository: String) async throws -> Int {
+        let refs = try #require(model.history?.refs)
+        let isOnMain = refs.head == refs.refs.first { $0.name == "refs/heads/main" }?.peeled
+        let target = isOnMain ? "origin/old-feature" : "main"
+        _ = try await runGit("switch", "--quiet", "--detach", target, in: repository)
+        model.reload()
+        let version = model.historyVersion
+        await model.load()
+        #expect(model.history?.isComplete == true)
+        return model.historyVersion - version
+    }
+
+    @Test func showsTheFirstScreenAgainWhenItHoldsWhatsInView() async throws {
         let (model, repository) = try await modelOfALongHistory()
-        var version = model.historyVersion
+        let version = model.historyVersion
         await model.load()
         // The first load shows the first screen before the rest.
         #expect(model.historyVersion == version + 2)
 
-        _ = try await runGit("switch", "--quiet", "--detach", "origin/old-feature", in: repository)
-        model.reload()
-        version = model.historyVersion
-        await model.load()
-        // Loading again leaves the history on screen until the new one is
-        // complete, rather than shrinking the list to the first screen.
-        #expect(model.historyVersion == version + 1)
-        #expect(model.history?.isComplete == true)
+        model.rowsInView = { 0..<40 }
+        #expect(try await historiesShownAfterACheckout(model, in: repository) == 2)
+        model.selectRow(30)
+        #expect(try await historiesShownAfterACheckout(model, in: repository) == 2)
+    }
 
-        // A new order shows its first screen straight away.
+    @Test func waitsForEveryRowWhenTheListIsScrolledFurtherDown() async throws {
+        let (model, repository) = try await modelOfALongHistory()
+        await model.load()
+        // The first screen alone would shrink the list, which would move it.
+        model.rowsInView = { 150..<190 }
+        #expect(try await historiesShownAfterACheckout(model, in: repository) == 1)
+    }
+
+    @Test func waitsForEveryRowWhenTheSelectedCommitIsFurtherDown() async throws {
+        let (model, repository) = try await modelOfALongHistory()
+        await model.load()
+        model.rowsInView = { 0..<40 }
+        model.selectRow(250)
+        let id = try #require(model.selectedCommit.id)
+        // The commit would lose its highlight, and be scrolled to once the rest
+        // arrived.
+        #expect(try await historiesShownAfterACheckout(model, in: repository) == 1)
+        #expect(model.selectedCommit.id == id)
+        #expect(model.selectedRow.map { model.rowContent($0).shortID } == String(id.hex.prefix(8)))
+
+        model.selectRows([2, 3])
+        #expect(try await historiesShownAfterACheckout(model, in: repository) == 2)
+        model.selectRows([2, 250])
+        #expect(try await historiesShownAfterACheckout(model, in: repository) == 1)
+    }
+
+    @Test func showsTheFirstScreenOfAnotherOrderAtOnce() async throws {
+        let (model, _) = try await modelOfALongHistory()
+        await model.load()
+        // Every row moves anyway.
+        model.rowsInView = { 150..<190 }
         model.sort = .date
-        version = model.historyVersion
+        let version = model.historyVersion
         await model.load()
         #expect(model.historyVersion == version + 2)
     }
