@@ -46,17 +46,9 @@ struct ChangesPanel: View {
                     .padding(.leading, 4)
             }
         } trailing: {
-            if selection.loaded?.hasSomethingToDiscard == true {
-                let canDiscard = selection.canDiscardEverything()
-                Button("Discard All Changes", icon: .discard) { selection.askToDiscardEverything() }
-                    .labelStyle(.iconOnly)
-                    .buttonStyle(.icon)
-                    .foregroundStyle(Palette.red)
-                    .disabled(!canDiscard)
-                    .help(canDiscard
-                        ? "Discard All Changes… (\(RepositoryCommands.discardAllShortcut.symbols))"
-                        : "Finish or abort what's running before discarding everything")
-            }
+            // Discarding everything has no button here, because each list's
+            // heading has Discard All… right under it. It's in the Changes menu
+            // and on history's row for uncommitted changes.
             FileListCommands(list: fileList, closeFilter: closeFilter)
         } content: {
             switch selection.files {
