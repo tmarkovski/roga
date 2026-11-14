@@ -6,6 +6,12 @@ import GitCore
 @testable import HistoryUI
 import MenuUI
 
+/// Lets the run loop turn, which sends the report the list is holding until the
+/// frame that shows the selection has been drawn.
+@MainActor func waitForReport() {
+    RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+}
+
 /// How the commit list reports its selection. Only what the user does is
 /// reported, so that history loading again can't change what's selected.
 @Suite(.timeLimit(.minutes(1)))
@@ -18,7 +24,7 @@ struct CommitTableControllerTests {
             count: { [unowned self] in count },
             content: { _ in CommitRowContent(shortID: "") },
             loadText: { _ in [] },
-            selectRows: { [unowned self] in reported.append($0) }
+            selectRows: { [weak self] in self?.reported.append($0) }
         ))
 
         init(count: Int) {
@@ -33,8 +39,50 @@ struct CommitTableControllerTests {
         let list = List(count: 10)
         // What a click or an arrow key ends up doing.
         list.table.selectRowIndexes(IndexSet(integer: 3), byExtendingSelection: false)
+        waitForReport()
         list.table.deselectAll(nil)
+        waitForReport()
         #expect(list.reported == [IndexSet(integer: 3), IndexSet()])
+    }
+
+    @Test func reportsOnceTheRunLoopHasTurned() {
+        let list = List(count: 10)
+        list.table.selectRowIndexes(IndexSet(integer: 3), byExtendingSelection: false)
+        #expect(list.reported.isEmpty)
+        waitForReport()
+        #expect(list.reported == [IndexSet(integer: 3)])
+    }
+
+    @Test func reportsOnlyWhereSeveralChangesInARowEnd() {
+        // An arrow key held down.
+        let list = List(count: 10)
+        for row in 3...6 {
+            list.table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        }
+        waitForReport()
+        #expect(list.reported == [IndexSet(integer: 6)])
+    }
+
+    @Test func keepsWhatTheUserSelectedUntilTheModelHasHeard() {
+        // The window updates the list with the model's selection, which is
+        // older than the one waiting to be reported.
+        let list = List(count: 10)
+        list.table.selectRowIndexes(IndexSet(integer: 3), byExtendingSelection: false)
+        list.controller.select(row: 1)
+        #expect(list.controller.selectedRow == 3)
+        waitForReport()
+        #expect(list.reported == [IndexSet(integer: 3)])
+        list.controller.select(row: 1)
+        #expect(list.controller.selectedRow == 1)
+    }
+
+    @Test func dropsAReportWhenTheRowsChangeBeforeItsSent() {
+        // Its row numbers are the old history's.
+        let list = List(count: 10)
+        list.table.selectRowIndexes(IndexSet(integer: 3), byExtendingSelection: false)
+        list.controller.reloadData()
+        waitForReport()
+        #expect(list.reported.isEmpty)
     }
 
     @Test func doesntReportASelectionFromOutside() {
@@ -111,6 +159,7 @@ struct CommitTableControllerTests {
         list.controller.select(row: 1)
         list.controller.reloadData()
         list.table.selectRowIndexes(IndexSet(integer: 2), byExtendingSelection: false)
+        waitForReport()
         #expect(list.reported == [IndexSet(integer: 2)])
     }
 
@@ -118,7 +167,9 @@ struct CommitTableControllerTests {
         // What Shift-clicking a run of rows and Command-clicking another does.
         let list = List(count: 10)
         list.table.selectRowIndexes(IndexSet(2...4), byExtendingSelection: false)
+        waitForReport()
         list.table.selectRowIndexes(IndexSet(integer: 7), byExtendingSelection: true)
+        waitForReport()
         #expect(list.reported == [IndexSet(2...4), IndexSet([2, 3, 4, 7])])
         #expect(list.controller.selectedRows == IndexSet([2, 3, 4, 7]))
         #expect(list.controller.selectedRow == nil)
@@ -132,6 +183,118 @@ struct CommitTableControllerTests {
         list.controller.select(rows: [])
         #expect(list.controller.selectedRows.isEmpty)
         #expect(list.reported.isEmpty)
+    }
+}
+
+/// Selecting a clicked row as the button goes down, and reporting it once.
+@Suite(.timeLimit(.minutes(1)))
+struct CommitTablePressTests {
+    /// A window that says it's key, which the list's own window has to be. It's
+    /// never shown.
+    final class KeyWindow: NSWindow {
+        override var isKeyWindow: Bool { true }
+    }
+
+    /// A list of ten rows, in a window tall enough for all of them.
+    final class List {
+        var reported: [IndexSet] = []
+        let window = KeyWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
+        private(set) lazy var controller = CommitTableController(source: CommitTableController.Source(
+            count: { 10 },
+            content: { _ in CommitRowContent(shortID: "") },
+            loadText: { _ in [] },
+            selectRows: { [weak self] in self?.reported.append($0) }
+        ))
+
+        init() {
+            window.isReleasedWhenClosed = false
+            window.contentView = controller.scrollView
+            controller.reloadData()
+            controller.scrollView.layoutSubtreeIfNeeded()
+        }
+
+        var table: NSTableView { controller.scrollView.documentView as! NSTableView }
+
+        /// A press on a row, or below the last one.
+        func press(row: Int, modifiers: NSEvent.ModifierFlags = [], clickCount: Int = 1, in window: NSWindow? = nil) -> NSEvent {
+            let rect = table.rect(ofRow: min(row, 9))
+            let y = row > 9 ? rect.maxY + 40 : rect.midY
+            let location = table.convert(NSPoint(x: rect.midX, y: y), to: nil)
+            return NSEvent.mouseEvent(
+                with: .leftMouseDown, location: location, modifierFlags: modifiers, timestamp: 0,
+                windowNumber: (window ?? self.window).windowNumber, context: nil, eventNumber: 0, clickCount: clickCount, pressure: 1
+            )!
+        }
+    }
+
+    @Test func aPlainPressSelectsItsRow() {
+        let list = List()
+        list.controller.press(list.press(row: 3))
+        #expect(list.controller.selectedRow == 3)
+        waitForReport()
+        #expect(list.reported == [IndexSet(integer: 3)])
+    }
+
+    @Test func theClickDoesntReportARowItsPressSelected() {
+        let list = List()
+        list.controller.press(list.press(row: 3))
+        waitForReport()
+        list.controller.reportClick(onRow: 3, modifiers: [])
+        waitForReport()
+        #expect(list.reported == [IndexSet(integer: 3)])
+    }
+
+    @Test func aClickOnTheOnlySelectedRowReportsItAgain() {
+        let list = List()
+        list.controller.press(list.press(row: 3))
+        waitForReport()
+        list.controller.reportClick(onRow: 3, modifiers: [])
+        // The second click's press leaves the row alone, so its release reports it.
+        list.controller.press(list.press(row: 3))
+        list.controller.reportClick(onRow: 3, modifiers: [])
+        waitForReport()
+        #expect(list.reported == [IndexSet(integer: 3), IndexSet(integer: 3)])
+    }
+
+    @Test func aPressSelectsOneOfSeveralSelectedRowsAlone() {
+        let list = List()
+        list.controller.select(rows: IndexSet(2...5))
+        list.controller.press(list.press(row: 4))
+        #expect(list.controller.selectedRows == IndexSet(integer: 4))
+        waitForReport()
+        #expect(list.reported == [IndexSet(integer: 4)])
+    }
+
+    @Test func leavesOtherPressesToAppKit() {
+        let list = List()
+        list.controller.select(row: 1)
+        let other = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
+        other.isReleasedWhenClosed = false
+        let presses = [
+            list.press(row: 3, modifiers: .command),
+            list.press(row: 3, modifiers: .shift),
+            list.press(row: 3, modifiers: .control),
+            list.press(row: 3, modifiers: .option),
+            list.press(row: 3, clickCount: 2),
+            list.press(row: 12),
+            list.press(row: 3, in: other),
+        ]
+        for press in presses {
+            list.controller.press(press)
+            #expect(list.controller.selectedRow == 1)
+        }
+        waitForReport()
+        #expect(list.reported.isEmpty)
+    }
+
+    @Test func leavesPressesToAppKitWhileTheWindowIsntKey() {
+        let list = List()
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = list.controller.scrollView
+        list.controller.scrollView.layoutSubtreeIfNeeded()
+        list.controller.press(list.press(row: 3, in: window))
+        #expect(list.controller.selectedRow == nil)
     }
 }
 
