@@ -107,6 +107,12 @@ struct DiffPanel: View {
                 // Once a conflicted file has no markers left, marking it resolved
                 // is what's next, so it's orange, as a button that runs now is.
                 let isNext = group == .conflicted && selection.shown?.conflicts?.left == 0 && selection.shown?.file.path == file.path
+                // Discarding comes before staging, as it does on a file's row.
+                if let way = group.discarding(file) {
+                    Button(way.fileTitle, action: changes.discardSelectedFile)
+                        .buttonStyle(.diffHeader(isDestructive: true))
+                        .help("\(way.fileTitle) (\(RepositoryCommands.discardFileShortcut.symbols))")
+                }
                 Button(group.stageTitle) { changes.toggle(file, in: group) }
                     .buttonStyle(.diffHeader(isNext: isNext))
                     .help("\(group.stageTitle) (\(RepositoryCommands.stageShortcut.symbols))")
@@ -384,9 +390,9 @@ private struct SubmoduleButtons: View {
 extension ButtonStyle where Self == OutlinedButtonStyle {
     /// A command in words in the header, beside the file's path: only its word
     /// until the pointer is over it, when it gets a gray fill with no outline,
-    /// or orange when it's what comes next.
-    static func diffHeader(isNext: Bool = false) -> OutlinedButtonStyle {
-        OutlinedButtonStyle(height: 24, cornerRadius: 6, isNext: isNext, isOutlined: false)
+    /// or orange when it's what comes next. One that takes something away is red.
+    static func diffHeader(isNext: Bool = false, isDestructive: Bool = false) -> OutlinedButtonStyle {
+        OutlinedButtonStyle(height: 24, cornerRadius: 6, isNext: isNext, isOutlined: false, isDestructive: isDestructive)
     }
 }
 

@@ -345,6 +345,8 @@ struct OutlinedButtonStyle: ButtonStyle {
     /// would weigh more than the path does. What comes next is orange either
     /// way, because the orange is what says so.
     var isOutlined = true
+    /// Whether it takes something away, which puts its word in red.
+    var isDestructive = false
 
     func makeBody(configuration: Configuration) -> some View {
         HoverOutline(style: self, isPressed: configuration.isPressed) {
@@ -379,7 +381,7 @@ private struct HoverOutline<Label: View>: View {
     var body: some View {
         label
             .font(.system(size: 12, weight: style.isNext ? .medium : .regular))
-            .foregroundStyle(style.isNext ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+            .foregroundStyle(style.isNext ? AnyShapeStyle(.white) : style.isDestructive ? AnyShapeStyle(Palette.red) : AnyShapeStyle(.primary))
             .padding(.horizontal, style.horizontalPadding)
             .frame(height: style.height)
             .background { shape.fill(fill) }
