@@ -1,4 +1,4 @@
-# 77. Stage and unstage hunks from a band of two rows
+# 78. Stage and unstage hunks from a band of two rows
 
 Accepted on 2026-11-14. This brings staging by hunk forward from release 2, and changes how [decision 39](0039-discard-with-undo-and-ask-only-for-many.md) drew a hunk's band and its button.
 

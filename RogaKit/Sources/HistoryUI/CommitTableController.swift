@@ -25,7 +25,9 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
         /// view before it finishes.
         public var loadText: (Range<Int>) async -> IndexSet
         /// Says that the user selected rows, or none. A selection made with
-        /// `select(rows:)` isn't reported.
+        /// `select(rows:)` isn't reported. It's said once the frame that shows
+        /// the new selection has been drawn, and changes made before then, such
+        /// as with an arrow key held down, are said once, as where they ended.
         public var selectRows: (IndexSet) -> Void
         /// Says that the user double-clicked the badge of a branch.
         public var checkOut: (CommitRowContent.Badge) -> Void
@@ -73,6 +75,12 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
     /// Whether the selected row is waiting for the list to have a height before
     /// it's scrolled into view.
     private var needsToRevealSelection = false
+    /// The report of what the user selected, while it waits for the frame that
+    /// shows it to be drawn.
+    private var waitingReport: Timer?
+    /// The row that the last press in the window selected, so that the click
+    /// doesn't report it again when the button comes up.
+    private var rowSelectedByPress: Int?
 
     public init(source: Source) {
         self.source = source
@@ -97,6 +105,7 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
         tableView.action = #selector(clicked)
         tableView.doubleAction = #selector(doubleClicked)
         tableView.pointerMoved = { [unowned self] in updateHoveredBadge(atWindowLocation: $0) }
+        tableView.pressed = { [unowned self] in press($0) }
         tableView.menuForRow = { [unowned self] in menu(forRow: $0, at: $1) }
 
         scrollView.documentView = tableView
@@ -123,7 +132,11 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
 
     /// Shows new rows, such as when history is loaded again. The selected row
     /// number and scroll position stay where they are, unless the row is gone.
+    /// A report that's waiting is dropped, because its row numbers are the old
+    /// rows', and the selection the model has comes next.
     public func reloadData() {
+        waitingReport?.invalidate()
+        waitingReport = nil
         isSettingSelection = true
         tableView.reloadData()
         isSettingSelection = false
@@ -149,9 +162,10 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
 
     /// Selects rows or none, for a selection that didn't start in the list, such
     /// as a branch's commits. The first of them is scrolled into view, if none of
-    /// them was selected before.
+    /// them was selected before. While the user's own selection is waiting to be
+    /// reported, the model's is older than the list's, so it's left alone.
     public func select(rows: IndexSet) {
-        guard rows != selectedRows else { return }
+        guard rows != selectedRows, waitingReport == nil else { return }
         isSettingSelection = true
         defer { isSettingSelection = false }
         let isNew = rows.intersection(selectedRows).isEmpty
@@ -174,6 +188,25 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
 
     public func tableViewSelectionDidChange(_ notification: Notification) {
         guard !isSettingSelection else { return }
+        reportSelection()
+    }
+
+    /// Tells the model what's selected once the frame that shows it has been
+    /// drawn. What the panels do about a new selection takes several frames'
+    /// time, and the highlight would otherwise wait for it in the same frame. A
+    /// timer that's already due fires after the run loop has committed the frame,
+    /// where a main-queue block or a task can run before it. A report that's
+    /// already waiting is replaced, so that holding down an arrow key doesn't
+    /// send one for every row it passes.
+    private func reportSelection() {
+        waitingReport?.invalidate()
+        let timer = Timer(timeInterval: 0, target: self, selector: #selector(sendReport), userInfo: nil, repeats: false)
+        RunLoop.main.add(timer, forMode: .common)
+        waitingReport = timer
+    }
+
+    @objc private func sendReport() {
+        waitingReport = nil
         source.selectRows(selectedRows)
     }
 
@@ -185,15 +218,31 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
         return selectedRows.contains(0) ? proposed.subtracting(IndexSet(integer: 0)) : IndexSet(integer: 0)
     }
 
+    /// Selects the row a click is on as soon as the button goes down, rather
+    /// than when it comes up as AppKit does, which is about a tenth of a second
+    /// sooner for a click (the table says which clicks).
+    func press(_ event: NSEvent) {
+        rowSelectedByPress = nil
+        guard let row = tableView.rowToSelect(onPress: event) else { return }
+        rowSelectedByPress = row
+        tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+    }
+
+    @objc private func clicked() {
+        reportClick(onRow: tableView.clickedRow, modifiers: NSApp.currentEvent?.modifierFlags ?? [])
+    }
+
     /// A click on the row that's already the only one selected reports it again,
     /// because the panels may be showing something else for it, such as a branch
-    /// with only that commit.
-    @objc private func clicked() {
-        let row = tableView.clickedRow
-        guard row >= 0, selectedRows == IndexSet(integer: row),
-              NSApp.currentEvent?.modifierFlags.intersection([.command, .shift]).isEmpty ?? true
+    /// with only that commit. The row that the click's press selected has been
+    /// reported already.
+    func reportClick(onRow row: Int, modifiers: NSEvent.ModifierFlags) {
+        let wasSelectedByPress = row == rowSelectedByPress
+        rowSelectedByPress = nil
+        guard row >= 0, !wasSelectedByPress, selectedRows == IndexSet(integer: row),
+              modifiers.intersection([.command, .shift]).isEmpty
         else { return }
-        source.selectRows(selectedRows)
+        reportSelection()
     }
 
     /// Finds the badge at a point in the table, if double-clicking it would do
@@ -313,10 +362,15 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
 
 /// Takes keyboard focus when it appears in a window where nothing else has
 /// it, so that the arrow keys move through history straight away. It also says
-/// when the pointer moves over it, for the border on the badge under it.
+/// when the pointer moves over it, for the border on the badge under it, and
+/// when the button goes down in its window, before AppKit handles the press.
 final class CommitTableView: NSTableView {
     /// Says where in the window the pointer is, or nil once it has left.
     var pointerMoved: (NSPoint?) -> Void = { _ in }
+    /// Says that the left button went down in the table's window.
+    var pressed: (NSEvent) -> Void = { _ in }
+    /// What watches for presses while the table is in a window.
+    private var pressMonitor: Any?
     /// Makes the menu for right-clicking a row, if it has one.
     var menuForRow: (Int, NSPoint) -> NSMenu? = { _, _ in nil }
     /// The row that last asked for a menu, which is the one to outline if it opens.
@@ -337,13 +391,50 @@ final class CommitTableView: NSTableView {
         fatalError("The table is made in code.")
     }
 
+    isolated deinit {
+        if let pressMonitor { NSEvent.removeMonitor(pressMonitor) }
+    }
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        watchPresses()
         // SwiftUI may still be choosing a first responder, so wait a turn.
         Task { [weak self] in
             guard let self, let window, window.firstResponder === window else { return }
             window.makeFirstResponder(self)
         }
+    }
+
+    /// A gesture recognizer decides what a click on the table does, and it selects
+    /// the row only once the button comes up. A local monitor sees the press before
+    /// the recognizers do, and passes it on as it is. Overriding `mouseDown(with:)`
+    /// wouldn't do, because AppKit then handles clicks on the table without its
+    /// recognizers, in another way.
+    private func watchPresses() {
+        if let pressMonitor { NSEvent.removeMonitor(pressMonitor) }
+        pressMonitor = nil
+        guard window != nil else { return }
+        pressMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+            if let self, let window, event.windowNumber == window.windowNumber { pressed(event) }
+            return event
+        }
+    }
+
+    /// The row that a press selects as the button goes down: that of a plain
+    /// single click on one of the table's rows, in its window while that window
+    /// is key, when the row isn't already the only one selected. Clicks with
+    /// Command, Shift, Control or Option, double-clicks, clicks below the last
+    /// row and clicks on anything over the table are left to AppKit.
+    func rowToSelect(onPress event: NSEvent) -> Int? {
+        guard event.type == .leftMouseDown, event.clickCount == 1,
+              event.modifierFlags.intersection([.command, .shift, .control, .option]).isEmpty,
+              let window, window.isKeyWindow, event.windowNumber == window.windowNumber,
+              let frameView = window.contentView?.superview ?? window.contentView,
+              let hit = frameView.hitTest(event.locationInWindow), hit.isDescendant(of: self)
+        else { return nil }
+        let row = row(at: convert(event.locationInWindow, from: nil))
+        guard row >= 0, selectedRowIndexes != IndexSet(integer: row) else { return nil }
+        return row
     }
 
     /// The table only draws its own outline, which has square corners, when it's

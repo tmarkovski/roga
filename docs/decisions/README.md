@@ -46,7 +46,7 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [36](0036-a-solid-ink-tile-for-whats-selected-on-the-rail.md) | A solid ink tile for what's selected on the rail | Superseded by [53](0053-organizations-as-groups-in-the-list-and-add-and-settings-at-the-top.md), which removes the rail |
 | [37](0037-double-click-a-commit-to-go-to-it.md) | Double-click a commit to go to it | Accepted |
 | [38](0038-one-delete-on-a-commit-with-its-branches-in-the-dialog.md) | One Delete… on a commit, with its branches in the dialog | A commit's menu gets Revert… in [44](0044-revert-a-commit-from-its-menu-in-history.md) |
-| [39](0039-discard-with-undo-and-ask-only-for-many.md) | Discard changes, with Undo, and ask only for more than one file | Discarding a hunk kept to Hunk view by [74](0074-switch-a-diff-between-its-hunks-and-the-whole-file.md), and a hunk's band and button redrawn by [77](0077-stage-hunks-from-a-band-of-two-rows.md) |
+| [39](0039-discard-with-undo-and-ask-only-for-many.md) | Discard changes, with Undo, and ask only for more than one file | Discarding a hunk kept to Hunk view by [74](0074-switch-a-diff-between-its-hunks-and-the-whole-file.md), and a hunk's band and button redrawn by [78](0078-stage-hunks-from-a-band-of-two-rows.md) |
 | [40](0040-the-repositorys-name-opens-a-menu-of-its-worktrees.md) | The repository's name opens a menu of its worktrees | Accepted |
 | [41](0041-agents-status-from-their-hooks-and-messages-from-their-clis.md) | Show what agents are doing from their hooks, and write commit messages with their CLIs | The working ring made to turn by [46](0046-turn-the-ring-of-an-agent-at-work.md), and what the helper sends and what the mark's tooltip and the worktree menu say by [47](0047-say-what-an-agent-is-doing-in-a-line-the-helper-makes.md), and its mark moved to the start of that second line by [48](0048-a-second-line-under-a-sidebar-row-while-theres-something-to-say.md), then to the right of the row, with a worktree's New Window button dropped, by [51](0051-marks-at-the-right-of-a-sidebar-row-and-names-that-fade.md), and the Generate button's sparkles replaced by [68](0068-mark-an-agents-commands-with-an-orange-line-rather-than-sparkles.md). Interface wording revised by [72](0072-use-standard-interface-terminology.md) |
 | [42](0042-run-each-line-down-to-its-parent-in-its-lanes-color.md) | Run each line down to its parent, in its lane's color | Accepted |
@@ -73,7 +73,7 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [63](0063-ask-an-agent-to-fix-what-git-refused.md) | Ask an agent to fix what git refused | Accepted |
 | [64](0064-dress-the-replay-as-a-departure-board-and-end-it-on-a-poster.md) | Dress the replay as a departure board, and end it on a poster | Accepted |
 | [65](0065-one-menu-for-a-commit-or-a-branch.md) | One menu for a commit or a branch | Rows reworded by [66](0066-sentence-case-branch-icons-and-the-value-on-a-row.md), and pushing a tag added by [70](0070-push-a-tag-from-its-menu-or-as-its-made.md) |
-| [66](0066-sentence-case-branch-icons-and-the-value-on-a-row.md) | Sentence case, branch icons and the value on a row | Accepted |
+| [66](0066-sentence-case-branch-icons-and-the-value-on-a-row.md) | Sentence case, branch icons and the value on a row | Branch icons replaced by bold names in [77](0077-bold-branch-names-in-menus.md) |
 | [67](0067-add-and-remove-remotes-in-the-refs-panel.md) | Add and remove remotes in the refs panel | Accepted |
 | [68](0068-mark-an-agents-commands-with-an-orange-line-rather-than-sparkles.md) | Mark an agent's commands with an orange line, rather than sparkles | Accepted |
 | [69](0069-set-roga-up-in-the-whole-window-the-first-time-it-runs.md) | Set Roga up in the whole window, the first time it runs | Interface wording revised by [72](0072-use-standard-interface-terminology.md) |
@@ -84,4 +84,5 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [74](0074-switch-a-diff-between-its-hunks-and-the-whole-file.md) | Switch a diff between its hunks and the whole file | Accepted |
 | [75](0075-list-submodules-in-the-refs-panel-and-go-into-one-in-the-window.md) | List submodules in the refs panel, and go into one in the window | Accepted, and the first two of its three steps are built |
 | [76](0076-keep-the-counts-in-view-while-the-title-row-says-what-happened.md) | Keep the counts in view while the title row says what just happened | Accepted |
-| [77](0077-stage-hunks-from-a-band-of-two-rows.md) | Stage and unstage hunks from a band of two rows | Accepted |
+| [77](0077-bold-branch-names-in-menus.md) | Bold branch names in menus, in place of the branch icon | Accepted |
+| [78](0078-stage-hunks-from-a-band-of-two-rows.md) | Stage and unstage hunks from a band of two rows | Accepted |

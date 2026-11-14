@@ -93,7 +93,7 @@ struct HistoryMenuTests {
         #expect(upstreamRow(entries(target(), situation)) == nil)
     }
 
-    @Test func aBranchNameInARowCarriesTheBranchIcon() throws {
+    @Test func aBranchNameInARowIsKeptApartFromTheWords() throws {
         var situation = situation
         situation.relation = RefRelation(ahead: 1, behind: 1)
         let all = entries(target(ref: feature), situation)
@@ -105,7 +105,7 @@ struct HistoryMenuTests {
         #expect(merge.parts == [.text("Merge "), .branch("feature"), .text(" into "), .branch("main"), .text("…")])
     }
 
-    @Test func hEADIsntABranchSoItHasNoIcon() throws {
+    @Test func hEADIsntABranchSoItIsntBold() throws {
         var situation = situation
         situation.currentBranch = nil
         let all = entries(target(), situation)
