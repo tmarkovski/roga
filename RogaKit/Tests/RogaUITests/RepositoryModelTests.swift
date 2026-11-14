@@ -747,6 +747,56 @@ struct RepositoryModelTests {
         #expect(model.history?.isComplete == true)
     }
 
+    /// A model of a copy of the `history` repository, which has more commits
+    /// than the first screen, so its history loads in two steps.
+    func modelOfALongHistory() async throws -> (RepositoryModel, repository: String) {
+        let repository = try await copyRepository(try await Fixture.History.single.repository(), into: try makeTemporaryFolder())
+        let session = try await RepositorySession.open(containing: repository, git: try await TestGit.make())
+        return (RepositoryModel(session: session, worktree: repository), repository)
+    }
+
+    @Test func keepsTheTextOfRowsWhenHistoryLoadsAgain() async throws {
+        let (model, repository) = try await modelOfALongHistory()
+        await model.load()
+        _ = await model.loadText(for: 0..<60)
+        let subjects = Dictionary(uniqueKeysWithValues: (0..<60).map { model.rowContent($0) }.map { ($0.shortID, $0.subject) })
+        #expect(subjects.values.allSatisfy { $0 != nil })
+
+        // Like going to a commit: `HEAD` moves, and history loads again.
+        _ = try await runGit("switch", "--quiet", "--detach", "origin/old-feature", in: repository)
+        model.reload()
+        await model.load()
+
+        let rows = (0..<60).map { model.rowContent($0) }.filter { subjects[$0.shortID] != nil }
+        #expect(rows.count > 50)
+        for row in rows {
+            #expect(row.subject == subjects[row.shortID], "\(row.shortID) lost its text")
+        }
+    }
+
+    @Test func showsHistoryThatLoadsAgainOnceItsComplete() async throws {
+        let (model, repository) = try await modelOfALongHistory()
+        var version = model.historyVersion
+        await model.load()
+        // The first load shows the first screen before the rest.
+        #expect(model.historyVersion == version + 2)
+
+        _ = try await runGit("switch", "--quiet", "--detach", "origin/old-feature", in: repository)
+        model.reload()
+        version = model.historyVersion
+        await model.load()
+        // Loading again leaves the history on screen until the new one is
+        // complete, rather than shrinking the list to the first screen.
+        #expect(model.historyVersion == version + 1)
+        #expect(model.history?.isComplete == true)
+
+        // A new order shows its first screen straight away.
+        model.sort = .date
+        version = model.historyVersion
+        await model.load()
+        #expect(model.historyVersion == version + 2)
+    }
+
     /// A model of the `basic` repository with its history loaded.
     func loadedModel() async throws -> RepositoryModel {
         let model = RepositoryModel(session: try await openSession(), worktree: try await Fixture.repository("basic"))

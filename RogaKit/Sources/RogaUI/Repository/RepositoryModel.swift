@@ -129,9 +129,10 @@ final class RepositoryModel {
 
     /// The request whose history has loaded completely.
     @ObservationIgnored private var loaded: LoadRequest?
-    /// The text of commits the list has drawn, by position. Positions belong
-    /// to one loaded graph, so the text goes when another graph arrives.
-    @ObservationIgnored private var texts: [CommitGraph.Position: RowText] = [:]
+    /// The text of commits the list has drawn, by commit. A commit's message
+    /// never changes, so the text stays when history loads again, and the rows
+    /// that were showing have theirs at once.
+    @ObservationIgnored private var texts: [ObjectID: RowText] = [:]
     @ObservationIgnored private var graphGeneration = 0
     @ObservationIgnored private var badges: [CommitGraph.Position: [CommitRowContent.Badge]] = [:]
     /// The commits that the count under the pointer would move, which history
@@ -214,6 +215,9 @@ final class RepositoryModel {
         var body: String
         var author: String
         var date: String
+        /// Whether the commit was missing from the repository. A fetch may bring
+        /// it, so it's read again with the next history.
+        var isMissing = false
     }
 
     /// The most commits whose text is kept. Text for others is read again
@@ -989,14 +993,21 @@ final class RepositoryModel {
     func load() async {
         let request = loadRequest
         guard request != loaded else { return }
+        // A history in the same order stays on screen until the new one is
+        // complete, so that the list goes from one to the other in one step.
+        // The new first screen alone would shrink the list, which moves it when
+        // it's scrolled further down and drops a commit selected further down.
+        // Another order moves every row anyway, so its first screen shows at once.
+        let waitsForEveryRow = history?.sort == request.sort
         do {
             var firstSnapshot = true
             var isComplete = false
             for try await history in session.history(in: worktree, sort: request.sort) {
+                if waitsForEveryRow, !history.isComplete { continue }
                 if firstSnapshot {
                     firstSnapshot = false
                     graphGeneration += 1
-                    texts = [:]
+                    texts = texts.filter { !$0.value.isMissing }
                     badges = Self.badges(history)
                     previewedCommits = []
                     reviewMain = Self.reviewMain(history.refs)
@@ -1376,11 +1387,12 @@ final class RepositoryModel {
         let row = row - rowOffset
         guard let history, row >= 0, row < history.rows.count else { return CommitRowContent(shortID: "") }
         let position = history.rows[row]
-        let text = texts[position]
+        let id = history.graph.id(at: position)
+        let text = texts[id]
         var badges = badges[position] ?? []
         if position == markedPosition, let mark { badges.append(CommitRowContent.Badge(title: mark.title, kind: .mark)) }
         return CommitRowContent(
-            shortID: String(history.graph.id(at: position).hex.prefix(8)),
+            shortID: String(id.hex.prefix(8)),
             badges: badges,
             subject: text?.subject,
             body: text?.body,
@@ -1410,29 +1422,34 @@ final class RepositoryModel {
         let generation = graphGeneration
         let offset = rowOffset
         let rows = (rows.lowerBound - offset..<rows.upperBound - offset).clamped(to: 0..<history.rows.count)
-        let wanted = rows.filter { texts[history.rows[$0]] == nil }
+        let wanted = rows.compactMap { row in
+            let id = history.graph.id(at: history.rows[row])
+            return texts[id] == nil ? (row: row, id: id) : nil
+        }
         guard !wanted.isEmpty else { return [] }
 
         let commits: [CommitInfo?]
         do {
-            commits = try await session.commits(wanted.map { history.graph.id(at: history.rows[$0]) })
+            commits = try await session.commits(wanted.map(\.id))
         } catch {
             return []
         }
         let messages = await Self.subjectsAndBodies(of: commits)
-        guard generation == graphGeneration else { return [] }
 
         if texts.count + wanted.count > Self.textLimit {
             // Keep only the rows around the ones being shown.
-            let keep = Set(rows.map { history.rows[$0] })
+            let keep = Set(rows.map { history.graph.id(at: history.rows[$0]) })
             texts = texts.filter { keep.contains($0.key) }
         }
-        for (index, row) in wanted.enumerated() {
-            texts[history.rows[row]] = commits[index].map { commit in
-                RowText(subject: messages[index].subject, body: messages[index].body, author: commit.author.name, date: Self.format(commit.author.time, now: now))
-            } ?? RowText(subject: "This commit is missing from the repository.", body: "", author: "", date: "")
+        for (index, commit) in wanted.enumerated() {
+            texts[commit.id] = commits[index].map { info in
+                RowText(subject: messages[index].subject, body: messages[index].body, author: info.author.name, date: Self.format(info.author.time, now: now))
+            } ?? RowText(subject: "This commit is missing from the repository.", body: "", author: "", date: "", isMissing: true)
         }
-        return IndexSet(wanted.map { $0 + offset })
+        // The text belongs to the commits whatever history shows now, but these
+        // rows are numbered as they were before another history arrived.
+        guard generation == graphGeneration else { return [] }
+        return IndexSet(wanted.map { $0.row + offset })
     }
 
     /// Reads the subject and the body line of each commit, away from the main
