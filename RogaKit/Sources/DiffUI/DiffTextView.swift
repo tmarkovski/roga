@@ -5,7 +5,7 @@ import AppKit
 /// scroll it instead of moving one.
 final class DiffTextView: NSTextView {
     /// What right-clicking a place in the text offers beside what text views do.
-    var menuItem: ((NSPoint) -> NSMenuItem?)?
+    var menuItems: ((NSPoint) -> [NSMenuItem])?
     /// Whether something sits over the text at a place in the window, such as a
     /// button on a band.
     var isCovered: ((NSPoint) -> Bool)?
@@ -16,9 +16,12 @@ final class DiffTextView: NSTextView {
         // Otherwise macOS 27 puts Ask Siri above everything else in it.
         menu.allowsContextMenuPlugIns = false
         menu.automaticallyInsertsWritingToolsItems = false
-        if let item = menuItem?(convert(event.locationInWindow, from: nil)) {
-            menu.insertItem(item, at: 0)
-            menu.insertItem(.separator(), at: 1)
+        let items = menuItems?(convert(event.locationInWindow, from: nil)) ?? []
+        if !items.isEmpty {
+            for (index, item) in items.enumerated() {
+                menu.insertItem(item, at: index)
+            }
+            menu.insertItem(.separator(), at: items.count)
         }
         return menu
     }

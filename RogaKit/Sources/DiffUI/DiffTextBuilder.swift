@@ -27,8 +27,8 @@ nonisolated enum DiffStyle {
         switch kind {
         case .added: addedBackground
         case .removed: removedBackground
-        case .hunkHeader: NSColor.systemBlue.withAlphaComponent(0.09)
-        case .context, .noNewline: nil
+        // A hunk's band has no fill. The layout manager draws its header and line.
+        case .hunkHeader, .context, .noNewline: nil
         }
     }
 
@@ -67,7 +67,9 @@ nonisolated public final class DiffDocument: @unchecked Sendable {
     let columns: Int
     /// The parts of changed lines that differ from the other side, in order.
     let changedWords: [NSRange]
-    /// Which lines are hunks' headers, in order.
+    /// The hunks' bands, in order.
+    let hunkBands: [HunkBand]
+    /// The rows the hunks' bands start at, in order.
     let hunkHeaders: [Int]
     /// Whether this shows a patch's hunks or the whole file (decision 74).
     public let layout: DiffLayout
@@ -95,6 +97,7 @@ nonisolated public final class DiffDocument: @unchecked Sendable {
         lineStarts: [Int],
         columns: Int,
         changedWords: [NSRange],
+        hunkBands: [HunkBand] = [],
         layout: DiffLayout = .hunks,
         conflicts: ConflictLayout? = nil,
         metrics: DiffMetrics
@@ -116,7 +119,8 @@ nonisolated public final class DiffDocument: @unchecked Sendable {
         self.lineStarts = lineStarts
         self.columns = columns
         self.changedWords = changedWords
-        hunkHeaders = lines.indices.filter { lines[$0].kind == .hunkHeader }
+        self.hunkBands = hunkBands
+        hunkHeaders = hunkBands.map(\.row)
         self.conflicts = conflicts
         conflictBands = conflicts?.bands ?? []
         unresolvedConflictRows = conflicts?.unresolvedRows ?? []
@@ -134,8 +138,18 @@ nonisolated public final class DiffDocument: @unchecked Sendable {
     /// Whether this shows a file's conflicts rather than a patch.
     public var hasConflicts: Bool { conflicts != nil }
 
-    /// The header of the hunk that a row belongs to, or nil for a row past the end.
+    /// The band of the hunk that a row belongs to, or nil for a row past the end.
+    func hunkBand(atRow row: Int) -> HunkBand? {
+        bandIndex(atRow: row).map { hunkBands[$0] }
+    }
+
+    /// The first row of the band of the hunk that a row belongs to, or nil for a
+    /// row past the end.
     func hunkHeader(atRow row: Int) -> Int? {
+        bandIndex(atRow: row).map { hunkHeaders[$0] }
+    }
+
+    private func bandIndex(atRow row: Int) -> Int? {
         guard lines.indices.contains(row) else { return nil }
         var low = 0
         var high = hunkHeaders.count
@@ -143,11 +157,11 @@ nonisolated public final class DiffDocument: @unchecked Sendable {
             let middle = (low + high) / 2
             if hunkHeaders[middle] <= row { low = middle + 1 } else { high = middle }
         }
-        return low > 0 ? hunkHeaders[low - 1] : nil
+        return low > 0 ? low - 1 : nil
     }
 
     /// The first row at or after one that's a line of the file, rather than a
-    /// hunk's header or git's remark, or else the last one before it.
+    /// hunk's band or git's remark, or else the last one before it.
     func fileRow(atOrAfter row: Int) -> Int? {
         func isOfFile(_ line: FilePatch.Line) -> Bool { line.kind != .hunkHeader && line.kind != .noNewline }
         let start = min(max(row, 0), lines.count)
@@ -265,13 +279,43 @@ nonisolated public enum DiffTextBuilder {
         // A whole file comes as one hunk, whose header would only say that it
         // starts at line 1 (decision 74). A file that became another kind of
         // file comes as two, the old file and then the new one.
-        let lines = layout == .inline ? patch.lines.filter { $0.kind != .hunkHeader } : patch.lines
+        let lines: [FilePatch.Line]
+        var hunkBands: [HunkBand] = []
+        var columns = 0
+        if layout == .inline {
+            lines = patch.lines.filter { $0.kind != .hunkHeader }
+        } else if conflicts != nil {
+            lines = patch.lines
+        } else {
+            // Each header becomes a band of empty rows, which still say they're
+            // the header's, so that nothing takes them for lines of the file.
+            var rows: [FilePatch.Line] = []
+            rows.reserveCapacity(patch.lines.count + patch.lines.count / 8)
+            for (index, line) in patch.lines.enumerated() {
+                guard line.kind == .hunkHeader else {
+                    rows.append(line)
+                    continue
+                }
+                let header = shownBytes(of: patch.bytes[line.text]).bytes
+                let label: String
+                if let plain = plainColumns(of: header) {
+                    label = String(decoding: header, as: UTF8.self)
+                    columns = max(columns, plain)
+                } else {
+                    label = shownText(of: header)
+                    columns = max(columns, estimatedColumns(of: label))
+                }
+                hunkBands.append(HunkBand(row: rows.count, line: index, label: label))
+                let empty = FilePatch.Line(kind: .hunkHeader, text: line.text.lowerBound..<line.text.lowerBound)
+                rows.append(contentsOf: repeatElement(empty, count: HunkBand.rowCount))
+            }
+            lines = rows
+        }
         var utf8: [UInt8] = []
         utf8.reserveCapacity(patch.bytes.count)
         var lineStarts: [Int] = []
         lineStarts.reserveCapacity(lines.count)
         var length = 0
-        var columns = 0
         var secondary: [NSRange] = []
 
         for line in lines {
@@ -330,7 +374,7 @@ nonisolated public enum DiffTextBuilder {
             : []
         let document = DiffDocument(
             text: text, lines: lines, lineStarts: lineStarts, columns: columns, changedWords: changedWords,
-            layout: layout, conflicts: conflicts, metrics: metrics
+            hunkBands: hunkBands, layout: layout, conflicts: conflicts, metrics: metrics
         )
         if lines.count <= wholeLayoutLimit {
             var laidOut = 0

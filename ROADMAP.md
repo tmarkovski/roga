@@ -30,7 +30,7 @@ It was planned as a read-only viewer, and it grew while it was built. Several of
 
 - Double-clicking a branch's badge in history or its row in the refs panel checks that branch out with `git switch`. Double-clicking a commit goes to it with `git reset --keep`, `git reset --soft` if the dialog was asked to keep the changes, or `git switch --detach` (decision 37).
 - The title row fetches, pulls, pushes and starts new branches (decisions 19, 20 and 45). When uncommitted changes are in the way of a pull or a reset, Roga sets them aside and puts them back afterward (decision 59).
-- The panels for uncommitted changes stage files, commit and amend (decision 30), and discard files and hunks, with Undo (decision 39).
+- The panels for uncommitted changes stage and unstage files and hunks, commit and amend (decision 30), and discard files and hunks, with Undo (decision 39).
 - Right-clicking a commit reverts it, either committing the revert or leaving its changes staged (decision 44), and right-clicking a branch or its commit deletes the branch (decision 38).
 - Right-clicking a commit or a branch also checks it out, resets to it, merges it, rebases onto it, fast-forwards to it, cherry-picks it, and starts a branch, a worktree or a tag there (decision 65).
 - Right-clicking a branch chooses which remote it pushes to and pulls from, when there's more than one (decision 66).
@@ -58,7 +58,7 @@ Roga ships signed and notarized, with Sparkle updates and a Homebrew cask (decis
 
 ### Not in release 1
 
-- anything else that changes the repository, such as staging hunks or lines
+- anything else that changes the repository, such as staging lines
 - side-by-side diffs and syntax highlighting
 - managing submodules or Git LFS
 - resolving merge conflicts
@@ -83,7 +83,7 @@ Release 1 was also going to have file history, search and blame, and to pass the
 
 ## Release 2: working with changes
 
-- Stage and unstage by hunk or line. Staging by file, committing and amending came first (decision 30), and discarding after that (decision 39).
+- Stage and unstage by line. Staging by file, committing and amending came first (decision 30), then discarding (decision 39), and then staging and unstaging by hunk.
 - Rename branches and switch branches from the keyboard. Starting a branch from any commit came first (decision 65).
 - Ask for a passphrase when git needs one to fetch, pull or push (decision 20).
 - Clone a repository into a folder the user chooses, using the user's own credential helpers and SSH setup, and add it to the sidebar. Its action goes under opening a repository at the top of the sidebar.

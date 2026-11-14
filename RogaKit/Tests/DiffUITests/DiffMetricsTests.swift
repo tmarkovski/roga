@@ -112,7 +112,10 @@ struct DiffMetricsTests {
             let fragment = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
             #expect(fragment.minY == CGFloat(row) * metrics.lineHeight)
             #expect(fragment.height == metrics.lineHeight)
-            #expect(layoutManager.location(forGlyphAt: glyph).y == metrics.baseline)
+            // A hunk's band has no text of its own.
+            if document.lines[row].kind != .hunkHeader {
+                #expect(layoutManager.location(forGlyphAt: glyph).y == metrics.baseline)
+            }
         }
 
         // The font in use is what a document is in when nothing else is asked.
@@ -171,8 +174,8 @@ struct DiffMetricsTests {
         #expect(DiffTextController.height(lines: 6, in: menlo) == 6 * large.lineHeight + 8)
     }
 
-    /// A hunk's button fits on its band in the smallest font, with a point of
-    /// the band above and below it.
+    /// A hunk's button fits on its band in the smallest font, under the gap and
+    /// over the line, and is the usual small size in a larger one.
     @Test func aHunksButtonFitsOnItsBandInTheSmallestFont() throws {
         let smallest = DiffMetrics.of(CodeFont(size: try #require(CodeFont.sizes.first)))
         let controller = DiffTextController()
@@ -180,11 +183,12 @@ struct DiffMetricsTests {
         controller.view.layoutSubtreeIfNeeded()
         controller.discardHunk = { _ in }
         controller.show(DiffTextBuilder.build(try patch(lines: 30), metrics: smallest))
-        controller.showHunkButton(atTextY: text(of: controller).textContainerOrigin.y + smallest.lineHeight * 3)
+        controller.showHunkButtons(atTextY: text(of: controller).textContainerOrigin.y + smallest.lineHeight * 3)
         #expect(!controller.hunkButton.isHidden)
-        #expect(controller.hunkButton.frame.height == smallest.lineHeight - 2)
+        #expect(controller.hunkButton.frame.height == HunkBand.buttonHeight(lineHeight: smallest.lineHeight))
+        #expect(controller.hunkButton.frame.height <= HunkBand.content(lineHeight: smallest.lineHeight).height - 2)
 
         controller.show(DiffTextBuilder.build(try patch(lines: 30), metrics: .of(menlo)))
-        #expect(controller.hunkButton.size.height == 15)
+        #expect(controller.hunkButton.size.height == 22)
     }
 }

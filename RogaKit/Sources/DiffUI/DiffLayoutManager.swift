@@ -3,6 +3,7 @@ import GitCore
 
 /// Draws the background of each line across the full width of the view, which
 /// a background color in the text can't do: it would stop where the text does.
+/// It also draws the hunks' bands, whose rows are empty in the text.
 nonisolated final class DiffLayoutManager: NSLayoutManager, @unchecked Sendable {
     weak var document: DiffDocument?
     /// Where the text being searched for shows, in order.
@@ -11,9 +12,13 @@ nonisolated final class DiffLayoutManager: NSLayoutManager, @unchecked Sendable 
     var currentMatch: Int?
 
     override func drawBackground(forGlyphRange glyphs: NSRange, at origin: NSPoint) {
+        var bands: [HunkBand] = []
         if let document, let context = NSGraphicsContext.current?.cgContext {
             enumerateLineFragments(forGlyphRange: glyphs) { rect, _, _, glyphs, _ in
                 let row = document.lineIndex(atCharacter: self.characterIndexForGlyph(at: glyphs.location))
+                if document.lines[row].kind == .hunkHeader, let band = document.hunkBand(atRow: row), bands.last != band {
+                    bands.append(band)
+                }
                 guard let color = document.background(ofRow: row) else { return }
                 // A fragment is as wide as the text container, which is much
                 // wider than the view, and drawing stops at the view's edge.
@@ -29,6 +34,35 @@ nonisolated final class DiffLayoutManager: NSLayoutManager, @unchecked Sendable 
         }
         // This draws the selection, over the backgrounds.
         super.drawBackground(forGlyphRange: glyphs, at: origin)
+        if let document {
+            for band in bands {
+                draw(band, of: document, at: origin)
+            }
+        }
+    }
+
+    /// Draws a hunk's header where text would be, centered under the gap above it,
+    /// and the line at the bottom of its band, across the full width of the view.
+    private func draw(_ band: HunkBand, of document: DiffDocument, at origin: NSPoint) {
+        let metrics = document.metrics
+        let top = origin.y + CGFloat(band.row) * metrics.lineHeight
+        let content = HunkBand.content(lineHeight: metrics.lineHeight)
+        NSColor.separatorColor.setFill()
+        NSRect(x: 0, y: top + content.top + content.height - 1, width: 1e7, height: 1).fill(using: .sourceOver)
+        // In a box one row tall, so that it sits on its baseline as a row's text
+        // does, rounded up the view rather than down, which lines the header up
+        // with the words on the band's buttons.
+        let box = NSRect(
+            x: origin.x + DiffStyle.textPadding,
+            y: (top + content.top + (content.height - metrics.lineHeight) / 2).rounded(.down),
+            width: 1e6,
+            height: metrics.lineHeight
+        )
+        NSAttributedString(string: band.label, attributes: [
+            .font: metrics.font,
+            .foregroundColor: NSColor.secondaryLabelColor,
+            .paragraphStyle: metrics.paragraph,
+        ]).draw(with: box, options: [.usesLineFragmentOrigin])
     }
 
     private func drawChangedWords(of document: DiffDocument, forGlyphRange glyphs: NSRange, at origin: NSPoint, in context: CGContext) {

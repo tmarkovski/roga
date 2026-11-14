@@ -107,8 +107,14 @@ struct DiffPanel: View {
                 // Once a conflicted file has no markers left, marking it resolved
                 // is what's next, so it's orange, as a button that runs now is.
                 let isNext = group == .conflicted && selection.shown?.conflicts?.left == 0 && selection.shown?.file.path == file.path
+                // Discarding comes before staging, as it does on a file's row.
+                if let way = group.discarding(file) {
+                    Button(way.fileTitle, action: changes.discardSelectedFile)
+                        .buttonStyle(.diffHeader(isDestructive: true))
+                        .help("\(way.fileTitle) (\(RepositoryCommands.discardFileShortcut.symbols))")
+                }
                 Button(group.stageTitle) { changes.toggle(file, in: group) }
-                    .buttonStyle(OutlinedButtonStyle(height: 24, cornerRadius: 6, isNext: isNext))
+                    .buttonStyle(.diffHeader(isNext: isNext))
                     .help("\(group.stageTitle) (\(RepositoryCommands.stageShortcut.symbols))")
             }
             if selection.isFindShown, hasRoomForMatchButtons {
@@ -159,6 +165,8 @@ struct DiffPanel: View {
                         matchSteps: selection.matchSteps,
                         findCloses: selection.findCloses,
                         discardHunk: changes?.hunkDiscard,
+                        stageHunk: changes?.hunkStage,
+                        unstageHunk: changes?.hunkUnstage,
                         resolveConflict: changes?.conflictResolve,
                         agentIsResolving: selection.file.flatMap { changes?.agentWork[$0.path]?.isWorking } == true
                     )
@@ -343,15 +351,15 @@ private struct SubmoduleButtons: View {
             // staged and unstaged as any file is.
             let title = group == .staged ? "Unstage" : "Stage"
             Button(title, action: stage)
-                .buttonStyle(OutlinedButtonStyle(height: 24, cornerRadius: 6))
+                .buttonStyle(.diffHeader())
                 .help("\(title) (\(RepositoryCommands.stageShortcut.symbols))")
         case .recordsNewCommits:
             Button("Stage", action: stage)
-                .buttonStyle(OutlinedButtonStyle(height: 24, cornerRadius: 6))
+                .buttonStyle(.diffHeader())
                 .help("Record the commit that's checked out (\(RepositoryCommands.stageShortcut.symbols))")
         case .takesCommitsAway:
             Button("Update", action: update)
-                .buttonStyle(OutlinedButtonStyle(height: 24, cornerRadius: 6, isNext: true))
+                .buttonStyle(.diffHeader(isNext: true))
                 .help(SubmoduleWords.updateHelp(file))
             menu {
                 Button("Stage the checked-out commit instead", action: stage)
@@ -381,6 +389,15 @@ private struct SubmoduleButtons: View {
     }
 }
 
+extension ButtonStyle where Self == OutlinedButtonStyle {
+    /// A command in words in the header, beside the file's path: only its word
+    /// until the pointer is over it, when it gets a gray fill with no outline,
+    /// or orange when it's what comes next. One that takes something away is red.
+    static func diffHeader(isNext: Bool = false, isDestructive: Bool = false) -> OutlinedButtonStyle {
+        OutlinedButtonStyle(height: 24, cornerRadius: 6, isNext: isNext, isOutlined: false, isDestructive: isDestructive)
+    }
+}
+
 /// Places the AppKit text view in SwiftUI (decision 9).
 private struct DiffText: NSViewRepresentable {
     let document: DiffDocument
@@ -390,6 +407,8 @@ private struct DiffText: NSViewRepresentable {
     let matchSteps: Int
     let findCloses: Int
     let discardHunk: ((Int) -> Void)?
+    let stageHunk: ((Int) -> Void)?
+    let unstageHunk: ((Int) -> Void)?
     let resolveConflict: ((ConflictRequest) -> Void)?
     /// Whether an agent is working on the conflicts showing.
     let agentIsResolving: Bool
@@ -406,6 +425,8 @@ private struct DiffText: NSViewRepresentable {
         let controller = context.coordinator.controller
         controller.show(document, keepingPosition: isUpdate)
         controller.discardHunk = discardHunk
+        controller.stageHunk = stageHunk
+        controller.unstageHunk = unstageHunk
         controller.resolveConflict = resolveConflict
         if (controller.makeConflictOutline != nil) != agentIsResolving {
             controller.makeConflictOutline = agentIsResolving ? { AgentOutlineView.aroundWork(cornerRadius: 6) } : nil

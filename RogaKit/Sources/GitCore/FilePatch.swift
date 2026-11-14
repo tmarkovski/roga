@@ -55,11 +55,18 @@ public struct FilePatch: Sendable, Hashable {
 /// One hunk of a file's patch, as a patch of its own. `git apply --reverse` reads it
 /// to take the hunk out of the file, and `git apply` to put it back.
 ///
-/// Its header says where the hunk's lines are in the file as it is now, on both sides.
+/// Its header says where the hunk's lines are in the file it goes to, on both sides.
 /// git starts looking at one number and takes the first place that matches. In reverse
 /// that's the old side's number, which is off by what the hunks above have added. Taken
 /// as git printed it, a hunk could take out another one that made the same change.
 public struct HunkPatch: Sendable, Hashable {
+    /// Which side of the diff the file it goes to is: the new side to take the hunk
+    /// out, as discarding does from the file on disk and unstaging does from the
+    /// index, and the old side to put it in, as staging does into the index.
+    public enum Side: Sendable {
+        case old, new
+    }
+
     public var bytes: [UInt8]
 
     public init(bytes: [UInt8]) {
@@ -79,8 +86,10 @@ extension FilePatch {
     /// Only the lines that say which file it is go along. A line about the file's
     /// mode would change the mode as well, and the mode isn't part of the hunk.
     ///
-    /// - Parameter header: The index in `lines` of the hunk's header.
-    public func hunk(at header: Int) -> HunkPatch? {
+    /// - Parameters:
+    ///   - header: The index in `lines` of the hunk's header.
+    ///   - side: The side of the diff the file it goes to is, whose line numbers it keeps.
+    public func hunk(at header: Int, placedOn side: HunkPatch.Side = .new) -> HunkPatch? {
         guard lines.indices.contains(header), lines[header].kind == .hunkHeader,
               let description = fileDescription,
               let ranges = PatchParser.hunkRanges(of: lines[header].text, in: bytes)
@@ -90,9 +99,17 @@ extension FilePatch {
         let body = bytes[endOfLine(header)..<end]
         // How many lines come before the hunk, which is what a count of zero says
         // rather than where the lines start.
-        let before = ranges.newCount == 0 ? ranges.new : ranges.new - 1
-        let start = ranges.oldCount == 0 ? before : before + 1
-        let placed = Array("@@ -\(start),\(ranges.oldCount) +\(ranges.new),\(ranges.newCount) @@\n".utf8)
+        let placed: [UInt8]
+        switch side {
+        case .new:
+            let before = ranges.newCount == 0 ? ranges.new : ranges.new - 1
+            let start = ranges.oldCount == 0 ? before : before + 1
+            placed = Array("@@ -\(start),\(ranges.oldCount) +\(ranges.new),\(ranges.newCount) @@\n".utf8)
+        case .old:
+            let before = ranges.oldCount == 0 ? ranges.old : ranges.old - 1
+            let start = ranges.newCount == 0 ? before : before + 1
+            placed = Array("@@ -\(ranges.old),\(ranges.oldCount) +\(start),\(ranges.newCount) @@\n".utf8)
+        }
         return HunkPatch(bytes: description + placed + body)
     }
 

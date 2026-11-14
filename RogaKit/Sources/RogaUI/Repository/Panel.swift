@@ -339,6 +339,14 @@ struct OutlinedButtonStyle: ButtonStyle {
     var horizontalPadding: CGFloat = 8
     /// Whether it's what comes next, which fills it with the brand's orange.
     var isNext = false
+    /// Whether it has the outline. Without it, the button is only its word until
+    /// the pointer is over it, and then it gets the gray fill alone, the way an
+    /// icon button does. That's for one beside a file's path, where an outline
+    /// would weigh more than the path does. What comes next is orange either
+    /// way, because the orange is what says so.
+    var isOutlined = true
+    /// Whether it takes something away, which puts its word in red.
+    var isDestructive = false
 
     func makeBody(configuration: Configuration) -> some View {
         HoverOutline(style: self, isPressed: configuration.isPressed) {
@@ -373,14 +381,14 @@ private struct HoverOutline<Label: View>: View {
     var body: some View {
         label
             .font(.system(size: 12, weight: style.isNext ? .medium : .regular))
-            .foregroundStyle(style.isNext ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+            .foregroundStyle(style.isNext ? AnyShapeStyle(.white) : style.isDestructive ? AnyShapeStyle(Palette.red) : AnyShapeStyle(.primary))
             .padding(.horizontal, style.horizontalPadding)
             .frame(height: style.height)
             .background { shape.fill(fill) }
             .background {
                 if style.isNext {
                     shape.fill(Palette.actionFill)
-                } else {
+                } else if style.isOutlined {
                     shape.strokeBorder(Palette.separator)
                 }
             }
