@@ -1,13 +1,14 @@
 import AppKit
+import ThemeUI
 
 /// A button that does something to a hunk: takes it out of the file, or stages or
 /// unstages it. The buttons show on the hunk's band while the pointer is anywhere in
-/// that hunk (decision 39). A band is one row of text tall, which leaves it 1 point
-/// above and below, or more in a larger code font.
+/// that hunk (decision 39), at the size of the small buttons elsewhere.
 ///
-/// It keeps its background and its thin border, because it can sit over the end of
-/// the hunk's header. While the pointer is on it, it fills with gray, as the buttons
-/// on a conflict's band do.
+/// It's only its words, with no border, and fills with gray while the pointer is on
+/// it, as the words beside a file's path in the diff panel's header do. At rest it's
+/// filled with the panel's own color, which looks like nothing, so that a long
+/// header doesn't show through it.
 final class HunkButton: NSButton {
     enum Command: String {
         case discard, stage, unstage
@@ -29,8 +30,9 @@ final class HunkButton: NSButton {
     }
     /// The index among the patch's lines of the header of the hunk it's on.
     var header: Int?
-    /// How tall a row of the diff is, in the code font it's in (decision 73).
-    var rowHeight: CGFloat = 17
+    /// How tall it is, which a band in the smallest code fonts makes less than
+    /// usual (decision 73).
+    var height: CGFloat = 22
     /// Whether the pointer is on it, which the view that places it says, since
     /// it moves under a pointer that stays put as the text scrolls.
     var isHovering = false {
@@ -42,14 +44,12 @@ final class HunkButton: NSButton {
         didSet { updateColors() }
     }
 
-    /// How tall it is where a row has the room.
-    private static let height: CGFloat = 15
-    private static let padding: CGFloat = 6
+    private static let padding: CGFloat = 8
+    /// The red of what was removed, which follows the theme as it's drawn.
+    static let red = ColorTheme.following(\.removed)
 
-    /// How big it draws: no taller than leaves a point of its band above and
-    /// below it, which the smallest code font makes a point less.
     var size: NSSize {
-        NSSize(width: (attributedTitle.size().width + Self.padding * 2).rounded(.up), height: min(Self.height, rowHeight - 2))
+        NSSize(width: (attributedTitle.size().width + Self.padding * 2).rounded(.up), height: height)
     }
 
     init(_ command: Command) {
@@ -80,23 +80,25 @@ final class HunkButton: NSButton {
         updateColors()
     }
 
-    /// Discarding is in red, as it is everywhere else.
+    /// Discarding is in the color theme's red, as every other button that takes
+    /// something away is (decision 71).
     private func updateTitle() {
         attributedTitle = NSAttributedString(string: command.title, attributes: [
-            .font: NSFont.systemFont(ofSize: 11, weight: .medium),
-            .foregroundColor: command == .discard ? NSColor.systemRed : NSColor.labelColor,
+            .font: NSFont.systemFont(ofSize: 12),
+            .foregroundColor: command == .discard ? Self.red : NSColor.labelColor,
         ])
         toolTip = command.title
         setAccessibilityLabel(command.title)
     }
 
-    /// A layer's colors don't follow the appearance by themselves.
+    /// A layer's colors don't follow the appearance by themselves. The gray is the
+    /// text's color over the panel's, as much of it as the other buttons' fills have.
     private func updateColors() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            layer?.cornerRadius = 4
-            layer?.borderWidth = 1
-            layer?.borderColor = NSColor.separatorColor.cgColor
-            let fill = isPressing ? ConflictColors.buttonPressed : isHovering ? ConflictColors.buttonHover : NSColor.textBackgroundColor
+            layer?.cornerRadius = 6
+            let surface = ConflictColors.button
+            let amount: CGFloat = isPressing ? 0.11 : isHovering ? 0.075 : 0
+            let fill = amount > 0 ? surface.blended(withFraction: amount, of: .labelColor) ?? surface : surface
             layer?.backgroundColor = fill.cgColor
         }
     }

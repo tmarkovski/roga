@@ -69,7 +69,7 @@ struct SelectedFileTests {
         try await select("with space.txt", commit)
         #expect(commit.selectedFile.file?.path == "with space.txt")
         #expect(commit.selectedFile.shown?.file.path == "with space.txt")
-        #expect(shownText(commit) == "@@ -1 +1,2 @@\nkeep\nmore\n")
+        #expect(shownText(commit) == "\n\nkeep\nmore\n")
         #expect(!commit.selectedFile.isWaiting)
     }
 
@@ -127,7 +127,7 @@ struct SelectedFileTests {
         #expect(commit.selectedFile.shown?.file.path == "with space.txt")
         await settled(commit)
         #expect(commit.selectedFile.shown?.file.path == "side.txt")
-        #expect(shownText(commit) == "@@ -0,0 +1 @@\nside\n")
+        #expect(shownText(commit) == "\n\nside\n")
     }
 
     @Test func keepsWhatsShowingUntilTheNextFileArrives() async throws {
@@ -376,7 +376,7 @@ struct SelectedFileTests {
         try await select("lib/moved.txt", commit)
         let selection = commit.selectedFile
         // git takes the line above the hunk for the function it's in.
-        #expect(shownText(commit) == "@@ -4,3 +4,4 @@ three\nfour\nfive\nsix\nseven\n")
+        #expect(shownText(commit) == "\n\nfour\nfive\nsix\nseven\n")
         #expect(shownDocument(commit)?.layout == .hunks)
         #expect(selection.canChangeLayout)
 
@@ -408,7 +408,7 @@ struct SelectedFileTests {
         selection.layout = { .hunks }
         selection.followLayout()
         await selection.loading?.value
-        #expect(shownText(commit) == "@@ -1 +1,2 @@\nkeep\nmore\n")
+        #expect(shownText(commit) == "\n\nkeep\nmore\n")
     }
 
     /// git prints the same patch for both layouts of a file that's short enough

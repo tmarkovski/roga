@@ -71,12 +71,12 @@ struct DiffTextControllerTests {
         first?.show(document)
         let second = DiffTextController()
         second.show(document)
-        #expect(text(of: second).string == "@@ -1 +1 @@\nold\nnew\n")
+        #expect(text(of: second).string == "\n\nold\nnew\n")
 
         // A text view going away can take the text with it.
         autoreleasepool { first = nil }
         #expect(first == nil)
-        #expect(text(of: second).string == "@@ -1 +1 @@\nold\nnew\n")
+        #expect(text(of: second).string == "\n\nold\nnew\n")
         #expect(document.container.textView === text(of: second))
     }
 
@@ -88,7 +88,7 @@ struct DiffTextControllerTests {
         }
         let second = DiffTextController()
         second.show(document)
-        #expect(text(of: second).string == "@@ -1 +1 @@\nold\nnew\n")
+        #expect(text(of: second).string == "\n\nold\nnew\n")
     }
 
     /// While an agent works on a file's conflicts, each one in view has what its
@@ -212,9 +212,9 @@ struct DiffTextControllerTests {
         let controller = DiffTextController()
         controller.show(one)
         controller.show(two)
-        #expect(text(of: controller).string == "@@ -1 +1,2 @@\na\nb\n")
+        #expect(text(of: controller).string == "\n\na\nb\n")
         controller.show(one)
-        #expect(text(of: controller).string == "@@ -1 +1 @@\nold\nnew\n")
+        #expect(text(of: controller).string == "\n\nold\nnew\n")
     }
 
     @Test func keepsItsPlaceInANewerCopyOfADocument() throws {
@@ -298,30 +298,32 @@ struct DiffTextControllerTests {
         controller.show(try hunksOfThatFile())
         let textView = text(of: controller)
 
-        // The second hunk's header is at the top, with line 147 under it. In
-        // the whole file, line 147 stays one row down, under line 146.
-        textView.scroll(NSPoint(x: 0, y: 4 + 9 * lineHeight))
+        // The second hunk's band is at the top, on rows 10 and 11, with line
+        // 147 under it. In the whole file, line 147 stays two rows down.
+        let secondBand = try hunksOfThatFile().hunkHeaders[1]
+        #expect(secondBand == 10)
+        textView.scroll(NSPoint(x: 0, y: 4 + 10 * lineHeight))
         controller.show(try wholeFile(), keepingPosition: true)
-        #expect(textView.visibleRect.origin.y == 4 + 146 * lineHeight)
+        #expect(textView.visibleRect.origin.y == 4 + 145 * lineHeight)
 
         // Line 146 isn't in the hunks, so the hunk after it starts at the top.
         controller.show(try hunksOfThatFile(), keepingPosition: true)
-        #expect(textView.visibleRect.origin.y == 4 + 9 * lineHeight)
+        #expect(textView.visibleRect.origin.y == 4 + 10 * lineHeight)
 
         // A line that's in both stays exactly where it was, here with 5 points
-        // of it cut off at the top: line 148, the second under the header.
+        // of it cut off at the top: line 148, the second under the band.
         controller.show(try wholeFile(), keepingPosition: true)
         textView.scroll(NSPoint(x: 0, y: 4 + 148 * lineHeight + 5))
         controller.show(try hunksOfThatFile(), keepingPosition: true)
-        #expect(textView.visibleRect.origin.y == 4 + 11 * lineHeight + 5)
+        #expect(textView.visibleRect.origin.y == 4 + 13 * lineHeight + 5)
 
-        // A hunk's first line at the top brings the hunk's header with it,
+        // A hunk's first line at the top brings the hunk's whole band with it,
         // rather than leaving it just out of view: line 147, whole or cut off.
         for cutOff in [0.0, 5.0] {
             controller.show(try wholeFile(), keepingPosition: true)
             textView.scroll(NSPoint(x: 0, y: 4 + 147 * lineHeight + cutOff))
             controller.show(try hunksOfThatFile(), keepingPosition: true)
-            #expect(textView.visibleRect.origin.y == 4 + 9 * lineHeight)
+            #expect(textView.visibleRect.origin.y == 4 + 10 * lineHeight)
         }
 
         // The first hunk at the top of the hunks is the top of them.
@@ -370,7 +372,7 @@ struct DiffTextControllerTests {
         controller.view.frame = NSRect(x: 0, y: 0, width: 600, height: 400)
         controller.view.layoutSubtreeIfNeeded()
         controller.show(try document("@@ -0,0 +1,2000 @@\n" + lines))
-        let rows = 2001 * DiffMetrics.current.lineHeight
+        let rows = CGFloat(2000 + HunkBand.rowCount) * DiffMetrics.current.lineHeight
         // The last line's newline makes an empty row after it, and there's a
         // little space above and below.
         #expect(abs(text(of: controller).frame.height - rows) <= DiffMetrics.current.lineHeight + 8)
@@ -394,12 +396,16 @@ struct DiffTextControllerTests {
 
     @Test func findsTheHunkOfARow() throws {
         let document = try twoHunks()
-        #expect(document.hunkHeaders == [0, 21])
+        // Each band takes two rows, so the second starts a row after its
+        // header's place in the patch.
+        #expect(document.hunkHeaders == [0, 22])
+        #expect(document.hunkBands.map(\.line) == [0, 21])
         #expect(document.hunkHeader(atRow: 0) == 0)
-        #expect(document.hunkHeader(atRow: 20) == 0)
-        #expect(document.hunkHeader(atRow: 21) == 21)
-        #expect(document.hunkHeader(atRow: 41) == 21)
-        #expect(document.hunkHeader(atRow: 42) == nil)
+        #expect(document.hunkHeader(atRow: 21) == 0)
+        #expect(document.hunkHeader(atRow: 22) == 22)
+        #expect(document.hunkHeader(atRow: 43) == 22)
+        #expect(document.hunkBand(atRow: 43)?.line == 21)
+        #expect(document.hunkHeader(atRow: 44) == nil)
         #expect(document.hunkHeader(atRow: -1) == nil)
     }
 
@@ -427,12 +433,17 @@ struct DiffTextControllerTests {
         controller.showHunkButtons(atTextY: origin + DiffMetrics.current.lineHeight * 5)
         #expect(!controller.hunkButton.isHidden)
         #expect(controller.hunkButton.header == 0)
-        // It's in the band: the view isn't flipped, and the band is the top row.
+        // It's in the band, under its gap and over its line: the view isn't
+        // flipped, and the band is the top two rows.
         let clip = controller.scrollView.contentView
         let visible = controller.view.convert(clip.bounds, from: clip)
-        #expect(abs(controller.hunkButton.frame.midY - (visible.maxY - 4 - DiffMetrics.current.lineHeight / 2)) <= 1)
-        #expect(controller.hunkButton.frame.height <= DiffMetrics.current.lineHeight)
-        #expect(abs(controller.hunkButton.frame.maxX - (visible.maxX - 6)) < 1)
+        let content = HunkBand.content(lineHeight: DiffMetrics.current.lineHeight)
+        let frame = controller.hunkButton.frame
+        #expect(abs(frame.midY - (visible.maxY - origin - content.top - (content.height - 1) / 2)) <= 1)
+        #expect(frame.height == 22)
+        #expect(frame.maxY <= visible.maxY - origin - content.top)
+        #expect(frame.minY >= visible.maxY - origin - content.top - content.height)
+        #expect(abs(frame.maxX - (visible.maxX - 6)) < 1)
     }
 
     @Test func theButtonStaysAtTheEdgeAsTheTextScrollsSideways() throws {
@@ -493,12 +504,17 @@ struct DiffTextControllerTests {
         controller.discardHunk = { discarded.append($0) }
         controller.showHunkButtons(atTextY: text(of: controller).textContainerOrigin.y + 1)
         controller.hunkButton.performClick(nil)
-        #expect(discarded == [0])
+        // The second hunk's band is a row further down than its header is in
+        // the patch, and the command gets the header's place in the patch.
+        controller.scrollView.contentView.scroll(to: NSPoint(x: 0, y: DiffMetrics.current.lineHeight * 22))
+        controller.showHunkButtons(atTextY: text(of: controller).textContainerOrigin.y + DiffMetrics.current.lineHeight * 30)
+        controller.hunkButton.performClick(nil)
+        #expect(discarded == [0, 21])
     }
 
     @Test func theButtonFitsInABand() {
         let button = HunkButton(.discard)
-        #expect(button.size.height < DiffMetrics.current.lineHeight)
+        #expect(button.size.height <= HunkBand.content(lineHeight: DiffMetrics.current.lineHeight).height - 2)
         #expect(button.size.width > 30)
     }
 
@@ -506,20 +522,22 @@ struct DiffTextControllerTests {
         let button = HunkButton(.discard)
         #expect(button.attributedTitle.string == "Discard Hunk")
         #expect(button.accessibilityLabel() == "Discard Hunk")
+        // In the color theme's red, as the app's other red buttons are.
+        #expect(button.attributedTitle.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor === HunkButton.red)
         button.command = .unstage
         #expect(button.attributedTitle.string == "Unstage Hunk")
         #expect(button.accessibilityLabel() == "Unstage Hunk")
         #expect(button.toolTip == "Unstage Hunk")
     }
 
-    /// As the buttons on a conflict's band do, rather than with a border of
-    /// another color, which no other button does.
-    @Test func theButtonFillsWithGrayUnderThePointerAndKeepsItsBorder() throws {
+    /// As the words beside a file's path in the diff panel's header do: no
+    /// border, and a gray fill only while the pointer is on it.
+    @Test func theButtonHasNoBorderAndFillsWithGrayUnderThePointer() throws {
         let button = HunkButton(.discard)
-        let border = try #require(button.layer?.borderColor)
+        #expect(button.layer?.borderWidth == 0)
         let rest = try #require(button.layer?.backgroundColor)
         button.isHovering = true
-        #expect(button.layer?.borderColor == border)
+        #expect(button.layer?.borderWidth == 0)
         #expect(button.layer?.backgroundColor != rest)
         button.isHovering = false
         #expect(button.layer?.backgroundColor == rest)

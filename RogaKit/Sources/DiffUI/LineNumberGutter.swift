@@ -92,6 +92,8 @@ final class LineNumberGutter: NSView {
         var stripedBars: [CGRect] = []
         // The bars beside a conflict's sides, by their color (decision 60).
         var coloredBars: [NSColor: [CGRect]] = [:]
+        // The lines at the bottom of hunks' bands, which run on from the text's.
+        var bandLines: [CGRect] = []
 
         // This view is flipped, and glyphs would come out upside down. Their
         // positions go through this too, so they're negative below.
@@ -119,6 +121,9 @@ final class LineNumberGutter: NSView {
                 color.setFill()
                 row.fill(using: .sourceOver)
             }
+            if line.kind == .hunkHeader, let band = document.hunkBand(atRow: index), index == band.row + HunkBand.rowCount - 1 {
+                bandLines.append(CGRect(x: 0, y: row.maxY - 1, width: row.width, height: 1))
+            }
             let baseline = -(row.minY + metrics.baseline)
             add(line.oldNumber, right: oldRight, baseline: baseline)
             add(line.newNumber, right: newRight, baseline: baseline)
@@ -139,6 +144,10 @@ final class LineNumberGutter: NSView {
         for (color, bars) in coloredBars {
             color.setFill()
             context.fill(bars)
+        }
+        NSColor.separatorColor.setFill()
+        for line in bandLines {
+            line.fill(using: .sourceOver)
         }
         DiffStyle.addedBar.setFill()
         context.fill(solidBars)

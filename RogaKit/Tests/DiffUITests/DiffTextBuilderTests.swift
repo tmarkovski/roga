@@ -1,6 +1,7 @@
 import AppKit
 import GitCore
 import Testing
+import ThemeUI
 @testable import DiffUI
 
 struct DiffTextBuilderTests {
@@ -27,7 +28,44 @@ struct DiffTextBuilderTests {
             +new
 
             """)
-        #expect(string(document) == "@@ -1,2 +1,2 @@ func main()\nsame\nold\nnew\n")
+        // The header is in the band's two rows, which the layout manager draws.
+        #expect(string(document) == "\n\nsame\nold\nnew\n")
+        #expect(document.hunkBands == [HunkBand(row: 0, line: 0, label: "@@ -1,2 +1,2 @@ func main()")])
+    }
+
+    /// Two rows, empty in the text, that still say they're the header's, so that
+    /// nothing takes them for lines of the file. The commands for a hunk name it
+    /// by its header's place in the patch, which is behind a band of rows each.
+    @Test func eachHunkHasABandOfTwoRows() throws {
+        let hunk = { (start: Int) in "@@ -\(start),2 +\(start),2 @@ func f\(start)()\n line \(start)\n-old\n+new\n" }
+        let patch = try PatchParser.parse(Array((hunk(10) + hunk(40)).utf8))
+        let document = DiffTextBuilder.build(patch)
+        #expect(document.lines.count == patch.lines.count + 2)
+        #expect(document.hunkHeaders == [0, 5])
+        #expect(document.hunkBands.map(\.line) == [0, 4])
+        #expect(document.hunkBands.map(\.label) == ["@@ -10,2 +10,2 @@ func f10()", "@@ -40,2 +40,2 @@ func f40()"])
+        #expect(document.lines[5].kind == .hunkHeader && document.lines[6].kind == .hunkHeader)
+        #expect(document.lines[5].newNumber == nil && document.lines[6].oldNumber == nil)
+        #expect(document.hunkBand(atRow: 9)?.line == 4)
+        #expect(document.hunkBand(atRow: 4)?.line == 0)
+        #expect(document.hunkBand(atRow: 10) == nil)
+        // A band has no fill: the line at its bottom sets it apart.
+        #expect(document.background(ofRow: 5) == nil)
+    }
+
+    /// The gap above a band's line gives way in the smallest fonts, so that a
+    /// button of the usual size still fits under it.
+    @Test func aBandFitsAButtonInEveryFont() {
+        #expect(HunkBand.gap(lineHeight: 17) == 8)
+        #expect(HunkBand.buttonHeight(lineHeight: 17) == 22)
+        for size in CodeFont.sizes {
+            let lineHeight = DiffMetrics.of(CodeFont(size: size)).lineHeight
+            let content = HunkBand.content(lineHeight: lineHeight)
+            #expect(content.top >= 0)
+            #expect(content.top + content.height == lineHeight * 2)
+            #expect(HunkBand.buttonHeight(lineHeight: lineHeight) <= content.height - 2)
+            #expect(HunkBand.buttonHeight(lineHeight: lineHeight) >= 20)
+        }
     }
 
     // MARK: The whole file (decision 74)
@@ -57,7 +95,7 @@ struct DiffTextBuilderTests {
         let document = try document(Self.hunks)
         #expect(document.layout == .hunks)
         #expect(document.hunkHeaders == [0])
-        #expect(document.firstChangedRow == 4)
+        #expect(document.firstChangedRow == 5)
     }
 
     /// A file that became another kind of file is the old file and then the new one.
@@ -70,38 +108,39 @@ struct DiffTextBuilderTests {
         let hunks = try document(Self.hunks)
         let whole = DiffTextBuilder.build(try PatchParser.parse(Array(Self.wholeFile.utf8)), layout: .inline)
 
-        // Line 8 is the second row under the hunk's header, and the eighth of the file.
-        #expect(hunks.lines[2].newNumber == 8)
-        #expect(whole.row(showing: hunks.lines[2]) == (7, true))
-        #expect(hunks.row(showing: whole.lines[7]) == (2, true))
+        // Line 8 is the second row under the hunk's band, and the eighth of the file.
+        #expect(hunks.lines[3].newNumber == 8)
+        #expect(whole.row(showing: hunks.lines[3]) == (7, true))
+        #expect(hunks.row(showing: whole.lines[7]) == (3, true))
         // A removed line and the added one after it are different rows.
-        #expect(whole.row(showing: hunks.lines[4]) == (9, true))
-        #expect(whole.row(showing: hunks.lines[5]) == (10, true))
-        #expect(hunks.row(showing: whole.lines[9]) == (4, true))
-        // Line 2 isn't in the hunks, so it gives the header of the hunk after it.
+        #expect(whole.row(showing: hunks.lines[5]) == (9, true))
+        #expect(whole.row(showing: hunks.lines[6]) == (10, true))
+        #expect(hunks.row(showing: whole.lines[9]) == (5, true))
+        // Line 2 isn't in the hunks, so it gives the band of the hunk after it.
         #expect(hunks.row(showing: whole.lines[1]) == (0, false))
     }
 
     @Test func aLineBetweenHunksGivesTheNextHunkAndOnePastThemTheLast() throws {
         let hunk = { (start: Int) in "@@ -\(start),2 +\(start),2 @@\n line \(start)\n-old\n+new\n" }
         let hunks = try document(hunk(10) + hunk(40))
-        #expect(hunks.hunkHeaders == [0, 4])
+        #expect(hunks.hunkHeaders == [0, 5])
         func line(_ number: Int) -> FilePatch.Line {
             FilePatch.Line(kind: .context, oldNumber: number, newNumber: number, text: 0..<0)
         }
         #expect(hunks.row(showing: line(5)) == (0, false))
-        #expect(hunks.row(showing: line(25)) == (4, false))
-        #expect(hunks.row(showing: line(90)) == (4, false))
+        #expect(hunks.row(showing: line(25)) == (5, false))
+        #expect(hunks.row(showing: line(90)) == (5, false))
     }
 
     @Test func findsTheFirstLineOfTheFileAtOrAfterARow() throws {
         let hunks = try document(Self.hunks)
-        // The header isn't a line of the file, and the row under it is.
-        #expect(hunks.fileRow(atOrAfter: 0) == 1)
-        #expect(hunks.fileRow(atOrAfter: -3) == 1)
+        // The band's rows aren't lines of the file, and the row under them is.
+        #expect(hunks.fileRow(atOrAfter: 0) == 2)
+        #expect(hunks.fileRow(atOrAfter: 1) == 2)
+        #expect(hunks.fileRow(atOrAfter: -3) == 2)
         #expect(hunks.fileRow(atOrAfter: 3) == 3)
         // Past the end, it's the last one.
-        #expect(hunks.fileRow(atOrAfter: 99) == 7)
+        #expect(hunks.fileRow(atOrAfter: 99) == 8)
     }
 
     @Test func findsTextIgnoringCase() throws {
@@ -126,8 +165,12 @@ struct DiffTextBuilderTests {
     @Test func findsTheLineOfAPositionInTheText() throws {
         let document = try document("@@ -1,2 +1,2 @@\n aa\n-é𝄞\n+c\n")
         let text = string(document) as NSString
-        for (index, line) in ["@@ -1,2 +1,2 @@", "aa", "é𝄞", "c"].enumerated() {
+        #expect(document.lineIndex(atCharacter: 0) == 0)
+        #expect(document.lineIndex(atCharacter: 1) == 1)
+        // After the band's two empty rows.
+        for (index, line) in ["aa", "é𝄞", "c"].enumerated().map({ ($0 + 2, $1) }) {
             let start = text.range(of: line).location
+            try #require(start != NSNotFound)
             #expect(document.lineStarts[index] == start)
             #expect(document.lineIndex(atCharacter: start) == index)
             #expect(document.lineIndex(atCharacter: start + line.utf16.count) == index)
@@ -143,7 +186,7 @@ struct DiffTextBuilderTests {
         var rows = 0
         let glyphs = document.layoutManager.glyphRange(for: document.container)
         document.layoutManager.enumerateLineFragments(forGlyphRange: glyphs) { _, _, _, _, _ in rows += 1 }
-        #expect(rows == lines.count + 1)
+        #expect(rows == lines.count + HunkBand.rowCount)
         #expect(!string(document).contains("\u{0C}"))
         #expect(string(document).contains("a\u{240C}b"))
         #expect(string(document).contains("a\u{240D}b"))
@@ -154,32 +197,33 @@ struct DiffTextBuilderTests {
         // With the newline after it, it ends the row, and it's still there
         // when the text is copied.
         let document = try document("@@ -0,0 +1,2 @@\n+a\r\n+b\r\n")
-        #expect(string(document) == "@@ -0,0 +1,2 @@\na\r\nb\r\n")
+        #expect(string(document) == "\n\na\r\nb\r\n")
         document.layoutManager.ensureLayout(for: document.container)
         var rows = 0
         let glyphs = document.layoutManager.glyphRange(for: document.container)
         document.layoutManager.enumerateLineFragments(forGlyphRange: glyphs) { _, _, _, _, _ in rows += 1 }
-        #expect(rows == 3)
-        #expect(document.lineStarts == [0, 16, 19])
+        #expect(rows == 4)
+        #expect(document.lineStarts == [0, 1, 2, 5])
     }
 
     @Test func readsTextThatIsntUTF8AsLatin1() throws {
         let document = try document(Array("@@ -0,0 +1 @@\n+caf".utf8) + [0xE9, 0x0A])
-        #expect(string(document) == "@@ -0,0 +1 @@\ncafé\n")
+        #expect(string(document) == "\n\ncafé\n")
     }
 
     @Test func keepsUTF8() throws {
-        #expect(string(try document("@@ -0,0 +1 @@\n+Kovač 日本語 🙂\n")) == "@@ -0,0 +1 @@\nKovač 日本語 🙂\n")
+        #expect(string(try document("@@ -0,0 +1 @@\n+Kovač 日本語 🙂\n")) == "\n\nKovač 日本語 🙂\n")
     }
 
     @Test func cutsOffAVeryLongLine() throws {
         let long = String(repeating: "x", count: DiffTextBuilder.lineLimit + 100)
         let document = try document("@@ -0,0 +1,2 @@\n+\(long)\n+next\n")
-        let lines = string(document).split(separator: "\n")
-        #expect(lines[1].hasPrefix(String(repeating: "x", count: DiffTextBuilder.lineLimit) + " …"))
-        #expect(lines[1].count < DiffTextBuilder.lineLimit + 100)
-        #expect(lines[2] == "next")
-        #expect(document.lineStarts[2] == (string(document) as NSString).range(of: "next").location)
+        // Under the band's two empty rows.
+        let lines = string(document).split(separator: "\n", omittingEmptySubsequences: false)
+        #expect(lines[2].hasPrefix(String(repeating: "x", count: DiffTextBuilder.lineLimit) + " …"))
+        #expect(lines[2].count < DiffTextBuilder.lineLimit + 100)
+        #expect(lines[3] == "next")
+        #expect(document.lineStarts[3] == (string(document) as NSString).range(of: "next").location)
     }
 
     @Test func doesntCutOffACharacterInTheMiddle() throws {
@@ -189,6 +233,11 @@ struct DiffTextBuilderTests {
         #expect(!shown.contains("\u{FFFD}"))
         #expect(!shown.contains("Ã"))
         #expect(shown.contains("é …"))
+    }
+
+    @Test func aLongHeaderCountsTowardTheColumns() throws {
+        // The band draws it, and the text scrolls as far as it goes.
+        #expect(try document("@@ -0,0 +1 @@ func aFunctionWithAVeryLongName()\n+a\n").columns == 47)
     }
 
     @Test func countsColumnsWithTabs() throws {

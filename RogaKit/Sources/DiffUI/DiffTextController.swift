@@ -223,10 +223,12 @@ public final class DiffTextController: NSObject {
         guard let anchor = shown.fileRow(atOrAfter: Int(rowsAbove.rounded(.down))) else { return 0 }
         var (row, isExact) = document.row(showing: shown.lines[anchor])
         var rowsBelowTop = isExact ? CGFloat(anchor) - rowsAbove : 0
-        // A hunk's first line at the top of the view brings the hunk's header
+        // A hunk's first line at the top of the view brings the hunk's band
         // with it, which would otherwise be just out of view.
         if isExact, rowsBelowTop <= 0, row > 0, document.lines[row - 1].kind == .hunkHeader {
-            row -= 1
+            while row > 0, document.lines[row - 1].kind == .hunkHeader {
+                row -= 1
+            }
             rowsBelowTop = 0
         }
         let position = inset + (CGFloat(row) - rowsBelowTop) * document.metrics.lineHeight
@@ -236,12 +238,12 @@ public final class DiffTextController: NSObject {
     }
 
     /// Sets what depends on the font: how far a step of scrolling goes, and how
-    /// tall a hunk's button can be on its band.
+    /// tall a hunk's buttons can be on its band.
     private func followMetrics() {
         scrollView.verticalLineScroll = metrics.lineHeight
         scrollView.horizontalLineScroll = metrics.columnWidth * 4
         for button in hunkButtons {
-            button.rowHeight = metrics.lineHeight
+            button.height = HunkBand.buttonHeight(lineHeight: metrics.lineHeight)
         }
     }
 
@@ -256,8 +258,8 @@ public final class DiffTextController: NSObject {
 
     // MARK: Hunks
 
-    /// The header of the hunk at a height in the text view. Every line is one row of
-    /// the same height, so this takes no layout, however long the patch is.
+    /// The first row of the band of the hunk at a height in the text view. Every row
+    /// is the same height, so this takes no layout, however long the patch is.
     func hunkHeader(atTextY y: CGFloat) -> Int? {
         let row = ((y - textView.textContainerOrigin.y) / metrics.lineHeight).rounded(.down)
         return document?.hunkHeader(atRow: Int(row))
@@ -295,15 +297,17 @@ public final class DiffTextController: NSObject {
     }
 
     /// Shows the buttons for the hunk at a height in the text view, if something can
-    /// be done to it and its band is in view.
+    /// be done to it and its band is in view. They go in the band below its gap,
+    /// above its line, and they say which hunk by its header's place in the patch.
     func showHunkButtons(atTextY y: CGFloat) {
         let commands = hunkCommands
-        guard !commands.isEmpty, let header = hunkHeader(atTextY: y) else {
+        guard !commands.isEmpty, let row = hunkHeader(atTextY: y), let header = document?.hunkBand(atRow: row)?.line else {
             hideHunkButtons()
             return
         }
-        let top = textView.textContainerOrigin.y + CGFloat(header) * metrics.lineHeight
-        let band = view.convert(NSRect(x: 0, y: top, width: 1, height: metrics.lineHeight), from: textView)
+        let content = HunkBand.content(lineHeight: metrics.lineHeight)
+        let top = textView.textContainerOrigin.y + CGFloat(row) * metrics.lineHeight + content.top
+        let band = view.convert(NSRect(x: 0, y: top, width: 1, height: content.height - 1), from: textView)
         let clip = scrollView.contentView
         let visible = view.convert(clip.bounds, from: clip)
         guard visible.minY...visible.maxY ~= band.midY else {
@@ -351,7 +355,7 @@ public final class DiffTextController: NSObject {
     /// What right-clicking a hunk offers: staging or unstaging it, then discarding it,
     /// as far as the diff showing allows.
     func hunkMenuItems(atTextY y: CGFloat) -> [NSMenuItem] {
-        guard let header = hunkHeader(atTextY: y) else { return [] }
+        guard let row = hunkHeader(atTextY: y), let header = document?.hunkBand(atRow: row)?.line else { return [] }
         // The one that takes something away goes last, as in other menus.
         let commands = hunkCommands.filter { $0 != .discard } + hunkCommands.filter { $0 == .discard }
         return commands.map { command in
