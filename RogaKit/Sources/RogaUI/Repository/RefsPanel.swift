@@ -236,7 +236,6 @@ struct RefsPanel: View {
     ///   it's in.
     private func branchRow(_ branch: BranchDetails, title: String, depth: Int, isCurrent: Bool) -> some View {
         let otherWorktree = isCurrent ? nil : branch.worktree
-        let reviewBase = model.reviewBase(for: branch.name)?.title
         return RefRow(
             icon: .branch,
             imageColor: isCurrent ? Palette.current : .secondary,
@@ -245,7 +244,7 @@ struct RefsPanel: View {
             menu: branchMenu(branch, isCurrent: isCurrent, otherWorktree: otherWorktree),
             isSelected: isSelected(branch.name, branch.tip) || model.reviewedBranch == branch.name,
             indent: RefIndent.of(depth),
-            hasCommands: otherWorktree != nil || reviewBase != nil,
+            hasCommands: otherWorktree != nil,
             action: { select(branch.name, branch.tip) },
             // There's nothing to do for the current branch, as for its badge.
             doubleAction: isCurrent ? nil : { checkOut(branch.name) }
@@ -259,14 +258,8 @@ struct RefsPanel: View {
                 AheadBehind(ahead: comparison.ahead, behind: comparison.behind)
             }
         } commands: {
-            if let reviewBase {
-                Button { review(branch.name) } label: { Icon.compare.image }
-                    .buttonStyle(.icon(size: 24))
-                    .help(isCurrent
-                        ? "Review Against \(reviewBase) (\(RepositoryCommands.reviewShortcut.symbols))"
-                        : "Review Against \(reviewBase)")
-                    .accessibilityLabel("Review Against \(reviewBase)")
-            }
+            // Reviewing a branch is in its menu, and Branch > Review Against main
+            // with Shift-Command-R for the one the worktree is on (decision 80).
             if let otherWorktree {
                 Button { showWorktree(otherWorktree, branch.tip) } label: { Icon.worktree.image }
                     .buttonStyle(.icon(size: 24))
