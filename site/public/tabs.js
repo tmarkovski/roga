@@ -3,10 +3,10 @@
 // other, beside the list.
 //
 // The selected tab has the line the app draws around an agent's command
-// (decision 68). Choosing a tab draws that line in: the light that runs around
-// the app's Generate button under the pointer goes once around the tab from
-// its top left, and the line follows behind it until it closes. The light's
-// numbers are the app's, from AgentOutlineView.
+// (decision 68), and choosing a tab sends a light around it once, as the
+// pointer does over the app's Generate button. The numbers here are the app's,
+// from AgentOutlineView, except that the light's tail is longer, so that it
+// stands out from the line on a tab that's larger than the button.
 
 const workflows = document.querySelector(".workflows");
 const list = workflows.querySelector(".tabs");
@@ -78,32 +78,25 @@ function fit() {
   return 2 * (w + h) - 8 * radius + 2 * Math.PI * radius;
 }
 
-// Draws the line in behind the light, which goes once around from the top
-// left. The line is a dash as long as the way around, pulled along so that it
-// ends where the light's front is. Each of the light's strokes is a dash that
-// ends there too, with a gap after it longer than the way around, so nothing
-// shows ahead of the front or wraps past where the line starts. The light fades
-// out as the line closes, leaving the line.
-function traceIn(perimeter) {
+// Sends the light once around the line, from the top left, fading in as it
+// starts and out as it ends. Its dashes repeat once per trip around, so the
+// light runs on past where the line starts.
+function sendLightAround(perimeter) {
   for (const animation of outline.getAnimations({ subtree: true })) animation.cancel();
   if (reducesMotion.matches) return;
-  const trail = Math.min(perimeter * 0.32, 210);
-  const whole = `${perimeter}px ${perimeter}px`;
-  still.animate(
-    [
-      { strokeDasharray: whole, strokeDashoffset: `${perimeter}px` },
-      { strokeDasharray: whole, strokeDashoffset: "0px" },
-    ],
-    pass,
-  );
+  // The app's is 32% of the way around, up to 210 points.
+  const trail = Math.min(perimeter * 0.45, 360);
   strokes.forEach((stroke, index) => {
     const length = trail * (1 - bands[index].start);
-    stroke.style.strokeDasharray = `${length}px ${perimeter * 2}px`;
-    stroke.animate([{ strokeDashoffset: `${length}px` }, { strokeDashoffset: `${length - perimeter}px` }], pass);
+    stroke.style.strokeDasharray = `${length}px ${perimeter - length}px`;
+    stroke.animate(
+      [{ strokeDashoffset: `${length - trail}px` }, { strokeDashoffset: `${length - trail - perimeter}px` }],
+      pass,
+    );
   });
   outline.classList.add("passing");
   const fade = light.animate(
-    [{ opacity: 0 }, { opacity: 1, offset: 0.06 }, { opacity: 1, offset: 0.85 }, { opacity: 0 }],
+    [{ opacity: 0 }, { opacity: 1, offset: 0.12 }, { opacity: 1, offset: 0.85 }, { opacity: 0 }],
     pass,
   );
   const done = () => outline.classList.remove("passing");
@@ -123,7 +116,7 @@ function select(index, { focus = false, lightUp = false } = {}) {
   tabs[index].append(outline);
   const perimeter = fit();
   if (focus) tabs[index].focus();
-  if (lightUp && changed) traceIn(perimeter);
+  if (lightUp && changed) sendLightAround(perimeter);
 }
 
 list.setAttribute("role", "tablist");
