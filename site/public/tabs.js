@@ -114,13 +114,27 @@ function select(index, { focus = false, lightUp = false } = {}) {
     panels[i].hidden = !isSelected;
   });
   tabs[index].append(outline);
+  note.textContent = tabs[index].querySelector(".tab-text").textContent;
   const perimeter = fit();
   if (focus) tabs[index].focus();
   if (lightUp && changed) sendLightAround(perimeter);
 }
 
+// On a phone the tabs are a row of three that show only their titles, so the
+// chosen one's words go in a line under them. VoiceOver reads them in the tab.
+const note = document.createElement("p");
+note.className = "tab-note";
+note.setAttribute("aria-hidden", "true");
+list.after(note);
+
+const narrow = matchMedia("(max-width: 44rem)");
+function orient() {
+  list.setAttribute("aria-orientation", narrow.matches ? "horizontal" : "vertical");
+}
+narrow.addEventListener("change", orient);
+orient();
+
 list.setAttribute("role", "tablist");
-list.setAttribute("aria-orientation", "vertical");
 list.setAttribute("aria-label", "What the agents do");
 tabs.forEach((tab, i) => {
   tab.setAttribute("role", "tab");

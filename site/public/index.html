@@ -799,6 +799,14 @@
     line-height: 1.45;
   }
 
+  /* The chosen tab's words, which only a phone shows. */
+  .tab-note {
+    display: none;
+    color: var(--muted);
+    font-size: 0.9375rem;
+    line-height: 1.45;
+  }
+
   .panels {
     display: grid;
     gap: 1.25rem;
@@ -946,6 +954,38 @@
     .workflows {
       grid-template-columns: minmax(0, 1fr);
     }
+
+    /* On a phone the tabs are a row of three boxes with only their titles,
+       and the chosen one's words go in a line under them. Each tab keeps its
+       words for VoiceOver. */
+    .workflows {
+      row-gap: 0.875rem;
+    }
+
+    .ready .tabs {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .ready .tab {
+      padding: 0.75rem;
+      border-color: var(--line);
+      font-size: 0.9375rem;
+      line-height: 1.3;
+    }
+
+    .ready .tab-text {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+
+    .tab-note {
+      display: block;
+    }
   }
 </style>
 <script src="/compare.js" defer></script>
@@ -1070,7 +1110,7 @@
       <div class="workflows">
         <div class="tabs">
           <button class="tab" id="tab-conflicts" type="button" aria-controls="panel-conflicts">
-            <span class="tab-title">Resolve conflicts</span>
+            <span class="tab-title">Resolve merge conflicts</span>
             <span class="tab-text">Get a resolution for each conflict in a file, with a note on what was kept from each side.</span>
           </button>
           <button class="tab" id="tab-messages" type="button" aria-controls="panel-messages">
