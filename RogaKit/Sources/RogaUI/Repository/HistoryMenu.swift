@@ -266,6 +266,8 @@ extension RepositoryModel {
         let content = rowContent(row)
         if content.isWorkingTree {
             return [
+                .command("Stash changes", isEnabled: canStash) { [weak self] in self?.stashChanges() },
+                .divider,
                 .command("Discard all changes…", isDestructive: true, isEnabled: selectedChanges.canDiscardEverything()) { [selectedChanges] in
                     selectedChanges.askToDiscardEverything()
                 },

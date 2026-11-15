@@ -478,11 +478,14 @@ extension BranchComparison {
 }
 
 extension StashDetails {
-    /// The second line of a stash's row: what git calls it, and how long ago
-    /// it was made.
+    /// The second line of a stash's row: what git calls it, the branch it was
+    /// made on, and how long ago (decision 81).
     func subtitle(now: Date = Date()) -> String {
-        ([name] + (date.map { [RefDates.relative($0, now: now)] } ?? [])).joined(separator: " · ")
+        ([name] + (branch.map { [$0] } ?? []) + (date.map { [RefDates.relative($0, now: now)] } ?? [])).joined(separator: " · ")
     }
+
+    /// The first line of its row, which is its name when it has no message.
+    var rowTitle: String { title.isEmpty ? name : title }
 }
 
 /// How the panel shows dates, which come in seconds since 1970.

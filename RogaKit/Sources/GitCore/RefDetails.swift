@@ -175,6 +175,29 @@ public struct StashDetails: Sendable, Hashable {
 
     /// What git calls it, as in `stash@{0}`.
     public var name: String { "stash@{\(position)}" }
+
+    /// The branch it was made on, from the start of its message, as in `main`
+    /// for `On main: Fix it`, or nil when the message doesn't say or `HEAD`
+    /// was detached (decision 81).
+    public var branch: String? { Self.parts(of: message).branch }
+
+    /// Its message without the branch git puts at its start, as in `Fix it` for
+    /// `On main: Fix it`, and `WIP on 5405371 Fix it` for
+    /// `WIP on main: 5405371 Fix it`, since the row names the branch elsewhere.
+    public var title: String { Self.parts(of: message).title }
+
+    static func parts(of message: String) -> (branch: String?, title: String) {
+        for (prefix, kept) in [("On ", ""), ("WIP on ", "WIP on ")] {
+            guard message.hasPrefix(prefix), let colon = message.firstRange(of: ": ") else { continue }
+            let branch = String(message[message.index(message.startIndex, offsetBy: prefix.count)..<colon.lowerBound])
+            // A branch's name can't have a space or a colon, so anything else
+            // isn't one. git says `(no branch)` for a detached `HEAD`.
+            let isDetached = branch == "(no branch)"
+            guard !branch.isEmpty, isDetached || !branch.contains(" ") else { continue }
+            return (isDetached ? nil : branch, kept + message[colon.upperBound...])
+        }
+        return (nil, message)
+    }
 }
 
 /// Shortens a remote's URL for showing it.

@@ -351,12 +351,15 @@ struct RefsPanel: View {
         .id(tag.name)
     }
 
-    /// A stash, which shows what it holds in the panels (decision 56).
+    /// A stash, which shows what it holds in the panels (decision 56). Its row
+    /// leaves out the branch git puts at the start of its message, and names it
+    /// on the second line instead (decision 81).
     private func stashRow(_ stash: StashDetails) -> some View {
         RefRow(
             icon: .stash,
-            title: stash.message,
+            title: stash.rowTitle,
             subtitle: stash.subtitle(),
+            menu: stashMenu(stash),
             isSelected: model.selectedCommit.stash?.commit == stash.commit,
             action: {
                 isListFocused = true
@@ -366,6 +369,22 @@ struct RefsPanel: View {
         } commands: {
         }
         .id(stash.name)
+    }
+
+    /// What right-clicking a stash offers, in plain words rather than git's pop
+    /// and apply (decision 81).
+    private func stashMenu(_ stash: StashDetails) -> [RefMenu.Entry] {
+        let isBusy = model.branch.isBusy
+        return [
+            .header(RefMenu.Title(stash.rowTitle)),
+            .command("Put back", isEnabled: !isBusy) { model.putBack(stash) },
+            .command("Put back and keep the stash", isEnabled: !isBusy) { model.putBack(stash, keeping: true) },
+            .divider,
+            .command("New branch from stash…", isEnabled: !isBusy) { model.branch.startNewBranch(fromStash: stash) },
+            .command("Copy message") { copy(stash.title) },
+            .divider,
+            .command("Delete", isDestructive: true, isEnabled: !isBusy) { model.delete(stash) },
+        ]
     }
 
     /// One of the worktree's submodules, which shows where it stands in the

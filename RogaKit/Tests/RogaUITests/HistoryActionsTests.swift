@@ -659,11 +659,11 @@ struct HistoryActionsTests {
         #expect(!titles(work.model.menuEntries(forRow: row, badge: nil) { _, _ in }).contains("Cherry-pick into main"))
     }
 
-    @Test func theRowForUncommittedChangesOffersToDiscardThem() async throws {
+    @Test func theRowForUncommittedChangesOffersToStashOrDiscardThem() async throws {
         let work = try await worktree()
         try write("mine\n", to: "README.md", in: work)
         await changedBehindItsBack(work)
-        #expect(titles(work.model.menuEntries(forRow: 0, badge: nil) { _, _ in }) == ["Discard all changes…"])
+        #expect(titles(work.model.menuEntries(forRow: 0, badge: nil) { _, _ in }) == ["Stash changes", "Discard all changes…"])
     }
 
     @Test func aBranchInTheRefsPanelHasTheSameRows() async throws {

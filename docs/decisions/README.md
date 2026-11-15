@@ -88,3 +88,4 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [78](0078-stage-hunks-from-a-band-of-two-rows.md) | Stage and unstage hunks from a band of two rows | The header made bold and moved to the view's edge by [79](0079-head-hunks-and-conflicts-alike-from-the-views-edge.md) |
 | [79](0079-head-hunks-and-conflicts-alike-from-the-views-edge.md) | Head hunks and conflicts alike, from the view's edge | Accepted |
 | [80](0080-review-a-branch-from-its-menu-not-a-button-on-its-row.md) | Review a branch from its menu, not a button on its row | Accepted |
+| [81](0081-stash-in-one-click-and-put-stashes-back-from-their-menu.md) | Stash in one click, and put stashes back from their menu | Accepted |

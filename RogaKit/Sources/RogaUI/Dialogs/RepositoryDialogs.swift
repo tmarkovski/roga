@@ -336,6 +336,7 @@ extension BranchModel {
         if let failure { return .message(dialog(for: failure, offering: fix)) }
         if let conflict { return .message(dialog(for: conflict)) }
         if let putBackConflict { return .message(dialog(for: putBackConflict)) }
+        if let stashConflict { return .message(dialog(for: stashConflict)) }
         if let pullChoice {
             return .pull(pullChoice) { [weak self] in self?.pullChoice = nil }
         }
@@ -466,6 +467,48 @@ extension BranchModel {
                 },
                 DialogButton(title: "Resolve", kind: .primary, action: resolve),
             ],
+            dismiss: leave
+        )
+    }
+
+    /// Which files came back with conflicts once someone put a stash back, and what
+    /// can be done about them (decision 81). It's the dialog of decision 59, for a
+    /// stash someone chose rather than one Roga made.
+    private func dialog(for conflict: StashConflict) -> DialogContent {
+        let isOne = conflict.files.count == 1
+        let files = isOne ? "1 file" : "\(conflict.files.count.formatted()) files"
+        let conflicts = isOne ? "the conflict" : "the conflicts"
+        let sentences: [DialogText] = [
+            "Roga put back \(code: conflict.name), but in \(files) it conflicts with what's in the worktree now.",
+            conflict.indexBefore == nil ? "You can resolve \(conflicts) here." : "You can resolve \(conflicts) here, or undo putting the stash back.",
+        ]
+        var notes: [DialogText] = []
+        if conflict.indexBefore != nil {
+            notes.append("Undo takes the files the stash had back to how they were, and leaves your other changes alone.")
+        }
+        notes.append(conflict.keeping
+            ? "The stash stays in the list, as you asked."
+            : "git keeps the stash in the list when there's a conflict, so nothing is lost. Delete it from its menu once \(conflicts) \(isOne ? "is" : "are") resolved.")
+        let rows = Self.fileRows(conflict.files)
+        let leave = { [weak self] in self?.stashConflict = nil; return () }
+        let resolve = { [weak self] in
+            self?.stashConflict = nil
+            self?.showConflicts()
+            return ()
+        }
+        var buttons: [DialogButton] = []
+        if conflict.indexBefore != nil {
+            buttons.append(DialogButton(title: "Undo", kind: .secondary) { [weak self] in self?.undoStashConflict() })
+        }
+        buttons.append(DialogButton(title: "Resolve", kind: .primary, action: resolve))
+        return DialogContent(
+            id: "stashConflict",
+            title: "Putting the stash back stopped on a conflict",
+            message: .sentences(sentences),
+            cards: rows.isEmpty ? [] : [rows],
+            note: .sentences(notes),
+            terminal: [.ran(conflict.ran)],
+            buttons: buttons,
             dismiss: leave
         )
     }

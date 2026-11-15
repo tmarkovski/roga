@@ -1,6 +1,7 @@
 import AppKit
 import GitCore
 import IconUI
+import RepositoryEngine
 import SwiftUI
 
 /// The branch in the title row, as a chip with a menu, and after it the counts
@@ -614,9 +615,23 @@ private struct NewBranchPopover: View {
         NewBranch(name: name.trimmingCharacters(in: .whitespaces), inNewWorktree: inNewWorktree, startPoint: branch.newBranchStart?.commit)
     }
 
+    /// A branch from a stash is made where the stash was, in this worktree,
+    /// since `git stash branch` can't make a worktree (decision 81).
+    private var fromStash: StashDetails? { branch.newBranchStash }
+
+    private var title: String {
+        if let fromStash { return "New Branch from \(fromStash.name)" }
+        return branch.newBranchStart.map { "New Branch from \($0.label)" } ?? "New Branch"
+    }
+
+    private var arguments: [String] {
+        guard let fromStash else { return newBranch.arguments }
+        return Stashes.branchArguments(name: newBranch.name, ref: fromStash.name)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(branch.newBranchStart.map { "New Branch from \($0.label)" } ?? "New Branch")
+            Text(title)
                 .font(.system(size: 13, weight: .medium))
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -625,10 +640,12 @@ private struct NewBranchPopover: View {
                 .focused($isNameFocused)
                 .onSubmit(create)
                 .onChange(of: name) { refusal = nil }
-            Toggle("In a new worktree", isOn: $inNewWorktree)
-                .toggleStyle(.checkbox)
-                .onChange(of: inNewWorktree) { refusal = nil }
-            Text(BranchModel.command(newBranch.arguments))
+            if fromStash == nil {
+                Toggle("In a new worktree", isOn: $inNewWorktree)
+                    .toggleStyle(.checkbox)
+                    .onChange(of: inNewWorktree) { refusal = nil }
+            }
+            Text(BranchModel.command(arguments))
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -652,14 +669,21 @@ private struct NewBranchPopover: View {
         }
         // Only here, because this is what tells it to start from where the worktree
         // is again, once it has gone.
-        .onDisappear { branch.newBranchStart = nil }
+        .onDisappear {
+            branch.newBranchStart = nil
+            branch.newBranchStash = nil
+        }
     }
 
     private func create() {
         guard !newBranch.name.isEmpty, !isCreating else { return }
         isCreating = true
         Task {
-            refusal = await branch.create(newBranch, showWorktree: showWorktree)
+            if let fromStash {
+                refusal = await branch.create(branch: newBranch.name, fromStash: fromStash)
+            } else {
+                refusal = await branch.create(newBranch, showWorktree: showWorktree)
+            }
             isCreating = false
         }
     }

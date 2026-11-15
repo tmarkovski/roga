@@ -18,6 +18,9 @@ import SwiftUI
 struct ChangesPanel: View {
     let selection: SelectedChanges
     let composer: CommitComposer
+    /// Whether the changes can be stashed now, and what stashes them (decision 81).
+    var canStash = false
+    var stash: () -> Void = {}
     @FocusState private var isFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reducesMotion
 
@@ -48,7 +51,13 @@ struct ChangesPanel: View {
         } trailing: {
             // Discarding everything has no button here, because each list's
             // heading has Discard All… right under it. It's in the Changes menu
-            // and on history's row for uncommitted changes.
+            // and on history's row for uncommitted changes. Stashing is about all
+            // of them at once, so it's here (decision 81).
+            Button("Stash Changes", icon: .createStash) { stash() }
+                .labelStyle(.iconOnly)
+                .buttonStyle(.icon)
+                .disabled(!canStash)
+                .help("Stash Changes (\(RepositoryCommands.stashShortcut.symbols))")
             FileListCommands(list: fileList, closeFilter: closeFilter)
         } content: {
             switch selection.files {

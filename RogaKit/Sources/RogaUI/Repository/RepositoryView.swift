@@ -71,7 +71,7 @@ struct RepositoryView: View {
             } lower: {
                 PanelColumns(leadingWidth: $commitPanelWidth) {
                     if showsChanges {
-                        ChangesPanel(selection: model.selectedChanges, composer: model.composer)
+                        ChangesPanel(selection: model.selectedChanges, composer: model.composer, canStash: model.canStash, stash: model.stashChanges)
                     } else {
                         CommitPanel(model: model)
                     }
