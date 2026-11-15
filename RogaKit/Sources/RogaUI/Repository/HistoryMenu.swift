@@ -374,9 +374,10 @@ extension RepositoryModel {
         actions.cherryPick = { [weak self] in self?.askToCherryPick(commit: commit) }
         actions.reset = { [weak self] in self?.askToReset(to: commit, subject: target.subject) }
         actions.revert = { [weak self] in self?.askToRevert(commit: commit) }
-        actions.newBranch = { [weak self] in self?.branch.startNewBranch(at: commit, named: label) }
-        actions.newWorktree = { [weak self] in self?.branch.startNewBranch(at: commit, named: label, inNewWorktree: true) }
-        actions.newTag = { [weak self] in self?.branch.startNewTag(at: commit, named: label) }
+        // Their popovers hang from the row whose menu asked for them (decision 83).
+        actions.newBranch = { [weak self] in self?.branch.startNewBranch(at: commit, named: label, from: MenuAnchor.current) }
+        actions.newWorktree = { [weak self] in self?.branch.startNewBranch(at: commit, named: label, inNewWorktree: true, from: MenuAnchor.current) }
+        actions.newTag = { [weak self] in self?.branch.startNewTag(at: commit, named: label, from: MenuAnchor.current) }
         actions.pull = { [weak self] in self?.branch.pull() }
         actions.push = { [weak self] in self?.branch.push() }
         actions.fetch = { [weak self] in self?.branch.fetch() }

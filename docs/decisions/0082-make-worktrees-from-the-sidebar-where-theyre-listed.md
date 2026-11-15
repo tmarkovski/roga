@@ -28,4 +28,4 @@ We went through the window looking for buttons that sit away from what they act 
 - Making a worktree that starts from a worktree the window doesn't show runs git from the window rather than from that worktree's model, which may not exist. When the model does exist and is running git, the popover says to try again once it's done, as the title row waits.
 - The count on a repository's row no longer stays put on hover. It still shows, one place to the left. Rows for worktrees are as decision 58 has them.
 - The popover hangs from the row rather than from the +, because the + goes once the pointer leaves the row, and a popover closes with what it hangs from.
-- History's Create › Worktree still opens at the New Branch button, since it starts from a commit rather than a worktree.
+- History's Create › Worktree starts from a commit rather than a worktree, so it stays in history's menu. [Decision 83](0083-open-a-new-refs-popover-where-it-was-asked-for.md) hangs its popover from the row that was right-clicked.

@@ -1,6 +1,7 @@
 import Foundation
 import GitCore
 import GitRunner
+import MenuUI
 import Observation
 import RepositoryEngine
 
@@ -351,19 +352,36 @@ final class BranchModel {
     var newBranchStash: StashDetails?
     /// The commit that the popover for a new tag puts it on, while that shows.
     var newTagStart: NewRefStart?
+    /// Where the popover for a new branch or tag hangs when it was asked for from
+    /// a row's menu, such as Create in history or New branch from stash… in the
+    /// refs panel, or nil to hang from the New Branch button (decision 83).
+    var newRefPlace: MenuAnchor.Place?
 
-    /// Shows the popover for a new branch, ready to make it in a new worktree.
+    /// Shows the popover for a new branch under the New Branch button, starting
+    /// from where the worktree is.
+    func startNewBranch() {
+        newRefPlace = nil
+        isCreatingBranch = true
+    }
+
+    /// Shows the popover for a new branch under the New Branch button, ready to
+    /// make it in a new worktree.
     func startNewWorktree() {
         guard !isBusy else { return }
+        newRefPlace = nil
         startsInNewWorktree = true
         isCreatingBranch = true
     }
 
     /// Shows the popover for a new branch, starting from a commit.
-    func startNewBranch(at commit: ObjectID, named label: String, inNewWorktree: Bool = false) {
+    ///
+    /// - Parameter place: Where the menu that asked for it opened, which the
+    ///   popover hangs from, or nil for the New Branch button.
+    func startNewBranch(at commit: ObjectID, named label: String, inNewWorktree: Bool = false, from place: MenuAnchor.Place? = nil) {
         guard !isBusy else { return }
         newBranchStash = nil
         newBranchStart = NewRefStart(commit: commit, label: label)
+        newRefPlace = place
         startsInNewWorktree = inNewWorktree
         isCreatingBranch = true
     }
@@ -371,17 +389,25 @@ final class BranchModel {
     /// Shows the popover for a new branch made where a stash was made, which
     /// switches the worktree to it and puts the stash back there, where it
     /// always fits (decision 81).
-    func startNewBranch(fromStash stash: StashDetails) {
+    ///
+    /// - Parameter place: Where the menu that asked for it opened, which the
+    ///   popover hangs from, or nil for the New Branch button.
+    func startNewBranch(fromStash stash: StashDetails, from place: MenuAnchor.Place? = nil) {
         guard !isBusy else { return }
         newBranchStart = nil
         newBranchStash = stash
+        newRefPlace = place
         startsInNewWorktree = false
         isCreatingBranch = true
     }
 
     /// Shows the popover for a new tag on a commit.
-    func startNewTag(at commit: ObjectID, named label: String) {
+    ///
+    /// - Parameter place: Where the menu that asked for it opened, which the
+    ///   popover hangs from, or nil for the New Branch button.
+    func startNewTag(at commit: ObjectID, named label: String, from place: MenuAnchor.Place? = nil) {
         guard !isBusy else { return }
+        newRefPlace = place
         newTagStart = NewRefStart(commit: commit, label: label)
     }
 
@@ -1117,6 +1143,7 @@ final class BranchModel {
             return (error as? GitError)?.message ?? String(describing: error)
         }
         isCreatingBranch = false
+        newRefPlace = nil
         // The window can only show a worktree the sidebar knows about.
         await reportBranchChange()
         lookAgain()
@@ -1139,6 +1166,7 @@ final class BranchModel {
             return (error as? GitError)?.message ?? String(describing: error)
         }
         isCreatingBranch = false
+        newRefPlace = nil
         await reportBranchChange()
         lookAgain()
         announce("Switched to \(Self.shortened(name)) · the stash is back", undo: nil)
@@ -1158,6 +1186,7 @@ final class BranchModel {
             return (error as? GitError)?.message ?? String(describing: error)
         }
         newTagStart = nil
+        newRefPlace = nil
         lookAgain()
         if let remote { push(tag: tag.name, to: remote, justMade: true) }
         return nil

@@ -380,7 +380,7 @@ struct RefsPanel: View {
             .command("Put back", isEnabled: !isBusy) { model.putBack(stash) },
             .command("Put back and keep the stash", isEnabled: !isBusy) { model.putBack(stash, keeping: true) },
             .divider,
-            .command("New branch from stash…", isEnabled: !isBusy) { model.branch.startNewBranch(fromStash: stash) },
+            .command("New branch from stash…", isEnabled: !isBusy) { model.branch.startNewBranch(fromStash: stash, from: MenuAnchor.current) },
             .command("Copy message") { copy(stash.title) },
             .divider,
             .command("Delete", isDestructive: true, isEnabled: !isBusy) { model.delete(stash) },

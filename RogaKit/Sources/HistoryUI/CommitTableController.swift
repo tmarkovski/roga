@@ -450,7 +450,12 @@ final class CommitTableView: NSTableView {
     override func menu(for event: NSEvent) -> NSMenu? {
         let point = convert(event.locationInWindow, from: nil)
         rowOfMenu = row(at: point)
-        return rowOfMenu >= 0 ? menuForRow(rowOfMenu, point) : nil
+        guard rowOfMenu >= 0 else { return nil }
+        // A popover that a command in it opens, such as Create's, hangs under the
+        // row where it was clicked (decision 83).
+        let row = rect(ofRow: rowOfMenu)
+        MenuAnchor.opened(in: self, at: NSRect(x: point.x, y: row.minY, width: 1, height: row.height), edge: .maxY)
+        return menuForRow(rowOfMenu, point)
     }
 
     /// This doesn't look for the row under the event it's given, because that
@@ -468,6 +473,7 @@ final class CommitTableView: NSTableView {
 
     override func didCloseMenu(_ menu: NSMenu, with event: NSEvent?) {
         super.didCloseMenu(menu, with: event)
+        MenuAnchor.closed()
         rowOutline?.removeFromSuperview()
         rowOutline = nil
     }

@@ -50,7 +50,15 @@ final class RefMenuAreaView: NSView {
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
-        RefMenu.make(entriesOnOpen?() ?? entries)
+        // A popover that a command in it opens, such as New branch from
+        // stash…'s, hangs from the row (decision 83).
+        MenuAnchor.opened(in: self, at: bounds)
+        return RefMenu.make(entriesOnOpen?() ?? entries)
+    }
+
+    override func didCloseMenu(_ menu: NSMenu, with event: NSEvent?) {
+        super.didCloseMenu(menu, with: event)
+        MenuAnchor.closed()
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -62,7 +70,9 @@ final class RefMenuAreaView: NSView {
     }
 
     fileprivate func openUnder() {
+        MenuAnchor.opened(in: self, at: bounds)
         RefMenu.make(entriesOnOpen?() ?? entries).popUp(positioning: nil, at: NSPoint(x: 0, y: -Self.gapUnderButton), in: self)
+        MenuAnchor.closed()
     }
 
     private static let gapUnderButton = 4.0

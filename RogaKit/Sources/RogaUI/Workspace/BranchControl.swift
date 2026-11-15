@@ -1,6 +1,7 @@
 import AppKit
 import GitCore
 import IconUI
+import MenuUI
 import RepositoryEngine
 import SwiftUI
 
@@ -124,34 +125,68 @@ private struct FetchButton: View {
     }
 }
 
-/// Opens the popover for a new branch, which hangs from this button however it
-/// was asked for: here, from the branch's menu, with Shift-Command-B, or from
-/// New Worktree… in the menu bar while the sidebar is hidden. Otherwise a new
-/// worktree starts from its row in the sidebar (decision 82).
+/// Opens the popover for a new branch, which hangs from this button when it's
+/// asked for here, from the branch's menu, with Shift-Command-B, or from New
+/// Worktree… in the menu bar while the sidebar is hidden. Asked for from a row's
+/// menu, such as Create in history or New branch from stash… in the refs panel,
+/// the same popover hangs from that row instead (decision 83), and a new
+/// worktree starts from its row in the sidebar (decision 82). The button shows
+/// all of these, so that they follow the branch's model.
 private struct NewBranchButton: View {
     @Bindable var branch: BranchModel
     let worktree: Worktree
     let showWorktree: (String, ObjectID?) -> Void
 
     var body: some View {
+        let isAtRow = branch.newRefPlace != nil
         Button {
-            branch.isCreatingBranch = true
+            branch.startNewBranch()
         } label: {
             Icon.newBranch.image
         }
-        .buttonStyle(.icon(isOn: branch.isCreatingBranch))
+        .buttonStyle(.icon(isOn: branch.isCreatingBranch && !isAtRow))
         .help(help)
         .accessibilityLabel("New Branch")
-        .popover(isPresented: $branch.isCreatingBranch, arrowEdge: .bottom) {
+        .popover(isPresented: Binding {
+            branch.isCreatingBranch && !isAtRow
+        } set: { isShown in
+            if !isShown { branch.isCreatingBranch = false }
+        }, arrowEdge: .bottom) {
             NewBranchPopover(branch: branch, showWorktree: showWorktree)
         }
-        // On a view of its own, because a view is only sure of showing one popover.
+        // On views of their own, because a view is only sure of showing one popover.
         .background {
             Color.clear.popover(isPresented: Binding {
-                branch.newTagStart != nil
+                branch.newTagStart != nil && !isAtRow
             } set: { isShown in
                 if !isShown { branch.newTagStart = nil }
             }, arrowEdge: .bottom) {
+                if let start = branch.newTagStart {
+                    NewTagPopover(branch: branch, start: start)
+                }
+            }
+        }
+        .background {
+            AnchoredPopover(isPresented: Binding {
+                branch.isCreatingBranch && isAtRow
+            } set: { isShown in
+                if !isShown {
+                    branch.isCreatingBranch = false
+                    branch.newRefPlace = nil
+                }
+            }, place: branch.newRefPlace) {
+                NewBranchPopover(branch: branch, showWorktree: showWorktree)
+            }
+        }
+        .background {
+            AnchoredPopover(isPresented: Binding {
+                branch.newTagStart != nil && isAtRow
+            } set: { isShown in
+                if !isShown {
+                    branch.newTagStart = nil
+                    branch.newRefPlace = nil
+                }
+            }, place: branch.newRefPlace) {
                 if let start = branch.newTagStart {
                     NewTagPopover(branch: branch, start: start)
                 }
@@ -201,7 +236,7 @@ struct BranchMenuItems: View {
                 .disabled(status.remote == nil || branch.isBusy)
             Divider()
         }
-        item(isInMenuBar ? "New Branch…" : "New branch…", icon: .newBranch) { branch.isCreatingBranch = true }
+        item(isInMenuBar ? "New Branch…" : "New branch…", icon: .newBranch) { branch.startNewBranch() }
             .keyboardShortcut(RepositoryCommands.newBranchShortcut)
             .disabled(branch.isBusy)
         if isInMenuBar {

@@ -338,4 +338,32 @@ struct RefMenuTests {
             #expect(RefMenu.itemToChoose(after: try key(36), highlighted: item) == nil)
         }
     }
+
+    /// A menu's place lasts while it's open and a moment after, which is when its
+    /// commands run, and only while its view is in a window (decision 83).
+    @Test func aMenusPlaceLastsAMomentAfterItCloses() {
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 400), styleMask: .borderless, backing: .buffered, defer: true)
+        let left = NSView(frame: NSRect(x: 0, y: 0, width: 200, height: 28))
+        let right = NSView(frame: NSRect(x: 600, y: 0, width: 200, height: 28))
+        window.contentView?.addSubview(left)
+        window.contentView?.addSubview(right)
+
+        // A popover opens toward the middle of the window.
+        MenuAnchor.opened(in: right, at: right.bounds)
+        #expect(MenuAnchor.current(at: .now)?.view === right)
+        #expect(MenuAnchor.current(at: .now)?.edgeTowardMiddle == .minX)
+        MenuAnchor.opened(in: left, at: left.bounds)
+        #expect(MenuAnchor.current(at: .now)?.edgeTowardMiddle == .maxX)
+
+        // It's still there while the menu is open, however long, and for a
+        // second once it closes.
+        #expect(MenuAnchor.current(at: .now + 60)?.view === left)
+        MenuAnchor.closed()
+        #expect(MenuAnchor.current(at: .now + 0.5)?.view === left)
+        #expect(MenuAnchor.current(at: .now + MenuAnchor.lifetime + 0.5) == nil)
+
+        MenuAnchor.opened(in: left, at: left.bounds)
+        left.removeFromSuperview()
+        #expect(MenuAnchor.current(at: .now) == nil)
+    }
 }
