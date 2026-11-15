@@ -63,11 +63,11 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [53](0053-organizations-as-groups-in-the-list-and-add-and-settings-at-the-top.md) | Organizations as groups in the list, and Add Repositories and Settings at the top | Accepted |
 | [54](0054-menus-as-wide-as-their-rows-and-shortcuts-for-the-worktree-on-screen.md) | Menus as wide as their rows, and shortcuts for the worktree on screen | Accepted |
 | [55](0055-split-the-panel-for-uncommitted-changes-40-40-and-20.md) | Split the panel for uncommitted changes 40, 40 and 20 | What a list with no files shows changed by [61](0061-hide-a-list-with-no-files.md) |
-| [56](0056-the-panels-show-a-run-of-commits-two-commits-a-branch-or-a-stash.md) | The panels show a run of commits, two commits, a branch or a stash | Accepted |
+| [56](0056-the-panels-show-a-run-of-commits-two-commits-a-branch-or-a-stash.md) | The panels show a run of commits, two commits, a branch or a stash | The button that reviewed a branch from its row removed by [80](0080-review-a-branch-from-its-menu-not-a-button-on-its-row.md) |
 | [57](0057-the-house-drops-through-the-fetch-button.md) | The house drops through the Fetch button | Accepted |
 | [58](0058-the-mark-under-the-menus-button-and-the-count-before-it.md) | The mark under the menu's button, and the count before it | Accepted |
 | [59](0059-set-aside-changes-in-the-way-and-put-them-back.md) | Set aside changes in the way, and put them back | Its dialog for a conflict offers Resolve by [60](0060-resolve-conflicts-in-the-diff-panel.md) |
-| [60](0060-resolve-conflicts-in-the-diff-panel.md) | Resolve conflicts in the diff panel | Accepted |
+| [60](0060-resolve-conflicts-in-the-diff-panel.md) | Resolve conflicts in the diff panel | The band and its buttons drawn as a hunk's by [79](0079-head-hunks-and-conflicts-alike-from-the-views-edge.md) |
 | [61](0061-hide-a-list-with-no-files.md) | Hide a list with no files | Accepted |
 | [62](0062-replay-a-repositorys-history.md) | Replay a repository's history, drawn in Swift | Partly superseded by [64](0064-dress-the-replay-as-a-departure-board-and-end-it-on-a-poster.md) |
 | [63](0063-ask-an-agent-to-fix-what-git-refused.md) | Ask an agent to fix what git refused | Accepted |
@@ -85,4 +85,6 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [75](0075-list-submodules-in-the-refs-panel-and-go-into-one-in-the-window.md) | List submodules in the refs panel, and go into one in the window | Accepted, and the first two of its three steps are built |
 | [76](0076-keep-the-counts-in-view-while-the-title-row-says-what-happened.md) | Keep the counts in view while the title row says what just happened | Accepted |
 | [77](0077-bold-branch-names-in-menus.md) | Bold branch names in menus, in place of the branch icon | Accepted |
-| [78](0078-stage-hunks-from-a-band-of-two-rows.md) | Stage and unstage hunks from a band of two rows | Accepted |
+| [78](0078-stage-hunks-from-a-band-of-two-rows.md) | Stage and unstage hunks from a band of two rows | The header made bold and moved to the view's edge by [79](0079-head-hunks-and-conflicts-alike-from-the-views-edge.md) |
+| [79](0079-head-hunks-and-conflicts-alike-from-the-views-edge.md) | Head hunks and conflicts alike, from the view's edge | Accepted |
+| [80](0080-review-a-branch-from-its-menu-not-a-button-on-its-row.md) | Review a branch from its menu, not a button on its row | Accepted |

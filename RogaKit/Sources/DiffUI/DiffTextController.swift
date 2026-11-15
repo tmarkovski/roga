@@ -17,6 +17,8 @@ public final class DiffTextController: NSObject {
     let hunkButton = HunkButton(.discard)
     let stagingHunkButton = HunkButton(.stage)
     private var hunkButtons: [HunkButton] { [hunkButton, stagingHunkButton] }
+    /// What each hunk's band says, over the gutter and the text.
+    let hunkHeaders = HunkHeaders()
     public private(set) var document: DiffDocument?
     /// Whether the view only shows a diff, as the sample in Settings does: its
     /// text can't be selected, and it has no scrollers.
@@ -99,7 +101,7 @@ public final class DiffTextController: NSObject {
         // One that does would take the text with it when it went away, which a
         // later text view might be showing.
         textView = DiffTextView(frame: .zero, textContainer: nil)
-        let scrollView = NSScrollView()
+        let scrollView = TilingScrollView()
         self.scrollView = scrollView
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
@@ -112,7 +114,7 @@ public final class DiffTextController: NSObject {
         scrollView.autohidesScrollers = true
 
         gutter = LineNumberGutter(textView: textView)
-        sides = SideBySideView(gutter: gutter, scrollView: scrollView, hunkButtons: [hunkButton, stagingHunkButton])
+        sides = SideBySideView(gutter: gutter, scrollView: scrollView, headers: hunkHeaders, hunkButtons: [hunkButton, stagingHunkButton])
         view = sides
 
         super.init()
@@ -122,6 +124,13 @@ public final class DiffTextController: NSObject {
             button.action = #selector(hunkButtonPressed)
         }
         sides.pointerChanged = { [weak self] in self?.updateHunkButton() }
+        // The scroller shows or hides as the scroll view tiles, which comes after
+        // the clip view says it changed size, so the buttons that keep clear of it
+        // go again once it has.
+        scrollView.tiled = { [weak self] in
+            self?.updateHunkButton()
+            self?.updateConflictBars()
+        }
         textView.menuItems = { [weak self] point in self?.hunkMenuItems(atTextY: point.y) ?? [] }
         textView.isCovered = { [weak self] point in self?.isCovered(atWindowPoint: point) ?? false }
 
@@ -273,6 +282,7 @@ public final class DiffTextController: NSObject {
                 button.isHidden = true
                 button.isHovering = false
             }
+            updateHunkHeaders()
             return
         }
         let pointer = window.mouseLocationOutsideOfEventStream
@@ -318,7 +328,7 @@ public final class DiffTextController: NSObject {
             stagingHunkButton.command = staging
         }
         let shown = commands.map { $0 == .discard ? hunkButton : stagingHunkButton }
-        var right = visible.maxX - 6
+        var right = visible.maxX - scrollerCover(of: visible) - 6
         for button in shown.reversed() {
             let size = button.size
             button.frame = NSRect(x: right - size.width, y: (band.midY - size.height / 2).rounded(), width: size.width, height: size.height)
@@ -329,12 +339,53 @@ public final class DiffTextController: NSObject {
         for button in hunkButtons where !shown.contains(button) {
             button.isHidden = true
         }
+        updateHunkHeaders()
     }
 
     private func hideHunkButtons() {
         for button in hunkButtons {
             button.isHidden = true
         }
+        updateHunkHeaders()
+    }
+
+    /// Puts the header of each hunk in view on its band, from the view's left edge
+    /// to the band's buttons while they show, or to the scroller.
+    private func updateHunkHeaders() {
+        hunkHeaders.metrics = metrics
+        guard let document, !document.hunkBands.isEmpty else {
+            hunkHeaders.headers = []
+            return
+        }
+        let lineHeight = metrics.lineHeight
+        let origin = textView.textContainerOrigin.y
+        let shown = textView.visibleRect
+        let firstRow = Int(((shown.minY - origin) / lineHeight).rounded(.down))
+        let lastRow = Int(((shown.maxY - origin) / lineHeight).rounded(.up))
+        let clip = scrollView.contentView
+        let visible = view.convert(clip.bounds, from: clip)
+        let end = visible.maxX - scrollerCover(of: visible) - 8
+        let buttons = hunkButtons.filter { !$0.isHidden }
+        let top = HunkBand.headingTop(lineHeight: lineHeight)
+        hunkHeaders.headers = document.hunkBands.filter { $0.row + HunkBand.rowCount > firstRow && $0.row <= lastRow }.map { band in
+            let row = hunkHeaders.convert(NSRect(x: 0, y: origin + CGFloat(band.row) * lineHeight + top, width: 1, height: lineHeight), from: textView)
+            let onBand = buttons.filter { $0.header == band.line }.map(\.frame.minX)
+            let right = onBand.min().map { $0 - 8 } ?? end
+            return HunkHeaders.Header(
+                label: band.label,
+                box: NSRect(x: DiffStyle.bandInset, y: row.minY, width: max(0, right - DiffStyle.bandInset), height: lineHeight)
+            )
+        }
+    }
+
+    /// How much of the view's right edge an overlay scroller covers. That kind of
+    /// scroller draws over the text rather than taking room from it, and it shows
+    /// while the text scrolls or the pointer is near, so the buttons on a band stop
+    /// short of it. A legacy scroller already takes its room from the clip view,
+    /// and one that's hidden because the text fits covers nothing.
+    private func scrollerCover(of visible: NSRect) -> CGFloat {
+        guard scrollView.scrollerStyle == .overlay, let scroller = scrollView.verticalScroller, !scroller.isHidden else { return 0 }
+        return max(0, visible.maxX - view.convert(scroller.frame, from: scrollView).minX)
     }
 
     @objc private func hunkButtonPressed(_ button: HunkButton) {
@@ -410,10 +461,10 @@ public final class DiffTextController: NSObject {
                 continue
             }
             let band = bands[index]
-            bar.show(band, sides: conflicts.sides, of: count, canResolve: resolveConflict != nil)
+            bar.show(band, sides: conflicts.sides, of: count, canResolve: resolveConflict != nil, metrics: metrics)
             let top = origin + CGFloat(band.row) * metrics.lineHeight
             let row = view.convert(NSRect(x: 0, y: top, width: 1, height: ConflictBar.height(lineHeight: metrics.lineHeight)), from: textView)
-            bar.place(in: NSRect(x: 0, y: row.minY, width: visible.maxX, height: row.height), textStart: gutter.thickness + DiffStyle.textPadding)
+            bar.place(in: NSRect(x: 0, y: row.minY, width: visible.maxX, height: row.height), covered: scrollerCover(of: visible))
             bar.isHidden = row.maxY <= visible.minY || row.minY >= visible.maxY
         }
     }
@@ -443,8 +494,13 @@ public final class DiffTextController: NSObject {
                 continue
             }
             let rows = blocks[index]
+            // It starts under the gap above the conflict's band, where the band does.
+            let gap = HunkBand.gap(lineHeight: metrics.lineHeight)
             let block = view.convert(
-                NSRect(x: 0, y: origin + CGFloat(rows.lowerBound) * metrics.lineHeight, width: 1, height: CGFloat(rows.count) * metrics.lineHeight),
+                NSRect(
+                    x: 0, y: origin + CGFloat(rows.lowerBound) * metrics.lineHeight + gap,
+                    width: 1, height: CGFloat(rows.count) * metrics.lineHeight - gap
+                ),
                 from: textView
             )
             outline.frame = NSRect(x: Self.outlineInset, y: block.minY, width: max(view.bounds.width - 2 * Self.outlineInset, 0), height: block.height)
@@ -535,23 +591,38 @@ public final class DiffTextController: NSObject {
     }
 }
 
-/// Puts the gutter on the left and the text in the rest, and the buttons for a hunk
-/// over those, where they don't scroll. It says when the pointer moves over any of it.
+/// A scroll view that says when it has laid out its scrollers, and so whether an
+/// overlay scroller is showing.
+private final class TilingScrollView: NSScrollView {
+    var tiled: (() -> Void)?
+
+    override func tile() {
+        super.tile()
+        tiled?()
+    }
+}
+
+/// Puts the gutter on the left and the text in the rest, and the hunks' headers and
+/// buttons over those, where they don't scroll. It says when the pointer moves over
+/// any of it.
 private final class SideBySideView: NSView {
     private let gutter: LineNumberGutter
     private let scrollView: NSScrollView
+    private let headers: HunkHeaders
     /// Says that the pointer moved, or came or went.
     var pointerChanged: () -> Void = {}
     private(set) var isPointerInside = false
 
-    init(gutter: LineNumberGutter, scrollView: NSScrollView, hunkButtons: [HunkButton]) {
+    init(gutter: LineNumberGutter, scrollView: NSScrollView, headers: HunkHeaders, hunkButtons: [HunkButton]) {
         self.gutter = gutter
         self.scrollView = scrollView
+        self.headers = headers
         super.init(frame: .zero)
         // A band cut off at the top would otherwise put its buttons over the header.
         clipsToBounds = true
         addSubview(gutter)
         addSubview(scrollView)
+        addSubview(headers)
         for button in hunkButtons {
             addSubview(button)
         }
@@ -586,6 +657,9 @@ private final class SideBySideView: NSView {
         super.layout()
         let thickness = gutter.thickness
         gutter.frame = NSRect(x: 0, y: 0, width: thickness, height: bounds.height)
+        // Before the scroll view, because sizing it places the headers at once,
+        // in their view's own coordinates, which have to be the new ones by then.
+        headers.frame = bounds
         scrollView.frame = NSRect(x: thickness, y: 0, width: max(0, bounds.width - thickness), height: bounds.height)
     }
 }

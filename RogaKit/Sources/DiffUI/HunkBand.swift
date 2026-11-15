@@ -39,4 +39,54 @@ nonisolated struct HunkBand: Sendable, Hashable {
     static func buttonHeight(lineHeight: CGFloat) -> CGFloat {
         min(22, content(lineHeight: lineHeight).height - 2)
     }
+
+    /// Where the band's words go, from the top of its first row: a box one row
+    /// tall, so that they sit on a baseline as a row's text does, centered under
+    /// the gap and rounded up the view rather than down, which lines them up with
+    /// the words on the band's buttons.
+    static func headingTop(lineHeight: CGFloat) -> CGFloat {
+        let content = content(lineHeight: lineHeight)
+        return (content.top + (content.height - lineHeight) / 2).rounded(.down)
+    }
+}
+
+/// The hunks' headers, in bold, over the gutter and the text from the view's left
+/// edge, so that each reads as the heading of its hunk and stays put as the text
+/// scrolls sideways. It lets every click through to the text under it, where a
+/// right-click on a band has its menu.
+final class HunkHeaders: NSView {
+    struct Header: Equatable {
+        var label: String
+        /// Where it's drawn, which ends before the band's buttons while they show.
+        var box: NSRect
+    }
+
+    var headers: [Header] = [] {
+        didSet {
+            if headers != oldValue { needsDisplay = true }
+        }
+    }
+
+    /// The metrics of the document showing, which the headers are drawn in.
+    var metrics: DiffMetrics = .current {
+        didSet {
+            if metrics !== oldValue { needsDisplay = true }
+        }
+    }
+
+    override var isFlipped: Bool { true }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let paragraph = metrics.paragraph.mutableCopy() as! NSMutableParagraphStyle
+        paragraph.lineBreakMode = .byTruncatingTail
+        for header in headers where header.box.intersects(dirtyRect) && header.box.width > 0 {
+            NSAttributedString(string: header.label, attributes: [
+                .font: metrics.boldFont,
+                .foregroundColor: NSColor.secondaryLabelColor,
+                .paragraphStyle: paragraph,
+            ]).draw(with: header.box, options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
+        }
+    }
 }

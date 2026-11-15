@@ -91,16 +91,22 @@ final class HunkButton: NSButton {
         setAccessibilityLabel(command.title)
     }
 
-    /// A layer's colors don't follow the appearance by themselves. The gray is the
-    /// text's color over the panel's, as much of it as the other buttons' fills have.
+    /// A layer's colors don't follow the appearance by themselves.
     private func updateColors() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
             layer?.cornerRadius = 6
-            let surface = ConflictColors.button
-            let amount: CGFloat = isPressing ? 0.11 : isHovering ? 0.075 : 0
-            let fill = amount > 0 ? surface.blended(withFraction: amount, of: .labelColor) ?? surface : surface
-            layer?.backgroundColor = fill.cgColor
+            layer?.backgroundColor = Self.fill(isHovering: isHovering, isPressing: isPressing).cgColor
         }
+    }
+
+    /// What a button on a band is filled with, in the appearance being drawn in,
+    /// which a conflict's band's buttons share. It's the panel's own color at rest,
+    /// and the gray while the pointer is on it is the text's color over the panel's,
+    /// as much of it as the other buttons' fills have.
+    static func fill(isHovering: Bool, isPressing: Bool) -> NSColor {
+        let surface = ConflictColors.button
+        let amount: CGFloat = isPressing ? 0.11 : isHovering ? 0.075 : 0
+        return amount > 0 ? surface.blended(withFraction: amount, of: .labelColor) ?? surface : surface
     }
 
     /// The text under it shows a text cursor, and this isn't text.

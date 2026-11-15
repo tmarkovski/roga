@@ -3,7 +3,8 @@ import GitCore
 
 /// Draws the background of each line across the full width of the view, which
 /// a background color in the text can't do: it would stop where the text does.
-/// It also draws the hunks' bands, whose rows are empty in the text.
+/// It also draws the line under each hunk's band, whose rows are empty in the
+/// text. What the band says is drawn over the gutter and the text, by `HunkHeaders`.
 nonisolated final class DiffLayoutManager: NSLayoutManager, @unchecked Sendable {
     weak var document: DiffDocument?
     /// Where the text being searched for shows, in order.
@@ -41,28 +42,13 @@ nonisolated final class DiffLayoutManager: NSLayoutManager, @unchecked Sendable 
         }
     }
 
-    /// Draws a hunk's header where text would be, centered under the gap above it,
-    /// and the line at the bottom of its band, across the full width of the view.
+    /// Draws the line at the bottom of a hunk's band, across the full width of the view.
     private func draw(_ band: HunkBand, of document: DiffDocument, at origin: NSPoint) {
         let metrics = document.metrics
         let top = origin.y + CGFloat(band.row) * metrics.lineHeight
         let content = HunkBand.content(lineHeight: metrics.lineHeight)
         NSColor.separatorColor.setFill()
         NSRect(x: 0, y: top + content.top + content.height - 1, width: 1e7, height: 1).fill(using: .sourceOver)
-        // In a box one row tall, so that it sits on its baseline as a row's text
-        // does, rounded up the view rather than down, which lines the header up
-        // with the words on the band's buttons.
-        let box = NSRect(
-            x: origin.x + DiffStyle.textPadding,
-            y: (top + content.top + (content.height - metrics.lineHeight) / 2).rounded(.down),
-            width: 1e6,
-            height: metrics.lineHeight
-        )
-        NSAttributedString(string: band.label, attributes: [
-            .font: metrics.font,
-            .foregroundColor: NSColor.secondaryLabelColor,
-            .paragraphStyle: metrics.paragraph,
-        ]).draw(with: box, options: [.usesLineFragmentOrigin])
     }
 
     private func drawChangedWords(of document: DiffDocument, forGlyphRange glyphs: NSRange, at origin: NSPoint, in context: CGContext) {

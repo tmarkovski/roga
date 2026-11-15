@@ -137,8 +137,10 @@ roga/
 │   │   │   ├── DiffLayoutManager.swift full-width line backgrounds, changed words and matches
 │   │   │   ├── LineNumberGutter.swift  line numbers and the bars beside changed lines
 │   │   │   ├── DiffTextBuilder.swift   attributed text, laid out ahead of time
+│   │   │   ├── HunkBand.swift          a hunk's band of two rows, and its header over the gutter and the text
+│   │   │   ├── HunkButton.swift        the words on a hunk's band that discard, stage or unstage it
 │   │   │   ├── ConflictDocument.swift  a conflicted file's rows: each conflict's band, its sides named, and what was kept
-│   │   │   ├── ConflictBar.swift       the buttons on a conflict's band, and the box for writing what resolves it
+│   │   │   ├── ConflictBar.swift       what a conflict's band says and its buttons, and the box for writing what resolves it
 │   │   │   └── ChangedWords.swift      which words of changed lines differ
 │   │   ├── RogaUI/                     SwiftUI
 │   │   │   ├── Agents/                 finding agents, the marks, and what each worktree's agents are doing
