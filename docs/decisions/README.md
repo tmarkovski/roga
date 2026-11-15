@@ -67,7 +67,7 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [57](0057-the-house-drops-through-the-fetch-button.md) | The house drops through the Fetch button | Accepted |
 | [58](0058-the-mark-under-the-menus-button-and-the-count-before-it.md) | The mark under the menu's button, and the count before it | Accepted |
 | [59](0059-set-aside-changes-in-the-way-and-put-them-back.md) | Set aside changes in the way, and put them back | Its dialog for a conflict offers Resolve by [60](0060-resolve-conflicts-in-the-diff-panel.md) |
-| [60](0060-resolve-conflicts-in-the-diff-panel.md) | Resolve conflicts in the diff panel | Accepted |
+| [60](0060-resolve-conflicts-in-the-diff-panel.md) | Resolve conflicts in the diff panel | The band and its buttons drawn as a hunk's by [79](0079-head-hunks-and-conflicts-alike-from-the-views-edge.md) |
 | [61](0061-hide-a-list-with-no-files.md) | Hide a list with no files | Accepted |
 | [62](0062-replay-a-repositorys-history.md) | Replay a repository's history, drawn in Swift | Partly superseded by [64](0064-dress-the-replay-as-a-departure-board-and-end-it-on-a-poster.md) |
 | [63](0063-ask-an-agent-to-fix-what-git-refused.md) | Ask an agent to fix what git refused | Accepted |
@@ -85,4 +85,5 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [75](0075-list-submodules-in-the-refs-panel-and-go-into-one-in-the-window.md) | List submodules in the refs panel, and go into one in the window | Accepted, and the first two of its three steps are built |
 | [76](0076-keep-the-counts-in-view-while-the-title-row-says-what-happened.md) | Keep the counts in view while the title row says what just happened | Accepted |
 | [77](0077-bold-branch-names-in-menus.md) | Bold branch names in menus, in place of the branch icon | Accepted |
-| [78](0078-stage-hunks-from-a-band-of-two-rows.md) | Stage and unstage hunks from a band of two rows | Accepted |
+| [78](0078-stage-hunks-from-a-band-of-two-rows.md) | Stage and unstage hunks from a band of two rows | The header made bold and moved to the view's edge by [79](0079-head-hunks-and-conflicts-alike-from-the-views-edge.md) |
+| [79](0079-head-hunks-and-conflicts-alike-from-the-views-edge.md) | Head hunks and conflicts alike, from the view's edge | Accepted |

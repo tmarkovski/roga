@@ -18,6 +18,10 @@ public enum ConflictRequest: Sendable, Hashable {
 /// has conflicts. It's over the text rather than in it, so it stays put as the text
 /// scrolls sideways, and so that its label can be centered in a band that's taller
 /// than a row of text.
+///
+/// It's drawn as a hunk's band is: a gap that sets it apart from what's above, then
+/// what it says in bold from the view's left edge, and its buttons as words, over a
+/// thin line.
 final class ConflictBar: NSView {
     enum Action {
         case keep(ConflictedFile.Choice)
@@ -44,14 +48,19 @@ final class ConflictBar: NSView {
     private var sides: ConflictSides?
     private var canResolve = false
     private let label = NSTextField(labelWithString: "")
-    /// Where the label starts, which is where the text under the band starts.
-    private var textStart: CGFloat = 0
+    /// The measures of the document's code font, which the label is in, as a
+    /// hunk's header is.
+    private var metrics = DiffMetrics.current
+    /// How much of the band's right end a scroller covers, which the buttons keep clear of.
+    private var covered: CGFloat = 0
 
+    /// As far apart and from the edge as a hunk's buttons.
     private static let spacing: CGFloat = 4
-    private static let trailing: CGFloat = 8
+    private static let trailing: CGFloat = 6
     private static let iconSize: CGFloat = 12
-    private static let iconGap: CGFloat = 7
-    private static let labelHeight: CGFloat = 16
+    private static let iconGap: CGFloat = 6
+    /// A label's words start this far into its field.
+    private static let labelPadding: CGFloat = 2
 
     init() {
         super.init(frame: .zero)
@@ -69,8 +78,9 @@ final class ConflictBar: NSView {
 
     override var isFlipped: Bool { true }
 
-    /// Sets which conflict it's for, and makes its buttons if they've changed.
-    func show(_ band: ConflictBand, sides: ConflictSides, of count: Int, canResolve: Bool) {
+    /// Sets which conflict it's for, in the measures of the document's code font,
+    /// and makes its buttons if they've changed.
+    func show(_ band: ConflictBand, sides: ConflictSides, of count: Int, canResolve: Bool, metrics: DiffMetrics = .current) {
         let changed = sides != self.sides || band.isResolved != isResolved || band.showsSides != showsSides
             || canResolve != self.canResolve || (buttons.isEmpty && canResolve)
         if band.isResolved != isResolved { needsDisplay = true }
@@ -79,44 +89,44 @@ final class ConflictBar: NSView {
         showsSides = band.showsSides
         self.canResolve = canResolve
         self.sides = sides
+        self.metrics = metrics
         if changed { makeButtons(sides) }
         let which = "Conflict \(band.conflict + 1) of \(count)"
-        label.attributedStringValue = Self.title(which: which, kept: band.isResolved ? band.kept : nil)
+        label.attributedStringValue = Self.title(which: which, kept: band.isResolved ? band.kept : nil, metrics: metrics)
         for button in buttons { button.setAccessibilityLabel("\(button.title), conflict \(band.conflict + 1) of \(count)") }
     }
 
     /// The label says which conflict it is, or, once it's resolved, how, and which.
-    private static func title(which: String, kept: String?) -> NSAttributedString {
-        let size: CGFloat = 12.5
-        guard let kept else {
-            return NSAttributedString(string: which, attributes: [
-                .font: NSFont.systemFont(ofSize: size, weight: .semibold),
-                .foregroundColor: ConflictColors.unresolved,
-            ])
-        }
-        return NSAttributedString(string: "\(kept)  \(which)", attributes: [
-            .font: NSFont.systemFont(ofSize: size),
-            .foregroundColor: ConflictColors.secondaryText,
+    /// It's in bold in the code font, as a hunk's header is, and in red until the
+    /// conflict is resolved.
+    private static func title(which: String, kept: String?, metrics: DiffMetrics) -> NSAttributedString {
+        let paragraph = metrics.paragraph.mutableCopy() as! NSMutableParagraphStyle
+        paragraph.lineBreakMode = .byTruncatingTail
+        let text = kept.map { "\($0)  \(which)" } ?? which
+        return NSAttributedString(string: text, attributes: [
+            .font: metrics.boldFont,
+            .foregroundColor: kept == nil ? ConflictColors.unresolved : NSColor.secondaryLabelColor,
+            .paragraphStyle: paragraph,
         ])
     }
 
     private func makeButtons(_ sides: ConflictSides) {
         buttons.forEach { $0.removeFromSuperview() }
-        let made: [(String, BarButton.Look, Action)]
+        let made: [(String, NSColor, Action)]
         if !canResolve {
             made = []
         } else if isResolved {
-            made = [(showsSides ? "Hide Sides" : "Show Sides", .plain, .showSides(!showsSides)), ("Undo", .link, .undo)]
+            made = [(showsSides ? "Hide Sides" : "Show Sides", .labelColor, .showSides(!showsSides)), ("Undo", .labelColor, .undo)]
         } else {
             made = [
-                (sides.ours.keepTitle, .side(ConflictColors.ours), .keep(.ours)),
-                (sides.theirs.keepTitle, .side(ConflictColors.theirs), .keep(.theirs)),
-                ("Keep Both", .plain, .keep(.both)),
-                ("Edit…", .plain, .edit),
+                (sides.ours.keepTitle, ConflictColors.ours, .keep(.ours)),
+                (sides.theirs.keepTitle, ConflictColors.theirs, .keep(.theirs)),
+                ("Keep Both", .labelColor, .keep(.both)),
+                ("Edit…", .labelColor, .edit),
             ]
         }
-        buttons = made.map { title, look, action in
-            let button = BarButton(title: title, look: look)
+        buttons = made.map { title, color, action in
+            let button = BarButton(title: title, color: color)
             button.target = self
             button.action = #selector(pressed)
             button.barAction = action
@@ -126,27 +136,35 @@ final class ConflictBar: NSView {
         arrange()
     }
 
-    /// Takes up a band, from the frame it's given, with its label starting at `textStart`.
-    func place(in frame: NSRect, textStart: CGFloat) {
+    /// Takes up a band, from the frame it's given. Its buttons end short of the
+    /// `covered` points at its right, which an overlay scroller draws over, while
+    /// the band itself still runs under the scroller.
+    func place(in frame: NSRect, covered: CGFloat = 0) {
         self.frame = frame
-        if textStart != self.textStart {
-            self.textStart = textStart
-            needsDisplay = true
-        }
+        self.covered = covered
         arrange()
     }
 
+    /// How tall a row of the text under the band is.
+    private var lineHeight: CGFloat { bounds.height / CGFloat(ConflictBand.rowCount) }
+
+    /// Where the icon and the label start: the icon at a hunk's header's place, and
+    /// the label after it.
+    private static var labelStart: CGFloat { DiffStyle.bandInset + iconSize + iconGap }
+
     private func arrange() {
-        var x = bounds.width - Self.trailing
+        let content = HunkBand.content(lineHeight: lineHeight)
+        let height = HunkBand.buttonHeight(lineHeight: lineHeight)
+        var x = bounds.width - covered - Self.trailing
         for button in buttons.reversed() {
-            let size = button.size
-            x -= size.width
-            button.frame = NSRect(x: x, y: ((bounds.height - size.height) / 2).rounded(), width: size.width, height: size.height)
+            let width = button.width
+            x -= width
+            button.frame = NSRect(x: x, y: (content.top + (content.height - height) / 2).rounded(), width: width, height: height)
             x -= Self.spacing
         }
         label.frame = NSRect(
-            x: textStart, y: ((bounds.height - Self.labelHeight) / 2).rounded(),
-            width: max(x - 8 - textStart, 0), height: Self.labelHeight
+            x: Self.labelStart - Self.labelPadding, y: HunkBand.headingTop(lineHeight: lineHeight),
+            width: max(x - 8 - Self.labelStart + Self.labelPadding, 0), height: lineHeight
         )
     }
 
@@ -175,14 +193,15 @@ final class ConflictBar: NSView {
         NSCursor.arrow.set()
     }
 
+    /// The line under the band, as a hunk's has, and the icon before the label.
     override func draw(_ dirtyRect: NSRect) {
-        ConflictColors.line.setFill()
-        NSRect(x: 0, y: 0, width: bounds.width, height: 1).fill()
-        NSRect(x: 0, y: bounds.height - 1, width: bounds.width, height: 1).fill()
+        NSColor.separatorColor.setFill()
+        NSRect(x: 0, y: bounds.height - 1, width: bounds.width, height: 1).fill(using: .sourceOver)
         guard let context = NSGraphicsContext.current?.cgContext else { return }
+        let content = HunkBand.content(lineHeight: lineHeight)
         // Drawn on a 24-point grid, as the canvas's icons are.
         context.saveGState()
-        context.translateBy(x: textStart - Self.iconGap - Self.iconSize, y: ((bounds.height - Self.iconSize) / 2).rounded())
+        context.translateBy(x: DiffStyle.bandInset, y: (content.top + (content.height - Self.iconSize) / 2).rounded())
         context.scaleBy(x: Self.iconSize / 24, y: Self.iconSize / 24)
         context.addPath(isResolved ? Self.check : Self.warning)
         context.setStrokeColor((isResolved ? ConflictColors.kept : ConflictColors.unresolved).cgColor)
@@ -217,19 +236,11 @@ final class ConflictBar: NSView {
     }()
 }
 
-/// A button on a conflict's band, drawn to the canvas's measurements.
+/// A button on a conflict's band, drawn as a hunk's buttons are: only its words,
+/// in the color of the side it keeps if it keeps one, filled with gray while the
+/// pointer is on it.
 private final class BarButton: NSButton {
-    enum Look {
-        case plain
-        /// In the color of the side it keeps.
-        case side(NSColor)
-        /// Words in the action color, with no border until the pointer is over it.
-        case link
-    }
-
-    static let height: CGFloat = 22
     var barAction: ConflictBar.Action?
-    private let look: Look
     private var isHovering = false {
         didSet { updateColors() }
     }
@@ -237,28 +248,20 @@ private final class BarButton: NSButton {
         didSet { updateColors() }
     }
 
-    private var padding: CGFloat {
-        if case .link = look { 4 } else { 9 }
+    private static let padding: CGFloat = 8
+
+    var width: CGFloat {
+        (attributedTitle.size().width + Self.padding * 2).rounded(.up)
     }
 
-    var size: NSSize {
-        NSSize(width: (attributedTitle.size().width + padding * 2).rounded(.up), height: Self.height)
-    }
-
-    init(title: String, look: Look) {
-        self.look = look
+    init(title: String, color: NSColor) {
         super.init(frame: .zero)
         self.title = title
         isBordered = false
         wantsLayer = true
         setButtonType(.momentaryChange)
-        let color: NSColor = switch look {
-        case .plain: ConflictColors.text
-        case .side(let color): color
-        case .link: ConflictColors.action
-        }
         attributedTitle = NSAttributedString(string: title, attributes: [
-            .font: NSFont.systemFont(ofSize: 12, weight: .medium),
+            .font: NSFont.systemFont(ofSize: 12),
             .foregroundColor: color,
         ])
         toolTip = title
@@ -295,22 +298,7 @@ private final class BarButton: NSButton {
     private func updateColors() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
             layer?.cornerRadius = 6
-            let rest: NSColor
-            switch look {
-            case .plain:
-                rest = ConflictColors.button
-                layer?.borderWidth = 1
-                layer?.borderColor = ConflictColors.line.cgColor
-            case .side(let color):
-                rest = ConflictColors.button
-                layer?.borderWidth = 1
-                layer?.borderColor = color.cgColor
-            case .link:
-                rest = .clear
-                layer?.borderWidth = 0
-            }
-            let fill = isPressing ? ConflictColors.buttonPressed : isHovering ? ConflictColors.buttonHover : rest
-            layer?.backgroundColor = fill.cgColor
+            layer?.backgroundColor = HunkButton.fill(isHovering: isHovering, isPressing: isPressing).cgColor
         }
     }
 }

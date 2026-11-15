@@ -113,8 +113,10 @@ struct DiffTextControllerTests {
         #expect(outlines.count == 1)
         let outline = try #require(outlines.first)
         #expect(!outline.isHidden)
-        #expect(outline.frame.height == 6 * DiffMetrics.current.lineHeight)
-        #expect(controller.view.convert(outline.frame, to: textView).minY == textView.textContainerOrigin.y + DiffMetrics.current.lineHeight)
+        // It starts under the gap above the band, where the band does.
+        let gap = HunkBand.gap(lineHeight: DiffMetrics.current.lineHeight)
+        #expect(outline.frame.height == 6 * DiffMetrics.current.lineHeight - gap)
+        #expect(controller.view.convert(outline.frame, to: textView).minY == textView.textContainerOrigin.y + DiffMetrics.current.lineHeight + gap)
         #expect(outline.frame.minX == DiffTextController.outlineInset)
         #expect(outline.frame.maxX == controller.view.bounds.width - DiffTextController.outlineInset)
         // The text starts after the line numbers, which the outline has to go around.
@@ -149,7 +151,9 @@ struct DiffTextControllerTests {
     }
 
     /// A band is as tall as the canvas draws it, with room around its buttons,
-    /// and it starts on its row.
+    /// and it starts on its row. It's laid out as a hunk's band is: its buttons
+    /// are under the gap that sets it apart, at the edge, and its label is at the
+    /// view's left edge, after the icon, rather than where the text starts.
     @Test func aConflictsBandIsTallerThanARow() throws {
         let (controller, file, sides) = conflicted()
         controller.resolveConflict = { _ in }
@@ -161,9 +165,42 @@ struct DiffTextControllerTests {
         #expect(bar.frame.minX == 0)
         #expect(titles(of: bar) == ["Keep main's", "Keep theirs", "Keep Both", "Edit…"])
         #expect(try label(of: bar) == "Conflict 1 of 1")
+        let content = HunkBand.content(lineHeight: DiffMetrics.current.lineHeight)
         let buttons = bar.subviews.compactMap { $0 as? NSButton }
-        #expect(buttons.allSatisfy { $0.frame.height == 22 && $0.frame.minY == 6 })
-        #expect(try #require(buttons.last).frame.maxX == bar.bounds.width - 8)
+        #expect(buttons.allSatisfy { $0.frame.height == 22 && $0.frame.minY == content.top + (content.height - 22) / 2 })
+        #expect(try #require(buttons.last).frame.maxX == bar.bounds.width - 6)
+        let field = try #require(bar.subviews.compactMap { $0 as? NSTextField }.first)
+        #expect(field.frame.minX < controller.scrollView.frame.minX)
+        #expect(field.frame.minX > DiffStyle.bandInset)
+    }
+
+    /// The gap above a band shows what's around it, as a hunk's does, so the band's
+    /// rows have no color of their own.
+    @Test func aConflictsBandHasNoBackground() throws {
+        let (_, file, sides) = conflicted()
+        let document = DiffTextBuilder.build(file, choices: [:], sides: sides)
+        let band = try #require(document.conflictBands.first)
+        #expect(document.background(ofRow: band.row) == nil)
+        #expect(document.background(ofRow: band.row + 1) == nil)
+    }
+
+    /// An overlay scroller draws over the text's right edge while the text scrolls,
+    /// so a band's buttons stop short of it, and the band still runs under it.
+    @Test func aConflictsButtonsStayClearOfAnOverlayScroller() throws {
+        let (controller, _, sides) = conflicted()
+        let long = "top\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> origin/main\n" + (1...40).map { "line \($0)\n" }.joined()
+        controller.scrollView.scrollerStyle = .overlay
+        controller.resolveConflict = { _ in }
+        controller.show(DiffTextBuilder.build(ConflictedFile.parse(Array(long.utf8)), choices: [:], sides: sides))
+        controller.scrollView.tile()
+        controller.updateConflictBars()
+        let scroller = try #require(controller.scrollView.verticalScroller)
+        #expect(!scroller.isHidden)
+        let edge = controller.view.convert(scroller.frame, from: controller.scrollView).minX
+        let bar = try bar(of: controller)
+        let last = try #require(bar.subviews.compactMap { $0 as? NSButton }.last)
+        #expect(bar.convert(last.frame, to: controller.view).maxX == edge - 6)
+        #expect(bar.frame.maxX > edge)
     }
 
     @Test func aResolvedBandSaysWhatItKept() throws {
@@ -427,6 +464,10 @@ struct DiffTextControllerTests {
 
     @Test func theButtonShowsOnTheBandOfTheHunkUnderThePointer() throws {
         let controller = controller(showing: try twoHunks())
+        // A legacy scroller takes its room from the text, so the edge of what
+        // shows is the edge for the buttons. An overlay scroller has its own test.
+        controller.scrollView.scrollerStyle = .legacy
+        controller.scrollView.tile()
         controller.discardHunk = { _ in }
         let origin = text(of: controller).textContainerOrigin.y
         // A line of the first hunk, with its band in view.
@@ -444,6 +485,41 @@ struct DiffTextControllerTests {
         #expect(frame.maxY <= visible.maxY - origin - content.top)
         #expect(frame.minY >= visible.maxY - origin - content.top - content.height)
         #expect(abs(frame.maxX - (visible.maxX - 6)) < 1)
+    }
+
+    /// An overlay scroller draws over the text's right edge whenever the text
+    /// scrolls or the pointer comes near, so the buttons stop short of it.
+    @Test func theButtonsStayClearOfAnOverlayScroller() throws {
+        let controller = controller(showing: try twoHunks())
+        controller.scrollView.scrollerStyle = .overlay
+        controller.scrollView.tile()
+        controller.discardHunk = { _ in }
+        controller.stageHunk = { _ in }
+        let scroller = try #require(controller.scrollView.verticalScroller)
+        #expect(!scroller.isHidden)
+        controller.showHunkButtons(atTextY: text(of: controller).textContainerOrigin.y + DiffMetrics.current.lineHeight * 5)
+        let edge = controller.view.convert(scroller.frame, from: controller.scrollView).minX
+        #expect(abs(controller.stagingHunkButton.frame.maxX - (edge - 6)) < 1)
+        #expect(controller.hunkButton.frame.maxX < controller.stagingHunkButton.frame.minX)
+    }
+
+    /// A hunk's header starts at the view's left edge, over the line numbers, and
+    /// stops before its band's buttons while they show.
+    @Test func aHunksHeaderStartsAtTheViewsEdge() throws {
+        let document = try twoHunks()
+        let controller = controller(showing: document)
+        controller.discardHunk = { _ in }
+        let headers = controller.hunkHeaders.headers
+        #expect(headers.map(\.label) == [document.hunkBands[0].label])
+        let first = try #require(headers.first)
+        #expect(first.box.minX == DiffStyle.bandInset)
+        #expect(first.box.minX < controller.scrollView.frame.minX)
+        #expect(first.box.height == DiffMetrics.current.lineHeight)
+
+        controller.showHunkButtons(atTextY: text(of: controller).textContainerOrigin.y + DiffMetrics.current.lineHeight * 5)
+        let shortened = try #require(controller.hunkHeaders.headers.first)
+        #expect(shortened.box.maxX <= controller.hunkButton.frame.minX - 8)
+        #expect(shortened.box.minY == first.box.minY)
     }
 
     @Test func theButtonStaysAtTheEdgeAsTheTextScrollsSideways() throws {
@@ -545,6 +621,9 @@ struct DiffTextControllerTests {
 
     @Test func stagingGoesAtTheEdgeAndDiscardingBeforeIt() throws {
         let controller = controller(showing: try twoHunks())
+        // With a legacy scroller, which leaves the edge clear.
+        controller.scrollView.scrollerStyle = .legacy
+        controller.scrollView.tile()
         controller.discardHunk = { _ in }
         controller.stageHunk = { _ in }
         controller.showHunkButtons(atTextY: text(of: controller).textContainerOrigin.y + 1)

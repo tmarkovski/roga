@@ -12,6 +12,10 @@ nonisolated enum DiffStyle {
     /// so that their backgrounds cover it.
     static let textPadding: CGFloat = 6
 
+    /// Where what a hunk's or a conflict's band says starts, from the view's left
+    /// edge rather than the text's, so that it reads as the heading of what's under it.
+    static let bandInset: CGFloat = 10
+
     // A changed line's tints are the color theme's (decision 71). They follow
     // the theme as they're drawn, so a document built in one theme shows in another.
     private static let addedBackground = ColorTheme.following(alpha: 0.14, \.diffAdded)

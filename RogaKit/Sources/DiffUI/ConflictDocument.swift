@@ -43,14 +43,8 @@ nonisolated enum ConflictColors {
     static let theirs = ColorTheme.following(\.theirs)
     static let unresolved = ColorTheme.following(\.removed)
     static let kept = ColorTheme.following(\.added)
-    static let action = color(light: 0xC94402, dark: 0xF0813F)
-    static let band = color(light: 0xF4F4F2, dark: 0x2A2A29)
-    static let line = color(light: 0xE2E2E2, dark: 0x393939)
-    static let text = color(light: 0x1F1F1E, dark: 0xECECEA)
-    static let secondaryText = color(light: 0x67675F, dark: 0xB3B3AE)
+    /// The panel's own color, which a band's buttons are filled with at rest.
     static let button = color(light: 0xFFFFFF, dark: 0x222222)
-    static let buttonHover = color(light: 0xECECEC, dark: 0x333333)
-    static let buttonPressed = color(light: 0xE3E3E3, dark: 0x3A3A3A)
 
     private static func color(light: Int, dark: Int) -> NSColor {
         NSColor(name: nil) { appearance in
@@ -86,7 +80,8 @@ nonisolated enum ConflictRow: Sendable, Hashable {
 
     var background: NSColor? {
         switch self {
-        case .band, .bandRest: ConflictColors.band
+        // A band is drawn as a hunk's is, with a gap above it, by `ConflictBar`.
+        case .band, .bandRest: nil
         case .label(.ours): NSColor.systemBlue.withAlphaComponent(0.18)
         case .label(.theirs): NSColor.systemPurple.withAlphaComponent(0.18)
         case .label(.base): NSColor.secondaryLabelColor.withAlphaComponent(0.06)
