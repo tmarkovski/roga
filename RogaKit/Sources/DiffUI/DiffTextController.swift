@@ -101,7 +101,7 @@ public final class DiffTextController: NSObject {
         // One that does would take the text with it when it went away, which a
         // later text view might be showing.
         textView = DiffTextView(frame: .zero, textContainer: nil)
-        let scrollView = NSScrollView()
+        let scrollView = TilingScrollView()
         self.scrollView = scrollView
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
@@ -124,6 +124,13 @@ public final class DiffTextController: NSObject {
             button.action = #selector(hunkButtonPressed)
         }
         sides.pointerChanged = { [weak self] in self?.updateHunkButton() }
+        // The scroller shows or hides as the scroll view tiles, which comes after
+        // the clip view says it changed size, so the buttons that keep clear of it
+        // go again once it has.
+        scrollView.tiled = { [weak self] in
+            self?.updateHunkButton()
+            self?.updateConflictBars()
+        }
         textView.menuItems = { [weak self] point in self?.hunkMenuItems(atTextY: point.y) ?? [] }
         textView.isCovered = { [weak self] point in self?.isCovered(atWindowPoint: point) ?? false }
 
@@ -584,6 +591,17 @@ public final class DiffTextController: NSObject {
     }
 }
 
+/// A scroll view that says when it has laid out its scrollers, and so whether an
+/// overlay scroller is showing.
+private final class TilingScrollView: NSScrollView {
+    var tiled: (() -> Void)?
+
+    override func tile() {
+        super.tile()
+        tiled?()
+    }
+}
+
 /// Puts the gutter on the left and the text in the rest, and the hunks' headers and
 /// buttons over those, where they don't scroll. It says when the pointer moves over
 /// any of it.
@@ -639,7 +657,9 @@ private final class SideBySideView: NSView {
         super.layout()
         let thickness = gutter.thickness
         gutter.frame = NSRect(x: 0, y: 0, width: thickness, height: bounds.height)
-        scrollView.frame = NSRect(x: thickness, y: 0, width: max(0, bounds.width - thickness), height: bounds.height)
+        // Before the scroll view, because sizing it places the headers at once,
+        // in their view's own coordinates, which have to be the new ones by then.
         headers.frame = bounds
+        scrollView.frame = NSRect(x: thickness, y: 0, width: max(0, bounds.width - thickness), height: bounds.height)
     }
 }

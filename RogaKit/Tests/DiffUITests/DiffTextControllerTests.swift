@@ -203,6 +203,34 @@ struct DiffTextControllerTests {
         #expect(bar.frame.maxX > edge)
     }
 
+    /// An overlay scroller shows or hides as the view's height changes, and the
+    /// buttons move with it, without anything else having to happen first.
+    @Test func aConflictsButtonsFollowTheScrollerAsTheViewChangesHeight() throws {
+        let (controller, _, sides) = conflicted()
+        let long = "top\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> origin/main\n" + (1...40).map { "line \($0)\n" }.joined()
+        controller.scrollView.scrollerStyle = .overlay
+        controller.resolveConflict = { _ in }
+        controller.view.frame.size.height = 2000
+        controller.view.layoutSubtreeIfNeeded()
+        controller.show(DiffTextBuilder.build(ConflictedFile.parse(Array(long.utf8)), choices: [:], sides: sides))
+        let scroller = try #require(controller.scrollView.verticalScroller)
+        func lastButtonsEdge() throws -> CGFloat {
+            let bar = try bar(of: controller)
+            let last = try #require(bar.subviews.compactMap { $0 as? NSButton }.last)
+            return bar.convert(last.frame, to: controller.view).maxX
+        }
+
+        controller.view.frame.size.height = 200
+        controller.view.layoutSubtreeIfNeeded()
+        #expect(!scroller.isHidden)
+        #expect(try lastButtonsEdge() == controller.view.convert(scroller.frame, from: controller.scrollView).minX - 6)
+
+        controller.view.frame.size.height = 2000
+        controller.view.layoutSubtreeIfNeeded()
+        #expect(scroller.isHidden)
+        #expect(try lastButtonsEdge() == controller.view.bounds.maxX - 6)
+    }
+
     @Test func aResolvedBandSaysWhatItKept() throws {
         let (controller, file, sides) = conflicted()
         controller.resolveConflict = { _ in }
@@ -520,6 +548,22 @@ struct DiffTextControllerTests {
         let shortened = try #require(controller.hunkHeaders.headers.first)
         #expect(shortened.box.maxX <= controller.hunkButton.frame.minX - 8)
         #expect(shortened.box.minY == first.box.minY)
+    }
+
+    /// The headers sit over the text in a view of their own, so they have to
+    /// follow it when the view gets shorter, as it does when the window does.
+    @Test func aHunksHeaderStaysOnItsBandWhenTheViewChangesHeight() throws {
+        let document = try twoHunks()
+        let controller = controller(showing: document)
+        let text = text(of: controller)
+        let lineHeight = DiffMetrics.current.lineHeight
+        let onBand = text.textContainerOrigin.y + HunkBand.headingTop(lineHeight: lineHeight)
+        for height in [140.0, 260.0] {
+            controller.view.frame.size.height = height
+            controller.view.layoutSubtreeIfNeeded()
+            let header = try #require(controller.hunkHeaders.headers.first)
+            #expect(controller.hunkHeaders.convert(header.box, to: text).minY == onBand)
+        }
     }
 
     @Test func theButtonStaysAtTheEdgeAsTheTextScrollsSideways() throws {
