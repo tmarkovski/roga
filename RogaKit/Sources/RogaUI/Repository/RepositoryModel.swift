@@ -129,9 +129,12 @@ final class RepositoryModel {
 
     /// The request whose history has loaded completely.
     @ObservationIgnored private var loaded: LoadRequest?
-    /// The text of commits the list has drawn, by position. Positions belong
-    /// to one loaded graph, so the text goes when another graph arrives.
-    @ObservationIgnored private var texts: [CommitGraph.Position: RowText] = [:]
+    /// The rows the commit list has in view, which it says while it's showing.
+    @ObservationIgnored var rowsInView: () -> Range<Int> = { 0..<0 }
+    /// The text of commits the list has drawn, by commit. A commit's message
+    /// never changes, so the text stays when history loads again, and the rows
+    /// that were showing have theirs at once.
+    @ObservationIgnored private var texts: [ObjectID: RowText] = [:]
     @ObservationIgnored private var graphGeneration = 0
     @ObservationIgnored private var badges: [CommitGraph.Position: [CommitRowContent.Badge]] = [:]
     /// The commits that the count under the pointer would move, which history
@@ -183,6 +186,10 @@ final class RepositoryModel {
     /// When the last look at changes on disk started and finished, which the
     /// next one waits for, as `ChangePacing` says.
     @ObservationIgnored private var lastDiskLook: (started: ContinuousClock.Instant, finished: ContinuousClock.Instant)?
+    /// The reload that a look at the worktree asked for. That look carries on
+    /// reading the uncommitted files and the branch while history loads, so
+    /// the window loading history needn't read them too.
+    @ObservationIgnored private var reloadForALook: Int?
 
     /// What changed on disk since the model last looked.
     private struct DiskChanges {
@@ -214,6 +221,9 @@ final class RepositoryModel {
         var body: String
         var author: String
         var date: String
+        /// Whether the commit was missing from the repository. A fetch may bring
+        /// it, so it's read again with the next history.
+        var isMissing = false
     }
 
     /// The most commits whose text is kept. Text for others is read again
@@ -434,8 +444,15 @@ final class RepositoryModel {
     /// the window shows another worktree. A worktree that was showing before
     /// has its history already, so it only needs checking.
     func appear() async {
+        // Only the window's first try at the reload can count on the look,
+        // since a worktree that shows again may have changed while it wasn't
+        // showing.
+        let isReloadForALook = loadRequest.reloads == reloadForALook
+        reloadForALook = nil
         if loadRequest == loaded {
-            await checkForChanges()
+            await checkForChanges(keepsLooking: false)
+        } else if isReloadForALook {
+            await load()
         } else {
             async let status: Void = updateUncommittedFiles()
             async let branchStatus: Void = branch.refresh()
@@ -495,12 +512,13 @@ final class RepositoryModel {
                 let started = ContinuousClock.now
                 if let refs = changes.refs {
                     refsChecks += 1
+                    async let moved: Void = reloadIfRefsMoved(keepsLooking: true)
                     async let branchStatus: Void = branch.refresh()
                     // A commit moves the branch without always writing the
                     // index, and what's staged compares with the branch's commit.
                     await updateUncommittedFiles(asNewAs: max(refs, changes.files ?? refs))
                     await branchStatus
-                    await reloadIfRefsMoved()
+                    await moved
                 } else if let files = changes.files {
                     await updateUncommittedFiles(asNewAs: files)
                 }
@@ -513,7 +531,7 @@ final class RepositoryModel {
     private func lookAgain() {
         refsChecks += 1
         check?.cancel()
-        check = Task { await checkForChanges() }
+        check = Task { await checkForChanges(keepsLooking: true) }
     }
 
     /// Checks out a badge's branch, unless a checkout is running already, and
@@ -890,17 +908,30 @@ final class RepositoryModel {
     /// Updates the uncommitted files, and loads history again if a ref moved,
     /// such as after a commit. History has to change then too, because a row
     /// for uncommitted changes leads to `HEAD`.
-    private func checkForChanges() async {
+    ///
+    /// - Parameter keepsLooking: Whether the check carries on once history
+    ///   loads again, as `reloadIfRefsMoved(keepsLooking:)` says.
+    private func checkForChanges(keepsLooking: Bool) async {
+        async let moved: Void = reloadIfRefsMoved(keepsLooking: keepsLooking)
         async let branchStatus: Void = branch.refresh()
         await updateUncommittedFiles()
         await branchStatus
-        await reloadIfRefsMoved()
+        await moved
     }
 
-    /// Loads history again if any ref moved, or `HEAD` did.
-    private func reloadIfRefsMoved() async {
+    /// Loads history again if any ref moved, or `HEAD` did. A look runs this
+    /// alongside `git status` and the branch's upstream rather than after them,
+    /// because they can take much longer than reading the refs, and history
+    /// needn't wait for either.
+    ///
+    /// - Parameter keepsLooking: Whether the look carries on reading the
+    ///   uncommitted files and the branch while history loads again, so the
+    ///   window loading it needn't. A window's own check doesn't, because
+    ///   loading history again restarts the window's task, which stops it.
+    private func reloadIfRefsMoved(keepsLooking: Bool) async {
         guard let history, let refs = try? await session.refs(in: worktree), !Task.isCancelled, refs != history.refs else { return }
         reload()
+        if keepsLooking { reloadForALook = reloads }
     }
 
     /// Reads the worktree's uncommitted files and what it's stuck partway through.
@@ -989,14 +1020,20 @@ final class RepositoryModel {
     func load() async {
         let request = loadRequest
         guard request != loaded else { return }
+        // A history loading again in the same order shows its first screen only
+        // when that holds what the list shows, and otherwise stays on screen
+        // until the new one is complete. Another order moves every row anyway,
+        // so its first screen shows at once.
+        let isLoadingAgain = history?.sort == request.sort
         do {
             var firstSnapshot = true
             var isComplete = false
             for try await history in session.history(in: worktree, sort: request.sort) {
+                if isLoadingAgain, !history.isComplete, !holdsWhatsShowing(history) { continue }
                 if firstSnapshot {
                     firstSnapshot = false
                     graphGeneration += 1
-                    texts = [:]
+                    texts = texts.filter { !$0.value.isMissing }
                     badges = Self.badges(history)
                     previewedCommits = []
                     reviewMain = Self.reviewMain(history.refs)
@@ -1343,6 +1380,22 @@ final class RepositoryModel {
         if selectedRows.isEmpty, history.isComplete { selectedCommit.show(nil) }
     }
 
+    /// Whether the first rows of a history that's loading again hold what the
+    /// list shows of the one on screen: the rows in view, and the selected
+    /// commits wherever they are. Showing them early then changes only what
+    /// moved, as it does after a checkout at the top of a large history, which
+    /// takes about a second more to complete. Otherwise the list would shrink to
+    /// those rows, which moves it, and a selected commit would lose its highlight
+    /// and be scrolled to once the rest arrived.
+    private func holdsWhatsShowing(_ first: History) -> Bool {
+        guard rowsInView().upperBound <= first.rows.count + rowOffset else { return false }
+        if !selectedCommits.isEmpty {
+            return rows(of: selectedCommits, in: first).count == selectedCommits.count
+        }
+        guard !selectedRows.isEmpty, !selectedChanges.isSelected, let id = selectedCommit.id else { return true }
+        return Self.row(of: id, in: first) != nil
+    }
+
     /// Goes through the rows, which takes up to a millisecond for as many as
     /// Linux has, so it's only for when history loads or a commit is selected
     /// by its ID.
@@ -1376,11 +1429,12 @@ final class RepositoryModel {
         let row = row - rowOffset
         guard let history, row >= 0, row < history.rows.count else { return CommitRowContent(shortID: "") }
         let position = history.rows[row]
-        let text = texts[position]
+        let id = history.graph.id(at: position)
+        let text = texts[id]
         var badges = badges[position] ?? []
         if position == markedPosition, let mark { badges.append(CommitRowContent.Badge(title: mark.title, kind: .mark)) }
         return CommitRowContent(
-            shortID: String(history.graph.id(at: position).hex.prefix(8)),
+            shortID: String(id.hex.prefix(8)),
             badges: badges,
             subject: text?.subject,
             body: text?.body,
@@ -1410,29 +1464,34 @@ final class RepositoryModel {
         let generation = graphGeneration
         let offset = rowOffset
         let rows = (rows.lowerBound - offset..<rows.upperBound - offset).clamped(to: 0..<history.rows.count)
-        let wanted = rows.filter { texts[history.rows[$0]] == nil }
+        let wanted = rows.compactMap { row in
+            let id = history.graph.id(at: history.rows[row])
+            return texts[id] == nil ? (row: row, id: id) : nil
+        }
         guard !wanted.isEmpty else { return [] }
 
         let commits: [CommitInfo?]
         do {
-            commits = try await session.commits(wanted.map { history.graph.id(at: history.rows[$0]) })
+            commits = try await session.commits(wanted.map(\.id))
         } catch {
             return []
         }
         let messages = await Self.subjectsAndBodies(of: commits)
-        guard generation == graphGeneration else { return [] }
 
         if texts.count + wanted.count > Self.textLimit {
             // Keep only the rows around the ones being shown.
-            let keep = Set(rows.map { history.rows[$0] })
+            let keep = Set(rows.map { history.graph.id(at: history.rows[$0]) })
             texts = texts.filter { keep.contains($0.key) }
         }
-        for (index, row) in wanted.enumerated() {
-            texts[history.rows[row]] = commits[index].map { commit in
-                RowText(subject: messages[index].subject, body: messages[index].body, author: commit.author.name, date: Self.format(commit.author.time, now: now))
-            } ?? RowText(subject: "This commit is missing from the repository.", body: "", author: "", date: "")
+        for (index, commit) in wanted.enumerated() {
+            texts[commit.id] = commits[index].map { info in
+                RowText(subject: messages[index].subject, body: messages[index].body, author: info.author.name, date: Self.format(info.author.time, now: now))
+            } ?? RowText(subject: "This commit is missing from the repository.", body: "", author: "", date: "", isMissing: true)
         }
-        return IndexSet(wanted.map { $0 + offset })
+        // The text belongs to the commits whatever history shows now, but these
+        // rows are numbered as they were before another history arrived.
+        guard generation == graphGeneration else { return [] }
+        return IndexSet(wanted.map { $0.row + offset })
     }
 
     /// Reads the subject and the body line of each commit, away from the main

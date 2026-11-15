@@ -787,4 +787,21 @@ struct CommitRowIndentTests {
         table.scrollRowToVisible(1)
         #expect(controller.badge(at: middle) == place)
     }
+
+    @Test func saysWhichRowsAreInView() throws {
+        let list = CommitTableControllerTests.List(count: 100)
+        // A list with no height yet has none in view.
+        #expect(list.controller.rowsInView.isEmpty)
+
+        list.controller.scrollView.frame = NSRect(x: 0, y: 0, width: 800, height: 300)
+        list.controller.scrollView.layoutSubtreeIfNeeded()
+        let rows = list.controller.rowsInView
+        #expect(rows.lowerBound == 0)
+        #expect(rows.count >= 10 && rows.count <= 12)
+
+        // A row that's partly in view counts.
+        list.table.scrollRowToVisible(60)
+        #expect(list.controller.rowsInView.contains(60))
+        #expect(list.controller.rowsInView.lowerBound > 40)
+    }
 }
