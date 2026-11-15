@@ -847,25 +847,33 @@
     box-shadow: 0 1.6cqw 3.2cqw -0.8cqw rgb(40 10 0 / 0.45);
   }
 
-  .placeholder {
-    display: grid;
-    place-items: center;
-    width: 62%;
-    height: 100%;
-    padding: 1.5rem;
-    border: 2px dashed rgb(255 255 255 / 0.7);
-    border-radius: 1cqw;
-    background: rgb(255 255 255 / 0.35);
-    color: var(--menu-ink);
-    font-size: 0.9375rem;
-    text-align: center;
+  /* A whole window, a little short of the stage's width so that it never
+     makes the stage taller than the others. Its corners are transparent, so
+     the shadow follows them, as it does for the hero's window. */
+  .single {
+    width: 98%;
   }
 
-  @media (prefers-color-scheme: dark) {
-    .placeholder {
-      border-color: rgb(255 255 255 / 0.35);
-      background: rgb(0 0 0 / 0.25);
-    }
+  /* Two dialogs, one after the other, stepping down to the right. */
+  .steps {
+    display: grid;
+    gap: 3cqw;
+    width: 100%;
+  }
+
+  .steps picture {
+    width: 68%;
+  }
+
+  .steps picture + picture {
+    justify-self: end;
+  }
+
+  .single img,
+  .steps img {
+    width: 100%;
+    height: auto;
+    filter: drop-shadow(0 1.2cqw 2.4cqw rgb(40 10 0 / 0.45));
   }
 
   /* The promises are drawn like history: commits on a line, and the one that
@@ -1127,20 +1135,31 @@
             <div class="shots">
               <picture>
                 <source media="(prefers-color-scheme: dark)" srcset="/shots/conflict-before-dark.webp">
-                <img src="/shots/conflict-before-light.webp" width="1116" height="1470" loading="lazy" alt="Three merge conflicts with branches and commits identified, and a Resolve with Claude button.">
+                <img src="/shots/conflict-before-light.webp" width="1186" height="1530" loading="lazy" alt="Three merge conflicts with branches and commits identified, and a Resolve with Claude button.">
               </picture>
               <picture>
                 <source media="(prefers-color-scheme: dark)" srcset="/shots/conflict-after-dark.webp">
-                <img src="/shots/conflict-after-light.webp" width="1116" height="1470" loading="lazy" alt="Claude Code’s proposed resolutions for the three conflicts, ready for review.">
+                <img src="/shots/conflict-after-light.webp" width="1186" height="1530" loading="lazy" alt="Claude Code’s proposed resolutions for the three conflicts, ready for review.">
               </picture>
             </div>
           </div>
-          <!-- Placeholders until these two are captured from a real build. -->
           <div class="stage" id="panel-messages">
-            <p class="placeholder">Screenshot to come: Generate with Claude in the message editor.</p>
+            <picture class="single">
+              <source media="(prefers-color-scheme: dark)" srcset="/shots/messages-dark.webp">
+              <img src="/shots/messages-light.webp" width="2200" height="1400" loading="lazy" alt="Two staged files, the diff of one, and a commit message Claude Code wrote for them in the style of the recent commits above.">
+            </picture>
           </div>
           <div class="stage" id="panel-errors">
-            <p class="placeholder">Screenshot to come: Fix with Claude on a command Git refused.</p>
+            <div class="steps">
+              <picture>
+                <source media="(prefers-color-scheme: dark)" srcset="/shots/error-before-dark.webp">
+                <img src="/shots/error-before-light.webp" width="1040" height="416" loading="lazy" alt="Git refusing to pull with the message bad object HEAD, and a Fix with Claude button.">
+              </picture>
+              <picture>
+                <source media="(prefers-color-scheme: dark)" srcset="/shots/error-after-dark.webp">
+                <img src="/shots/error-after-light.webp" width="1040" height="472" loading="lazy" alt="Claude Code’s explanation of what broke and the one Git command that fixes it, waiting for you to run it.">
+              </picture>
+            </div>
           </div>
         </div>
       </div>
