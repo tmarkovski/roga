@@ -325,7 +325,8 @@ private enum Metrics {
     static let arrowRoom = 16.0
     /// The least room between a row's title and the value before its arrow.
     static let valueGap = 24.0
-    /// A longer name gets cut short in its middle, where branch names differ least.
+    /// A longer name gets cut short in its middle, where branch names differ
+    /// least (`RefMenu.Title.fitting(_:font:isHeading:)`).
     static let maximumWidth = 480.0
     /// What a choice's last part, such as a folder, keeps when the parts
     /// before it are cut short: about 14 characters, cut in their middle, so
@@ -338,6 +339,9 @@ private enum Metrics {
     /// The least a part that's cut short keeps, which is a few characters and
     /// the ellipsis.
     static let leastOfACutPart = 24.0
+    /// How much of itself a row's longest name keeps when it's the only one
+    /// cut short. A row that needs more than that cuts its names to one width.
+    static let leastOfANameCutAlone = 2.0 / 3
 
     /// All the rows are one width, because a menu is as wide as its widest view.
     /// A choice keeps room for the shortcuts' column whether or not it has one,
@@ -437,7 +441,7 @@ extension RefMenu.Title {
         paragraph.lineBreakMode = .byTruncatingMiddle
         let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color, .paragraphStyle: paragraph]
         var branchAttributes = attributes
-        if !isHeading { branchAttributes[.font] = NSFont.systemFont(ofSize: font.pointSize, weight: .bold) }
+        branchAttributes[.font] = Self.nameFont(beside: font, isHeading: isHeading)
         let text = NSMutableAttributedString()
         for part in parts {
             switch part {
@@ -448,6 +452,79 @@ extension RefMenu.Title {
             }
         }
         return text
+    }
+
+    /// The font of a branch's name among words in `font`.
+    private static func nameFont(beside font: NSFont, isHeading: Bool) -> NSFont {
+        isHeading ? font : .systemFont(ofSize: font.pointSize, weight: .bold)
+    }
+
+    /// The title as it fits in `room`. When it's too long, only its branches'
+    /// names get shorter, each in its own middle, where branch names differ
+    /// least, so that the words around a name stay whole and apart from it.
+    /// Cutting the whole row in its middle instead can take the space after a
+    /// name, and some of the next word. A title that names no branch is as it
+    /// was, and the row cuts it in its middle.
+    func fitting(_ room: Double, font: NSFont, isHeading: Bool = false) -> RefMenu.Title {
+        let whole = Metrics.titleWidth(self, font: font, isHeading: isHeading)
+        guard whole > room else { return self }
+        let nameFont = Self.nameFont(beside: font, isHeading: isHeading)
+        let names = parts.enumerated().compactMap { index, part -> (index: Int, name: String, width: Double)? in
+            guard case let .branch(name) = part else { return nil }
+            return (index, name, Metrics.textWidth(name, font: nameFont))
+        }
+        guard !names.isEmpty else { return self }
+        let words = whole - names.map(\.width).reduce(0, +)
+        var fitted = self
+        for (name, width) in zip(names, RefMenu.nameWidths(of: names.map(\.width), in: room - words)) where width < name.width {
+            fitted.parts[name.index] = .branch(RefMenu.cutInMiddle(name.name, to: max(width, Metrics.leastOfACutPart), font: nameFont))
+        }
+        return fitted
+    }
+}
+
+extension RefMenu {
+    /// How wide each of a row's names is drawn for them to fit in `room`
+    /// together. The widest gives up all that's missing while that leaves it
+    /// most of itself, because one cut loses fewer letters than two, and each
+    /// cut costs an ellipsis. Past that, the widest names come down to one
+    /// width, and the names narrower than it stay whole.
+    static func nameWidths(of widths: [Double], in room: Double) -> [Double] {
+        let missing = widths.reduce(0, +) - room
+        guard missing > 0, let widest = widths.max(), let index = widths.firstIndex(of: widest) else { return widths }
+        if widest - missing >= widest * Metrics.leastOfANameCutAlone {
+            var cut = widths
+            cut[index] = widest - missing
+            return cut
+        }
+        var left = room
+        var most = 0.0
+        for (index, width) in widths.sorted().enumerated() {
+            most = max(left / Double(widths.count - index), 0)
+            if width > most { break }
+            left -= width
+        }
+        return widths.map { min($0, most) }
+    }
+
+    /// As much of a name's start and end as fits in `width`, with an ellipsis
+    /// between them.
+    static func cutInMiddle(_ name: String, to width: Double, font: NSFont) -> String {
+        let characters = Array(name)
+        func cut(keeping count: Int) -> String {
+            String(characters.prefix((count + 1) / 2)) + "…" + String(characters.suffix(count / 2))
+        }
+        var fits = 0
+        var tooMany = characters.count
+        while tooMany - fits > 1 {
+            let count = (fits + tooMany) / 2
+            if Metrics.textWidth(cut(keeping: count), font: font) <= width {
+                fits = count
+            } else {
+                tooMany = count
+            }
+        }
+        return cut(keeping: fits)
     }
 }
 
@@ -693,20 +770,25 @@ private final class RowView: MenuRowView {
         isEnabled ? Colors.header : Colors.disabled
     }
 
+    /// The title as it fits in the room it was last drawn in, kept because a
+    /// row draws again each time its highlight changes.
+    private var fitted: (room: Double, title: RefMenu.Title)?
+
+    private func title(fitting room: Double) -> RefMenu.Title {
+        if let fitted, fitted.room == room { return fitted.title }
+        let cut = title.fitting(room, font: font, isHeading: isHeading)
+        fitted = (room, cut)
+        return cut
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         drawHighlight()
         let hasArrow = enclosingMenuItem?.hasSubmenu == true
         let valueRoom = value.map { ceil(Metrics.textWidth($0, font: font)) + Metrics.valueGap } ?? 0
-        let text = title.attributed(font: font, color: color, isHeading: isHeading)
+        let room = bounds.width - inset - Metrics.textInset - (isChecked ? Metrics.optionCheckRoom : 0) - (shortcut?.1.room ?? 0) - (hasArrow ? Metrics.arrowRoom : 0) - valueRoom
+        let text = title(fitting: room).attributed(font: font, color: color, isHeading: isHeading)
         let height = Metrics.lineHeight(font)
-        text.draw(
-            in: NSRect(
-                x: inset,
-                y: ((bounds.height - height) / 2).rounded(),
-                width: bounds.width - inset - Metrics.textInset - (isChecked ? Metrics.optionCheckRoom : 0) - (shortcut?.1.room ?? 0) - (hasArrow ? Metrics.arrowRoom : 0) - valueRoom,
-                height: height
-            )
-        )
+        text.draw(in: NSRect(x: inset, y: ((bounds.height - height) / 2).rounded(), width: room, height: height))
         if let (shortcut, column) = shortcut {
             drawShortcut(shortcut, in: column, isEnabled: enclosingMenuItem?.isEnabled ?? true)
         }
