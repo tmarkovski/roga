@@ -814,6 +814,59 @@ public actor RepositorySession {
         try await aside.undo(stopped: stopped, in: worktree, git: git)
     }
 
+    /// Stashes everything uncommitted in a worktree, untracked files included
+    /// (decision 81).
+    ///
+    /// - Returns: The new stash, or nil when there was nothing to stash.
+    /// - Throws: `GitError` when git refuses, as with a file in conflict.
+    @concurrent
+    public nonisolated func stashChanges(message: String, in worktree: String) async throws -> ObjectID? {
+        try await Stashes.stash(message: message, in: worktree, git: git)
+    }
+
+    /// Puts a stash back into a worktree, and deletes it from the list unless
+    /// it's kept or git stops on a conflict.
+    ///
+    /// - Throws: `Stashes.Missing` when the stash has gone, or `GitError` when
+    ///   git refuses without leaving a conflict.
+    @concurrent
+    public nonisolated func putBack(stash: ObjectID, keeping: Bool, in worktree: String) async throws -> Stashes.PutBack {
+        try await Stashes.putBack(stash, keeping: keeping, in: worktree, git: git)
+    }
+
+    /// Takes back a put back that stopped on conflicts, leaving the stash in the list.
+    @concurrent
+    public nonisolated func undoPutBack(stash: ObjectID, indexBefore: ObjectID, in worktree: String) async throws {
+        try await Stashes.undoPutBack(stash, indexBefore: indexBefore, in: worktree, git: git)
+    }
+
+    /// Deletes a stash from the list.
+    ///
+    /// - Returns: The message it was listed with, for listing it again.
+    @concurrent
+    public nonisolated func drop(stash: ObjectID, in worktree: String) async throws -> String {
+        try await Stashes.drop(stash, in: worktree, git: git)
+    }
+
+    /// Lists a deleted stash again, at the top of the list.
+    @concurrent
+    public nonisolated func restore(stash: ObjectID, message: String, in worktree: String) async throws {
+        try await Stashes.store(stash, message: message, in: worktree, git: git)
+    }
+
+    /// Makes a branch where a stash was made, switches the worktree to it, and
+    /// puts the stash back there.
+    @concurrent
+    public nonisolated func branch(named name: String, fromStash stash: ObjectID, in worktree: String) async throws {
+        try await Stashes.branch(name, from: stash, in: worktree, git: git)
+    }
+
+    /// What git calls a stash now, as in `stash@{1}`.
+    @concurrent
+    public nonisolated func ref(ofStash stash: ObjectID, in worktree: String) async throws -> String {
+        try await Stashes.find(stash, in: worktree, git: git).ref
+    }
+
     /// Makes a new branch on the commit a worktree is on, and switches to it
     /// there or in a new worktree.
     ///

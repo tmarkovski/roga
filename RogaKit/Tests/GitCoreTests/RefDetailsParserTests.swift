@@ -121,6 +121,26 @@ struct RefDetailsParserTests {
         #expect(throws: ParseError.self) { try StashListParser.parse(line("nope", "1", "x")) }
     }
 
+    /// A stash's row names its branch on the second line, so its title leaves out
+    /// the branch git puts at the start of its message (decision 81).
+    @Test func takesTheBranchOutOfAStashsMessage() throws {
+        let id = try #require(ObjectID(hex: commit))
+        func parts(_ message: String) -> [String?] {
+            let stash = StashDetails(position: 0, commit: id, message: message)
+            return [stash.branch, stash.title]
+        }
+        #expect(parts("On main: try this") == ["main", "try this"])
+        #expect(parts("On agent/fix-login: LoginView.swift and Notes.md") == ["agent/fix-login", "LoginView.swift and Notes.md"])
+        #expect(parts("WIP on main: 5405371 Fix it") == ["main", "WIP on 5405371 Fix it"])
+        // A detached `HEAD` has no branch to name.
+        #expect(parts("On (no branch): try this") == [nil, "try this"])
+        #expect(parts("On main: ") == ["main", ""])
+        // A message someone stored without git's start is left alone, and so is
+        // one whose start can't be a branch's name.
+        #expect(parts("autostash") == [nil, "autostash"])
+        #expect(parts("On a branch: no") == [nil, "On a branch: no"])
+    }
+
     @Test func findsTheMainBranch() throws {
         let id = try #require(ObjectID(hex: commit))
         func ref(_ name: String, target: String? = nil) -> Ref { Ref(name: name, target: id, symbolicTarget: target) }

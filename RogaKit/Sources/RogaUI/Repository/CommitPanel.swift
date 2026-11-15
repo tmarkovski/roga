@@ -50,6 +50,14 @@ struct CommitPanel: View {
                 .buttonStyle(.icon)
                 .help("Swap Commits")
             }
+            // Putting a stash back is usually what comes next, so it's orange.
+            // Keeping it in the list too is in its menu (decision 81).
+            if let stash = commit.stash {
+                Button("Put Back") { model.putBack(stash) }
+                    .buttonStyle(.diffHeader(isNext: true))
+                    .disabled(model.branch.isBusy)
+                    .help("Put the changes back and delete the stash")
+            }
             FileListCommands(list: fileList, closeFilter: closeFilter)
                 .disabled(!hasFiles)
         } content: {
@@ -248,11 +256,14 @@ private struct CommitDetails: View {
     /// What's said above the files, which depends on what's selected.
     @ViewBuilder private var about: some View {
         switch commit.subject {
-        case .stash:
-            Text(info.subject.isEmpty ? "This stash has no message." : info.subject)
+        case .stash(let stash):
+            Text(stash.title.isEmpty ? "This stash has no message." : stash.title)
                 .fontWeight(.semibold)
                 .textSelection(.enabled)
             VStack(alignment: .leading, spacing: 4) {
+                if let branch = stash.branch {
+                    Text("\(Text("Branch").foregroundStyle(.secondary))  \(branch)")
+                }
                 if let base = commit.stashBase {
                     HStack(spacing: 8) {
                         Text("Made on").foregroundStyle(.secondary)

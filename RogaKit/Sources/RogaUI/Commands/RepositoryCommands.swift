@@ -90,6 +90,8 @@ public struct RepositoryCommands: Commands {
     static let discardFileShortcut = KeyboardShortcut(.delete, modifiers: [.option, .command])
     static let discardAllShortcut = KeyboardShortcut(.delete, modifiers: [.shift, .option, .command])
     static let undoDiscardShortcut = KeyboardShortcut("z", modifiers: [.shift, .option, .command])
+    /// Stashes everything that's uncommitted (decision 81).
+    static let stashShortcut = KeyboardShortcut("s", modifiers: [.shift, .command])
 
     public init(list: RepositoryList, agents: AgentProvider) {
         self.list = list
@@ -399,6 +401,12 @@ private struct ChangesMenuItems: View {
         }
         .keyboardShortcut(RepositoryCommands.undoDiscardShortcut)
         .disabled(changes?.discards.isEmpty != false)
+        Divider()
+        Button("Stash Changes") {
+            repository?.stashChanges()
+        }
+        .keyboardShortcut(RepositoryCommands.stashShortcut)
+        .disabled(repository?.canStash != true)
         Divider()
         Button("Write Commit Message") {
             composer?.askForFocus()

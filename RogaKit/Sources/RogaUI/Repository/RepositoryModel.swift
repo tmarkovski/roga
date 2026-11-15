@@ -995,7 +995,7 @@ final class RepositoryModel {
         selectChangesIfAsked()
     }
 
-    private func selectChangesOnceTheyShow() {
+    func selectChangesOnceTheyShow() {
         selectsChangesWhenTheyShow = true
         selectChangesIfAsked()
     }

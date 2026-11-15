@@ -169,6 +169,23 @@ final class BranchModel {
         }
     }
 
+    /// A stash someone put back that stopped on conflicts, until they've said what
+    /// to do (decision 81). git keeps the stash in the list then.
+    struct StashConflict: Equatable {
+        var stash: ObjectID
+        /// What git called it, as in `stash@{1}`.
+        var name: String
+        /// The files in conflict.
+        var files: [String]
+        /// What was staged before, which undoing goes back to, or nil when that
+        /// couldn't be read and there's no Undo.
+        var indexBefore: ObjectID?
+        /// What ran, by its arguments after `git`.
+        var ran: [String]
+        /// Whether it was kept in the list on purpose, rather than by the conflict.
+        var keeping: Bool
+    }
+
     /// git refused a move, and the uncommitted changes that were set aside for it
     /// couldn't go back either, which the dialog has to say.
     struct RefusedWithChangesAside: Error {
@@ -295,6 +312,9 @@ final class BranchModel {
     /// Changes set aside for a move that came back with conflicts, until the user
     /// has said what to do.
     var putBackConflict: PutBackConflict?
+    /// A stash someone put back that came back with conflicts, until they've said
+    /// what to do.
+    var stashConflict: StashConflict?
     /// A pull that needs someone to choose between rebasing and merging.
     var pullChoice: PullChoice?
     /// What the worktree is stuck partway through, whoever started it, which
@@ -326,6 +346,9 @@ final class BranchModel {
     var startsInNewWorktree = false
     /// The commit that popover starts the branch from, when someone chose one.
     var newBranchStart: NewRefStart?
+    /// The stash that popover makes the branch from, with `git stash branch`,
+    /// when someone chose one (decision 81).
+    var newBranchStash: StashDetails?
     /// The commit that the popover for a new tag puts it on, while that shows.
     var newTagStart: NewRefStart?
 
@@ -339,8 +362,20 @@ final class BranchModel {
     /// Shows the popover for a new branch, starting from a commit.
     func startNewBranch(at commit: ObjectID, named label: String, inNewWorktree: Bool = false) {
         guard !isBusy else { return }
+        newBranchStash = nil
         newBranchStart = NewRefStart(commit: commit, label: label)
         startsInNewWorktree = inNewWorktree
+        isCreatingBranch = true
+    }
+
+    /// Shows the popover for a new branch made where a stash was made, which
+    /// switches the worktree to it and puts the stash back there, where it
+    /// always fits (decision 81).
+    func startNewBranch(fromStash stash: StashDetails) {
+        guard !isBusy else { return }
+        newBranchStart = nil
+        newBranchStash = stash
+        startsInNewWorktree = false
         isCreatingBranch = true
     }
 
@@ -747,6 +782,19 @@ final class BranchModel {
         }
     }
 
+    /// Takes back putting a stash back that stopped on conflicts: the files it
+    /// had go back to what was staged before, and the stash stays in the list
+    /// (decision 81).
+    func undoStashConflict() {
+        guard let conflict = stashConflict else { return }
+        stashConflict = nil
+        guard let indexBefore = conflict.indexBefore else { return }
+        run(.undoing, failure: "Can't undo putting back \(conflict.name)") { [session, worktree] in
+            try await session.undoPutBack(stash: conflict.stash, indexBefore: indexBefore, in: worktree)
+            return "Undid it · the stash is still in the list"
+        }
+    }
+
     /// What the title row says once an undo has put the changes back, or nil when
     /// a dialog says they couldn't go back.
     private func finishUndoing(_ what: String, _ putBack: ChangesAside.PutBack, _ aside: ChangesAside) -> String? {
@@ -1076,6 +1124,24 @@ final class BranchModel {
            let created = try? await session.worktrees().first(where: { $0.branch == Ref.branchPrefix + branch.name }) {
             showWorktree(created.path, created.head)
         }
+        return nil
+    }
+
+    /// Makes a branch where a stash was made, switches to it, and puts the stash
+    /// back there.
+    ///
+    /// - Returns: What git said if it refused, which the popover shows.
+    func create(branch name: String, fromStash stash: StashDetails) async -> String? {
+        guard !isBusy else { return nil }
+        do {
+            try await session.branch(named: name, fromStash: stash.commit, in: worktree)
+        } catch {
+            return (error as? GitError)?.message ?? String(describing: error)
+        }
+        isCreatingBranch = false
+        await reportBranchChange()
+        lookAgain()
+        announce("Switched to \(Self.shortened(name)) · the stash is back", undo: nil)
         return nil
     }
 
