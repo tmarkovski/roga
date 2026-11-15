@@ -1,6 +1,7 @@
 import Foundation
 import GitCore
 import GitRunner
+import MenuUI
 import RepositoryEngine
 import SwiftUI
 import TestSupport
@@ -71,6 +72,30 @@ struct RefsModelTests {
         #expect(RefsModel.Section.stashes.counted(2) == "2 stashes")
         #expect(RefsModel.Section.tags.counted(0) == "0 tags")
         #expect(RefsModel.Section.submodules.counted(3) == "3 submodules")
+    }
+
+    @Test func thePanelsMenuSaysHowRefsAreSortedInASubmenu() {
+        var sorted: [RefsModel.Sort] = []
+        var isHidden = false
+        let entries = RefsPanel.panelMenu(sort: .date, setSort: { sorted.append($0) }, filter: {}, collapseAll: {}, expandAll: {}, hide: { isHidden = true })
+        guard case let .submenu(title, value, _, options) = entries.first else {
+            Issue.record("Sorting comes first, in a submenu.")
+            return
+        }
+        #expect(title.plain == "Sort by")
+        #expect(value == "Date")
+        let choices = options.compactMap { entry -> (String, Bool)? in
+            if case let .option(title, isChecked, _) = entry { (title.plain, isChecked) } else { nil }
+        }
+        #expect(choices.map { $0.0 } == ["Name", "Date"])
+        #expect(choices.map { $0.1 } == [false, true])
+        if case let .option(_, _, action) = options[0] { action() }
+        #expect(sorted == [.name])
+        for case let .command(title, _, _, shortcut, action) in entries where title.plain == "Hide refs" {
+            #expect(shortcut == RefMenu.Shortcut("i", modifiers: [.control, .command]))
+            action()
+        }
+        #expect(isHidden)
     }
 
     @Test func aFilterNarrowsEverySectionAndIgnoresCase() {

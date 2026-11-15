@@ -327,10 +327,13 @@ public struct WorkspaceView: View {
                 if let model = shownModel, case .ready = model.phase {
                     HistoryCommands(model: model, titleRow: titleRowShown, titleRowTaken: titleRowTaken)
                 }
-                ToolbarItem {
-                    RefsPanelToggle(visibility: refsPanelVisibility)
+                // While the panel shows, the button is the last of its row.
+                if !refsPanelVisibility.isShowing {
+                    ToolbarItem {
+                        RefsPanelToggle(visibility: refsPanelVisibility)
+                    }
+                    .sharedBackgroundVisibility(.hidden)
                 }
-                .sharedBackgroundVisibility(.hidden)
             }
         }
         .background {
@@ -422,10 +425,10 @@ public struct WorkspaceView: View {
            let repository = list.repository(at: selected.repository),
            case .open(let session) = repository.state,
            repository.worktrees.contains(where: { $0.path == selected.worktree }) {
-            RefsPanel(model: model(for: selected, session: session), width: width, isShown: $wantsRefsPanel, showWorktree: showWorktree(of: selected, session: session))
+            RefsPanel(model: model(for: selected, session: session), width: width, visibility: refsPanelVisibility, showWorktree: showWorktree(of: selected, session: session))
                 .id(selected)
         } else {
-            RefsPanelPlaceholder(width: width)
+            RefsPanelPlaceholder(width: width, visibility: refsPanelVisibility)
         }
     }
 
@@ -623,13 +626,22 @@ public struct WorkspaceView: View {
         if let (_, worktree) = shown, let worktree, !worktree.isBare,
            let selected = window?.selection, let model = shownModel {
             ToolbarItem {
-                BranchButtons(branch: model.branch, worktree: worktree) { folder, commit in
-                    if case .open(let session) = shown?.0.state {
-                        showWorktree(of: selected, session: session)(folder, commit)
+                HStack(spacing: Self.branchButtonsGap) {
+                    BranchButtons(branch: model.branch, worktree: worktree) { folder, commit in
+                        if case .open(let session) = shown?.0.state {
+                            showWorktree(of: selected, session: session)(folder, commit)
+                        }
+                    }
+                    // A line between them and history's commands, which they
+                    // don't act on, once history has loaded and they show.
+                    if model.phase.isReady {
+                        Rectangle()
+                            .fill(Palette.separator)
+                            .frame(width: 1, height: Self.branchButtonsLineHeight)
+                            .padding(.trailing, Self.branchButtonsLineTrailing)
+                            .accessibilityHidden(true)
                     }
                 }
-                // Apart from history's commands, which they don't act on.
-                .padding(.trailing, Self.branchButtonsGap)
             }
             .sharedBackgroundVisibility(.hidden)
         }
@@ -657,8 +669,20 @@ public struct WorkspaceView: View {
         return WorktreeMenu.commands(of: repository, shown: worktree, actions: worktreeMenuActions(shown: worktree, selected: selected, model: shownModel))
     }
 
-    /// The space between the branch's buttons and history's commands.
-    private static let branchButtonsGap = 8.0
+    /// The space between the branch's buttons and the line after them. A button
+    /// is wider than its icon, and the toolbar puts space of its own after the
+    /// line, so with `branchButtonsLineTrailing` the line has about 14 points
+    /// on each side, between New Branch's icon and the number of commits.
+    private static let branchButtonsGap = 6.0
+    /// The space after the line, besides what the toolbar puts there.
+    private static let branchButtonsLineTrailing = 4.0
+    /// How tall the line after the branch's buttons is, about as tall as their
+    /// icons.
+    private static let branchButtonsLineHeight = 16.0
+    /// How far apart macOS puts two toolbar items of one button each, measured
+    /// on macOS 27: what the refs panel's button takes from the middle of the
+    /// title row while the panel is hidden.
+    private static let refsPanelButtonPitch = 44.0
 
     /// How much of the middle's width the rest of the title row takes, which
     /// leaves the most the title can get, because the toolbar moves what doesn't
@@ -666,13 +690,15 @@ public struct WorkspaceView: View {
     /// commits doesn't count, because it goes first, when it doesn't fit what's
     /// left.
     private var titleRowTaken: Double {
-        // History's order button, the button for the refs panel, and the space
-        // the toolbar keeps around them.
-        var taken = 125.0
-        // Fetch and New Branch, the gap after them, and the toolbar's space
+        // History's order button and the space the toolbar keeps around it.
+        var taken = 125.0 - Self.refsPanelButtonPitch
+        // The button for the refs panel, while the panel is hidden. While it
+        // shows, the button is in the panel's own row (decision 85).
+        if !refsPanelVisibility.isShowing { taken += Self.refsPanelButtonPitch }
+        // Fetch and New Branch, the line after them, and the toolbar's space
         // before them.
         if let (_, worktree) = shown, let worktree, !worktree.isBare, shownModel != nil {
-            taken += 2 * 28 + 2 + Self.branchButtonsGap + TitleRowWidth.toolbarSpacing
+            taken += 2 * 28 + 2 + Self.branchButtonsGap + 1 + Self.branchButtonsLineTrailing + TitleRowWidth.toolbarSpacing
         }
         // The window's buttons and the button for the sidebar.
         if columns == .detailOnly { taken += 140 }
