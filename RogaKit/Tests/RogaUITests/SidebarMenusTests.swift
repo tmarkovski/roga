@@ -117,4 +117,15 @@ struct SidebarMenusTests {
         let entries = SidebarMenus.entries(forWorktree: missing, isDeleting: false, actions: worktreeActions())
         #expect(titles(entries) == ["Locate…", "—", "Delete…"])
     }
+
+    /// The popover and the + say where the new branch starts, by its branch's
+    /// short name or, with `HEAD` detached, its short hash (decision 82).
+    @Test func aNewWorktreeSaysWhereItStarts() {
+        #expect(NewWorktreePopover.start(of: linked) == "agent/fix-login")
+        let detached = Worktree(path: "/agents/bisect", head: ObjectID(hex: "86b3386aa0000000000000000000000000000000"))
+        #expect(NewWorktreePopover.start(of: detached) == "86b3386a")
+        #expect(NewWorktreePopover.start(of: Worktree(path: "/agents/empty")) == nil)
+        #expect(NewWorktreePopover.title(startingFrom: "main") == "New Worktree from main")
+        #expect(NewWorktreePopover.title(startingFrom: nil) == "New Worktree")
+    }
 }

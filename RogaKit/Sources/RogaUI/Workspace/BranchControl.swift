@@ -126,7 +126,8 @@ private struct FetchButton: View {
 
 /// Opens the popover for a new branch, which hangs from this button however it
 /// was asked for: here, from the branch's menu, with Shift-Command-B, or from
-/// New Worktree… in the menu of the repository's worktrees.
+/// New Worktree… in the menu bar while the sidebar is hidden. Otherwise a new
+/// worktree starts from its row in the sidebar (decision 82).
 private struct NewBranchButton: View {
     @Bindable var branch: BranchModel
     let worktree: Worktree
@@ -172,9 +173,9 @@ struct BranchMenuItems: View {
     let branch: BranchModel
     let switchBranch: (() -> Void)?
     /// Whether this is the menu bar's Branch menu, which has New Worktree… after
-    /// New Branch…, since the branch's own menu leaves worktrees to the menu of
-    /// the repository's worktrees. Its rows are in title case, as macOS's own
-    /// are, where the menus in the window are in sentence case.
+    /// New Branch…, since the branch's own menu leaves worktrees to the sidebar
+    /// (decision 82). Its rows are in title case, as macOS's own are, where the
+    /// menus in the window are in sentence case.
     var isInMenuBar = false
     /// What New Worktree… does, or nil while it can't start.
     var newWorktree: (() -> Void)?

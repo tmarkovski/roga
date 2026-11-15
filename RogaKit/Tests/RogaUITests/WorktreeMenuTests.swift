@@ -35,7 +35,14 @@ struct WorktreeMenuTests {
         )
         #expect(choices(entries).map(\.title) == ["main", "agent/fix-login", "detached at 86b3386a"])
         #expect(choices(entries).map(\.isCurrent) == [false, true, false])
-        #expect(commands(entries).map(\.title) == ["New worktree…", "Show in Finder", "Open in Terminal"])
+    }
+
+    /// Making, showing and opening a worktree are the sidebar's and the menu
+    /// bar's (decision 82), so the menu only switches between worktrees.
+    @Test func itHasOnlyTheWorktrees() {
+        let entries = WorktreeMenu.entries(for: [WorktreeFacts(worktree: main), WorktreeFacts(worktree: fixLogin)], shown: main.path, actions: actions())
+        #expect(entries.count == 2)
+        #expect(commands(entries).isEmpty)
     }
 
     @Test func choosingAWorktreeShowsItAndChoosingTheCurrentOneDoesNothing() {
@@ -62,15 +69,6 @@ struct WorktreeMenuTests {
         #expect(keys == (1...9).map { "⌘\($0)" } + [nil, nil])
     }
 
-    @Test func itsCommandsShowTheMenuBarsShortcuts() {
-        let entries = WorktreeMenu.entries(for: [WorktreeFacts(worktree: main)], shown: main.path, actions: actions())
-        let keys = entries.compactMap { entry -> String? in
-            guard case let .command(_, _, _, shortcut, _) = entry else { return nil }
-            return shortcut.map { $0.modifierSymbols + $0.keySymbol }
-        }
-        #expect(keys == ["⌥⇧⌘B", "⌥⌘R", "⌃`"])
-    }
-
     @Test func theMenuBarListsTheSameWorktreesForTheSameKeys() {
         let bare = Worktree(path: home + "/code/agents-demo.git", isMain: true, isBare: true)
         let missing = Worktree(path: home + "/agents/gone", branch: "refs/heads/agent/gone", isPrunable: true)
@@ -89,11 +87,6 @@ struct WorktreeMenuTests {
         // terminal.
         let gone = WorktreeMenu.commands(of: repository, shown: missing, actions: actions(newWorktree: nil))
         #expect(gone.reveal == nil && gone.openInTerminal == nil && gone.newWorktree == nil)
-    }
-
-    @Test func newWorktreeWaitsUntilItCanStart() {
-        let entries = WorktreeMenu.entries(for: [WorktreeFacts(worktree: main)], shown: main.path, actions: actions(newWorktree: nil))
-        #expect(commands(entries).map(\.isEnabled) == [false, true, true])
     }
 
     // MARK: The second line

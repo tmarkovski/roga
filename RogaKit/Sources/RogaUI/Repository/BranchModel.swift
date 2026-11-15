@@ -342,7 +342,7 @@ final class BranchModel {
     /// Whether the popover for a new branch shows.
     var isCreatingBranch = false
     /// Whether that popover starts with In a new worktree checked, as it does
-    /// from the menu of the repository's worktrees.
+    /// from the menu bar's New Worktree… while the sidebar is hidden.
     var startsInNewWorktree = false
     /// The commit that popover starts the branch from, when someone chose one.
     var newBranchStart: NewRefStart?

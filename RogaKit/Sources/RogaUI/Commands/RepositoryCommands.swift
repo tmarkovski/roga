@@ -60,10 +60,10 @@ public struct RepositoryCommands: Commands {
     /// Replays the history of the branch the worktree is on (decision 62).
     static let replayHistoryShortcut = KeyboardShortcut("r", modifiers: [.control, .command])
 
-    /// The shortcuts for the worktree on screen, which the menu of its
-    /// repository's worktrees in the title row shows too. New Worktree… pairs
-    /// with New Branch's Shift-Command-B, Show in Finder is VS Code's key for
-    /// it, and Open in Terminal is GitHub Desktop's.
+    /// The shortcuts for the worktree on screen. New Worktree… pairs with New
+    /// Branch's Shift-Command-B, and opens its popover on the worktree's row in
+    /// the sidebar (decision 82). Show in Finder is VS Code's key for it, and
+    /// Open in Terminal is GitHub Desktop's.
     static let newWorktreeShortcut = KeyboardShortcut("b", modifiers: [.shift, .option, .command])
     static let showInFinderShortcut = KeyboardShortcut("r", modifiers: [.option, .command])
     static let openInTerminalShortcut = KeyboardShortcut("`", modifiers: .control)

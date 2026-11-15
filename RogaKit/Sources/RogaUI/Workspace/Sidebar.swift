@@ -25,9 +25,12 @@ struct Sidebar: View {
     /// Whether the window shows Settings, which the row at the top opens.
     @Binding var showsSettings: Bool
     let locate: (ListedRepository) -> Void
-    /// Shows a worktree and opens New Branch there, with In a new worktree
-    /// ticked.
-    let newWorktree: (WorktreeSelection) -> Void
+    /// The row whose popover for a new worktree is open, which the menu bar's
+    /// New Worktree… opens too (decision 82).
+    @Binding var newWorktreeRow: WorktreeSelection?
+    /// Makes a new branch in a new worktree from a row's worktree, and shows
+    /// it. It returns what git said if it refused.
+    let createWorktree: (WorktreeSelection, String) async -> String?
     /// Whether the rows show agents' marks, as the person chose in Settings.
     var marks = AgentMarksSetting()
     @AppStorage(SidebarSettings.groupsByOrganization) private var groupsByOrganization = true
@@ -168,6 +171,11 @@ struct Sidebar: View {
             .onChange(of: arrangement) {
                 if let selection { scroller.scrollTo(selection) }
             }
+            // The menu bar's New Worktree… opens the popover on the selected
+            // row, which has to be in view for it to hang from.
+            .onChange(of: newWorktreeRow) {
+                if let newWorktreeRow { scroller.scrollTo(newWorktreeRow) }
+            }
         }
     }
 
@@ -180,7 +188,7 @@ struct Sidebar: View {
             }
         case .repository(let repository, let title, let detail):
             let home = repository.home
-            RepositoryRow(repository: repository, list: list, title: title, detail: detail, isSelected: selection == home, agents: agents(of: item)) {
+            RepositoryRow(repository: repository, list: list, title: title, detail: detail, isSelected: selection == home, isOpen: newWorktreeRow == home, agents: agents(of: item)) {
                 select(home)
             } toggle: {
                 isFocused = true
@@ -190,8 +198,9 @@ struct Sidebar: View {
             } locate: {
                 locate(repository)
             } newWorktree: {
-                newWorktree(home)
+                newWorktreeRow = home
             }
+            .modifier(newWorktreePopover(on: home, from: repository.worktrees.first))
             .id(home)
         case .worktree(let repository, let worktree, let isLast):
             let row = WorktreeSelection(repository: repository.path, worktree: worktree.path)
@@ -202,6 +211,7 @@ struct Sidebar: View {
                 unfinished: repository.unfinishedWork[worktree.path],
                 isDeleting: repository.deletingWorktrees.contains(worktree.path),
                 isSelected: selection == row,
+                isOpen: newWorktreeRow == row,
                 isLast: isLast,
                 agents: agents(of: item)
             ) {
@@ -209,18 +219,39 @@ struct Sidebar: View {
             } openInNewWindow: {
                 openWindow(value: WorkspaceWindow(selection: row))
             } newWorktree: {
-                newWorktree(row)
+                newWorktreeRow = row
             } locate: {
                 repairs.locate(worktree, in: repository, list: list) { select($0) }
             } delete: {
                 deletions.askToDelete(worktree, in: repository, list: list)
             }
+            .modifier(newWorktreePopover(on: row, from: worktree))
             .id(row)
         case .hiddenWorktrees(let repository, let title, _, let uncommittedFiles, let hasConflicts):
             HiddenWorktreesRow(title: title, uncommittedFiles: uncommittedFiles, hasConflicts: hasConflicts, agents: agents(of: item)) {
                 isFocused = true
                 list.setExpanded(true, repository)
             }
+        }
+    }
+
+    /// The popover for a new worktree, which hangs from the row of the worktree
+    /// it starts from, the way Add Repositories' hangs from its row, rather than
+    /// from the row's + button, which goes once the pointer leaves the row.
+    private func newWorktreePopover(on row: WorktreeSelection, from worktree: Worktree?) -> NewWorktreePopoverModifier {
+        NewWorktreePopoverModifier(
+            isPresented: Binding {
+                newWorktreeRow == row
+            } set: { isPresented in
+                if isPresented {
+                    newWorktreeRow = row
+                } else if newWorktreeRow == row {
+                    newWorktreeRow = nil
+                }
+            },
+            start: worktree.flatMap(NewWorktreePopover.start(of:))
+        ) { name in
+            await createWorktree(row, name)
         }
     }
 
@@ -664,12 +695,20 @@ private struct RowMenu: View {
 
 /// A repository's row, which selects its main worktree. The chevron after its
 /// name shows or hides its linked worktrees.
+///
+/// On hover, a + before its menu's button starts a new worktree (decision 82).
+/// The two buttons take two places at the right edge, so the count moves left
+/// by one while the pointer is over the row, rather than staying put as it does
+/// on a worktree's row, which has only the menu.
 private struct RepositoryRow: View {
     let repository: ListedRepository
     let list: RepositoryList
     let title: String
     let detail: String?
     let isSelected: Bool
+    /// Whether its popover for a new worktree is open, which keeps the row's
+    /// gray to say where the popover came from, as Add Repositories' row does.
+    let isOpen: Bool
     let agents: RowAgents?
     let select: () -> Void
     let toggle: () -> Void
@@ -679,7 +718,7 @@ private struct RepositoryRow: View {
 
     var body: some View {
         let agent = agents?.summary
-        SidebarRow(isSelected: isSelected, agent: agent, unfinished: unfinished, action: select) {
+        SidebarRow(isSelected: isSelected || isOpen, agent: agent, unfinished: unfinished, action: select) {
             HStack(spacing: 3) {
                 FadingText(title)
                     .font(.system(size: 13))
@@ -709,6 +748,9 @@ private struct RepositoryRow: View {
                 UncommittedCount(count: ownUncommittedFiles, hasConflicts: ownHasConflicts)
             }
         } commands: {
+            if let main, !main.isBare {
+                NewWorktreeButton(start: NewWorktreePopover.start(of: main), action: newWorktree)
+            }
             RowMenu(entries: menu)
         }
         .overlay { RefMenuArea(entries: menu) }
@@ -802,6 +844,8 @@ private struct WorktreeRow: View {
     let unfinished: UnfinishedWork?
     let isDeleting: Bool
     let isSelected: Bool
+    /// Whether its popover for a new worktree is open.
+    let isOpen: Bool
     let isLast: Bool
     let agents: RowAgents?
     let select: () -> Void
@@ -812,7 +856,7 @@ private struct WorktreeRow: View {
 
     var body: some View {
         let agent = agents?.summary
-        SidebarRow(isSelected: isSelected, isEnabled: !isDeleting, canSelect: canSelect, agent: agent, unfinished: unfinished, lineIndent: WorktreeConnector.textIndent, action: select) {
+        SidebarRow(isSelected: isSelected || isOpen, isEnabled: !isDeleting, canSelect: canSelect, agent: agent, unfinished: unfinished, lineIndent: WorktreeConnector.textIndent, action: select) {
             FadingText(worktree.title)
                 .font(.system(size: 13))
                 .opacity(worktree.isPrunable ? 0.6 : 1)

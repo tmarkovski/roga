@@ -203,6 +203,8 @@ public struct WorkspaceView: View {
     @State private var titleRowRoom: Double?
     @State private var sidebarLine = SidebarLineHover()
     @State private var showsSettings = false
+    /// The sidebar row whose popover for a new worktree is open (decision 82).
+    @State private var newWorktreeRow: WorktreeSelection?
     /// Which window `openSettings` shows Settings on, which keeps it equal from
     /// one update of the window to the next.
     @State private var settingsWindow = UUID()
@@ -261,7 +263,7 @@ public struct WorkspaceView: View {
     /// The sidebar and the worktree selected in it.
     private var workspace: some View {
         NavigationSplitView(columnVisibility: $columns) {
-            Sidebar(list: list, monitor: agentMonitor, selection: selection, showsSettings: $showsSettings, locate: locate, newWorktree: startNewWorktree)
+            Sidebar(list: list, monitor: agentMonitor, selection: selection, showsSettings: $showsSettings, locate: locate, newWorktreeRow: $newWorktreeRow, createWorktree: createWorktree)
                 .overlay(alignment: .trailing) {
                     // A line between the sidebar and the worktree, from the
                     // top of the window to the bottom.
@@ -641,7 +643,7 @@ public struct WorkspaceView: View {
                 selection.wrappedValue = WorktreeSelection(repository: selected.repository, worktree: folder)
             },
             newWorktree: model.flatMap { model in
-                model.branch.isBusy || worktree.isBare ? nil : { model.branch.startNewWorktree() }
+                model.branch.isBusy || worktree.isBare ? nil : { startNewWorktree(from: selected, model: model) }
             },
             reveal: reveal,
             openInTerminal: openInTerminal
@@ -687,15 +689,45 @@ public struct WorkspaceView: View {
         locateRepository(repository, list: list) { selection.wrappedValue = $0 }
     }
 
-    /// Shows a worktree and opens New Branch there with In a new worktree ticked,
-    /// as New Worktree… does in the title row, for the sidebar's menus. New Branch
-    /// hangs off the title row and starts from the branch of the worktree on screen,
-    /// so the worktree has to show first. Its model is the one the window goes on to
-    /// show, so the popover opens once the title row has its branch.
-    private func startNewWorktree(from target: WorktreeSelection) {
-        guard let repository = list.repository(at: target.repository), case .open(let session) = repository.state else { return }
-        selection.wrappedValue = target
-        model(for: target, session: session).branch.startNewWorktree()
+    /// What the menu bar's New Worktree… does for the worktree on screen: it opens
+    /// the popover on that worktree's row in the sidebar (decision 82). While the
+    /// sidebar is hidden, there's no row to hang it from, so New Branch opens in
+    /// the title row with In a new worktree ticked.
+    private func startNewWorktree(from selected: WorktreeSelection, model: RepositoryModel) {
+        if columns == .detailOnly {
+            model.branch.startNewWorktree()
+        } else {
+            newWorktreeRow = selected
+        }
+    }
+
+    /// Makes a new branch in a new worktree, from the worktree of the sidebar row
+    /// whose popover asked, and shows it. The window needn't show that worktree
+    /// first, so the command runs here rather than through its model, which may
+    /// not exist (decision 82).
+    ///
+    /// - Returns: What git said if it refused, which the popover shows.
+    private func createWorktree(from row: WorktreeSelection, named name: String) async -> String? {
+        guard let repository = list.repository(at: row.repository), case .open(let session) = repository.state else { return nil }
+        // Nothing runs in a worktree while git does something else there, as in
+        // the title row.
+        let model = recent.existingModel(for: row)
+        if model?.branch.isBusy == true {
+            return "Roga is still running git in this worktree. Try again once it's done."
+        }
+        do {
+            try await session.create(NewBranch(name: name, inNewWorktree: true), in: row.worktree)
+        } catch {
+            return (error as? GitError)?.message ?? String(describing: error)
+        }
+        if newWorktreeRow == row { newWorktreeRow = nil }
+        // The window can only show a worktree the sidebar knows about.
+        await list.refresh(repositoryAt: row.repository)
+        model?.refsChanged()
+        if let created = try? await session.worktrees().first(where: { $0.branch == Ref.branchPrefix + name }) {
+            showWorktree(of: row, session: session)(created.path, created.head)
+        }
+        return nil
     }
 }
 
@@ -739,5 +771,11 @@ final class RecentWorktrees {
             models[order.removeFirst()] = nil
         }
         return model
+    }
+
+    /// The model of a worktree the window showed lately, without making one or
+    /// counting it as shown.
+    func existingModel(for selection: WorktreeSelection) -> RepositoryModel? {
+        models[selection]
     }
 }

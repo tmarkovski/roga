@@ -292,7 +292,8 @@ struct SidebarLayoutTests {
             selection: .constant(selection),
             showsSettings: .constant(false),
             locate: { _ in },
-            newWorktree: { _ in },
+            newWorktreeRow: .constant(nil),
+            createWorktree: { _, _ in nil },
             marks: AgentMarksSetting(store: defaults)
         )
         return SidebarLayout(groups: list.groups, arrangement: SidebarArrangement(groupsByOrganization: false), selection: selection).items.map { item in

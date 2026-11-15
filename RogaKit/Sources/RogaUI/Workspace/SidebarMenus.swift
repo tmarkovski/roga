@@ -4,17 +4,16 @@ import MenuUI
 /// What the sidebar's rows offer, in their context menus and in the menus their
 /// "…" buttons open, which are the same.
 ///
-/// New Worktree… is here as well as in the title row's menu of worktrees
-/// (decision 40), because the sidebar is where each repository's worktrees
-/// show. It shows the row's worktree in the window first, since New Branch
-/// hangs off the title row and starts from the branch of the worktree on
-/// screen.
+/// New Worktree… is here, rather than in the title row's menu of worktrees,
+/// because the sidebar is where each repository's worktrees are listed and
+/// managed (decision 82). Its popover hangs from the row and starts from the
+/// row's worktree, without showing that worktree in the window first.
 enum SidebarMenus {
     /// What a repository's row does.
     struct RepositoryActions {
         var openInNewWindow: () -> Void
-        /// Shows the main worktree and opens New Branch with In a new worktree
-        /// ticked.
+        /// Opens the popover for a new worktree from the main worktree, on the
+        /// row.
         var newWorktree: () -> Void
         /// Asks where a repository that can't be found is now.
         var locate: () -> Void
@@ -26,8 +25,7 @@ enum SidebarMenus {
     /// What a linked worktree's row does.
     struct WorktreeActions {
         var openInNewWindow: () -> Void
-        /// Shows the worktree and opens New Branch with In a new worktree
-        /// ticked, starting from its branch.
+        /// Opens the popover for a new worktree from this one, on the row.
         var newWorktree: () -> Void
         /// Asks where a worktree whose folder is missing is now, and mends git's
         /// links to it there.

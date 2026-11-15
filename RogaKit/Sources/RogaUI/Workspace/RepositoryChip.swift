@@ -139,9 +139,13 @@ extension RefMenu.Shortcut {
 }
 
 /// The menu that the repository's name in the title row opens. It lists each of
-/// the repository's worktrees on two lines, the main worktree first, with
-/// commands for the one the window shows after them.
+/// the repository's worktrees on two lines, the main worktree first, for
+/// switching between them. Making, showing and opening a worktree are the
+/// sidebar's, where worktrees are listed and managed (decision 82), and the menu
+/// bar's.
 enum WorktreeMenu {
+    /// What the menu and the menu bar do. Only `show` is in the menu, and the
+    /// rest are the menu bar's.
     struct Actions {
         /// Shows the worktree in this folder in the window.
         var show: (String) -> Void
@@ -158,16 +162,11 @@ enum WorktreeMenu {
     ///
     /// - Parameter now: The time to say how long agents have been at it from.
     static func entries(for facts: [WorktreeFacts], shown: String, now: Date = .now, actions: Actions) -> [RefMenu.Entry] {
-        var entries: [RefMenu.Entry] = facts.filter { !$0.worktree.isBare }.enumerated().map { index, facts in
+        facts.filter { !$0.worktree.isBare }.enumerated().map { index, facts in
             var choice = choice(for: facts, isCurrent: facts.worktree.path == shown, now: now) { actions.show(facts.worktree.path) }
             choice.shortcut = RepositoryCommands.worktreeShortcut(index).map(RefMenu.Shortcut.init)
             return .choice(choice)
         }
-        entries.append(.divider)
-        entries.append(.command("New worktree…", isEnabled: actions.newWorktree != nil, shortcut: RefMenu.Shortcut(RepositoryCommands.newWorktreeShortcut)) { actions.newWorktree?() })
-        entries.append(.command("Show in Finder", shortcut: RefMenu.Shortcut(RepositoryCommands.showInFinderShortcut)) { actions.reveal(shown) })
-        entries.append(.command("Open in Terminal", shortcut: RefMenu.Shortcut(RepositoryCommands.openInTerminalShortcut)) { actions.openInTerminal(shown) })
-        return entries
     }
 
     /// What the menu bar does with the worktree on screen and the others in
