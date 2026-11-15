@@ -300,6 +300,115 @@ struct RefMenuTests {
         #expect(widths([(300, true), (400, false), (99, false)], in: 391) == nil)
     }
 
+    // MARK: Cutting a branch's name short
+
+    private let rowFont = NSFont.systemFont(ofSize: 13)
+    private let boldFont = NSFont.systemFont(ofSize: 13, weight: .bold)
+
+    private func width(_ title: RefMenu.Title, isHeading: Bool = false) -> Double {
+        title.attributed(font: rowFont, color: .labelColor, isHeading: isHeading).size().width
+    }
+
+    private func boldWidth(_ text: String) -> Double {
+        (text as NSString).size(withAttributes: [.font: boldFont]).width
+    }
+
+    private func name(_ part: RefMenu.Title.Part) -> String? {
+        if case let .branch(name) = part { name } else { nil }
+    }
+
+    private let rebase: RefMenu.Title = "Rebase \(branch: "tm/view-models-exploration") onto \(branch: "tm/relaxed-sammet-e59d15")…"
+
+    @Test func aTitleThatFitsIsAsItWas() {
+        #expect(rebase.fitting(width(rebase), font: rowFont).parts == rebase.parts)
+        #expect(rebase.fitting(1000, font: rowFont).parts == rebase.parts)
+    }
+
+    /// Cutting the whole row in its middle took the space after a name with it,
+    /// as in "tm/view-models-explorati…onto".
+    @Test func aRowTooLongCutsItsLongestNameAndKeepsTheWordsAroundIt() throws {
+        let room = width(rebase) - 12
+        let fitted = rebase.fitting(room, font: rowFont)
+        #expect(width(fitted) <= room)
+        #expect(fitted.parts.count == 5)
+        #expect(fitted.parts[0] == .text("Rebase "))
+        #expect(fitted.parts[2] == .text(" onto "))
+        #expect(fitted.parts[4] == .text("…"))
+        // Only the wider name is cut, though that leaves it the narrower one.
+        #expect(fitted.parts[3] == .branch("tm/relaxed-sammet-e59d15"))
+        let cut = try #require(name(fitted.parts[1]))
+        #expect(cut.hasPrefix("tm/view-mod") && cut.hasSuffix("ration") && cut.contains("…"))
+        #expect(cut.count < "tm/view-models-exploration".count)
+    }
+
+    @Test func aRowFarTooLongCutsBothNamesToTheSameRoom() throws {
+        let room = width(rebase) - 160
+        let fitted = rebase.fitting(room, font: rowFont)
+        #expect(width(fitted) <= room)
+        #expect(fitted.plain.hasPrefix("Rebase tm/") && fitted.plain.contains(" onto tm/") && fitted.plain.hasSuffix("15…"))
+        let names = fitted.parts.compactMap(name)
+        #expect(names.count == 2)
+        #expect(names.allSatisfy { $0.contains("…") })
+        // Each kept as much as fits in its half, so they're within a letter or two.
+        let widths = names.map { boldWidth($0) }
+        #expect(abs(widths[0] - widths[1]) < 16)
+    }
+
+    @Test func aNameKeepsAFewLettersHoweverLittleRoomThereIs() throws {
+        let fitted = rebase.fitting(40, font: rowFont)
+        #expect(fitted.parts[0] == .text("Rebase "))
+        #expect(fitted.parts[2] == .text(" onto "))
+        for cut in fitted.parts.compactMap(name) {
+            #expect(cut.contains("…") && cut.count >= 2)
+            #expect(boldWidth(cut) <= 24)
+        }
+    }
+
+    @Test func aTitleWithoutABranchIsLeftForTheRowToCut() {
+        let subject = RefMenu.Title("Keep a diff's band headers and buttons in place as the view resizes")
+        #expect(subject.fitting(100, font: rowFont).parts == subject.parts)
+    }
+
+    @Test func aHeadingCutsItsNameInTheHeadingsFont() throws {
+        let heading = RefMenu.Title.branch("tm/view-models-exploration")
+        let room = width(heading, isHeading: true) - 30
+        let fitted = heading.fitting(room, font: rowFont, isHeading: true)
+        #expect(width(fitted, isHeading: true) <= room)
+        let cut = try #require(fitted.parts.first.flatMap(name))
+        #expect(cut.hasPrefix("tm/view") && cut.hasSuffix("ation") && cut.contains("…"))
+        // In a row the same name is bold, so wider, and loses more.
+        let inARow = try #require(heading.fitting(room, font: rowFont).parts.first.flatMap(name))
+        #expect(inARow.count < cut.count)
+    }
+
+    @Test func theLongestNameIsCutAloneWhileItKeepsMostOfItself() {
+        // They fit.
+        #expect(RefMenu.nameWidths(of: [200, 100], in: 300) == [200, 100])
+        #expect(RefMenu.nameWidths(of: [], in: 300) == [])
+        // One cut, even when that leaves the longest shorter than the next.
+        #expect(RefMenu.nameWidths(of: [183, 182], in: 353) == [171, 182])
+        #expect(RefMenu.nameWidths(of: [182, 183], in: 353) == [182, 171])
+        // Down to two thirds of itself.
+        #expect(RefMenu.nameWidths(of: [180, 180], in: 300) == [120, 180])
+    }
+
+    @Test func pastThatTheNamesComeDownToOneWidth() {
+        #expect(RefMenu.nameWidths(of: [180, 180], in: 298) == [149, 149])
+        // A name narrower than that width stays whole.
+        #expect(RefMenu.nameWidths(of: [300, 100], in: 250) == [150, 100])
+        #expect(RefMenu.nameWidths(of: [100, 300, 200], in: 400) == [100, 150, 150])
+        #expect(RefMenu.nameWidths(of: [200], in: 120) == [120])
+        #expect(RefMenu.nameWidths(of: [200, 100], in: -20) == [0, 0])
+    }
+
+    @Test func aNameIsCutToAsManyLettersAsFit() {
+        let room = boldWidth("ab…yz")
+        #expect(RefMenu.cutInMiddle("abcdefxyz", to: room, font: boldFont) == "ab…yz")
+        // An odd letter goes to the start.
+        #expect(RefMenu.cutInMiddle("abcdefxyz", to: boldWidth("abc…yz"), font: boldFont) == "abc…yz")
+        #expect(RefMenu.cutInMiddle("abcdefxyz", to: 0, font: boldFont) == "…")
+    }
+
     // MARK: Return
 
     private func key(_ code: UInt16) throws -> NSEvent {
