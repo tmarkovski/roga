@@ -39,12 +39,14 @@
     --band-line: #3a372d;
     /* The line around an agent's command in the app (decision 68): still at
        about half strength, brighter while lit, and a light whose front is
-       redder than the line, with a soft glow. */
+       redder than the line, with a soft glow. On the page's light paper the
+       light is thicker than the app's, or it's lost against the lit line. */
     --agent-outline: rgb(201 68 2 / 0.42);
     --agent-outline-lit: rgb(201 68 2 / 0.85);
     --agent-orange: rgb(201 68 2);
     --agent-light: #e8590c;
     --agent-glow: rgb(232 89 12 / 0.45);
+    --agent-light-width: 2.5px;
   }
 
   @media (prefers-color-scheme: dark) {
@@ -63,6 +65,7 @@
       --agent-orange: rgb(240 129 63);
       --agent-light: #ffb27d;
       --agent-glow: rgb(255 160 100 / 0.6);
+      --agent-light-width: 1.5px;
     }
   }
 
@@ -774,7 +777,7 @@
   }
 
   .outline .light rect {
-    stroke-width: 1.5;
+    stroke-width: var(--agent-light-width);
     stroke-linecap: round;
   }
 
