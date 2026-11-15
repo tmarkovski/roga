@@ -37,6 +37,14 @@
     --band-ink: #f5f0e6;
     --band-muted: #a9a394;
     --band-line: #3a372d;
+    /* The line around an agent's command in the app (decision 68): still at
+       about half strength, brighter while lit, and a light whose front is
+       redder than the line, with a soft glow. */
+    --agent-outline: rgb(201 68 2 / 0.42);
+    --agent-outline-lit: rgb(201 68 2 / 0.85);
+    --agent-orange: rgb(201 68 2);
+    --agent-light: #e8590c;
+    --agent-glow: rgb(232 89 12 / 0.45);
   }
 
   @media (prefers-color-scheme: dark) {
@@ -50,6 +58,11 @@
       --button: #c24102;
       --shadow: rgb(0 0 0 / 0.5);
       --band: #211f16;
+      --agent-outline: rgb(240 129 63 / 0.45);
+      --agent-outline-lit: rgb(240 129 63 / 0.9);
+      --agent-orange: rgb(240 129 63);
+      --agent-light: #ffb27d;
+      --agent-glow: rgb(255 160 100 / 0.6);
     }
   }
 
@@ -380,8 +393,10 @@
     background: var(--glass);
   }
 
-  /* A warm dusk in the house's oranges, with hills along the bottom. */
-  .screen {
+  /* A warm dusk in the house's oranges, with hills along the bottom. The
+     pictures of what the agents do stand on the same sky. */
+  .screen,
+  .stage {
     --sky-top: #ffe2bd;
     --sky-mid: #f7a35c;
     --sky-low: #e35d17;
@@ -390,6 +405,9 @@
     --hill-mid: #943003;
     --hill-near: #5e1d04;
     --menu-ink: #2b1405;
+  }
+
+  .screen {
     position: relative;
     overflow: hidden;
     aspect-ratio: 16 / 9;
@@ -514,7 +532,8 @@
       background: radial-gradient(closest-side, rgb(242 112 46 / 0.16), rgb(242 112 46 / 0.05) 60%, transparent);
     }
 
-    .screen {
+    .screen,
+    .stage {
       --sky-top: #2b170c;
       --sky-mid: #6b290a;
       --sky-low: #c4490b;
@@ -679,9 +698,163 @@
     border-radius: 0.75rem;
   }
 
-  .pair img {
-    border-color: var(--line);
-    box-shadow: 0 1rem 2rem -0.75rem var(--shadow);
+  /* What the agents do, as vertical tabs beside one picture at a time. Without
+     the script every picture shows, one under the other. */
+  .workflows {
+    display: grid;
+    grid-template-columns: minmax(0, 19rem) minmax(0, 1fr);
+    gap: clamp(1.5rem, 4vw, 3rem);
+    align-items: start;
+    margin-top: clamp(2rem, 4vw, 3rem);
+  }
+
+  .tabs {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .tab {
+    position: relative;
+    display: block;
+    padding: 1rem 1.125rem;
+    border: 1px solid transparent;
+    border-radius: 0.875rem;
+    background: none;
+    color: var(--muted);
+    font: inherit;
+    text-align: left;
+  }
+
+  .ready .tab {
+    cursor: pointer;
+  }
+
+  .ready .tab:hover {
+    background: var(--well);
+  }
+
+  /* The selected tab is a card with the line the app draws around an agent's
+     command, as on its Generate button. The script draws the line over the
+     tab's border, and when the tab is chosen it draws the line in behind the
+     light that runs around that button. */
+  .tab[aria-selected="true"] {
+    background: var(--well);
+  }
+
+  .outline {
+    position: absolute;
+    top: -1px;
+    left: -1px;
+    width: calc(100% + 2px);
+    height: calc(100% + 2px);
+    overflow: visible;
+    pointer-events: none;
+  }
+
+  .outline rect {
+    fill: none;
+  }
+
+  /* It brightens under the pointer and while the light goes around, as in
+     the app. */
+  .outline .still {
+    stroke: var(--agent-outline);
+    stroke-width: 1;
+    transition: stroke 0.15s;
+  }
+
+  .tab:hover .outline .still,
+  .outline.passing .still {
+    stroke: var(--agent-outline-lit);
+  }
+
+  .outline .light {
+    opacity: 0;
+  }
+
+  .outline .light rect {
+    stroke-width: 1.5;
+    stroke-linecap: round;
+  }
+
+  .tab:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .tab-title {
+    display: block;
+    color: var(--ink);
+    font-weight: 600;
+  }
+
+  .tab-text {
+    display: block;
+    margin-top: 0.25rem;
+    font-size: 0.9375rem;
+    line-height: 1.45;
+  }
+
+  .panels {
+    display: grid;
+    gap: 1.25rem;
+  }
+
+  /* Every picture stands on the hero's dusk, in a box of one shape, so the
+     page doesn't move when the tab changes. */
+  .stage {
+    display: grid;
+    place-items: center;
+    aspect-ratio: 3 / 2;
+    padding: 5.5% 6%;
+    border-radius: 1.25rem;
+    background:
+      radial-gradient(45% 55% at 92% 70%, var(--sun), transparent 70%),
+      linear-gradient(170deg, var(--sky-top), var(--sky-mid) 55%, var(--sky-low));
+    container-type: inline-size;
+  }
+
+  .stage[hidden] {
+    display: none;
+  }
+
+  .stage:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+  }
+
+  .shots {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4cqw;
+    width: 100%;
+  }
+
+  .shots img {
+    border-radius: 1cqw;
+    box-shadow: 0 1.6cqw 3.2cqw -0.8cqw rgb(40 10 0 / 0.45);
+  }
+
+  .placeholder {
+    display: grid;
+    place-items: center;
+    width: 62%;
+    height: 100%;
+    padding: 1.5rem;
+    border: 2px dashed rgb(255 255 255 / 0.7);
+    border-radius: 1cqw;
+    background: rgb(255 255 255 / 0.35);
+    color: var(--menu-ink);
+    font-size: 0.9375rem;
+    text-align: center;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .placeholder {
+      border-color: rgb(255 255 255 / 0.35);
+      background: rgb(0 0 0 / 0.25);
+    }
   }
 
   /* The promises are drawn like history: commits on a line, and the one that
@@ -766,13 +939,15 @@
       max-width: 22rem;
     }
 
-    .frames {
+    .frames,
+    .workflows {
       grid-template-columns: minmax(0, 1fr);
     }
   }
 </style>
 <script src="/compare.js" defer></script>
 <script src="/copy.js" defer></script>
+<script src="/tabs.js" defer></script>
 </head>
 <body>
 <header class="top">
@@ -888,21 +1063,44 @@
   <section class="feature">
     <div class="wide">
       <h2>Add intelligence with the tools you already have.</h2>
-      <p>Roga works with the Claude Code or Codex you already have installed and signed in, so there’s no new account or API key to set up. Generate commit messages for your staged changes in your repository’s style, resolve merge conflicts, and get a suggested fix when Git refuses a command. You review every result, and suggested commands run only after you approve them.</p>
-      <ul class="frames pair">
-        <li>
-          <picture>
-            <source media="(prefers-color-scheme: dark)" srcset="/shots/conflict-before-dark.webp">
-            <img src="/shots/conflict-before-light.webp" width="1116" height="1470" loading="lazy" alt="Three merge conflicts with branches and commits identified, and a Resolve with Claude button.">
-          </picture>
-        </li>
-        <li>
-          <picture>
-            <source media="(prefers-color-scheme: dark)" srcset="/shots/conflict-after-dark.webp">
-            <img src="/shots/conflict-after-light.webp" width="1116" height="1470" loading="lazy" alt="Claude Code’s proposed resolutions for the three conflicts, ready for review.">
-          </picture>
-        </li>
-      </ul>
+      <p>Roga works with the Claude Code or Codex you already have installed and signed in, so there’s no new account or API key to set up. You review every result, and suggested commands run only after you approve them.</p>
+      <div class="workflows">
+        <div class="tabs">
+          <button class="tab" id="tab-conflicts" type="button" aria-controls="panel-conflicts">
+            <span class="tab-title">Resolve conflicts</span>
+            <span class="tab-text">Get a resolution for each conflict in a file, with a note on what was kept from each side.</span>
+          </button>
+          <button class="tab" id="tab-messages" type="button" aria-controls="panel-messages">
+            <span class="tab-title">Generate commit messages</span>
+            <span class="tab-text">Write a message for the staged changes that matches the style of the repository’s recent commits.</span>
+          </button>
+          <button class="tab" id="tab-errors" type="button" aria-controls="panel-errors">
+            <span class="tab-title">Solve unknown errors</span>
+            <span class="tab-text">When Git refuses a command, find out why and get the commands that fix it.</span>
+          </button>
+        </div>
+        <div class="panels">
+          <div class="stage" id="panel-conflicts">
+            <div class="shots">
+              <picture>
+                <source media="(prefers-color-scheme: dark)" srcset="/shots/conflict-before-dark.webp">
+                <img src="/shots/conflict-before-light.webp" width="1116" height="1470" loading="lazy" alt="Three merge conflicts with branches and commits identified, and a Resolve with Claude button.">
+              </picture>
+              <picture>
+                <source media="(prefers-color-scheme: dark)" srcset="/shots/conflict-after-dark.webp">
+                <img src="/shots/conflict-after-light.webp" width="1116" height="1470" loading="lazy" alt="Claude Code’s proposed resolutions for the three conflicts, ready for review.">
+              </picture>
+            </div>
+          </div>
+          <!-- Placeholders until these two are captured from a real build. -->
+          <div class="stage" id="panel-messages">
+            <p class="placeholder">Screenshot to come: Generate with Claude in the message editor.</p>
+          </div>
+          <div class="stage" id="panel-errors">
+            <p class="placeholder">Screenshot to come: Fix with Claude on a command Git refused.</p>
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 
