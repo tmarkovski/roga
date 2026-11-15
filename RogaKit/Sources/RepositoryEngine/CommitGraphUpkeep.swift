@@ -47,7 +47,7 @@ public enum CommitGraphUpdate: Sendable, Hashable {
             case .replaceRefs: "git doesn't use commit-graph files in a repository with replace refs."
             case .grafts: "git doesn't use commit-graph files in a repository with grafts."
             case .turnedOffInGit: "core.commitGraph is false in this repository's git configuration."
-            case .cannotWrite(let folder): "Roga can't write to \(folder)."
+            case .cannotWrite(let folder): "Can't write to \(folder)."
             }
         }
     }

@@ -49,6 +49,6 @@ public struct CommitLineCountsParser: Sendable {
     }
 
     private static func unreadable(_ line: ArraySlice<UInt8>) -> ParseError {
-        ParseError("git printed line counts Roga can't read: \(String(decoding: line, as: UTF8.self).debugDescription)")
+        ParseError("git printed unexpected line counts: \(String(decoding: line, as: UTF8.self).debugDescription)")
     }
 }

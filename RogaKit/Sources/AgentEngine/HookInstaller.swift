@@ -274,7 +274,7 @@ public struct HookInstaller: Sendable {
         } catch let error as ProgramError {
             return .unknown(HookInstallError.program(error).message)
         } catch {
-            return .unknown("Roga stopped asking \(kind.name) about its plugins.")
+            return .unknown("\(kind.name) didn't answer.")
         }
         guard result.succeeded else {
             return .unknown(HookInstallError.failed(command, result.status, output: result.text, errorOutput: result.errorOutput).message)
@@ -347,7 +347,7 @@ public struct HookInstaller: Sendable {
         marketplaceFolder: () async -> String?
     ) async -> HookStatus {
         guard let plugins = (try? JSONSerialization.jsonObject(with: Data(listing))) as? [Any] else {
-            return .unknown("Claude Code listed its plugins in a way Roga couldn't read.")
+            return .unknown("Claude Code listed its plugins in an unexpected way.")
         }
         let ours = plugins.compactMap { $0 as? [String: Any] }.filter { $0["id"] as? String == HookPlugin.pluginID }
         guard let entry = ours.first(where: { $0["enabled"] as? Bool == true }) ?? ours.first else {
@@ -389,7 +389,7 @@ public struct HookInstaller: Sendable {
         guard let object = (try? JSONSerialization.jsonObject(with: Data(listing))) as? [String: Any],
               let installed = object["installed"] as? [Any]
         else {
-            return .unknown("Codex listed its plugins in a way Roga couldn't read.")
+            return .unknown("Codex listed its plugins in an unexpected way.")
         }
         let ours = installed.compactMap { $0 as? [String: Any] }.first {
             $0["pluginId"] as? String == HookPlugin.pluginID && $0["installed"] as? Bool != false

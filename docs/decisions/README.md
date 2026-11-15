@@ -95,3 +95,4 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [85](0085-keep-the-refs-panels-button-in-the-windows-corner.md) | Keep the refs panel's button in the window's corner | Accepted |
 | [86](0086-gray-the-words-of-the-uncommitted-row.md) | Gray the words of the uncommitted row | Accepted |
 | [87](0087-sort-refs-from-the-panels-menu.md) | Sort refs from the panel's menu | Accepted |
+| [88](0088-messages-dont-narrate-what-roga-did.md) | Messages don't narrate what Roga did | Accepted |

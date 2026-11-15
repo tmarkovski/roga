@@ -54,11 +54,11 @@ public enum PatchParser {
                         oldLeft -= 1
                         newLeft -= 1
                     default:
-                        throw ParseError("git diff-tree printed a line Roga can't read in a hunk: \(text(bytes, start..<end).debugDescription)")
+                        throw ParseError("git diff-tree printed an unexpected line in a hunk: \(text(bytes, start..<end).debugDescription)")
                     }
                 } else if first == UInt8(ascii: "@") {
                     guard let hunk = hunk(bytes, start..<end) else {
-                        throw ParseError("git diff-tree printed a hunk header Roga can't read: \(text(bytes, start..<end).debugDescription)")
+                        throw ParseError("git diff-tree printed an unexpected hunk header: \(text(bytes, start..<end).debugDescription)")
                     }
                     (oldNumber, oldLeft, newNumber, newLeft) = hunk
                     lines.append(.init(kind: .hunkHeader, text: start..<end))

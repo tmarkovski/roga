@@ -590,7 +590,7 @@ enum ProgramPanel {
         panel.treatsFilePackagesAsDirectories = true
         panel.showsHiddenFiles = true
         panel.prompt = "Choose"
-        panel.message = "Choose the \(name) program for Roga to run."
+        panel.message = "Choose the \(name) program to use."
         if let current {
             panel.directoryURL = URL(filePath: (current as NSString).deletingLastPathComponent, directoryHint: .isDirectory)
         }

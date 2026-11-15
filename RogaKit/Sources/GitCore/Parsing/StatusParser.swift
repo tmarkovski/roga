@@ -178,7 +178,7 @@ public enum StatusParser {
     }
 
     private static func unreadable(_ field: ArraySlice<UInt8>) -> ParseError {
-        ParseError("git status printed a record Roga can't read: \(text(field).debugDescription)")
+        ParseError("git status printed an unexpected record: \(text(field).debugDescription)")
     }
 
     private static func text(_ bytes: ArraySlice<UInt8>) -> String {
@@ -221,7 +221,7 @@ public enum NumstatParser {
     }
 
     private static func unreadable(_ record: ArraySlice<UInt8>) -> ParseError {
-        ParseError("git printed line counts Roga can't read: \(text(record).debugDescription)")
+        ParseError("git printed unexpected line counts: \(text(record).debugDescription)")
     }
 
     private static func text(_ bytes: ArraySlice<UInt8>) -> String {

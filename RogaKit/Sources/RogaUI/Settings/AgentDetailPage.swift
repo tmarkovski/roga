@@ -487,7 +487,7 @@ final class AgentTestRun {
         do {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         } catch {
-            return .failed("Roga couldn't make a folder for the test: \(error.localizedDescription)")
+            return .failed("Couldn't make a folder for the test: \(error.localizedDescription)")
         }
         defer { try? FileManager.default.removeItem(at: folder) }
         let request = CommitMessageRequest(

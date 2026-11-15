@@ -20,7 +20,7 @@ public struct BranchIntegration: Sendable, Hashable {
         public init() {}
 
         public var description: String {
-            "Something else has moved HEAD since Roga worked out what this would do, so Roga left it there."
+            "Something else moved HEAD in the meantime, so it was left alone."
         }
     }
 

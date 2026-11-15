@@ -43,7 +43,7 @@ public enum RawDiffParser {
               let newID = ObjectID(hexDigits: parts[3]),
               let letter = parts[4].first
         else {
-            throw ParseError("git diff-tree printed a record Roga can't read: \(text(record).debugDescription)")
+            throw ParseError("git diff-tree printed an unexpected record: \(text(record).debugDescription)")
         }
 
         // The digits after the letter say how similar a renamed or copied file is.
@@ -85,7 +85,7 @@ public enum RawDiffParser {
         // Only the first two tabs separate anything, since a path can hold tabs.
         let parts = record.split(separator: UInt8(ascii: "\t"), maxSplits: 2, omittingEmptySubsequences: false)
         guard parts.count == 3 else {
-            throw ParseError("git diff-tree printed line counts Roga can't read: \(text(record).debugDescription)")
+            throw ParseError("git diff-tree printed unexpected line counts: \(text(record).debugDescription)")
         }
         if file.oldPath != nil {
             // A rename's paths are in the raw record too, so these just move past them.
@@ -102,7 +102,7 @@ public enum RawDiffParser {
         // Binary files have `-` for both counts.
         guard parts[0].first != UInt8(ascii: "-") else { return }
         guard let added = Int(text(parts[0])), let removed = Int(text(parts[1])) else {
-            throw ParseError("git diff-tree printed line counts Roga can't read: \(text(record).debugDescription)")
+            throw ParseError("git diff-tree printed unexpected line counts: \(text(record).debugDescription)")
         }
         // git counts the `Subproject commit` lines of a submodule's patch, which
         // aren't lines of any file, and would add to a folder's counts.

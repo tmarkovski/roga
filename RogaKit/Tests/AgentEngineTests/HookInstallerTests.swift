@@ -285,7 +285,7 @@ struct HookInstallerTests {
         #expect(try await status(#"[{"id":"roga-hooks@roga","scope":"project","enabled":false},{"id":"roga-hooks@roga","scope":"user","enabled":true}]"#) == .installed)
         #expect(try await status(#"[{"id":"roga-hooks@roga","enabled":true,"errors":["Marketplace roga failed to load: cache-miss"]}]"#)
             == .unknown("Marketplace roga failed to load: cache-miss"))
-        #expect(try await status("Usage: claude plugin list") == .unknown("Claude Code listed its plugins in a way Roga couldn't read."))
+        #expect(try await status("Usage: claude plugin list") == .unknown("Claude Code listed its plugins in an unexpected way."))
     }
 
     @Test func saysWhenClaudeCodeReadsTheHooksFromAnotherCopy() async throws {
@@ -431,7 +431,7 @@ struct HookInstallerTests {
         #expect(try await status(#"{"installed":[],"available":[]}"#, configuration: trusted) == .notInstalled)
         #expect(try await status(#"{"installed":[{"pluginId":"roga-hooks@roga","installed":true,"enabled":false}]}"#, configuration: trusted) == .disabled)
         #expect(try await status(#"{"installed":[{"pluginId":"roga-hooks@other","enabled":true}]}"#, configuration: trusted) == .notInstalled)
-        #expect(try await status("[]") == .unknown("Codex listed its plugins in a way Roga couldn't read."))
+        #expect(try await status("[]") == .unknown("Codex listed its plugins in an unexpected way."))
     }
 
     @Test func saysWhenCodexRunsAnotherCopysHooks() async throws {

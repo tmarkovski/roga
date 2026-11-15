@@ -88,7 +88,7 @@ enum SetupWords {
     /// The heading names the version and leaves where the Git is from to its
     /// row, so that it's one line whichever Git it is.
     static func gitHeading(_ installation: GitInstallation) -> String {
-        "Roga will use Git \(installation.version)"
+        "Git \(installation.version) is ready"
     }
 
     static let gitSub = "Roga runs the Git on your Mac, with your own configuration, and needs \(minimumGit) or newer."
@@ -104,12 +104,12 @@ enum SetupWords {
         guard let recommended = survey.recommended else { return [] }
         var lines: [String] = []
         if survey.copies.count == 1 {
-            lines.append("It's the only Git Roga found.")
+            lines.append("It's the only Git found.")
         } else {
             let which = ProgramSource.isInPath(recommended.executable, searchPath: survey.searchPath)
                 ? "the first one in your PATH that's new enough"
-                : "the first one it can use, which isn't in your PATH"
-            lines.append("Roga found \(survey.copies.count) Gits, and recommends \(which).")
+                : "the first one that works, though it isn't in your PATH"
+            lines.append("Found \(survey.copies.count) Gits. This is \(which).")
         }
         if let first = survey.copies.first(where: { $0.executable == survey.firstInPath }), !first.isUsable {
             let source = ProgramSource.of(first.executable, developerToolsFolder: survey.developerToolsFolder, home: home)
@@ -137,14 +137,14 @@ enum SetupWords {
 
     static func noGit(found: Int, developerToolsMissing: Bool) -> NoGit {
         let foundWords = switch found {
-        case 0: "it didn't find one"
-        case 1: "the only one it found is older than that"
-        default: "the ones it found are older than that"
+        case 0: "None was found on this Mac."
+        case 1: "The only one found is older than that."
+        default: "The ones found are older than that."
         }
         if developerToolsMissing {
             return NoGit(
                 heading: "Roga needs Git \(minimumGit) or newer",
-                sub: "Roga runs the Git on your Mac, and \(foundWords). Apple's comes with the Command Line Tools, which take a few minutes to install.",
+                sub: "\(foundWords) Apple's comes with the Command Line Tools, which take a few minutes to install.",
                 say: "opens Apple's installer using this command:",
                 note: "Homebrew Git is also supported. Install Git or select an existing installation, then Rescan.",
                 offersTools: true
@@ -152,7 +152,7 @@ enum SetupWords {
         }
         return NoGit(
             heading: "Roga needs Git \(minimumGit) or newer",
-            sub: "Roga runs the Git on your Mac, and \(foundWords).",
+            sub: foundWords,
             say: nil,
             note: "Install a compatible Git version with Homebrew or select an existing installation, then Rescan.",
             offersTools: false
@@ -182,7 +182,7 @@ enum SetupWords {
                 ? "\(count.copies) \(count.copies == 1 ? "copy" : "copies") of \(count.kind.name)"
                 : "\(count.copies) of \(count.kind.name)"
         }
-        return "Roga found \(and(words)). \(counts.count > 1 ? "Each menu lists them all" : "The menu lists them all")."
+        return "Found \(and(words)). \(counts.count > 1 ? "Each menu lists them all" : "The menu lists them all")."
     }
 
     // MARK: Hooks
@@ -344,10 +344,10 @@ enum SetupWords {
     ///   - declined: Whether Don't Use Agents was the answer.
     static func chosenAgents(found: [(kind: AgentKind, version: String)], usable: [AgentKind], declined: Bool) -> Chosen {
         guard !found.isEmpty else {
-            return Chosen(mark: .off, value: "None found", detail: "Roga looked for Claude Code and Codex.")
+            return Chosen(mark: .off, value: "None found", detail: "Neither Claude Code nor Codex is installed.")
         }
         guard !usable.isEmpty else {
-            return Chosen(mark: .off, value: "Not used", detail: "Roga hides its agent commands and the Generate button.")
+            return Chosen(mark: .off, value: "Not used", detail: "Agent commands and the Generate button are hidden.")
         }
         let names = found.filter { usable.contains($0.kind) }.map { "\($0.kind.name) \($0.version)" }
         let leftOut = found.filter { !usable.contains($0.kind) }.map(\.kind.name)

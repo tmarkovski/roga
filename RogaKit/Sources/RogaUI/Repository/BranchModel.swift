@@ -102,7 +102,7 @@ final class BranchModel {
             if let refused = error as? RefusedWithChangesAside {
                 self.init(title: title, message: refused.refusal.dialogMessage, command: refused.refusal.gitArguments)
                 summary = .sentences([
-                    "Nothing moved, but Roga couldn't put your uncommitted changes back, so they're still in the stash \(code: refused.aside.message).",
+                    "Nothing moved, but your uncommitted changes couldn't be put back, so they're still in the stash \(code: refused.aside.message).",
                     "Git output is shown below.",
                 ])
                 return

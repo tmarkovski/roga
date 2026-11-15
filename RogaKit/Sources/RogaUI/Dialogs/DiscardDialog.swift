@@ -105,8 +105,8 @@ extension SelectedChanges {
         var note: DialogText?
         if let first = staying.first {
             note = staying.count == 1
-                ? "\(code: first) stays, because Roga leaves repositories and submodules alone."
-                : "\(staying.count.formatted()) repositories and submodules stay, because Roga leaves those alone."
+                ? "\(code: first) stays, because discarding leaves repositories and submodules alone."
+                : "\(staying.count.formatted()) repositories and submodules stay, because discarding leaves those alone."
         }
         return DialogContent(
             id: "discard",

@@ -111,7 +111,7 @@ public struct SkippedAgent: Sendable, Hashable, CustomStringConvertible {
             case nil:
                 return "\(path) couldn't be started\(detail)"
             case .exited(0)?:
-                return "\(path) didn't print a version Roga could read\(detail)"
+                return "\(path) didn't print a readable version\(detail)"
             case let status?:
                 return "\(path) \(status) before saying its version\(detail)"
             }

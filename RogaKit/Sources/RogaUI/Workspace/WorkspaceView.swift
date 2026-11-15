@@ -461,7 +461,7 @@ public struct WorkspaceView: View {
                 .controlSize(.small)
         case .failed(let error):
             ContentUnavailableView {
-                Label("Roga Can't Use Git", icon: .warning)
+                Label("Can't Use Git", icon: .warning)
             } description: {
                 Text(error.description)
             } actions: {
@@ -739,7 +739,7 @@ public struct WorkspaceView: View {
         // the title row.
         let model = recent.existingModel(for: row)
         if model?.branch.isBusy == true {
-            return "Roga is still running git in this worktree. Try again once it's done."
+            return "git is still running in this worktree. Try again once it's done."
         }
         do {
             try await session.create(NewBranch(name: name, inNewWorktree: true), in: row.worktree)

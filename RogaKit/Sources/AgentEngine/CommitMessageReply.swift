@@ -73,7 +73,7 @@ public enum CommitMessageReply {
             if result.succeeded {
                 throw .agentFailed(
                     .claude,
-                    message: "Claude Code replied with something Roga can't read: " + (CommitMessageText.firstLine(output) ?? "nothing") + ".",
+                    message: "Couldn't read Claude Code's reply: " + (CommitMessageText.firstLine(output) ?? "nothing") + ".",
                     output: output
                 )
             }
@@ -151,7 +151,7 @@ public enum CommitMessageReply {
             return "\(kind.name) has reached a usage limit, so try again once it resets, or choose another model."
         }
         if kind == .codex, lowercased.contains("requires a newer version of codex") {
-            return "This model needs a newer version of Codex, which Roga can use once you choose it on the Agents page."
+            return "This model needs a newer version of Codex. Choose one on the Agents page."
         }
         return CommitMessageText.firstLine(said) ?? "\(kind.name) \(status) without saying why."
     }

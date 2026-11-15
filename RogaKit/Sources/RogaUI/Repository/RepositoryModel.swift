@@ -422,11 +422,11 @@ final class RepositoryModel {
         case .unknown, .finished(.upToDate), .finished(.written):
             return nil
         case .updating:
-            return slow + ". Roga is writing one in the background, so this repository opens faster next time."
+            return slow + ". One is being written in the background, so this repository opens faster next time."
         case .turnedOff:
-            return slow + ". To have Roga write one, turn on Keep commit-graph files up to date in Settings."
+            return slow + ". To write one, turn on Keep commit-graph files up to date in Settings."
         case .finished(.skipped(let reason)):
-            return slow + ", and Roga doesn't write one here. " + reason.description
+            return slow + ", and none is written here. " + reason.description
         case .failed(let message):
             return slow + ", and git couldn't write one. " + message
         }

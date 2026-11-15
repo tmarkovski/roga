@@ -428,16 +428,16 @@ extension BranchModel {
         let noun = conflict.noun
         let branch = aside.branch.map(Ref.shortName) ?? "HEAD"
         let (did, against): (DialogText, String) = switch aside.move {
-        case .pull: ("Roga pulled into \(code: branch)", "what came in")
-        case .merge(let other): ("Roga merged \(code: other) into \(code: branch)", "what came in")
-        case .rebase(let other): ("Roga rebased \(code: branch) onto \(code: other)", "what's there")
-        case .cherryPick(let commit): ("Roga applied \(code: String(commit.hex.prefix(8))) to \(code: branch)", "what it changed")
-        case .reset(let commit): ("Roga moved \(code: branch) to \(code: String(commit.hex.prefix(8)))", "what's there")
-        case .detach(let commit): ("Roga switched to \(code: String(commit.hex.prefix(8)))", "what's there")
+        case .pull: ("pulling into \(code: branch)", "what came in")
+        case .merge(let other): ("merging \(code: other) into \(code: branch)", "what came in")
+        case .rebase(let other): ("rebasing \(code: branch) onto \(code: other)", "what's there")
+        case .cherryPick(let commit): ("applying \(code: String(commit.hex.prefix(8))) to \(code: branch)", "what it changed")
+        case .reset(let commit): ("moving \(code: branch) to \(code: String(commit.hex.prefix(8)))", "what's there")
+        case .detach(let commit): ("switching to \(code: String(commit.hex.prefix(8)))", "what's there")
         }
         let files = conflict.files.count == 1 ? "1 file" : "\(conflict.files.count.formatted()) files"
         let sentences: [DialogText] = [
-            "\(did) and put your uncommitted changes back, but in \(files) they conflict with \(against).",
+            "After \(did), your uncommitted changes were put back, but in \(files) they conflict with \(against).",
             "You can resolve them here, or undo the \(noun).",
         ]
         let note: DialogText? = .sentences([
@@ -479,7 +479,7 @@ extension BranchModel {
         let files = isOne ? "1 file" : "\(conflict.files.count.formatted()) files"
         let conflicts = isOne ? "the conflict" : "the conflicts"
         let sentences: [DialogText] = [
-            "Roga put back \(code: conflict.name), but in \(files) it conflicts with what's in the worktree now.",
+            "\(code: conflict.name) was put back, but in \(files) it conflicts with what's in the worktree now.",
             conflict.indexBefore == nil ? "You can resolve \(conflicts) here." : "You can resolve \(conflicts) here, or undo putting the stash back.",
         ]
         var notes: [DialogText] = []

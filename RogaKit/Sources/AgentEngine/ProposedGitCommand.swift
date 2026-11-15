@@ -74,7 +74,7 @@ public struct ProposedGitCommand: Sendable, Hashable {
             return "an option before the subcommand can point git at another repository or program"
         }
         guard let shortOptions = subcommands[subcommand] else {
-            return "git \(subcommand) isn't one of the commands Roga can check"
+            return "git \(subcommand) isn't one of the commands that can run from here"
         }
         if arguments.contains(where: { $0.contains("\0") || $0.contains("\n") }) {
             return "an argument has a line break in it"
@@ -86,7 +86,7 @@ public struct ProposedGitCommand: Sendable, Hashable {
         let positionals = options.filter { !$0.hasPrefix("-") }
         if let allowed = verbs[subcommand] {
             guard let verb = positionals.first, allowed.contains(verb) else {
-                return "Roga can only run git \(subcommand) with \(allowed.sorted().joined(separator: ", "))"
+                return "git \(subcommand) runs from here only with \(allowed.sorted().joined(separator: ", "))"
             }
         }
         for option in options where option.hasPrefix("-") {

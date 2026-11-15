@@ -144,8 +144,8 @@ enum ReplaySaving {
 
         var errorDescription: String? {
             switch self {
-            case .couldNotDraw: "Roga couldn't draw a frame of the replay."
-            case .couldNotWrite: "Roga couldn't write the file."
+            case .couldNotDraw: "Couldn't draw a frame of the replay."
+            case .couldNotWrite: "Couldn't write the file."
             }
         }
     }

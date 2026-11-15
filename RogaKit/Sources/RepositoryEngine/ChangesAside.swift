@@ -45,7 +45,7 @@ public struct ChangesAside: Sendable, Hashable {
         public var stash: ObjectID
 
         public var description: String {
-            "The stash Roga made, \(stash.hex.prefix(8)), isn't in the list of stashes any more, so Roga can't put it back."
+            "The stash that held your changes, \(stash.hex.prefix(8)), isn't in the list of stashes any more, so they can't be put back."
         }
     }
 

@@ -177,7 +177,7 @@ struct AgentInstallationTests {
             "\(shown[0]) exited with status 2 before saying its version: Error: unknown option",
             "\(shown[1]) stopped by signal 6 before saying its version: Library not loaded: @rpath/libnode.dylib",
             "\(shown[2]) didn't say its version within 5 seconds",
-            "\(shown[3]) didn't print a version Roga could read: no version here",
+            "\(shown[3]) didn't print a readable version: no version here",
             "\(shown[4]) is Codex 0.120.0, older than 0.131.0",
         ]
         #expect(skipped.map(\.description) == descriptions)
