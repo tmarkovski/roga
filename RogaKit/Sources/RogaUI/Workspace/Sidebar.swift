@@ -350,8 +350,10 @@ private struct SidebarCommandRow: View {
     }
 }
 
-/// The top of the list: how many repositories it has, and the menu that groups
-/// and sorts them, whose button lines up with the rows' commands.
+/// The top of the list: its title, and the menu that groups and sorts it, whose
+/// button lines up with the rows' commands. How many repositories it has is in
+/// the title's tooltip rather than beside it, where a number would read like
+/// the rows' counts of uncommitted files (decision 84).
 private struct ListHeader<Trailing: View>: View {
     let title: String
     let count: Int
@@ -362,10 +364,9 @@ private struct ListHeader<Trailing: View>: View {
             Text(title)
                 .font(.system(size: 14, weight: .semibold))
                 .lineLimit(1)
+                .help("\(count.formatted()) \(count == 1 ? "repository" : "repositories")")
+                .accessibilityValue(count.formatted())
                 .accessibilityAddTraits(.isHeader)
-            Text(count, format: .number)
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
             Spacer(minLength: 0)
             trailing
         }
@@ -695,11 +696,6 @@ private struct RowMenu: View {
 
 /// A repository's row, which selects its main worktree. The chevron after its
 /// name shows or hides its linked worktrees.
-///
-/// On hover, a + before its menu's button starts a new worktree (decision 82).
-/// The two buttons take two places at the right edge, so the count moves left
-/// by one while the pointer is over the row, rather than staying put as it does
-/// on a worktree's row, which has only the menu.
 private struct RepositoryRow: View {
     let repository: ListedRepository
     let list: RepositoryList
@@ -748,9 +744,6 @@ private struct RepositoryRow: View {
                 UncommittedCount(count: ownUncommittedFiles, hasConflicts: ownHasConflicts)
             }
         } commands: {
-            if let main, !main.isBare {
-                NewWorktreeButton(start: NewWorktreePopover.start(of: main), action: newWorktree)
-            }
             RowMenu(entries: menu)
         }
         .overlay { RefMenuArea(entries: menu) }

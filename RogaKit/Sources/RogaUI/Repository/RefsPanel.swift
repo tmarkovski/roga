@@ -580,7 +580,7 @@ private struct RefSectionHeader: View {
     let section: RefsModel.Section
     let count: Int
     let isCollapsed: Bool
-    /// What the plus does, for a section that has one. It takes the count's place.
+    /// What the plus at its right does, for a section that has one.
     var add: (() -> Void)?
     let toggle: () -> Void
 
@@ -596,9 +596,10 @@ private struct RefSectionHeader: View {
                 Chevron(pointsDown: !isCollapsed)
             }
             Spacer(minLength: 8)
-            // A section with a plus has it where the count would be. Remotes
-            // is the only one, and a repository seldom has more than one, so
-            // its count would say little.
+            // The header's right is for its commands, and Remotes is the only
+            // section with one. It shows no count, which would read like the
+            // numbers that ask for something, such as commits to pull
+            // (decision 84).
             if let add {
                 Button(action: add) {
                     HoverIcon(size: 22) { Icon.plus.image }
@@ -607,12 +608,9 @@ private struct RefSectionHeader: View {
                 .help("Add a remote")
                 // The plus is in the middle of a box that's wider than it,
                 // which is what turns gray under the pointer. The box goes
-                // past the line the counts end on, so that the plus itself
-                // ends on that line.
+                // past the line the rows' labels end on, so that the plus
+                // itself ends on that line.
                 .padding(.trailing, -Self.plusInset)
-            } else {
-                Text(count, format: .number)
-                    .font(.system(size: 11.5))
             }
         }
         .foregroundStyle(.secondary)
@@ -624,6 +622,8 @@ private struct RefSectionHeader: View {
         .onTapGesture {
             if count > 0 { toggle() }
         }
+        // How many it has is in its tooltip, as a folder's is.
+        .help(section.counted(count))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(section.title)
         .accessibilityValue(count > 0 ? "\(count), \(isCollapsed ? "Collapsed" : "Expanded")" : "\(count)")

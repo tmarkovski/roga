@@ -1,5 +1,4 @@
 import GitCore
-import IconUI
 import SwiftUI
 
 /// Starts a new branch in a new worktree from a worktree in the sidebar, and
@@ -21,7 +20,7 @@ struct NewWorktreePopover: View {
     @State private var isCreating = false
     @FocusState private var isNameFocused: Bool
 
-    /// What the popover's title and the + button's tooltip say.
+    /// What the popover's title says.
     static func title(startingFrom start: String?) -> String {
         start.map { "New Worktree from \($0)" } ?? "New Worktree"
     }
@@ -87,23 +86,5 @@ struct NewWorktreePopoverModifier: ViewModifier {
         content.popover(isPresented: $isPresented, arrowEdge: .trailing) {
             NewWorktreePopover(start: start, create: create)
         }
-    }
-}
-
-/// The + that a repository's row shows on hover, before its menu's button,
-/// which opens the popover for a new worktree from its main worktree
-/// (decision 82). A repository's row is where its worktrees are listed, so
-/// making one starts there.
-struct NewWorktreeButton: View {
-    let start: String?
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HoverIcon(size: 24) { Icon.plus.image }
-        }
-        .buttonStyle(.plain)
-        .help(NewWorktreePopover.title(startingFrom: start))
-        .accessibilityLabel("New Worktree")
     }
 }

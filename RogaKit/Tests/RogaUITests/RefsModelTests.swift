@@ -65,6 +65,14 @@ struct RefsModelTests {
         }
     }
 
+    @Test func aHeadersTooltipSaysHowManyInWords() {
+        #expect(RefsModel.Section.branches.counted(1) == "1 branch")
+        #expect(RefsModel.Section.branches.counted(1_200) == "1,200 branches")
+        #expect(RefsModel.Section.stashes.counted(2) == "2 stashes")
+        #expect(RefsModel.Section.tags.counted(0) == "0 tags")
+        #expect(RefsModel.Section.submodules.counted(3) == "3 submodules")
+    }
+
     @Test func aFilterNarrowsEverySectionAndIgnoresCase() {
         let details = RefDetails(
             branches: [branch("agent/fix-login"), branch("main")],
