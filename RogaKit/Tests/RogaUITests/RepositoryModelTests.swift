@@ -358,6 +358,83 @@ struct RepositoryModelTests {
         #expect(model.reloads == reloads + 1)
     }
 
+    /// A model of a copy of the `basic` repository whose git commands go to
+    /// `log`, once it has appeared and its quiet fetch has finished, with a
+    /// commit made elsewhere that it hasn't looked at.
+    func modelWithACommitElsewhere(log: CommandLog) async throws -> (RepositoryModel, repository: String) {
+        let repository = try makeTemporaryFolder() + "/basic"
+        _ = try await TestGit.make().run(GitCommand("clone", "--quiet", "--no-local", try await Fixture.repository("basic"), repository))
+        let session = try await RepositorySession.open(containing: repository, git: try await TestGit.make(log: log))
+        let model = RepositoryModel(session: session, worktree: repository)
+        await model.appear()
+        await model.branch.quietFetch?.value
+        await model.check?.value
+        try await runGit("-c", "user.name=T", "-c", "user.email=t@example.com", "commit", "--quiet", "--allow-empty", "-m", "Elsewhere", in: repository)
+        return (model, repository)
+    }
+
+    /// Whether git ran `status` after the entry the log had last.
+    func ranStatus(_ log: CommandLog, after last: CommandLog.Entry?) -> Bool {
+        log.entries.contains { $0.id > last?.id ?? -1 && $0.arguments.contains("status") }
+    }
+
+    @Test func loadsHistoryAgainWhileGitStatusRuns() async throws {
+        let log = CommandLog()
+        let (model, repository) = try await modelWithACommitElsewhere(log: log)
+        let reloads = model.reloads
+        let looks = model.worktreeLooks
+        // git status asks this hook which files changed, and the hook holds
+        // it until the test lets it go.
+        let folder = try makeTemporaryFolder()
+        let hook = folder + "/fsmonitor"
+        try "#!/bin/sh\nfor i in $(seq 1000); do [ -e '\(folder)/go' ] && exit 1; sleep 0.01; done\nexit 1\n"
+            .write(toFile: hook, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: hook)
+        try await runGit("config", "core.fsmonitor", hook, in: repository)
+
+        model.refsChangedOnDisk(asNewAs: 1)
+        #expect(await AgentTestSupport.eventually { model.reloads == reloads + 1 })
+        #expect(model.worktreeLooks == looks)
+        FileManager.default.createFile(atPath: folder + "/go", contents: nil)
+        await model.diskLook?.value
+        #expect(model.worktreeLooks == looks + 1)
+
+        // The look read the files and the branch, so the window loading
+        // history only loads it.
+        let last = log.entries.last
+        await model.appear()
+        #expect(model.history?.refs.head?.hex == (try await runGit("rev-parse", "HEAD", in: repository)).trimmingCharacters(in: .whitespacesAndNewlines))
+        #expect(!ranStatus(log, after: last))
+    }
+
+    @Test func readsTheFilesAgainWhenTheReloadForALookStopsBeforeHistoryLoads() async throws {
+        let log = CommandLog()
+        let (model, _) = try await modelWithACommitElsewhere(log: log)
+        model.refsChangedOnDisk(asNewAs: 1)
+        await model.diskLook?.value
+        // The window showed another worktree before history loaded, so the
+        // files may have changed by the time it shows this one again.
+        let stopped = Task { await model.appear() }
+        stopped.cancel()
+        await stopped.value
+        let last = log.entries.last
+        await model.appear()
+        #expect(ranStatus(log, after: last))
+    }
+
+    @Test func readsTheFilesAgainWhenAWindowsOwnCheckLoadsHistoryAgain() async throws {
+        let log = CommandLog()
+        let (model, _) = try await modelWithACommitElsewhere(log: log)
+        let reloads = model.reloads
+        // A worktree that shows again checks for changes in the window's task,
+        // which loading history again restarts.
+        await model.appear()
+        #expect(model.reloads == reloads + 1)
+        let last = log.entries.last
+        await model.appear()
+        #expect(ranStatus(log, after: last))
+    }
+
     @Test func changesThatArriveTogetherAreLookedAtOnce() async throws {
         let log = CommandLog()
         let repository = try makeTemporaryFolder() + "/basic"

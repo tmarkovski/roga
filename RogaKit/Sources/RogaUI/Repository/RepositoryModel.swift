@@ -186,6 +186,10 @@ final class RepositoryModel {
     /// When the last look at changes on disk started and finished, which the
     /// next one waits for, as `ChangePacing` says.
     @ObservationIgnored private var lastDiskLook: (started: ContinuousClock.Instant, finished: ContinuousClock.Instant)?
+    /// The reload that a look at the worktree asked for. That look carries on
+    /// reading the uncommitted files and the branch while history loads, so
+    /// the window loading history needn't read them too.
+    @ObservationIgnored private var reloadForALook: Int?
 
     /// What changed on disk since the model last looked.
     private struct DiskChanges {
@@ -440,8 +444,15 @@ final class RepositoryModel {
     /// the window shows another worktree. A worktree that was showing before
     /// has its history already, so it only needs checking.
     func appear() async {
+        // Only the window's first try at the reload can count on the look,
+        // since a worktree that shows again may have changed while it wasn't
+        // showing.
+        let isReloadForALook = loadRequest.reloads == reloadForALook
+        reloadForALook = nil
         if loadRequest == loaded {
-            await checkForChanges()
+            await checkForChanges(keepsLooking: false)
+        } else if isReloadForALook {
+            await load()
         } else {
             async let status: Void = updateUncommittedFiles()
             async let branchStatus: Void = branch.refresh()
@@ -501,12 +512,13 @@ final class RepositoryModel {
                 let started = ContinuousClock.now
                 if let refs = changes.refs {
                     refsChecks += 1
+                    async let moved: Void = reloadIfRefsMoved(keepsLooking: true)
                     async let branchStatus: Void = branch.refresh()
                     // A commit moves the branch without always writing the
                     // index, and what's staged compares with the branch's commit.
                     await updateUncommittedFiles(asNewAs: max(refs, changes.files ?? refs))
                     await branchStatus
-                    await reloadIfRefsMoved()
+                    await moved
                 } else if let files = changes.files {
                     await updateUncommittedFiles(asNewAs: files)
                 }
@@ -519,7 +531,7 @@ final class RepositoryModel {
     private func lookAgain() {
         refsChecks += 1
         check?.cancel()
-        check = Task { await checkForChanges() }
+        check = Task { await checkForChanges(keepsLooking: true) }
     }
 
     /// Checks out a badge's branch, unless a checkout is running already, and
@@ -896,17 +908,30 @@ final class RepositoryModel {
     /// Updates the uncommitted files, and loads history again if a ref moved,
     /// such as after a commit. History has to change then too, because a row
     /// for uncommitted changes leads to `HEAD`.
-    private func checkForChanges() async {
+    ///
+    /// - Parameter keepsLooking: Whether the check carries on once history
+    ///   loads again, as `reloadIfRefsMoved(keepsLooking:)` says.
+    private func checkForChanges(keepsLooking: Bool) async {
+        async let moved: Void = reloadIfRefsMoved(keepsLooking: keepsLooking)
         async let branchStatus: Void = branch.refresh()
         await updateUncommittedFiles()
         await branchStatus
-        await reloadIfRefsMoved()
+        await moved
     }
 
-    /// Loads history again if any ref moved, or `HEAD` did.
-    private func reloadIfRefsMoved() async {
+    /// Loads history again if any ref moved, or `HEAD` did. A look runs this
+    /// alongside `git status` and the branch's upstream rather than after them,
+    /// because they can take much longer than reading the refs, and history
+    /// needn't wait for either.
+    ///
+    /// - Parameter keepsLooking: Whether the look carries on reading the
+    ///   uncommitted files and the branch while history loads again, so the
+    ///   window loading it needn't. A window's own check doesn't, because
+    ///   loading history again restarts the window's task, which stops it.
+    private func reloadIfRefsMoved(keepsLooking: Bool) async {
         guard let history, let refs = try? await session.refs(in: worktree), !Task.isCancelled, refs != history.refs else { return }
         reload()
+        if keepsLooking { reloadForALook = reloads }
     }
 
     /// Reads the worktree's uncommitted files and what it's stuck partway through.
