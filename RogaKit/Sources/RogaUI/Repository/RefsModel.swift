@@ -47,6 +47,24 @@ final class RefsModel {
             }
         }
 
+        /// How many it has, in words, as in `12 branches`, for its header's
+        /// tooltip, since the header shows no count (decision 84).
+        func counted(_ count: Int) -> String {
+            let one = switch self {
+            case .branches: "branch"
+            case .remotes: "remote"
+            case .tags: "tag"
+            case .stashes: "stash"
+            case .submodules: "submodule"
+            }
+            let many = switch self {
+            case .branches: "branches"
+            case .stashes: "stashes"
+            default: one + "s"
+            }
+            return "\(count.formatted()) \(count == 1 ? one : many)"
+        }
+
         /// Whether the section has a place in the panel with `count` rows. A section
         /// with none says only that there are none, as a list with no files would
         /// (decision 61), so Tags, Stashes and Submodules go. Remotes has to stay

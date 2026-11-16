@@ -264,7 +264,7 @@ struct SetupGit: View {
         switch gitProvider.state {
         case .locating: "Looking for Git"
         case .ready(let git): SetupWords.gitHeading(git.installation)
-        case .failed: "Roga can't use the Git you chose"
+        case .failed: "Can't use the Git you chose"
         }
     }
 

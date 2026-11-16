@@ -16,7 +16,9 @@ struct RefsPanel: View {
     let model: RepositoryModel
     /// How wide the panel is, which its row in the toolbar has to match.
     let width: Double
-    @Binding var isShown: Bool
+    /// Whether the panel shows, for the button at the end of its row and Hide
+    /// refs in its menu.
+    let visibility: RefsPanelVisibility
     /// Shows one of the repository's worktrees in the window, by its folder,
     /// with a commit selected in it.
     let showWorktree: (String, ObjectID?) -> Void
@@ -31,6 +33,8 @@ struct RefsPanel: View {
     /// open or closed everywhere.
     @AppStorage("collapsedRefFolders") private var collapsedFolders = ""
     @FocusState private var isListFocused: Bool
+    /// Opens the panel's menu for VoiceOver's press.
+    @State private var menuOpener = RefMenuOpener()
 
     private var refs: RefsModel { model.refs }
 
@@ -40,8 +44,10 @@ struct RefsPanel: View {
             .toolbar {
                 // The panel goes up to the top of the window, and this is what it
                 // has there. A view's items come after those of the views around
-                // it, so this one follows the button that hides the panel, and it's
-                // as wide as the panel to keep that button at the panel's edge.
+                // it, so this one ends the row, and it's as wide as the panel so
+                // that it starts at the panel's edge. The button that hides the
+                // panel is its last, in the window's corner, where the title row
+                // has it while the panel is hidden (decision 85).
                 ToolbarItem {
                     commands
                         .frame(width: RefsPanelVisibility.toolbarItemWidth(panel: width), alignment: .trailing)
@@ -83,28 +89,9 @@ struct RefsPanel: View {
             .labelStyle(.iconOnly)
             .buttonStyle(.icon(isOn: refs.isFilterShown))
             .help(refs.isFilterShown ? "Close the Filter" : "Filter Refs (\(RepositoryCommands.filterRefsShortcut.symbols))")
-            Menu {
-                sortPicker
-            } label: {
-                HoverIcon { Icon.sort.image }
-            }
-            .menuStyle(.button)
-            .buttonStyle(.plain)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .help("Sort Refs")
-            .accessibilityLabel("Sort Refs")
-            Menu {
-                moreCommands
-            } label: {
-                HoverIcon { Icon.ellipsis.image }
-            }
-            .menuStyle(.button)
-            .buttonStyle(.plain)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .help("More")
-            .accessibilityLabel("More")
+            moreMenu
+            RefsPanelToggle(visibility: visibility)
+                .padding(.trailing, RefsPanelVisibility.toggleInset)
         }
     }
 
@@ -380,7 +367,7 @@ struct RefsPanel: View {
             .command("Put back", isEnabled: !isBusy) { model.putBack(stash) },
             .command("Put back and keep the stash", isEnabled: !isBusy) { model.putBack(stash, keeping: true) },
             .divider,
-            .command("New branch from stash…", isEnabled: !isBusy) { model.branch.startNewBranch(fromStash: stash) },
+            .command("New branch from stash…", isEnabled: !isBusy) { model.branch.startNewBranch(fromStash: stash, from: MenuAnchor.current) },
             .command("Copy message") { copy(stash.title) },
             .divider,
             .command("Delete", isDestructive: true, isEnabled: !isBusy) { model.delete(stash) },
@@ -475,27 +462,53 @@ struct RefsPanel: View {
         collapsedFolders = folders.sorted().joined(separator: "\n")
     }
 
-    private var sortPicker: some View {
-        Picker("Sort by", selection: $sort) {
-            ForEach(RefsModel.Sort.allCases, id: \.self) { sort in
-                Text(sort.title).tag(sort)
-            }
-        }
-        .pickerStyle(.inline)
+    /// The button with the panel's menu. It's one of Roga's own menus, like
+    /// the sidebar's Group and Sort, so how the refs are sorted is a submenu
+    /// that says which, rather than a button of its own (decision 87).
+    private var moreMenu: some View {
+        let entries = panelMenu
+        return HoverIcon { Icon.ellipsis.image }
+            .overlay { RefMenuArea(entries: entries, opensOnClick: true, opener: menuOpener) }
+            .help("More")
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("More")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { menuOpener.open() }
+            .accessibilityActions { refMenuActions(entries) }
     }
 
-    @ViewBuilder private var moreCommands: some View {
-        sortPicker
-        Divider()
-        Button("Filter refs") { refs.showFilter() }
-            .keyboardShortcut(RepositoryCommands.filterRefsShortcut)
-        Button("Collapse all sections") {
-            collapsedSections = RefsModel.Section.allCases.map(\.rawValue).joined(separator: ",")
-        }
-        Button("Expand all sections") { collapsedSections = "" }
-        Divider()
-        Button("Hide refs") { isShown = false }
-            .keyboardShortcut(RepositoryCommands.refsPanelShortcut)
+    private var panelMenu: [RefMenu.Entry] {
+        Self.panelMenu(
+            sort: sort,
+            setSort: { sort = $0 },
+            filter: { refs.showFilter() },
+            collapseAll: { collapsedSections = RefsModel.Section.allCases.map(\.rawValue).joined(separator: ",") },
+            expandAll: { collapsedSections = "" },
+            hide: { visibility.isWanted.wrappedValue = false }
+        )
+    }
+
+    /// The panel's menu: how the refs are sorted, in a submenu that says which,
+    /// then its commands, with the keys the menu bar has for them.
+    static func panelMenu(
+        sort: RefsModel.Sort,
+        setSort: @escaping (RefsModel.Sort) -> Void,
+        filter: @escaping () -> Void,
+        collapseAll: @escaping () -> Void,
+        expandAll: @escaping () -> Void,
+        hide: @escaping () -> Void
+    ) -> [RefMenu.Entry] {
+        [
+            .submenu("Sort by", value: sort.title, entries: RefsModel.Sort.allCases.map { option in
+                .option(RefMenu.Title(option.title), isChecked: sort == option) { setSort(option) }
+            }),
+            .divider,
+            .command("Filter refs", shortcut: RefMenu.Shortcut(RepositoryCommands.filterRefsShortcut), action: filter),
+            .command("Collapse all sections", action: collapseAll),
+            .command("Expand all sections", action: expandAll),
+            .divider,
+            .command("Hide refs", shortcut: RefMenu.Shortcut(RepositoryCommands.refsPanelShortcut), action: hide),
+        ]
     }
 
     private func copy(_ text: String) {
@@ -556,23 +569,25 @@ private struct RefsNote: View {
 /// What the panel shows when the window isn't showing a worktree.
 struct RefsPanelPlaceholder: View {
     let width: Double
+    let visibility: RefsPanelVisibility
 
     var body: some View {
         RefsNote("Choose a worktree to see its repository's refs.")
             .toolbar {
-                // Holds the place of the panel's row, so that the button that
-                // hides the panel stays next to it.
+                // Holds the place of the panel's row, with the button that
+                // hides the panel at its end, as the panel has it.
                 ToolbarItem {
-                    Color.clear
-                        .frame(width: RefsPanelVisibility.toolbarItemWidth(panel: width), height: 1)
+                    RefsPanelToggle(visibility: visibility)
+                        .padding(.trailing, RefsPanelVisibility.toggleInset)
+                        .frame(width: RefsPanelVisibility.toolbarItemWidth(panel: width), alignment: .trailing)
                 }
                 .sharedBackgroundVisibility(.hidden)
             }
     }
 }
 
-/// A section's title with a chevron after it, and how many items it has, or a
-/// plus that adds one. Clicking it collapses or expands the section, unless it
+/// A section's title with a chevron after it, and for Remotes, a plus that
+/// adds one. Clicking it collapses or expands the section, unless it
 /// has nothing to show, which leaves no chevron and nothing to click. It stays
 /// in place as the section's rows scroll under it, so it has a background of
 /// its own.
@@ -580,7 +595,7 @@ private struct RefSectionHeader: View {
     let section: RefsModel.Section
     let count: Int
     let isCollapsed: Bool
-    /// What the plus does, for a section that has one. It takes the count's place.
+    /// What the plus at its right does, for a section that has one.
     var add: (() -> Void)?
     let toggle: () -> Void
 
@@ -596,9 +611,10 @@ private struct RefSectionHeader: View {
                 Chevron(pointsDown: !isCollapsed)
             }
             Spacer(minLength: 8)
-            // A section with a plus has it where the count would be. Remotes
-            // is the only one, and a repository seldom has more than one, so
-            // its count would say little.
+            // The header's right is for its commands, and Remotes is the only
+            // section with one. It shows no count, which would read like the
+            // numbers that ask for something, such as commits to pull
+            // (decision 84).
             if let add {
                 Button(action: add) {
                     HoverIcon(size: 22) { Icon.plus.image }
@@ -607,12 +623,9 @@ private struct RefSectionHeader: View {
                 .help("Add a remote")
                 // The plus is in the middle of a box that's wider than it,
                 // which is what turns gray under the pointer. The box goes
-                // past the line the counts end on, so that the plus itself
-                // ends on that line.
+                // past the line the rows' labels end on, so that the plus
+                // itself ends on that line.
                 .padding(.trailing, -Self.plusInset)
-            } else {
-                Text(count, format: .number)
-                    .font(.system(size: 11.5))
             }
         }
         .foregroundStyle(.secondary)
@@ -624,6 +637,8 @@ private struct RefSectionHeader: View {
         .onTapGesture {
             if count > 0 { toggle() }
         }
+        // How many it has is in its tooltip, as a folder's is.
+        .help(section.counted(count))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(section.title)
         .accessibilityValue(count > 0 ? "\(count), \(isCollapsed ? "Collapsed" : "Expanded")" : "\(count)")
@@ -913,6 +928,13 @@ struct RefsPanelVisibility {
     /// button before the row off the line between the panel and the middle.
     static let toolbarMargins = 14.0
 
+    /// How much further from the window's edge macOS puts the button that hides
+    /// the panel than the end of the panel's row, while the panel is hidden and
+    /// the button is a toolbar item of its own, measured on macOS 27. The
+    /// panel's row leaves that much after the button, so that it doesn't move
+    /// when it's clicked (decision 85).
+    static let toggleInset = 4.0
+
     /// How wide the panel's row in the toolbar is.
     static func toolbarItemWidth(panel: Double) -> Double {
         panel - toolbarMargins
@@ -928,6 +950,11 @@ struct RefsPanelVisibility {
 
 /// Hides or shows the refs panel. It's a plain icon like the button for the
 /// sidebar, rather than the glass button macOS puts in the toolbar.
+///
+/// It's last in the title row, in the window's top right corner: the last of
+/// the panel's own buttons while the panel shows, and the title row's last
+/// while it's hidden. So it doesn't move when it's clicked, as the sidebar's
+/// stays by the traffic lights (decision 85).
 struct RefsPanelToggle: View {
     let visibility: RefsPanelVisibility
 

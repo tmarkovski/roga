@@ -584,7 +584,7 @@ struct DiscardTests {
             .command(["reset", "--hard"]),
             .comment("1 file goes to the Trash"),
         ])
-        #expect(content.note?.plain == "inner/ stays, because Roga leaves repositories and submodules alone.")
+        #expect(content.note?.plain == "inner/ stays, because discarding leaves repositories and submodules alone.")
         #expect(content.buttons.last?.kind == .destructive)
     }
 

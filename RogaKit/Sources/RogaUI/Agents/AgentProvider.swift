@@ -415,7 +415,7 @@ public final class AgentProvider {
         var succeeded = true
         for kind in kinds {
             guard let executable = installation(kind)?.executable else {
-                hookWork[kind] = .failed(action, "Roga hasn't found \(kind.name).")
+                hookWork[kind] = .failed(action, "Can't find \(kind.name).")
                 succeeded = false
                 continue
             }
@@ -427,7 +427,7 @@ public final class AgentProvider {
                 hookWork[kind] = .failed(action, error.message)
                 succeeded = false
             } catch {
-                hookWork[kind] = .failed(action, action == .remove ? "Roga stopped removing its hooks." : "Roga stopped installing its hooks.")
+                hookWork[kind] = .failed(action, action == .remove ? "Removing the hooks stopped." : "Installing the hooks stopped.")
                 succeeded = false
             }
             // Each agent is asked as soon as its own commands are done, and
@@ -492,7 +492,7 @@ public final class AgentProvider {
             try installer.writeFiles(helperPath: helperPath)
             return nil
         } catch {
-            return "Roga couldn't write its hooks' files in \(installer.pluginsFolder.path(percentEncoded: false)): \(error.localizedDescription)"
+            return "Couldn't write the hooks' files in \(installer.pluginsFolder.path(percentEncoded: false)): \(error.localizedDescription)"
         }
     }
 

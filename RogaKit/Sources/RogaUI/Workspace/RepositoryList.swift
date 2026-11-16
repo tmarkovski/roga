@@ -812,8 +812,8 @@ enum RepositoryListError: Error, CustomStringConvertible {
 
     var description: String {
         switch self {
-        case .gitNotFound: "Roga hasn't found git yet."
-        case .notOpen: "Roga hasn't opened the repository yet."
+        case .gitNotFound: "Still looking for git."
+        case .notOpen: "The repository isn't open yet."
         case .notTheWorktree: "That folder is another worktree."
         }
     }

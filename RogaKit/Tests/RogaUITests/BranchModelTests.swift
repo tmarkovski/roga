@@ -697,7 +697,7 @@ struct BranchModelTests {
 
         let dialog = try dialogContent(model)
         #expect(dialog.title.hasPrefix("Can't reset main to"))
-        #expect(dialog.message?.plain == "The push went through, but main is still where it was. Something else has moved HEAD since Roga counted what this would lose, so Roga left it there.")
+        #expect(dialog.message?.plain == "The push went through, but main is still where it was. Something else moved HEAD in the meantime, so it was left alone.")
         #expect(dialog.terminal.isEmpty)
         #expect(try await git("rev-parse", "HEAD", in: clones.work) == new)
     }
@@ -922,7 +922,7 @@ struct BranchModelTests {
         #expect(model.branch.putBackConflict?.files == ["notes.txt"])
         let dialog = try dialogContent(model)
         #expect(dialog.title == "Putting your changes back stopped on a conflict")
-        #expect(dialog.message?.plain == "Roga pulled into main and put your uncommitted changes back, but in 1 file they conflict with what came in. You can resolve them here, or undo the pull.")
+        #expect(dialog.message?.plain == "After pulling into main, your uncommitted changes were put back, but in 1 file they conflict with what came in. You can resolve them here, or undo the pull.")
         #expect(dialog.cards == [[.name("notes.txt")]])
         #expect(dialog.buttons.map(\.title) == ["Undo the pull", "Resolve"])
         #expect(dialog.buttons.map(\.kind) == [.secondary, .primary])

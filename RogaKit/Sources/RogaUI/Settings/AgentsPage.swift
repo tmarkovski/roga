@@ -472,7 +472,7 @@ enum AgentSummaries {
         case .anotherCopy(let folder)?:
             (tone, text) = (.warn, "Installed by another copy of Roga, from \(abbreviated(folder)).")
         case .unknown(let words)?:
-            (tone, text) = (.warn, "Roga couldn't tell whether it's installed: \(sentence(words))")
+            (tone, text) = (.warn, "Couldn't check whether it's installed: \(sentence(words))")
         }
 
         let action = agents.hookStatus[kind].map { AgentProvider.offeredAction($0, for: kind) }
@@ -529,7 +529,7 @@ enum AgentSummaries {
     /// Why the sidebar can't show marks, or nil when it can.
     ///
     /// When the socket couldn't be opened, the listener's own words say so
-    /// and where, as in "Roga can't listen for agents' hooks at …, because
+    /// and where, as in "Can't listen for agents' hooks at …, because
     /// bind failed: Address already in use.", so the notice starts with them
     /// rather than saying it twice.
     static func listeningNotice(_ listening: AgentMonitor.Listening) -> String? {
@@ -540,8 +540,8 @@ enum AgentSummaries {
             return "Another copy of Roga is listening for the agents' hooks, so this one can't show their marks in the sidebar. Quit the other copy, then try again."
         case .failed(let words):
             let reason = sentence(abbreviatingPaths(in: words))
-            let lead = reason.hasPrefix("Roga can't listen") ? "" : "Roga can't listen for the agents' hooks. "
-            return "\(lead)\(reason) Until it can, the sidebar can't show the agents' marks."
+            let lead = reason.hasPrefix("Can't listen") ? "" : "Can't listen for the agents' hooks. "
+            return "\(lead)\(reason) Until then, the sidebar can't show the agents' marks."
         }
     }
 

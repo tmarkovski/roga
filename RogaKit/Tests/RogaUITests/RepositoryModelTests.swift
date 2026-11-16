@@ -774,7 +774,7 @@ struct RepositoryModelTests {
         let (model, repository) = try await modelOfACopy()
         model.updateCommitGraph()
         #expect(model.commitGraphState == .updating)
-        #expect(model.slowHistoryExplanation?.contains("writing one in the background") == true)
+        #expect(model.slowHistoryExplanation?.contains("being written in the background") == true)
         await model.commitGraphUpdate?.value
 
         #expect(model.commitGraphState == .finished(.written))

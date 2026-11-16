@@ -210,7 +210,7 @@ struct SettingsPagesTests {
     @Test func aStatusRogaCantTellSaysTheAgentsWords() {
         defer { clean() }
         let agents = provider(lookups: [.claude: .found(Self.claude)], hookStatus: [.claude: .unknown("claude plugin list exited with status 1: Unknown command")])
-        #expect(line(.claude, agents).text == "Roga couldn't tell whether it's installed: claude plugin list exited with status 1: Unknown command.")
+        #expect(line(.claude, agents).text == "Couldn't check whether it's installed: claude plugin list exited with status 1: Unknown command.")
         #expect(line(.claude, agents).tone == .warn)
         #expect(line(.claude, agents).button?.action == .install)
     }
@@ -418,16 +418,16 @@ struct SettingsPagesTests {
         #expect(AgentSummaries.listeningNotice(.listening) == nil)
         #expect(AgentSummaries.listeningNotice(.starting) == nil)
         #expect(AgentSummaries.listeningNotice(.anotherCopy)?.hasPrefix("Another copy of Roga is listening") == true)
-        // The listener's error already says that Roga can't listen, and
+        // The listener's error already says that it can't listen, and
         // where, so the notice says it once, with the home folder as ~.
         let socket = NSHomeDirectory() + "/Library/Application Support/sh.roga.app/hooks.sock"
         let inUse = AgentSummaries.listeningNotice(.failed(String(describing: HookListenerError.system("bind", path: socket, errorNumber: EADDRINUSE))))
-        #expect(inUse == "Roga can't listen for agents' hooks at ~/Library/Application Support/sh.roga.app/hooks.sock, because bind failed: Address already in use. Until it can, the sidebar can't show the agents' marks.")
+        #expect(inUse == "Can't listen for agents' hooks at ~/Library/Application Support/sh.roga.app/hooks.sock, because bind failed: Address already in use. Until then, the sidebar can't show the agents' marks.")
         let tooLong = AgentSummaries.listeningNotice(.failed(String(describing: HookListenerError.pathTooLong(socket))))
-        #expect(tooLong?.components(separatedBy: "can't listen").count == 2, "\(tooLong ?? "")")
+        #expect(tooLong?.components(separatedBy: "listen for").count == 2, "\(tooLong ?? "")")
         #expect(tooLong?.contains(NSHomeDirectory()) == false)
         // Words that don't say it get the notice's own start.
-        #expect(AgentSummaries.listeningNotice(.failed("The socket's path is too long")) == "Roga can't listen for the agents' hooks. The socket's path is too long. Until it can, the sidebar can't show the agents' marks.")
+        #expect(AgentSummaries.listeningNotice(.failed("The socket's path is too long")) == "Can't listen for the agents' hooks. The socket's path is too long. Until then, the sidebar can't show the agents' marks.")
     }
 
     @Test func anotherCopyListeningShowsTheNotice() async throws {

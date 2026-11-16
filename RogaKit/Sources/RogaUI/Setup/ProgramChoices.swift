@@ -162,7 +162,7 @@ nonisolated enum ProgramChoices {
                 }
             } else if copy.version != nil {
                 tag = .tooOld
-                why = (isFirst ? "Your terminal runs this one, but " : "") + "Roga needs \(minimum.major).\(minimum.minor) or later."
+                why = (isFirst ? "Your terminal runs this one, but " : "") + "\(minimum.major).\(minimum.minor) or later is required."
             } else {
                 tag = .unusable
                 why = isFirst ? "Default in PATH; version unavailable." : "Version unavailable."
@@ -193,7 +193,7 @@ nonisolated enum ProgramChoices {
             case .configuredGitUnsupported(let skipped)?:
                 chosen.version = skipped.version?.description
                 chosen.tag = skipped.version == nil ? .unusable : .tooOld
-                chosen.why = skipped.version == nil ? "Version unavailable." : "Roga needs \(minimum.major).\(minimum.minor) or later."
+                chosen.why = skipped.version == nil ? "Version unavailable." : "\(minimum.major).\(minimum.minor) or later is required."
                 chosen.canChoose = false
             default:
                 if current?.executable == chosenPath { chosen.version = current?.version.description }
@@ -282,14 +282,14 @@ nonisolated enum ProgramChoices {
         }
         switch skipped.reason {
         case .tooOld:
-            return (.tooOld, sentence("Roga needs \(skipped.kind.minimumVersion) or later."))
+            return (.tooOld, sentence("\(skipped.kind.minimumVersion) or later is required."))
         case .timedOut:
             let limit = AgentInstallation.probeTimeLimit.formatted(.units(allowed: [.seconds], width: .wide))
             return (.unusable, sentence("it didn't say its version within \(limit)."))
         case .noVersion(let status, _):
             switch status {
             case nil: return (.unusable, sentence("it couldn't be started."))
-            case .exited(0)?: return (.unusable, sentence("it didn't print a version Roga could read."))
+            case .exited(0)?: return (.unusable, sentence("it didn't print a readable version."))
             default: return (.unusable, sentence("it stopped before saying its version."))
             }
         }
@@ -377,7 +377,7 @@ nonisolated struct ProgramRowContent: Equatable {
             return ProgramRowContent(
                 name: "Git",
                 status: .warning("Not found"),
-                line: "Roga can't find or run \(ProgramSource.abbreviated(path, home: home)), which you chose.",
+                line: "Can't find or run \(ProgramSource.abbreviated(path, home: home)), which you chose.",
                 tone: .warn,
                 select: .menu(source(path))
             )
@@ -408,7 +408,7 @@ nonisolated struct ProgramRowContent: Equatable {
             name: "Git",
             line: developerToolsMissing
                 ? "Apple's Git comes with the Command Line Tools, which aren't installed."
-                : "Roga didn't find Git on this Mac.",
+                : "Couldn't find Git on this Mac.",
             tone: .plain,
             select: .choose,
             isDimmed: true
@@ -466,7 +466,7 @@ nonisolated struct ProgramRowContent: Equatable {
             return ProgramRowContent(
                 name: kind.name,
                 status: .warning("Not found"),
-                line: "Roga can't find or run \(path(chosen)), which you chose.",
+                line: "Can't find or run \(path(chosen)), which you chose.",
                 tone: .warn,
                 select: .menu(source(chosen))
             )

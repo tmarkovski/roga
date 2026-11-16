@@ -17,9 +17,9 @@ public enum HookListenerError: Error, Sendable, Hashable, CustomStringConvertibl
         case .inUse(let path):
             "Another copy of Roga is already listening for agents' hooks at \(path)."
         case .pathTooLong(let path):
-            "Roga can't listen for agents' hooks at \(path), because the path is longer than a socket's can be."
+            "Can't listen for agents' hooks at \(path), because the path is longer than a socket's can be."
         case .system(let call, let path, let errorNumber):
-            "Roga can't listen for agents' hooks at \(path), because \(call) failed: \(String(cString: strerror(errorNumber)))."
+            "Can't listen for agents' hooks at \(path), because \(call) failed: \(String(cString: strerror(errorNumber)))."
         }
     }
 }

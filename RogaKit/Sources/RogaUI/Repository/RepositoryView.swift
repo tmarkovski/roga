@@ -222,7 +222,9 @@ struct HistoryCommands: ToolbarContent {
                 }
                 .pickerStyle(.inline)
             } label: {
-                HoverIcon { Icon.filter.image }
+                // The refs panel's icon for sorting, since this orders history
+                // rather than leaving anything out.
+                HoverIcon { Icon.sort.image }
             }
             .menuStyle(.button)
             .buttonStyle(.plain)

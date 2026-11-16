@@ -195,7 +195,7 @@ struct GitFixTests {
         let answer = try await work.settledDialog()
         #expect(answer.buttons.map(\.title) == ["OK"])
         #expect(answer.terminal == [.command(["config", "core.pager", "sh"])])
-        #expect(answer.note?.plain.contains("Roga won't run git config core.pager sh") == true)
+        #expect(answer.note?.plain.contains("git config core.pager sh won't run from here") == true)
         work.fix.run()
         #expect(work.fix.dialog?.id == "gitFix-answer")
         #expect(try await work.git("config", "--get-all", "core.bare").isEmpty == false)

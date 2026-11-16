@@ -32,7 +32,7 @@ public struct CommitSwitch: Sendable, Hashable {
         public init() {}
 
         public var description: String {
-            "Something else has moved HEAD since Roga counted what this would lose, so Roga left it there."
+            "Something else moved HEAD in the meantime, so it was left alone."
         }
     }
 

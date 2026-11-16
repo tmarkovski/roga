@@ -473,6 +473,48 @@ struct HistoryActionsTests {
         #expect(try await git("branch", "--show-current", in: work.path) == "from-here")
     }
 
+    /// Create's popovers hang from the row whose menu asked for them, and from
+    /// the New Branch button when nothing opened a menu (decision 83).
+    @Test func createHangsItsPopoverWhereTheMenuOpened() async throws {
+        let work = try await worktree()
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: .borderless, backing: .buffered, defer: true)
+        let row = NSView(frame: NSRect(x: 0, y: 100, width: 600, height: 28))
+        window.contentView?.addSubview(row)
+        func create(_ title: String) throws {
+            let entries = work.model.menuEntries(forTag: "refs/tags/v1", commit: addTheApp, looksForHead: false) { _, _ in }
+            let inner = entries.compactMap { entry -> [RefMenu.Entry]? in
+                if case let .submenu(name, _, _, inner) = entry, name.plain == "Create" { inner } else { nil }
+            }.first ?? []
+            let action = inner.compactMap { entry -> (() -> Void)? in
+                if case let .command(name, _, _, _, action) = entry, name.plain == title { action } else { nil }
+            }.first
+            let run = try #require(action)
+            run()
+        }
+
+        MenuAnchor.opened(in: row, at: NSRect(x: 40, y: 0, width: 1, height: 28), edge: .maxY)
+        MenuAnchor.closed()
+        try create("Branch here…")
+        #expect(work.branch.isCreatingBranch)
+        #expect(work.branch.newRefPlace?.view === row)
+        #expect(work.branch.newRefPlace?.edge == .maxY)
+        let refused = await work.branch.create(NewBranch(name: "from-row", startPoint: addTheApp)) { _, _ in }
+        #expect(refused == nil)
+        #expect(work.branch.newRefPlace == nil)
+
+        MenuAnchor.opened(in: row, at: row.bounds)
+        MenuAnchor.closed()
+        try create("Tag here…")
+        #expect(work.branch.newTagStart != nil)
+        #expect(work.branch.newRefPlace?.view === row)
+        work.branch.newTagStart = nil
+
+        // A row taken out of its window is no place to hang from.
+        row.removeFromSuperview()
+        try create("Branch here…")
+        #expect(work.branch.newRefPlace == nil)
+    }
+
     @Test func aTagGoesOnTheCommitAndSaysWhyItCant() async throws {
         let work = try await worktree()
         work.branch.startNewTag(at: addTheApp, named: "ef4cfd96")

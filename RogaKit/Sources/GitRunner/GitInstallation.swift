@@ -323,10 +323,10 @@ public enum GitInstallationError: Error, Sendable, Hashable, CustomStringConvert
         switch self {
         case .notFound(let developerToolsMissing):
             developerToolsMissing
-                ? "Roga couldn't find git. Apple's git needs the Command Line Tools, which aren't installed."
-                : "Roga couldn't find git."
+                ? "Couldn't find git. Apple's git needs the Command Line Tools, which aren't installed."
+                : "Couldn't find git."
         case .unsupported(let skipped, _):
-            "Roga needs git \(GitVersion.minimumSupported) or later. "
+            "git \(GitVersion.minimumSupported) or later is required. "
                 + skipped.map(\.description).joined(separator: ". ") + "."
         case .configuredGitMissing(let path):
             "The git chosen in Settings, \(path), doesn't exist or can't be run."

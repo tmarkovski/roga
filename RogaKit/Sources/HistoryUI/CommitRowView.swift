@@ -190,7 +190,10 @@ final class CommitCellView: NSView {
             drawBadge(content.badges[index], in: frame, isHovered: index == hoveredBadge)
         }
         if let subject = content.subject, layout.subjectMaxX > layout.subjectX {
-            let style = content.isWarning ? Style.warningSubject : content.isCurrent ? Style.currentSubject : Style.subject
+            let style = content.isWarning ? Style.warningSubject
+                : content.isWorkingTree ? Style.uncommittedSubject
+                : content.isCurrent ? Style.currentSubject
+                : Style.subject
             draw(subject, at: layout.subjectX, width: layout.subjectMaxX - layout.subjectX, style: style)
             if let body = content.body, !body.isEmpty { drawBody(body, after: subject, in: style, layout: layout) }
         }
@@ -315,6 +318,11 @@ final class CommitCellView: NSView {
         static let subject = Style(font: .systemFont(ofSize: 13), color: .labelColor)
         static let currentSubject = Style(font: .systemFont(ofSize: 13, weight: .semibold), color: .labelColor)
         static let warningSubject = Style(font: .systemFont(ofSize: 13, weight: .semibold), color: GitColors.red)
+        /// The words of the row for uncommitted changes, in the gray of the
+        /// author and date, because they aren't a commit on the branch yet, as
+        /// its hollow dot says (decision 86). A faded row says the same of a
+        /// commit a pull would bring, but fading would dim the dot too.
+        static let uncommittedSubject = Style(font: .systemFont(ofSize: 13), color: .secondaryLabelColor)
         static let detail = Style(font: .systemFont(ofSize: 13), color: .secondaryLabelColor)
         static let shortID = Style(font: .monospacedSystemFont(ofSize: 11.5, weight: .regular), color: .tertiaryLabelColor)
 

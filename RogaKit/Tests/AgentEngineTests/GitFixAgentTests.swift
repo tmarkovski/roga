@@ -110,7 +110,7 @@ struct GitFixAgentTests {
     }
 
     @Test func aReplyItCantReadIsAFailure() async throws {
-        await #expect(throws: CommitMessageError.agentFailed(.claude, message: "Claude Code replied with something Roga can't read as commands.", output: "Run git fsck.")) {
+        await #expect(throws: CommitMessageError.agentFailed(.claude, message: "Couldn't read commands in Claude Code's reply.", output: "Run git fsck.")) {
             try await GitFixWriter.propose(request, with: claude, run: claudeReply("Run git fsck."))
         }
     }

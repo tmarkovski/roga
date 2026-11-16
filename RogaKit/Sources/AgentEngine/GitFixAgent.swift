@@ -205,7 +205,7 @@ public enum GitFixWriter {
         guard let parsed = GitFixPrompt.parse(reply) else {
             throw CommitMessageError.agentFailed(
                 agent.kind,
-                message: "\(agent.kind.name) replied with something Roga can't read as commands.",
+                message: "Couldn't read commands in \(agent.kind.name)'s reply.",
                 output: CommitMessageText.trimmed(reply)
             )
         }

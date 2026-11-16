@@ -81,9 +81,9 @@ public enum ProgramError: Error, Sendable, Hashable, CustomStringConvertible {
         case .couldNotStart(_, let error):
             error.description
         case .timedOut(let command, let limit, _):
-            "\(command.name) didn't finish within \(limit.formatted(.units(allowed: [.seconds, .minutes], width: .wide))), so Roga stopped it."
+            "\(command.name) timed out after \(limit.formatted(.units(allowed: [.seconds, .minutes], width: .wide)))."
         case .outputTooLong(let command, let limit):
-            "\(command.name) printed more than \(limit.formatted(.byteCount(style: .memory))), so Roga stopped it."
+            "\(command.name) printed more than \(limit.formatted(.byteCount(style: .memory))) and was stopped."
         }
     }
 

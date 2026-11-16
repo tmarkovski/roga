@@ -117,15 +117,15 @@ public enum RepositoryError: Error, Sendable, Hashable, CustomStringConvertible 
     public var description: String {
         switch self {
         case .cannotOpen(let path, let message):
-            "Roga couldn't open \(path) as a repository: \(message)"
+            "Couldn't open \(path) as a repository: \(message)"
         case .unexpectedOutput(let command, let output):
-            "\(command) printed \(output.prefix(200).debugDescription), which Roga didn't expect."
+            "\(command) printed something unexpected: \(output.prefix(200).debugDescription)."
         case .patchTooLarge(let path, let limit):
             "The changes to \(path) take more than \(limit >> 20) MB of text, which is too much to show."
         case .tooManyChanges(let limit):
             "The list of files that changed takes more than \(limit >> 20) MB of text, which is too much to show. A folder of generated files may need to be ignored."
         case .fetchTookTooLong:
-            "git fetch took too long, so Roga stopped it."
+            "git fetch took too long and was stopped."
         case .notAStash(let id):
             "\(id.hex.prefix(8)) isn't a stash, because it doesn't have the parents git gives a stash."
         case .noSuchRef(let name):

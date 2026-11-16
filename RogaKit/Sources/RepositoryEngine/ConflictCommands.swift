@@ -25,7 +25,7 @@ public struct ConflictedFileChanged: Error, Sendable, Hashable, CustomStringConv
     public var path: String
 
     public var description: String {
-        "\(path) changed after Roga read it, so Roga didn't write to it. It shows the file as it is now."
+        "\(path) changed on disk after it was read, so nothing was written to it. It now shows its latest contents."
     }
 }
 

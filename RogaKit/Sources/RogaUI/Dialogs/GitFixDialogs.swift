@@ -88,7 +88,7 @@ extension GitFixModel {
     private static func refusalNote(_ fix: AgentGitFix) -> DialogText? {
         guard let command = fix.commands.first(where: { $0.refusal != nil }), let reason = command.refusal else { return nil }
         let copy: DialogText = fix.commands.count == 1 ? "You can copy it and run it yourself." : "None of these will run from here, but you can copy them and run them yourself."
-        return .sentences(["Roga won't run \(code: ShellCommand.text(command.arguments)), because \(reason).", copy])
+        return .sentences(["\(code: ShellCommand.text(command.arguments)) won't run from here, because \(reason).", copy])
     }
 
     private func finished(_ lines: [TerminalLine], count: Int, refused: RefusedCommand?) -> DialogContent {

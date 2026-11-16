@@ -734,7 +734,7 @@ struct MessageGeneratorTests {
             return
         }
         #expect(failure.kind == .codex)
-        #expect(failure.message == "codex didn't finish within 1 minute, so Roga stopped it.")
+        #expect(failure.message == "codex timed out after 1 minute.")
         #expect(failure.output == nil)
     }
 

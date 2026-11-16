@@ -161,7 +161,7 @@ public enum GitError: Error, Sendable, Hashable, CustomStringConvertible {
         case .invalidObjectName(let name):
             return "git cat-file can't read an object named \(name.debugDescription)."
         case .unexpectedReply(let command, let reply):
-            return "\(command) replied with \(reply.debugDescription), which Roga didn't expect."
+            return "\(command) replied with something unexpected: \(reply.debugDescription)."
         case .sessionClosed(let command):
             return "\(command) has already exited."
         }

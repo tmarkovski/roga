@@ -30,7 +30,7 @@ public struct CommitRevert: Sendable, Hashable {
         public var commit: ObjectID
 
         public var description: String {
-            "Roga can't read commit \(commit.hex.prefix(8)) in this repository."
+            "Can't read commit \(commit.hex.prefix(8)) in this repository."
         }
     }
 

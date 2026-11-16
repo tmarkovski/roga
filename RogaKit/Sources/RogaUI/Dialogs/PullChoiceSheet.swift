@@ -40,7 +40,7 @@ struct PullChoiceSheet: View {
             DialogSwitchCard(switches: [
                 DialogSwitch(
                     title: "Remember for this repository",
-                    detail: "Sets pull.rebase in its git config, so Roga won't ask again.",
+                    detail: "Sets pull.rebase in its git config, so you won't be asked again.",
                     isOn: choice.remembers
                 ) {
                     branch.pullChoice?.remembers.toggle()

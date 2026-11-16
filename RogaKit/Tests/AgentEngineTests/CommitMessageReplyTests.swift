@@ -99,7 +99,7 @@ struct CommitMessageReplyTests {
 
     @Test func refusesTextThatIsntJSON() {
         let error = failure(result("Add the sidebar\n"), .claude)
-        #expect(message(of: error) == "Claude Code replied with something Roga can't read: Add the sidebar.")
+        #expect(message(of: error) == "Couldn't read Claude Code's reply: Add the sidebar.")
     }
 
     // MARK: Codex
@@ -139,7 +139,7 @@ struct CommitMessageReplyTests {
         let error = failure(result("", errorOutput: stderr, status: 1), .codex)
         #expect(error == .agentFailed(
             .codex,
-            message: "This model needs a newer version of Codex, which Roga can use once you choose it on the Agents page.",
+            message: "This model needs a newer version of Codex. Choose one on the Agents page.",
             output: line + "\n" + line
         ))
     }
