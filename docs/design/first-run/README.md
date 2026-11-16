@@ -72,6 +72,8 @@ Later, [decision 88](../../decisions/0088-messages-dont-narrate-what-roga-did.md
 
 A later pass gave the house more to do. The boards draw one house on Welcome and another on the floor. Built, they're the same house: it leaps down from Welcome's middle to where the floor starts, and back up on Back. Along the floor it runs with its legs where the boards have it slide, and it rocks on its feet when it stops.
 
+Then [decision 89](../../decisions/0089-one-switch-for-agents.md) gave agents one switch in Settings, which the Agents screen's answer stores. Its rows' menus lose Don't use Codex, since agents are on or off together, a line under them names the default agent, and Ready says which is the default. The canvas's Agent settings page draws the new Agents and Ready screens, from [`../agent-settings/boards.py`](../agent-settings/boards.py).
+
 ## Still to decide
 
 - **Which Codex is recommended.** Today's rule is newest wins, which here picks ChatGPT's `0.167.0-alpha.3.2` over Homebrew's `0.166.0`. It may be better to skip prerelease versions.

@@ -4,6 +4,8 @@ import Observation
 
 /// What Roga asks the first time it runs: which git to use, whether to use
 /// agents and which copies, whether to install their hooks, and updates.
+/// Agents are one answer for all of them, as Settings' Use agents is
+/// (decision 89).
 /// Setup takes the whole window, and the window becomes the app when it's
 /// done. Everything it sets is a setting that Settings shows later.
 ///
@@ -42,12 +44,6 @@ public final class SetupModel {
     /// Whether to use agents, as answered on the Agents screen, or nil while
     /// nobody has answered, and when Roga found none to ask about.
     private(set) var usesAgents: Bool?
-    /// Which agents the Agents screen leaves on. Don't use Codex in its menu
-    /// turns one off, and picking a copy turns it back on. It's kept apart
-    /// from each agent's own switch, which Don't Use Agents turns off for all
-    /// of them, so that coming back to the screen shows the rows as they
-    /// were left.
-    private(set) var isOn: [AgentKind: Bool]
 
     @ObservationIgnored private let defaults: UserDefaults
 
@@ -55,9 +51,6 @@ public final class SetupModel {
     ///   means Roga was in use before setup existed.
     public init(hasRepositories: Bool, defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        isOn = Dictionary(uniqueKeysWithValues: AgentKind.allCases.map {
-            ($0, defaults.object(forKey: AgentPreferences.enabledKey($0)) as? Bool ?? true)
-        })
         // Read the way `@AppStorage` reads a Bool, so that a launch argument
         // counts too, which arrives as the word NO.
         if defaults.object(forKey: Self.doneKey) != nil {
@@ -78,10 +71,10 @@ public final class SetupModel {
         [.looking, .git, .agents] + (usable(found: found).isEmpty ? [] : [.hooks]) + [.ready]
     }
 
-    /// The found agents that the answers so far leave in use.
+    /// The found agents that the answers so far leave in use: all of them,
+    /// unless the answer was Don't Use Agents.
     func usable(found: [AgentKind]) -> [AgentKind] {
-        guard usesAgents != false else { return [] }
-        return found.filter { isOn[$0] != false }
+        usesAgents == false ? [] : found
     }
 
     /// From Welcome to the first screen.
@@ -115,47 +108,34 @@ public final class SetupModel {
 
     // MARK: Agents
 
-    /// Turns one agent off or back on, from its row's menu. Nothing is
-    /// stored until the screen is answered.
-    func setOn(_ kind: AgentKind, _ isOn: Bool) {
-        self.isOn[kind] = isOn
-    }
-
     /// Makes a copy the one Roga runs for an agent, or goes back to the one
-    /// Roga finds when it's nil, and turns the agent on. The provider reads
-    /// it from UserDefaults and looks again.
+    /// Roga finds when it's nil. The provider reads it from UserDefaults and
+    /// looks again.
     func chooseProgram(_ kind: AgentKind, _ path: String?) {
         if let path {
             defaults.set(path, forKey: AgentPreferences.programKey(kind))
         } else {
             defaults.removeObject(forKey: AgentPreferences.programKey(kind))
         }
-        isOn[kind] = true
     }
 
-    /// Use Agents: each found agent's switch goes the way its row has it,
-    /// and one Roga didn't find goes back to on, so that Roga uses it once
-    /// it's installed.
+    /// Use Agents: Settings' Use agents goes on, and Hooks comes next.
     func useAgents(found: [AgentKind]) {
         usesAgents = true
-        for kind in AgentKind.allCases {
-            defaults.set(found.contains(kind) ? isOn[kind] != false : true, forKey: AgentPreferences.enabledKey(kind))
-        }
+        defaults.set(true, forKey: AgentPreferences.usesAgentsKey)
         move(to: usable(found: found).isEmpty ? .ready : .hooks)
     }
 
-    /// Don't Use Agents: every agent's switch goes off, found or not, so that
-    /// one installed later isn't used until someone turns it on in Settings.
+    /// Don't Use Agents: Settings' Use agents goes off, so that an agent
+    /// installed later isn't used until someone turns agents on.
     func dontUseAgents() {
         usesAgents = false
-        for kind in AgentKind.allCases {
-            defaults.set(false, forKey: AgentPreferences.enabledKey(kind))
-        }
+        defaults.set(false, forKey: AgentPreferences.usesAgentsKey)
         move(to: .ready)
     }
 
-    /// Continue, when Roga found no agent. Nobody was asked, so the switches
-    /// stay as they are, and an agent installed later is used.
+    /// Continue, when Roga found no agent. Nobody was asked, so Use agents
+    /// stays as it is, and an agent installed later is used.
     func continueWithoutAgents() {
         usesAgents = nil
         move(to: .ready)
@@ -173,9 +153,8 @@ public final class SetupModel {
 
     /// Puts setup at a step with answers given, for tests of what its screens
     /// show.
-    func setStateForTests(step: Step? = nil, usesAgents: Bool?? = nil, isOn: [AgentKind: Bool]? = nil) {
+    func setStateForTests(step: Step? = nil, usesAgents: Bool?? = nil) {
         if let step { self.step = step }
         if let usesAgents { self.usesAgents = usesAgents }
-        if let isOn { self.isOn = isOn }
     }
 }

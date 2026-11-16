@@ -5,134 +5,253 @@ import GitCore
 import IconUI
 import SwiftUI
 
-/// Settings › Agents: the command-line agents Roga found and whether it uses
-/// them, and the hooks through which they tell Roga what they're doing, for
-/// the sidebar's marks (decision 41).
+/// Settings › Agents (decision 89): Use agents, which turns everything about
+/// agents on or off, and while it's on, the agents Roga found and the ones
+/// someone added as commands, the default agent that Generate, Resolve and
+/// Fix run, and Status, the hooks through which Claude Code and Codex tell
+/// Roga what they're doing, for the sidebar's marks.
 struct AgentsPage: View {
     let show: (SettingsDestination) -> Void
+    @Environment(AgentProvider.self) private var agents
 
     var body: some View {
         VStack(alignment: .leading, spacing: 30) {
-            AgentListSection(show: show)
-            WorkingStatusSection()
+            // With agents off it's the page's only row, with no heading over
+            // it, and nothing else about agents shows.
+            UsesAgentsRow()
+            if agents.usesAgents {
+                AgentListSection(show: show)
+                AgentStatusSection()
+            }
         }
     }
 }
 
-/// The agents Roga found, each with its program and version, a switch for
-/// whether Roga uses it, and the way to its own page.
+/// Use agents, the one switch for everything Roga does with agents.
+struct UsesAgentsRow: View {
+    @Environment(AgentProvider.self) private var agents
+
+    var body: some View {
+        let item = SettingsItem.usesAgents
+        SettingsRow(title: item.title, help: item.help) {
+            Toggle(item.title, isOn: Binding { agents.usesAgents } set: { agents.setUsesAgents($0) })
+                .toggleStyle(.settings)
+        }
+    }
+}
+
+/// Look Again for the agents, which finds them again and checks their hooks.
+struct RescanButton: View {
+    @Environment(AgentProvider.self) private var agents
+
+    /// Its icon: Lucide's rotate-cw, one arrow going round, as the canvas
+    /// draws it, rather than refresh-cw's pair.
+    static let icon = Icon.rotateCw
+
+    var body: some View {
+        Button {
+            // Looking again starts afresh, so what failed before goes from
+            // the hooks' rows.
+            agents.lookAgain()
+        } label: {
+            HStack(spacing: 6) {
+                Self.icon.image
+                    .font(.system(size: 11))
+                Text("Rescan")
+            }
+        }
+        .buttonStyle(.settings(small: true))
+        .disabled(agents.isLooking)
+        .help("Scan for Claude Code and Codex installations, and check their hooks")
+    }
+}
+
+/// The agents: Claude Code and Codex, whether or not Roga found them, then
+/// the custom ones, each going to its own page, and Add Custom Agent… at the
+/// end. The default agent comes after them. Search shows it too, with Use
+/// agents among what it found.
 struct AgentListSection: View {
-    var items = SettingsGroup.commandLineAgents.items
+    var items = SettingsGroup.agents.items
     var namesPage = false
     let show: (SettingsDestination) -> Void
     @Environment(AgentProvider.self) private var agents
-
-    /// Look Again's icon: Lucide's rotate-cw, one arrow going round, as the
-    /// canvas draws it, rather than refresh-cw's pair.
-    static let lookAgainIcon = Icon.rotateCw
+    @State private var isAdding = false
 
     var body: some View {
-        SettingsSection(title: SettingsGroup.commandLineAgents.title, description: namesPage ? nil : SettingsGroup.commandLineAgents.styledDescription) {
+        SettingsSection(title: SettingsGroup.agents.title, description: namesPage ? nil : SettingsGroup.agents.styledDescription) {
             if namesPage {
                 Text(SettingsPage.agents.title)
                     .foregroundStyle(SettingsColors.note)
             } else {
                 Spacer(minLength: 0)
-                Button {
-                    // Looking again starts afresh, so what failed before
-                    // goes from the hooks' rows.
-                    agents.lookAgain()
-                } label: {
-                    HStack(spacing: 6) {
-                        Self.lookAgainIcon.image
-                            .font(.system(size: 11))
-                        Text("Rescan")
-                    }
-                }
-                .buttonStyle(.settings(small: true))
-                .disabled(agents.isLooking)
-                .help("Scan for Claude Code and Codex installations")
+                RescanButton()
             }
         } content: {
-            if items.contains(.agentList) {
-                SettingsBlock {
-                    SettingsList {
-                        ForEach(AgentKind.allCases) { kind in
-                            AgentRow(kind: kind, show: show)
+            // On the page, Use agents is above the heading.
+            if namesPage, items.contains(.usesAgents) {
+                UsesAgentsRow()
+            }
+            if agents.usesAgents {
+                if items.contains(.agentList) {
+                    SettingsBlock {
+                        SettingsList {
+                            ForEach(AgentKind.allCases) { kind in
+                                AgentRow(kind: kind, show: show)
+                            }
+                            ForEach(agents.customAgents) { custom in
+                                CustomAgentRow(custom: custom, show: show)
+                            }
+                            AddCustomAgentRow {
+                                isAdding = true
+                            }
                         }
+                    }
+                }
+                if items.contains(.defaultAgent) {
+                    SettingsRow(title: SettingsItem.defaultAgent.title, help: nil) {
+                        SettingsSelect(
+                            selection: Binding { agents.defaultAgent } set: { if let id = $0 { agents.setDefaultAgent(id) } },
+                            options: AgentSummaries.defaultOptions(agents),
+                            emptyTitle: AgentSummaries.noAgentTitle(agents)
+                        )
                     }
                 }
             }
         }
+        .sheet(isPresented: $isAdding) {
+            AddCustomAgentDialog { custom in
+                // A new agent's page isn't where someone is going, so the
+                // list stays, with it in.
+                _ = custom
+            }
+            .environment(agents)
+        }
     }
 }
 
-/// An agent in the list: its name and program, whether Roga uses it, and the
-/// chevron to its page, beside the name.
+/// Claude Code or Codex in the list: its name, then where its program is, or
+/// why there's none, and the chevron to its page. The whole row goes there.
 private struct AgentRow: View {
     let kind: AgentKind
     let show: (SettingsDestination) -> Void
     @Environment(AgentProvider.self) private var agents
-    @AppStorage private var isEnabled: Bool
-
-    init(kind: AgentKind, show: @escaping (SettingsDestination) -> Void) {
-        self.kind = kind
-        self.show = show
-        _isEnabled = AppStorage(wrappedValue: true, AgentPreferences.enabledKey(kind))
-    }
 
     var body: some View {
-        let isFound = agents.installation(kind) != nil
-        HStack(alignment: .settingsFirstLine, spacing: 12) {
-            Button {
-                show(.agent(kind))
-            } label: {
-                VStack(alignment: .leading, spacing: 2) {
-                    AgentName(kind: kind, isDimmed: !isFound || !isEnabled)
-                    ProgramLineText(line: AgentSummaries.programLine(agents.lookups[kind]))
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityHint("Shows \(kind.name)'s settings")
-            HStack(spacing: 8) {
-                if isFound {
-                    Toggle("Enable \(kind.name)", isOn: $isEnabled)
-                        .toggleStyle(.settings)
-                        .help("Enable \(kind.name) for commit message generation")
-                }
-                Button {
-                    show(.agent(kind))
-                } label: {
-                    Icon.chevronRight.image
-                        .font(.system(size: 14))
-                }
-                .buttonStyle(.icon(size: 24))
-                .help("\(kind.name) Settings")
-                .accessibilityLabel("\(kind.name) Settings")
-            }
-            .alignmentGuide(.settingsFirstLine) { $0[VerticalAlignment.center] }
+        let line = AgentSummaries.programLine(agents.lookups[kind])
+        AgentListRow(name: kind.name, isDimmed: agents.installation(kind) == nil, spoken: line.text) {
+            show(.agent(.known(kind)))
+        } detail: {
+            ProgramLineText(line: line)
         }
-        .padding(EdgeInsets(top: 10, leading: 14, bottom: 10, trailing: 12))
-        .frame(minHeight: 58)
     }
 }
 
-/// The hooks for each agent, why the sidebar can't show marks when it
-/// can't, the switch for the marks, and what each mark means.
-struct WorkingStatusSection: View {
-    var items = SettingsGroup.workingStatus.items
+/// A custom agent in the list: its name with a Custom tag, then its command
+/// in the code font, and the chevron to its page.
+private struct CustomAgentRow: View {
+    let custom: CustomAgent
+    let show: (SettingsDestination) -> Void
+
+    var body: some View {
+        AgentListRow(name: custom.shownName, isCustom: true, spoken: custom.command) {
+            show(.agent(.custom(custom.id)))
+        } detail: {
+            ProgramLineText(line: ProgramLine(text: custom.command, tone: .path))
+        }
+    }
+}
+
+/// A row of the agents' list, which goes to the agent's page.
+private struct AgentListRow<Detail: View>: View {
+    let name: String
+    var isDimmed = false
+    var isCustom = false
+    /// What the second line says, for VoiceOver.
+    let spoken: String
+    let action: () -> Void
+    @ViewBuilder var detail: Detail
+
+    var body: some View {
+        Button(action: action) {
+            HStack(alignment: .settingsFirstLine, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 8) {
+                        AgentName(name: name, isDimmed: isDimmed)
+                        if isCustom {
+                            CustomTag()
+                        }
+                    }
+                    detail
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Icon.chevronRight.image
+                    .font(.system(size: 14))
+                    .foregroundStyle(SettingsColors.note)
+                    .frame(width: 24, height: 24)
+                    .alignmentGuide(.settingsFirstLine) { $0[VerticalAlignment.center] }
+            }
+            .padding(EdgeInsets(top: 10, leading: 14, bottom: 10, trailing: 12))
+            .frame(minHeight: 58)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("\(name) Settings")
+        .accessibilityLabel(isCustom ? "\(name), custom agent" : name)
+        .accessibilityValue(spoken)
+        .accessibilityHint("Shows \(name)'s settings")
+    }
+}
+
+/// The small gray tag after a custom agent's name.
+private struct CustomTag: View {
+    var body: some View {
+        Text("Custom")
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(SettingsColors.note)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1)
+            .background(SettingsColors.card, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+            .accessibilityHidden(true)
+    }
+}
+
+/// The last row of the agents' list, which adds a custom agent.
+private struct AddCustomAgentRow: View {
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Icon.plus.image
+                    .font(.system(size: 13))
+                    .foregroundStyle(SettingsColors.note)
+                Text("Add Custom Agent…")
+            }
+            .padding(.horizontal, 14)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .background(isHovering ? SettingsColors.hover : .clear)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+    }
+}
+
+/// Status: the hooks for Claude Code and Codex, why the sidebar can't show
+/// marks when it can't, and what each mark means. A custom agent has no
+/// hooks, so it isn't here.
+struct AgentStatusSection: View {
+    var items = SettingsGroup.agentStatus.items
     var namesPage = false
     @Environment(AgentProvider.self) private var agents
     @Environment(AgentMonitor.self) private var monitor
     @Environment(RepositoryList.self) private var list
-    @AppStorage(AgentPreferences.showsMarksKey) private var showsMarks = true
     @State private var dialog: HooksDialog.Request?
     @State private var places = HeardPlaces()
 
     var body: some View {
-        SettingsSection(title: SettingsGroup.workingStatus.title, description: namesPage ? nil : SettingsGroup.workingStatus.styledDescription) {
+        SettingsSection(title: SettingsGroup.agentStatus.title) {
             if namesPage {
                 Text(SettingsPage.agents.title)
                     .foregroundStyle(SettingsColors.note)
@@ -179,11 +298,6 @@ struct WorkingStatusSection: View {
                     }
                 }
             }
-        case .showsMarks:
-            SettingsRow(title: item.title, help: item.help) {
-                Toggle(item.title, isOn: $showsMarks)
-                    .toggleStyle(.settings)
-            }
         case .marksLegend:
             SettingsBlock {
                 MarksLegend()
@@ -214,7 +328,7 @@ private struct HookRow: View {
     var body: some View {
         HStack(alignment: .settingsFirstLine, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                AgentName(kind: kind, isDimmed: line.button == nil)
+                AgentName(name: kind.name, isDimmed: line.button == nil)
                 HookLineText(line: line, size: 12)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -301,14 +415,14 @@ private struct ProgramLineText: View {
 }
 
 /// An agent's name at the top of its row, which is gray while Roga can't use
-/// the agent, because Roga didn't find it or it's turned off. The row's
-/// controls sit on the middle of its line.
+/// the agent, because Roga didn't find it. The row's controls sit on the
+/// middle of its line.
 private struct AgentName: View {
-    let kind: AgentKind
+    let name: String
     var isDimmed = false
 
     var body: some View {
-        Text(kind.name)
+        Text(name)
             .fontWeight(.medium)
             .foregroundStyle(isDimmed ? SettingsColors.note : .primary)
             .alignmentGuide(.settingsFirstLine) { $0[VerticalAlignment.center] }
@@ -428,6 +542,17 @@ enum AgentSummaries {
         case .configuredUnusable(let skipped)?:
             ProgramLine(text: sentence(skipped.description), tone: .warn)
         }
+    }
+
+    /// What Default agent offers: every agent Roga can run, custom ones too.
+    /// There's no None, since turning agents off is Use agents.
+    static func defaultOptions(_ agents: AgentProvider) -> [(value: AgentID?, title: String)] {
+        agents.availableAgents.compactMap { id in agents.named(id).map { (value: id, title: $0.name) } }
+    }
+
+    /// What Default agent says while it has nothing to offer.
+    static func noAgentTitle(_ agents: AgentProvider) -> String {
+        agents.isLooking ? "Searching…" : "None found"
     }
 
     /// What an agent's hooks line says and offers. Install needs the agent

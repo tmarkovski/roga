@@ -238,15 +238,23 @@ public struct WorkspaceView: View {
             }
         }
         .frame(minWidth: 720, minHeight: 480)
-        .task(id: Connection(hasGit: gitProvider.git != nil, isSettingUp: setup.isShowing)) {
+        .task(id: Connection(hasGit: gitProvider.git != nil, isSettingUp: setup.isShowing, usesAgents: agents.usesAgents)) {
             guard let git = gitProvider.git else { return }
             // The agents run with git's environment, and the monitor asks
             // Claude Code about its sessions once Roga has found it with
             // its hooks installed. Both belong to the app, so starting
             // them from another window does nothing. Setup needs both, to
-            // find the agents and to install their hooks.
+            // find the agents and to install their hooks. With agents turned
+            // off, nothing listens for their hooks (decision 89).
             agents.start(git: git)
-            agentMonitor.start(agents: agents)
+            // Setup asks about the agents, so it needs them found even when
+            // they were turned off.
+            if setup.isShowing { agents.lookIfNotYet() }
+            if agents.usesAgents || setup.isShowing {
+                agentMonitor.start(agents: agents)
+            } else {
+                agentMonitor.stop()
+            }
             // The repositories open with one git and keep it, so they wait
             // for setup, where someone may choose another.
             if !setup.isShowing { await list.connect(git: git) }
@@ -258,6 +266,7 @@ public struct WorkspaceView: View {
     private struct Connection: Hashable {
         var hasGit: Bool
         var isSettingUp: Bool
+        var usesAgents: Bool
     }
 
     /// The sidebar and the worktree selected in it.

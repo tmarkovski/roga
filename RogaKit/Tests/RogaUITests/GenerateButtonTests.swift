@@ -75,15 +75,16 @@ struct GenerateButtonTests {
         #expect(GenerateButtonState(showsButton: true, agent: .claude, hasText: false, isWriting: true, readiness: .busy) == .hidden)
     }
 
-    @Test func hasNoAgentToRunUntilOneIsFoundAndOn() {
+    @Test func hasNoAgentToRunUntilOneIsFoundOrWhileAgentsAreOff() {
         defer { clean() }
         let provider = AgentTestSupport.provider(support: folder + "/support", defaults: defaults, codexHome: folder + "/codex")
-        #expect(provider.generateAgent == nil)
+        #expect(provider.defaultAgent == nil)
         provider.setStateForTests(lookups: [.claude: .notFound, .codex: found(.codex)])
-        #expect(provider.generateAgent == .codex)
-        defaults.set(false, forKey: AgentPreferences.enabledKey(.codex))
+        #expect(provider.defaultAgent == .known(.codex))
+        defaults.set(false, forKey: AgentPreferences.usesAgentsKey)
         provider.reloadSettings()
-        #expect(provider.generateAgent == nil)
+        #expect(provider.defaultAgent == nil)
+        #expect(provider.generation() == nil)
     }
 
     // MARK: The popover
@@ -114,9 +115,6 @@ struct GenerateButtonTests {
         provider.setStateForTests(lookups: [.claude: found(.claude)])
         #expect(GeneratePopover.unusableReason(.claude, in: provider) == nil)
         #expect(GeneratePopover.unusableReason(.codex, in: provider) == "Searching…")
-        defaults.set(false, forKey: AgentPreferences.enabledKey(.claude))
-        provider.reloadSettings()
-        #expect(GeneratePopover.unusableReason(.claude, in: provider) == "Disabled")
     }
 
     @Test func offersEachAgentsModels() {
@@ -133,9 +131,9 @@ struct GenerateButtonTests {
     @Test func showsTheCommandOfThePickedAgent() throws {
         defer { clean() }
         let provider = provider()
-        provider.setGenerateAgent(.codex)
-        let setup = try #require(provider.generation(with: provider.generateAgent))
-        #expect(setup.kind == .codex)
+        provider.setDefaultAgent(.known(.codex))
+        let setup = try #require(provider.generation(with: provider.defaultAgent))
+        #expect(setup.id == .known(.codex))
         let lines = setup.terminal(worktree: "/tmp/work", hasDraft: false)
         #expect(lines.first == .comment("Staged diff supplied via standard input"))
         guard case .program(let command, _)? = lines.last else {
@@ -153,15 +151,13 @@ struct GenerateButtonTests {
     @Test func showsCodexsCommandWhole() throws {
         defer { clean() }
         let provider = provider()
-        // A model of its own and extra arguments make it longer still.
+        // A model of its own and the MCP servers it turns off make it longer
+        // still.
         defaults.set("gpt-6-astra-mini", forKey: AgentPreferences.modelKey(.codex))
-        defaults.set(
-            "-c model_verbosity=low -c model_reasoning_summary=none -c hide_agent_reasoning=true",
-            forKey: AgentPreferences.extraArgumentsKey(.codex)
-        )
         provider.reloadSettings()
+        provider.setStateForTests(codexMCPServers: ["node_repl", "docs", "github"])
         for kind in AgentKind.allCases {
-            let setup = try #require(provider.generation(with: kind))
+            let setup = try #require(provider.generation(with: .known(kind)))
             let block = CommandBlock(lines: setup.terminal(worktree: "/Users/someone/git/acme/api", hasDraft: true), isCompact: true)
             let height = NSHostingView(rootView: block.frame(width: GeneratePopover.width)).fittingSize.height
             #expect(height < CommandBlock.compactMaximumHeight, "\(kind.name)'s command is cut at \(height) points")
@@ -183,8 +179,8 @@ struct GenerateButtonTests {
         var commands: [CGFloat] = []
         var popovers: [CGFloat] = []
         for kind in AgentKind.allCases {
-            provider.setGenerateAgent(kind)
-            let setup = try #require(provider.generation(with: kind))
+            provider.setDefaultAgent(.known(kind))
+            let setup = try #require(provider.generation(with: .known(kind)))
             commands.append(height(
                 CommandBlock(lines: setup.terminal(worktree: "/Users/someone/git/acme/api", hasDraft: false), isCompact: true)
                     .frame(width: GeneratePopover.width)
@@ -284,15 +280,15 @@ struct GenerateButtonTests {
         // Codex on its own default, which its config.toml names.
         provider.setStateForTests(codexDefaultModel: .some("gpt-6-astra"))
         #expect(RepositoryCommands.generateWithItems(provider) == [
-            .init(kind: .claude, title: "Claude Code · haiku", isCurrent: true),
-            .init(kind: .codex, title: "Codex · gpt-6-astra", isCurrent: false),
+            .init(id: .known(.claude), title: "Claude Code · haiku", isCurrent: true),
+            .init(id: .known(.codex), title: "Codex · gpt-6-astra", isCurrent: false),
         ])
         defaults.set("o5-mini", forKey: AgentPreferences.modelKey(.codex))
         provider.reloadSettings()
-        provider.setGenerateAgent(.codex)
+        provider.setDefaultAgent(.known(.codex))
         #expect(RepositoryCommands.generateWithItems(provider) == [
-            .init(kind: .claude, title: "Claude Code · haiku", isCurrent: false),
-            .init(kind: .codex, title: "Codex · o5-mini", isCurrent: true),
+            .init(id: .known(.claude), title: "Claude Code · haiku", isCurrent: false),
+            .init(id: .known(.codex), title: "Codex · o5-mini", isCurrent: true),
         ])
     }
 
@@ -312,9 +308,41 @@ struct GenerateButtonTests {
         defer { clean() }
         let provider = provider([.claude: found(.claude), .codex: .notFound])
         #expect(RepositoryCommands.generateWithItems(provider).map(\.title) == ["Claude Code · haiku"])
-        defaults.set(false, forKey: AgentPreferences.enabledKey(.claude))
-        provider.reloadSettings()
+        // With agents off, it offers none.
+        provider.setUsesAgents(false)
         #expect(RepositoryCommands.generateWithItems(provider).isEmpty)
+    }
+
+    @Test func generateWithListsCustomAgentsLast() {
+        defer { clean() }
+        let provider = provider([.claude: found(.claude), .codex: .notFound])
+        let ollama = provider.addCustomAgent(name: "Ollama", command: "ollama run qwen2.5-coder:7b")
+        #expect(RepositoryCommands.generateWithItems(provider) == [
+            .init(id: .known(.claude), title: "Claude Code · haiku", isCurrent: true),
+            .init(id: .custom(ollama.id), title: "Ollama", isCurrent: false),
+        ])
+        provider.setDefaultAgent(.custom(ollama.id))
+        #expect(RepositoryCommands.generateWithItems(provider).map(\.isCurrent) == [false, true])
+    }
+
+    @Test func runsACustomAgentsCommandWithItsInstructionsOnStandardInput() throws {
+        defer { clean() }
+        let provider = provider([.claude: .notFound, .codex: .notFound])
+        let ollama = provider.addCustomAgent(name: " Ollama ", command: "ollama run qwen2.5-coder:7b ")
+        #expect(provider.defaultAgent == .custom(ollama.id))
+        let setup = try #require(provider.generation())
+        #expect(setup.named == NamedAgent(id: .custom(ollama.id), name: "Ollama", shortName: "Ollama"))
+        #expect(setup.label == "Ollama")
+        let lines = setup.terminal(worktree: "/tmp/work", hasDraft: false)
+        #expect(lines.first == .comment("Instructions and staged diff supplied via standard input"))
+        guard case .program(let command, let showsPath)? = lines.last else {
+            Issue.record("Expected the command")
+            return
+        }
+        #expect(command.executable == "/bin/sh")
+        #expect(command.arguments == ["-c", "ollama run qwen2.5-coder:7b"])
+        #expect(command.directory == "/tmp/work")
+        #expect(!showsPath)
     }
 
     @Test func theShortcutPairsWithWriteMessage() {

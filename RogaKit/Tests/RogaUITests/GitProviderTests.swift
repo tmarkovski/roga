@@ -175,7 +175,6 @@ struct GitProviderTests {
         let menu = try #require(ProgramMenu.git(provider))
         #expect(menu.choices.map(\.executable) == [Self.old, Self.apples, Self.homebrew].map(\.executable))
         #expect(menu.checked == "/usr/bin/git")
-        #expect(menu.skip == nil)
 
         menu.choose(menu.choices[2])
         #expect(provider.chosenPath == Self.homebrew.executable)
@@ -185,7 +184,7 @@ struct GitProviderTests {
         await settled(provider)
     }
 
-    @Test func anAgentsMenuChoosesACopyOrNotToUseTheAgent() throws {
+    @Test func anAgentsMenuChoosesACopy() throws {
         defer { AgentTestSupport.remove(defaults, named: name) }
         let agents = AgentTestSupport.provider(support: try AgentTestSupport.folder(), defaults: defaults, codexHome: try AgentTestSupport.folder())
         #expect(ProgramMenu.agent(.codex, agents: agents, choose: { _ in }) == nil)
@@ -199,24 +198,15 @@ struct GitProviderTests {
         agents.setStateForTests(lookups: [.codex: survey.lookup], surveys: [.codex: survey])
 
         var chosen: [String?] = []
-        var skipped = 0
-        let menu = try #require(ProgramMenu.agent(.codex, agents: agents, isOn: true, choose: { chosen.append($0) }, skip: { skipped += 1 }))
+        let menu = try #require(ProgramMenu.agent(.codex, agents: agents, choose: { chosen.append($0) }))
         #expect(menu.label == "Codex installations")
         #expect(menu.checked == app)
-        #expect(menu.skip?.title == "Don't use Codex")
-        #expect(menu.skip?.isOn == false)
         menu.choose(menu.choices[0])
         // The recommended copy is stored as nothing, so Roga keeps choosing.
         menu.choose(menu.choices[1])
         #expect(chosen == [homebrew, nil])
-        menu.skip?.action()
-        #expect(skipped == 1)
-
-        // An agent that's off has the check on not using it.
-        let off = try #require(ProgramMenu.agent(.codex, agents: agents, isOn: false, choose: { _ in }, skip: {}))
-        #expect(off.skip?.isOn == true)
-        // Settings has a switch for that, so its menu doesn't offer it.
-        #expect(try #require(ProgramMenu.agent(.codex, agents: agents, choose: { _ in })).skip == nil)
+        // There's no Don't use Codex: agents are on or off together
+        // (decision 89).
     }
 
     // MARK: Agents, from what Roga already asked

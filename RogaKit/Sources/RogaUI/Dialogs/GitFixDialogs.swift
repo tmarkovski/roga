@@ -26,11 +26,13 @@ extension GitFixModel {
         }
     }
 
-    private func asking(_ kind: AgentKind, program: ProgramCommand, showsPath: Bool) -> DialogContent {
+    private func asking(_ kind: NamedAgent, program: ProgramCommand, showsPath: Bool) -> DialogContent {
         DialogContent(
             id: "gitFix-asking",
             title: "Asking \(kind.name)…",
-            message: "Sending Git output and worktree diagnostics to \(kind.name). Agent tools are disabled. Review and approve any suggested commands before running them.",
+            // A custom agent's command is someone's own, so Roga can't say
+            // what it turns off (decision 89).
+            message: "Sending Git output and worktree diagnostics to \(kind.name).\(kind.id.kind == nil ? "" : " Agent tools are disabled.") Review and approve any suggested commands before running them.",
             terminal: [.program(program, showsPath: showsPath)],
             isWaitingForAgent: true,
             buttons: [DialogButton(title: "Stop", kind: .secondary) { [weak self] in self?.dismiss() }],
@@ -38,7 +40,7 @@ extension GitFixModel {
         )
     }
 
-    private func answer(from kind: AgentKind, _ fix: AgentGitFix, isRunning: Bool) -> DialogContent {
+    private func answer(from kind: NamedAgent, _ fix: AgentGitFix, isRunning: Bool) -> DialogContent {
         let close = { [weak self] in self?.dismiss(); return () }
         let said = fix.explanation.isEmpty ? nil : DialogText(stringLiteral: String(fix.explanation.prefix(Self.explanationLimit)))
         guard !fix.commands.isEmpty else {
@@ -123,7 +125,7 @@ extension GitFixModel {
         )
     }
 
-    private func failure(_ kind: AgentKind, message: String, output: String?) -> DialogContent {
+    private func failure(_ kind: NamedAgent, message: String, output: String?) -> DialogContent {
         let close = { [weak self] in self?.dismiss(); return () }
         return DialogContent(
             id: "gitFix-failed",

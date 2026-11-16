@@ -195,19 +195,24 @@ public enum ConflictResolutionWriter {
         if agent.kind == .codex, let file = agent.codexConfigurationFile {
             agent.mcpServers = CodexConfiguration.mcpServers(inFile: file) ?? []
         }
-        let input = Array(ConflictResolutionPrompt.input(for: request, token: makeToken()).utf8)
+        let input = CommitMessageCommand.standardInput(
+            for: agent,
+            instructions: ConflictResolutionPrompt.instructions,
+            task: ConflictResolutionPrompt.task,
+            data: ConflictResolutionPrompt.input(for: request, token: makeToken())
+        )
         let result: ProgramResult
         do {
             result = try await run(command(for: agent, worktree: request.worktree), input)
         } catch let error as ProgramError {
             throw CommitMessageError.program(error)
         }
-        let reply = try CommitMessageReply.message(from: result, agent: agent.kind)
+        let reply = try CommitMessageReply.message(from: result, for: agent)
         let (explanation, lines) = ConflictResolutionPrompt.parse(reply, count: request.conflicts.count)
         guard !lines.isEmpty else {
             throw CommitMessageError.agentFailed(
-                agent.kind,
-                message: "\(agent.kind.name) replied without resolving any of the conflicts.",
+                agent.name,
+                message: "\(agent.name) replied without resolving any of the conflicts.",
                 output: CommitMessageText.trimmed(reply)
             )
         }

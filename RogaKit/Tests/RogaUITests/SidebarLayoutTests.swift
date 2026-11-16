@@ -339,12 +339,13 @@ struct SidebarLayoutTests {
         }
 
         // The rows are api, a, and one for b. They show until the person turns
-        // them off in Settings, which shows its switch on while nothing's stored.
-        #expect(AgentPreferences.showsMarks(in: defaults))
+        // agents off in Settings, which shows Use agents on while nothing's
+        // stored (decision 89).
+        #expect(AgentPreferences.usesAgents(in: defaults))
         #expect(marks() == [.working, .working, .waiting(.permission)])
-        defaults.set(false, forKey: AgentPreferences.showsMarksKey)
+        defaults.set(false, forKey: AgentPreferences.usesAgentsKey)
         #expect(marks() == [nil, nil, nil])
-        defaults.set(true, forKey: AgentPreferences.showsMarksKey)
+        defaults.set(true, forKey: AgentPreferences.usesAgentsKey)
         #expect(marks() == [.working, .working, .waiting(.permission)])
     }
 

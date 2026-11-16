@@ -322,7 +322,7 @@ final class SelectedChanges {
             case failed(message: String, output: String?)
         }
 
-        var kind: AgentKind
+        var agent: NamedAgent
         /// The agent and its model, as Generate names them.
         var label: String
         /// How many conflicts it was asked about.
@@ -342,8 +342,8 @@ final class SelectedChanges {
 
     /// Asks the agent Generate runs to resolve the selected file's conflicts that
     /// are left, and writes what it sends back in their place, for someone to
-    /// read over. It's the agent and model from the Commit page of Settings
-    /// (decision 41), and it runs the same way, with no tools.
+    /// read over. It's the default agent from Settings › Agents (decision 89),
+    /// and it runs as Generate does (decision 41).
     func askAgent(_ setup: GenerationSetup?) {
         guard let setup, let file = selectedFile.file, selectedFile.group == .conflicted, agentRuns[file.path] == nil,
               let sides = selectedFile.shown?.conflicts?.sides, let progress = conflicts.progress(of: file.path), progress.left > 0
@@ -358,10 +358,10 @@ final class SelectedChanges {
             conflicts: open.map { Self.agentConflict($0, of: progress.original) }
         )
         func work(_ phase: AgentWork.Phase) -> AgentWork {
-            AgentWork(kind: setup.kind, label: setup.label, asked: open.count, phase: phase)
+            AgentWork(agent: setup.named, label: setup.label, asked: open.count, phase: phase)
         }
         guard request.fits else {
-            agentWork[path] = work(.failed(message: "These conflicts are too big to send to \(setup.kind.name). Resolve them here or in your editor.", output: nil))
+            agentWork[path] = work(.failed(message: "These conflicts are too big to send to \(setup.agent.name). Resolve them here or in your editor.", output: nil))
             return
         }
         let run = runAgent ?? { [programs = setup.programs] command, input in
@@ -374,11 +374,11 @@ final class SelectedChanges {
                 let resolution = try await ConflictResolutionWriter.resolve(request, with: setup.agent, run: run)
                 try Task.checkCancellation()
                 // Someone may have resolved some of them meanwhile, and those stay.
-                update(file, failure: "Unable to save \(setup.kind.name) output for \(file.name)") { progress in
+                update(file, failure: "Unable to save \(setup.agent.name) output for \(file.name)") { progress in
                     for (asked, index) in open.enumerated() where progress.choices[index] == nil {
                         guard let text = resolution.lines[asked] else { continue }
                         progress.choices[index] = .lines(ConflictedFile.lines(typed: text))
-                        progress.writtenBy[index] = setup.kind.name
+                        progress.writtenBy[index] = setup.agent.name
                     }
                 }
                 await resolving?.value

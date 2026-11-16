@@ -11,7 +11,7 @@ import SwiftUI
 /// that marks an agent's command (decision 68).
 struct GenerateButton<Choices: View>: View {
     /// The agent a click runs.
-    let agent: AgentKind
+    let agent: NamedAgent
     /// Whether the box has text, which the agent then rewrites rather than
     /// starting afresh.
     let rewrites: Bool
@@ -24,7 +24,7 @@ struct GenerateButton<Choices: View>: View {
     /// - Parameter isHovering: Whether it starts out with the pointer over it,
     ///   for pictures of it.
     init(
-        agent: AgentKind,
+        agent: NamedAgent,
         rewrites: Bool,
         readiness: MessageGenerator.Readiness,
         isChoosing: Binding<Bool>,
@@ -102,7 +102,7 @@ struct GenerateButton<Choices: View>: View {
 extension GenerateButton {
     /// What the main button says while the box is empty, which names the agent a
     /// click runs, since the popover is the only other place that says.
-    static func title(agent: AgentKind) -> String {
+    static func title(agent: NamedAgent) -> String {
         "Generate with \(agent.shortName)"
     }
 
@@ -114,7 +114,7 @@ extension GenerateButton {
     /// staged or a rebase has stopped, and otherwise what a click does. While
     /// the box is busy for a while, as when a commit is being made, it leaves
     /// out the shortcut, which can't run yet either.
-    static func help(agent: AgentKind, rewrites: Bool, readiness: MessageGenerator.Readiness) -> String {
+    static func help(agent: NamedAgent, rewrites: Bool, readiness: MessageGenerator.Readiness) -> String {
         let words = rewrites ? "Rewrite the commit message with \(agent.name) using the current draft" : "Generate a commit message with \(agent.name)"
         switch readiness {
         case .ready:
@@ -144,9 +144,9 @@ enum GenerateButtonState: Equatable {
     /// It's turned off in Settings, no agent can be used, or an agent is
     /// writing already, which the line under the box says instead.
     case hidden
-    case shown(agent: AgentKind, rewrites: Bool, readiness: MessageGenerator.Readiness)
+    case shown(agent: NamedAgent, rewrites: Bool, readiness: MessageGenerator.Readiness)
 
-    init(showsButton: Bool, agent: AgentKind?, hasText: Bool, isWriting: Bool, readiness: MessageGenerator.Readiness) {
+    init(showsButton: Bool, agent: NamedAgent?, hasText: Bool, isWriting: Bool, readiness: MessageGenerator.Readiness) {
         guard showsButton, let agent, !isWriting else {
             self = .hidden
             return

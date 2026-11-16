@@ -205,27 +205,21 @@ private enum Found {
         #expect(none.isDimmed)
     }
 
-    @Test func anAgentsRowFollowsWhatRogaFoundAndWhetherItsUsed() {
-        let found = ProgramRowContent.agent(.codex, lookup: Found.codexes.lookup, isOn: true, home: Found.home)
+    @Test func anAgentsRowFollowsWhatRogaFound() {
+        let found = ProgramRowContent.agent(.codex, lookup: Found.codexes.lookup, home: Found.home)
         #expect(found.version == "0.167.0-alpha.3.2")
         #expect(found.status == .detected)
         #expect(found.line == Found.chatGPTCodex)
         #expect(found.select == .menu("ChatGPT app"))
 
-        // One that's off keeps its menu, to turn it back on.
-        let off = ProgramRowContent.agent(.codex, lookup: Found.codexes.lookup, isOn: false, home: Found.home)
-        #expect(off == ProgramRowContent(name: "Codex", line: ProgramRowContent.unused, tone: .plain, select: .menu("Not used"), isDimmed: true))
-
-        let missing = ProgramRowContent.agent(.claude, lookup: .notFound, isOn: true, home: Found.home)
+        let missing = ProgramRowContent.agent(.claude, lookup: .notFound, home: Found.home)
         #expect(missing.select == .choose)
         #expect(missing.isDimmed)
-        // An agent Roga didn't find has nothing to turn off.
-        #expect(ProgramRowContent.agent(.claude, lookup: .notFound, isOn: false, home: Found.home) == missing)
 
-        #expect(ProgramRowContent.agent(.claude, lookup: nil, isOn: true, home: Found.home).select == .none)
+        #expect(ProgramRowContent.agent(.claude, lookup: nil, home: Found.home).select == .none)
 
         let old = SkippedAgent(kind: .claude, executable: Found.claudeNode25, reason: .tooOld(AgentVersion(major: 2, minor: 1, patch: 29)))
-        let unusable = ProgramRowContent.agent(.claude, lookup: .unusable([old]), isOn: true, home: Found.home)
+        let unusable = ProgramRowContent.agent(.claude, lookup: .unusable([old]), home: Found.home)
         #expect(unusable.status == .warning("Too old"))
         #expect(unusable.version == "2.1.29")
         #expect(unusable.select == .menu("nvm, Node 25"))
@@ -243,8 +237,9 @@ struct SetupModelTests {
         (defaults, name) = AgentTestSupport.defaults()
     }
 
-    private func enabled(_ kind: AgentKind) -> Bool? {
-        defaults.object(forKey: AgentPreferences.enabledKey(kind)) as? Bool
+    /// Settings' Use agents, as the answer stored it.
+    private var usesAgents: Bool? {
+        defaults.object(forKey: AgentPreferences.usesAgentsKey) as? Bool
     }
 
     @Test func showsOnlyForSomeoneWithNoRepositories() {
@@ -327,71 +322,50 @@ struct SetupModelTests {
         #expect(setup.step == .agents)
     }
 
-    @Test func useAgentsStoresEachRowsSwitchAndLeavesOneNotFoundOn() {
+    @Test func useAgentsTurnsAgentsOnForAllOfThem() {
         defer { AgentTestSupport.remove(defaults, named: name) }
         let setup = SetupModel(hasRepositories: false, defaults: defaults)
-        setup.setOn(.codex, false)
         // Nothing is stored until the screen is answered.
-        #expect(enabled(.codex) == nil)
-        #expect(setup.usable(found: [.claude, .codex]) == [.claude])
+        #expect(usesAgents == nil)
+        #expect(setup.usable(found: [.claude, .codex]) == [.claude, .codex])
         setup.useAgents(found: [.claude, .codex])
         #expect(setup.usesAgents == true)
-        #expect(enabled(.claude) == true)
-        #expect(enabled(.codex) == false)
+        #expect(usesAgents == true)
         #expect(setup.step == .hooks)
-
-        // An agent Roga didn't find is used once it's installed.
-        let other = SetupModel(hasRepositories: false, defaults: defaults)
-        other.setOn(.codex, false)
-        other.useAgents(found: [.claude])
-        #expect(enabled(.codex) == true)
     }
 
-    @Test func dontUseAgentsTurnsEveryAgentOffAndComingBackKeepsTheRows() {
+    @Test func dontUseAgentsTurnsAgentsOffAndUseAgentsBackOn() {
         defer { AgentTestSupport.remove(defaults, named: name) }
         let setup = SetupModel(hasRepositories: false, defaults: defaults)
-        setup.setOn(.codex, false)
         setup.dontUseAgents()
         #expect(setup.usesAgents == false)
-        #expect(enabled(.claude) == false)
-        #expect(enabled(.codex) == false)
-        // The rows are as they were left, so Use Agents asks about the same.
-        #expect(setup.isOn == [.claude: true, .codex: false])
+        #expect(usesAgents == false)
+        #expect(setup.usable(found: [.claude, .codex]).isEmpty)
         setup.go(to: .agents)
         setup.useAgents(found: [.claude, .codex])
-        #expect(enabled(.claude) == true)
-        #expect(enabled(.codex) == false)
-        #expect(setup.usable(found: [.claude, .codex]) == [.claude])
+        #expect(usesAgents == true)
+        #expect(setup.usable(found: [.claude, .codex]) == [.claude, .codex])
     }
 
-    @Test func continuingWithNoAgentFoundLeavesTheSwitchesAlone() {
+    @Test func continuingWithNoAgentFoundLeavesUseAgentsAlone() {
         defer { AgentTestSupport.remove(defaults, named: name) }
         let setup = SetupModel(hasRepositories: false, defaults: defaults)
         setup.setStateForTests(step: .agents)
         setup.continueWithoutAgents()
         #expect(setup.usesAgents == nil)
-        #expect(enabled(.claude) == nil)
-        #expect(enabled(.codex) == nil)
+        #expect(usesAgents == nil)
         #expect(setup.step == .ready)
     }
 
-    @Test func choosingACopyStoresItAndTurnsTheAgentOn() {
+    @Test func choosingACopyStoresIt() {
         defer { AgentTestSupport.remove(defaults, named: name) }
         let setup = SetupModel(hasRepositories: false, defaults: defaults)
-        setup.setOn(.codex, false)
         setup.chooseProgram(.codex, "/opt/homebrew/bin/codex")
         #expect(defaults.string(forKey: AgentPreferences.programKey(.codex)) == "/opt/homebrew/bin/codex")
-        #expect(setup.isOn[.codex] == true)
         // The one Roga finds is stored as nothing, so that Roga keeps
         // following its own rule.
         setup.chooseProgram(.codex, nil)
         #expect(defaults.object(forKey: AgentPreferences.programKey(.codex)) == nil)
-    }
-
-    @Test func startsFromWhatsStoredForEachAgent() {
-        defer { AgentTestSupport.remove(defaults, named: name) }
-        defaults.set(false, forKey: AgentPreferences.enabledKey(.codex))
-        #expect(SetupModel(hasRepositories: false, defaults: defaults).isOn == [.claude: true, .codex: false])
     }
 }
 
@@ -453,12 +427,12 @@ struct SetupModelTests {
         #expect(installed.say == nil)
     }
 
-    @Test func theAgentsQuestionNamesTheAgentsRogaWouldUse() {
-        #expect(SetupWords.agentsHeading(found: [.claude, .codex], on: [.claude, .codex]) == "Use Claude Code and Codex in Roga?")
-        #expect(SetupWords.agentsHeading(found: [.claude, .codex], on: [.claude]) == "Use Claude Code in Roga?")
-        // With every row off, it asks about all of them again.
-        #expect(SetupWords.agentsHeading(found: [.claude, .codex], on: []) == "Use Claude Code and Codex in Roga?")
-        #expect(SetupWords.agentsHeading(found: [], on: []) == SetupWords.noAgentsHeading)
+    @Test func theAgentsQuestionNamesTheAgentsRogaFound() {
+        #expect(SetupWords.agentsHeading(found: [.claude, .codex]) == "Use Claude Code and Codex in Roga?")
+        #expect(SetupWords.agentsHeading(found: [.codex]) == "Use Codex in Roga?")
+        #expect(SetupWords.agentsHeading(found: []) == SetupWords.noAgentsHeading)
+        #expect(SetupWords.defaultNote(.claude) == "Claude Code is the default. You can change this later in Settings › Agents.")
+        #expect(SetupWords.defaultNote(nil) == "You can change this later in Settings › Agents.")
     }
 
     @Test func theHintCountsCopiesOnlyWhenThereAreSeveral() {
@@ -519,10 +493,9 @@ struct SetupModelTests {
         #expect(SetupWords.chosenGit(nil, developerToolsFolder: nil).mark == .warn)
 
         let found: [(kind: AgentKind, version: String)] = [(.claude, "2.1.318"), (.codex, "0.166.0")]
-        #expect(SetupWords.chosenAgents(found: found, usable: [.claude, .codex], declined: false) == .init(mark: .ok, value: "Claude Code 2.1.318 and Codex 0.166.0"))
-        #expect(SetupWords.chosenAgents(found: found, usable: [.claude], declined: false) == .init(mark: .ok, value: "Claude Code 2.1.318", detail: "Codex isn't used."))
-        #expect(SetupWords.chosenAgents(found: found, usable: [], declined: true) == .init(mark: .off, value: "Not used", detail: "Agent commands and the Generate button are hidden."))
-        #expect(SetupWords.chosenAgents(found: [], usable: [], declined: false).value == "None found")
+        #expect(SetupWords.chosenAgents(found: found, usable: [.claude, .codex], defaultAgent: .claude) == .init(mark: .ok, value: "Claude Code 2.1.318 and Codex 0.166.0", detail: "Claude Code is the default."))
+        #expect(SetupWords.chosenAgents(found: found, usable: [], defaultAgent: .claude) == .init(mark: .off, value: "Not used", detail: "Agent commands and the Generate button are hidden."))
+        #expect(SetupWords.chosenAgents(found: [], usable: [], defaultAgent: nil).value == "None found")
     }
 
     @Test func readySaysWhereTheHooksAreAndWhereTheyWait() {

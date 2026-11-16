@@ -24,19 +24,18 @@ struct CommitMessageCommandTests {
         #expect(command.priority == .normal)
     }
 
-    @Test func asksClaudeCodeWithAModelAnEffortExtraArgumentsAndADraft() {
+    @Test func asksClaudeCodeWithAModelAnEffortAndADraft() {
         let agent = CommitMessageAgent(
             kind: .claude,
             executable: "/opt/homebrew/bin/claude",
             model: "haiku",
             effort: "low",
-            extraArguments: ["--max-budget-usd", "0.05"],
             timeLimit: .seconds(90)
         )
         let command = CommitMessageCommand.command(for: agent, worktree: "/repository", style: "Be brief.", hasDraft: true)
         #expect(command.arguments == [
             "-p", "--safe-mode", "--setting-sources", "user", "--model", "haiku", "--effort", "low", "--tools=", "--no-session-persistence",
-            "--output-format", "json", "--system-prompt", instructions, "--max-budget-usd", "0.05", "--", draftTask,
+            "--output-format", "json", "--system-prompt", instructions, "--", draftTask,
         ])
         #expect(command.timeout == .seconds(90))
         #expect(command.description.hasPrefix("/opt/homebrew/bin/claude -p --safe-mode --setting-sources user --model haiku --effort low --tools= "))
@@ -47,13 +46,12 @@ struct CommitMessageCommandTests {
         // repository's settings could run a helper or move the request.
         for agent in [
             CommitMessageAgent(kind: .claude, executable: "/bin/claude"),
-            CommitMessageAgent(kind: .claude, executable: "/bin/claude", extraArguments: ["--verbose"]),
+            CommitMessageAgent(kind: .claude, executable: "/bin/claude", model: "haiku"),
         ] {
             let arguments = CommitMessageCommand.command(for: agent, worktree: "/r", style: "", hasDraft: false).arguments
             let sources = arguments.firstIndex(of: "--setting-sources")
             #expect(sources.map { arguments[$0 + 1] } == "user")
-            // Before the task, and before anything someone added, which can
-            // still widen it on purpose.
+            // Before the task.
             #expect(sources.map { $0 < arguments.firstIndex(of: "--tools=")! } == true)
         }
     }
@@ -88,20 +86,19 @@ struct CommitMessageCommandTests {
         #expect(command.priority == .normal)
     }
 
-    @Test func asksCodexWithAModelAnEffortExtraArgumentsAndADraft() {
+    @Test func asksCodexWithAModelAnEffortAndADraft() {
         let agent = CommitMessageAgent(
             kind: .codex,
             executable: "/opt/homebrew/bin/codex",
             model: "gpt-6-astra",
-            effort: "low",
-            extraArguments: ["--profile", "work"]
+            effort: "low"
         )
         let command = CommitMessageCommand.command(for: agent, worktree: "/repository", style: "Be brief.", hasDraft: true)
         #expect(command.arguments == [
             "exec", "--ephemeral", "--sandbox", "read-only", "--color", "never", "--skip-git-repo-check",
             "--disable", "hooks", "--disable", "plugins", "--disable", "apps", "--disable", "shell_tool",
             "-c", "notify=[]", "-c", "web_search=disabled", "-m", "gpt-6-astra", "-c", "model_reasoning_effort=low",
-            "--profile", "work", instructions + "\n\n" + draftTask,
+            instructions + "\n\n" + draftTask,
         ])
     }
 
@@ -120,5 +117,26 @@ struct CommitMessageCommandTests {
         let agent = CommitMessageAgent(kind: .claude, executable: "/bin/claude")
         let command = CommitMessageCommand.command(for: agent, worktree: "/r", style: "\n", hasDraft: false)
         #expect(command.arguments.contains(CommitMessagePrompt.rules))
+    }
+
+    @Test func runsACustomAgentsCommandInTheShellAsTyped() {
+        // Roga doesn't know its flags, so it adds none, and the instructions
+        // go on standard input ahead of the data (decision 89).
+        let agent = CommitMessageAgent(name: "Ollama", command: "ollama run qwen2.5-coder:7b")
+        let command = CommitMessageCommand.command(for: agent, worktree: "/repository", style: "Be brief.", hasDraft: false)
+        #expect(command.executable == "/bin/sh")
+        #expect(command.arguments == ["-c", "ollama run qwen2.5-coder:7b"])
+        #expect(command.directory == "/repository")
+        #expect(command.environment == ["ROGA_GENERATING": "1"])
+        #expect(command.timeout == .seconds(60))
+        let input = CommitMessageCommand.standardInput(for: agent, instructions: instructions, task: task, data: "<diff-1>\n</diff-1>\n")
+        #expect(String(decoding: input, as: UTF8.self) == instructions + "\n\n" + task + "\n\n<diff-1>\n</diff-1>\n")
+    }
+
+    @Test func givesClaudeCodeAndCodexTheDataAloneOnStandardInput() {
+        for kind in AgentKind.allCases {
+            let agent = CommitMessageAgent(kind: kind, executable: "/bin/agent")
+            #expect(CommitMessageCommand.standardInput(for: agent, instructions: instructions, task: task, data: "data") == Array("data".utf8))
+        }
     }
 }

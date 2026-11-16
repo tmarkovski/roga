@@ -124,40 +124,37 @@ struct SettingsPagesTests {
         #expect(AgentSummaries.programLine(.configuredMissing("/nonexistent/local/bin/codex")) == ProgramLine(text: "Custom executable not found or cannot be run: /nonexistent/local/bin/codex.", tone: .warn))
     }
 
-    @Test func theProgramRowSaysHowRogaCameToIt() {
-        let found = AgentDetailPage.programDetail(.claude, lookup: .found(Self.homeClaude), isChosen: false, isFirstInPath: true)
+    @Test func theProgramRowSaysWhereItIsOrWhyThereIsNone() {
+        // A copy that's found needs no words: the menu says where it's from.
+        let found = AgentDetailPage.programDetail(.claude, lookup: .found(Self.homeClaude), isChosen: false)
         #expect(found.path == "~/nonexistent/bin/claude")
         #expect(found.version == "Claude Code 2.1.286")
-        #expect(found.sentence == "Found in your login shell's PATH.")
-        #expect(found.plain == "~/nonexistent/bin/claude · Claude Code 2.1.286. Found in your login shell's PATH.")
-        #expect(AgentDetailPage.programDetail(.claude, lookup: .found(Self.claude), isChosen: true, isFirstInPath: false).sentence == "Custom executable.")
-        #expect(AgentDetailPage.programDetail(.claude, lookup: .found(Self.claude), isChosen: false, isFirstInPath: false).sentence.hasPrefix("Detected in a standard installation location"))
-        // Codex runs the newest copy, wherever it is.
-        var newest = Self.codex
-        newest.others = [FoundAgent(executable: "/nonexistent/local/bin/codex", version: AgentVersion(major: 0, minor: 140, patch: 0))]
-        #expect(AgentDetailPage.programDetail(.codex, lookup: .found(newest), isChosen: false, isFirstInPath: false).sentence == "Latest detected version.")
-        let missing = AgentDetailPage.programDetail(.codex, lookup: .configuredMissing("/nonexistent/local/bin/codex"), isChosen: true, isFirstInPath: false)
+        #expect(found.sentence == nil)
+        #expect(found.plain == "~/nonexistent/bin/claude · Claude Code 2.1.286")
+        let missing = AgentDetailPage.programDetail(.codex, lookup: .configuredMissing("/nonexistent/local/bin/codex"), isChosen: true)
         #expect(missing.isWarning)
         #expect(missing.path == "/nonexistent/local/bin/codex")
-        #expect(AgentDetailPage.programDetail(.codex, lookup: .notFound, isChosen: false, isFirstInPath: false).sentence == "Not found in your login shell's PATH.")
-        #expect(AgentDetailPage.programDetail(.codex, lookup: nil, isChosen: false, isFirstInPath: false).sentence == "Searching…")
+        #expect(missing.sentence == "Custom executable not found or cannot be run.")
+        #expect(AgentDetailPage.programDetail(.codex, lookup: .notFound, isChosen: false).sentence == "Not found in your login shell's PATH.")
+        #expect(AgentDetailPage.programDetail(.codex, lookup: nil, isChosen: false).sentence == "Searching…")
     }
 
-    @Test func pathIsInTheCodeFontWithoutTheKeysGround() throws {
-        let words = try #require(SettingsGroup.commandLineAgents.styledDescription)
-        #expect(String(words.characters) == SettingsGroup.commandLineAgents.description)
-        let font = AttributeScopes.SwiftUIAttributes.FontAttribute.self
-        let typed = words.runs.filter { $0[font] != nil }
-        #expect(typed.map { String(words[$0.range].characters) } == ["PATH"])
-        #expect(typed.first?[font] == .system(size: 12.5, design: .monospaced))
-        #expect(words.runs.allSatisfy { $0[AttributeScopes.SwiftUIAttributes.BackgroundColorAttribute.self] == nil })
-        // Working status has nothing typed in it.
-        #expect(SettingsGroup.workingStatus.styledDescription?.runs.count == 1)
+    @Test func theDescriptionsSayOnlyWhatTheTitlesDont() throws {
+        #expect(SettingsGroup.installation.description == "Requires Git \(SetupWords.minimumGit) or later.")
+        #expect(SettingsGroup.agents.description == "Generate, Resolve and Fix run the default agent with its tools off, and send what they need to its provider.")
+        #expect(SettingsGroup.openIn.description == nil)
+        #expect(SettingsGroup.agentStatus.description == nil)
+        let words = try #require(SettingsGroup.installation.styledDescription)
+        #expect(words.runs.count == 1)
+        // Help that restated a title is gone.
+        for item in [SettingsItem.terminal, .codeFont, .fileLayout, .refsSort, .foldsDescriptions, .showsGenerateButton, .defaultAgent] {
+            #expect(item.help.isEmpty, "\(item.title) still has help")
+        }
     }
 
     @Test func lookAgainHasTheBoardsIcon() {
         // The canvas draws Lucide's rotate-cw, one arrow, not refresh-cw's two.
-        #expect(AgentListSection.lookAgainIcon == .rotateCw)
+        #expect(RescanButton.icon == .rotateCw)
         #expect(Icon.rotateCw.nsImage != nil)
     }
 
@@ -598,29 +595,37 @@ struct SettingsPagesTests {
         #expect(ran == expected)
     }
 
-    // MARK: The Commit page
+    // MARK: Default agent
 
-    @Test func theCommitPageShowsTheAgentGenerateRuns() {
+    @Test func theDefaultAgentOffersEveryAgentRogaCanRunAndNoNone() {
         defer { clean() }
         let both = provider(lookups: [.claude: .found(Self.claude), .codex: .found(Self.codex)])
-        #expect(GenerateChoices.shownAgent(both) == .claude)
-        both.setGenerateAgent(.codex)
-        #expect(GenerateChoices.shownAgent(both) == .codex)
-        defaults.set(false, forKey: AgentPreferences.enabledKey(.codex))
-        both.reloadSettings()
-        #expect(GenerateChoices.shownAgent(both) == .claude)
+        #expect(AgentSummaries.defaultOptions(both).map(\.title) == ["Claude Code", "Codex"])
+        let ollama = both.addCustomAgent(name: "Ollama", command: "ollama run qwen2.5-coder:7b")
+        #expect(AgentSummaries.defaultOptions(both).map(\.title) == ["Claude Code", "Codex", "Ollama"])
+        #expect(AgentSummaries.defaultOptions(both).map(\.value) == [.known(.claude), .known(.codex), .custom(ollama.id)])
 
-        let none = provider(lookups: [.claude: .notFound, .codex: .notFound])
-        #expect(GenerateChoices.shownAgent(none) == .claude)
-        #expect(GenerateChoices.noAgentTitle(none) == "None found")
-        let looking = provider(lookups: [:])
-        #expect(GenerateChoices.noAgentTitle(looking) == "Searching…")
-        defaults.set(false, forKey: AgentPreferences.enabledKey(.claude))
-        let off = provider(lookups: [.claude: .found(Self.claude), .codex: .notFound])
-        #expect(off.usableAgents.isEmpty)
-        #expect(GenerateChoices.noAgentTitle(off) == "Disabled")
-        // Its model and effort are still the found one's.
-        #expect(GenerateChoices.shownAgent(off) == .claude)
+        let neither = provider(lookups: [.claude: .notFound, .codex: .notFound])
+        both.deleteCustomAgent(ollama.id)
+        #expect(AgentSummaries.defaultOptions(neither).isEmpty)
+        #expect(AgentSummaries.noAgentTitle(neither) == "None found")
+        #expect(AgentSummaries.noAgentTitle(provider(lookups: [:])) == "Searching…")
+    }
+
+    @Test func aCustomAgentsPageSaysWhatItRuns() {
+        defer { clean() }
+        let agents = provider(lookups: [.claude: .found(Self.claude), .codex: .notFound])
+        #expect(CustomAgentWords.terminal("ollama run qwen2.5-coder:7b ") == [
+            .comment("Instructions and staged diff supplied via standard input"),
+            .program(ProgramCommand("/bin/sh", ["-c", "ollama run qwen2.5-coder:7b"])),
+        ])
+        let ollama = agents.addCustomAgent(name: "Ollama", command: "ollama run qwen2.5-coder:7b")
+        let notDefault = CustomAgentWords.deleteDialog(ollama, agents: agents, cancel: {}, delete: {})
+        #expect(notDefault.title == "Delete Ollama?")
+        #expect(notDefault.message?.plain == "Roga won't run its command any more.")
+        agents.setDefaultAgent(.custom(ollama.id))
+        let isDefault = CustomAgentWords.deleteDialog(ollama, agents: agents, cancel: {}, delete: {})
+        #expect(isDefault.message?.plain == "Roga won't run its command any more. Generate, Resolve and Fix run Claude Code instead.")
     }
 
     /// The Instructions box shows every line. In the Settings sheet the text
@@ -703,55 +708,11 @@ struct SettingsPagesTests {
         #expect(GenerateChoices.models(for: .codex, stored: "gpt-6-astra") == ["", "gpt-6-astra"])
         #expect(GenerateChoices.efforts(stored: "low") == ["", "low", "medium", "high"])
         #expect(GenerateChoices.efforts(stored: "xhigh") == ["", "low", "medium", "high", "xhigh"])
-        #expect(GenerateChoices.timeLimits(stored: 60) == [30, 60, 120])
-        #expect(GenerateChoices.timeLimits(stored: 90) == [30, 60, 90, 120])
     }
 
-    @Test func theModelsHelpSaysWhereCodexsDefaultComesFrom() {
-        defer { clean() }
-        let agents = provider(lookups: [:])
-        #expect(GenerateChoices.modelHelp(.claude, onAgentPage: false, agents: agents) == "Model used for commit message generation.")
-        #expect(GenerateChoices.modelHelp(.claude, onAgentPage: true, agents: agents).hasPrefix("Passed as --model."))
-        #expect(GenerateChoices.modelHelp(.codex, onAgentPage: true, agents: agents) == "Passed as -m. Default uses the model in ~/.codex/config.toml.")
-        agents.setStateForTests(codexDefaultModel: .some("gpt-6-astra"))
-        #expect(GenerateChoices.modelHelp(.codex, onAgentPage: true, agents: agents) == "Passed as -m. Default uses the model in ~/.codex/config.toml (gpt-6-astra).")
-    }
-
-    @Test func theCommandIsWhatGenerateRuns() async throws {
-        defer { clean() }
-        defaults.set("sonnet", forKey: AgentPreferences.modelKey(.claude))
-        defaults.set("", forKey: AgentPreferences.effortKey(.claude))
-        defaults.set("--verbose", forKey: AgentPreferences.extraArgumentsKey(.claude))
-        let agents = try await started()
-        let lines = GenerateChoices.terminal(for: .claude, agents: agents, style: "Be brief.")
-        let setup = try #require(agents.generation(with: .claude))
-        #expect(lines.first == .comment("Staged diff supplied via standard input"))
-        guard case .program(let command, let showsPath)? = lines.last else {
-            Issue.record("There's no command")
-            return
-        }
-        #expect(!showsPath)
-        #expect(command.executable == bin + "/claude")
-        #expect(command.arguments.contains("sonnet"))
-        #expect(!command.arguments.contains("--effort"))
-        #expect(command.arguments.contains("--verbose"))
-        // The same as Generate's, but for the style the page shows.
-        var expected = setup
-        expected.style = "Be brief."
-        #expect(command.arguments == expected.command(worktree: NSHomeDirectory(), hasDraft: false).arguments)
-    }
-
-    @Test func theCommandShowsWhatWouldRunBeforeTheAgentIsFound() {
-        defer { clean() }
-        let agents = provider(lookups: [.codex: .notFound])
-        let lines = GenerateChoices.terminal(for: .codex, agents: agents, style: CommitMessagePrompt.defaultStyle)
-        guard case .program(let command, let showsPath)? = lines.last else {
-            Issue.record("There's no command")
-            return
-        }
-        #expect(command.executable == "codex")
-        #expect(!showsPath)
-        #expect(command.arguments.starts(with: ["exec", "--ephemeral"]))
+    @Test func codexsModelFieldSaysWhatDefaultIs() {
+        #expect(GenerateChoices.codexModelPlaceholder(nil) == "Default")
+        #expect(GenerateChoices.codexModelPlaceholder("gpt-6-astra") == "Default · gpt-6-astra")
     }
 
     // MARK: An agent's page
@@ -793,33 +754,6 @@ struct SettingsPagesTests {
         let options: [(value: AgentKind, title: String)] = [(.claude, "Claude Code"), (.codex, "Codex")]
         #expect(SettingsSelect(selection: .constant(.codex), options: options).shownTitle == "Codex")
         #expect(SettingsSelect(selection: .constant(AgentKind.claude), options: [], emptyTitle: "None found").shownTitle == "None found")
-    }
-
-    @Test func theFlagsCardListsFlagsTheCommandHas() {
-        for kind in AgentKind.allCases {
-            // A server named as the card writes the placeholder, so that row
-            // is found word for word.
-            let agent = CommitMessageAgent(kind: kind, executable: kind.executableName, model: "m", effort: "low", mcpServers: ["<name>"])
-            let arguments = CommitMessageCommand.command(for: agent, worktree: "/tmp", style: "s", hasDraft: false).arguments
-            for flag in AgentDetailPage.flags(kind) {
-                let words = flag.flag.split(separator: " ").map(String.init).filter { $0 != "…" }
-                let found = arguments.indices.contains { start in
-                    Array(arguments[start...].prefix(words.count)) == words
-                }
-                #expect(found, "\(flag.flag) isn't in \(kind.name)'s command")
-            }
-        }
-    }
-
-    @Test func theEventsCardListsEventsTheHooksSend() {
-        for kind in AgentKind.allCases {
-            let sent = kind == .claude ? HookPlugin.claudeEvents : HookPlugin.codexEvents
-            for event in AgentDetailPage.events(kind) {
-                for name in event.names.split(separator: ", ") {
-                    #expect(sent.contains(String(name)), "\(name) isn't one of \(kind.name)'s hooks")
-                }
-            }
-        }
     }
 
     @Test func runATestWritesAMessageForTheSampleInAFolderOfItsOwn() async {
@@ -904,23 +838,36 @@ struct SettingsPagesTests {
         // Git and the agents each have one.
         #expect(found("Rescan") == [.gitProgram, .agentList])
         #expect(found("Homebrew") == [.gitProgram])
-        #expect(SettingsGroup.allCases.filter { $0.page == .git } == [.installation, .fetching])
+        // Commit messages folded into Git (decision 89).
+        #expect(SettingsGroup.allCases.filter { $0.page == .git } == [.installation, .fetching, .generate])
+        #expect(SettingsGroup.generate.title == "Commit messages")
         #expect(found("Codex").contains(.agentList))
         #expect(found("Codex").contains(.hooks))
-        #expect(found("sidebar").contains(.showsMarks))
+        #expect(found("Ollama") == [.agentList])
+        #expect(found("sidebar").contains(.usesAgents))
         #expect(found("response") == [.marksLegend])
-        #expect(found("plugins").contains(.generateCommand))
         // A page's name finds everything on it.
-        #expect(Set(found("Agents")).isSuperset(of: [.agentList, .hooks, .showsMarks, .marksLegend]))
-        #expect(SettingsGroup.generate.items.allSatisfy { $0.group.page == .commit })
-        #expect(SettingsGroup.allCases.filter { $0.page == .agents } == [.commandLineAgents, .workingStatus])
+        #expect(Set(found("Agents")).isSuperset(of: [.usesAgents, .agentList, .defaultAgent, .hooks, .marksLegend]))
+        #expect(SettingsGroup.allCases.filter { $0.page == .agents } == [.agents, .agentStatus])
+        #expect(found("Resolve").contains(.defaultAgent))
+        #expect(found("model").contains(.agentList))
+    }
+
+    /// While agents are off, nothing about them shows, in search or on Git's
+    /// page, but the switch that turns them back on.
+    @Test func withAgentsOffOnlyUseAgentsIsFound() {
+        #expect(SettingsGroup.shown(usesAgents: false).filter { $0.page == .git } == [.installation, .fetching])
+        #expect(!SettingsGroup.shown(usesAgents: false).contains(.agentStatus))
+        #expect(SettingsGroup.found("Agents", usesAgents: false).map(\.items) == [[.usesAgents]])
+        #expect(SettingsGroup.found("Generate button", usesAgents: false).isEmpty)
+        #expect(SettingsGroup.found("Generate button").map(\.items) == [[.showsGenerateButton]])
     }
 
     /// Motion, with the house's animations and their speed, is left out for
     /// now, so Appearance shows Interface and Lists, and search can't find it.
     @Test func motionIsLeftOutForNow() {
         #expect(!HouseAnimationView.offersSpeed)
-        #expect(SettingsGroup.shown.filter { $0.page == .appearance } == [.interface, .lists])
+        #expect(SettingsGroup.shown().filter { $0.page == .appearance } == [.interface, .lists])
         #expect(SettingsGroup.found("Animation speed").isEmpty)
         #expect(SettingsGroup.found("Motion").isEmpty)
         // A search still finds the rest of the page.

@@ -2,22 +2,22 @@ import AgentEngine
 import Foundation
 import SwiftUI
 
-/// Where Settings opens: one of its pages, or an agent's own page, which
-/// belongs to Agents. Commands elsewhere in Roga open Settings at the setting
+/// Where Settings opens: one of its pages, or an agent's own page, custom
+/// agents' too, which belongs to Agents. Commands elsewhere in Roga open Settings at the setting
 /// they're about, such as Agent Settings… after Generate fails.
 enum SettingsDestination: Equatable {
     case page(SettingsPage)
-    case agent(AgentKind)
+    case agent(AgentID)
 
     /// Where Settings keeps its page, so it opens where it was last.
     static let pageKey = "settingsPage"
-    /// Where Settings keeps the agent whose page shows, as an `AgentKind` raw
-    /// value. While it's absent, the page itself shows.
+    /// Where Settings keeps the agent whose page shows, as `AgentID.stored`.
+    /// While it's absent, the page itself shows.
     static let agentKey = "settingsAgent"
 
     /// What's stored for a page and an agent. An agent's page shows only
     /// under Agents.
-    init(page: SettingsPage, agent: AgentKind?) {
+    init(page: SettingsPage, agent: AgentID?) {
         if page == .agents, let agent {
             self = .agent(agent)
         } else {
@@ -37,8 +37,8 @@ enum SettingsDestination: Equatable {
     /// or goes there if it's showing.
     func store(in defaults: UserDefaults = .standard) {
         defaults.set(page.rawValue, forKey: Self.pageKey)
-        if case .agent(let kind) = self {
-            defaults.set(kind.rawValue, forKey: Self.agentKey)
+        if case .agent(let id) = self {
+            defaults.set(id.stored, forKey: Self.agentKey)
         } else {
             defaults.removeObject(forKey: Self.agentKey)
         }
@@ -46,7 +46,7 @@ enum SettingsDestination: Equatable {
 }
 
 /// What shows Settings at a page or an agent's page, on one window, called as
-/// `openSettings(.agent(.claude))`.
+/// `openSettings(.agent(.known(.claude)))`.
 ///
 /// It's a value that stays equal for its window, rather than a closure, the way
 /// SwiftUI's own actions are: SwiftUI can't compare closures, so a new one each

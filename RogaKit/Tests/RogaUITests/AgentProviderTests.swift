@@ -47,8 +47,9 @@ struct AgentProviderTests {
         #expect(provider.installation(.claude)?.executable == bin + "/claude")
         #expect(provider.installation(.claude)?.version == AgentVersion(major: 2, minor: 1, patch: 290))
         #expect(provider.installation(.codex)?.executable == bin + "/codex")
-        #expect(provider.usableAgents == [.claude, .codex])
-        #expect(provider.generateAgent == .claude)
+        #expect(provider.foundAgents == [.claude, .codex])
+        #expect(provider.defaultChoice == nil)
+        #expect(provider.defaultAgent == .known(.claude))
         #expect(provider.hookStatus == [.claude: .notInstalled, .codex: .notInstalled])
         #expect(provider.programs != nil)
         // Both were asked about their plugins, Codex in its own folder.
@@ -66,7 +67,7 @@ struct AgentProviderTests {
         #expect(provider.lookups[.codex] == .notFound)
         #expect(provider.installation(.codex) == nil)
         #expect(provider.installCommands(.codex) == nil)
-        #expect(provider.usableAgents == [.claude])
+        #expect(provider.foundAgents == [.claude])
         #expect(await AgentTestSupport.eventually { provider.hookStatus[.claude] != nil })
         #expect(provider.hookStatus[.codex] == nil)
     }
@@ -159,44 +160,100 @@ struct AgentProviderTests {
         #expect(await AgentTestSupport.eventually { (try? String(contentsOfFile: launcher, encoding: .utf8))?.contains(helperB) == true })
     }
 
-    @Test func usableAgentsFollowTheSwitch() async throws {
+    @Test func theDefaultAgentRunsForEveryAction() async throws {
         defer { clean() }
         let provider = try await started()
-        provider.setGenerateAgent(.claude)
-        defaults.set(false, forKey: AgentPreferences.enabledKey(.claude))
-        provider.reloadSettings()
-        #expect(provider.settings[.claude]?.isEnabled == false)
-        #expect(provider.usableAgents == [.codex])
-        // The choice is kept for when Claude Code is turned on again.
-        #expect(provider.generateAgent == .codex)
-        #expect(provider.generation()?.kind == .codex)
-        #expect(provider.generation(with: .claude) == nil)
-        // Settings still shows how it would run.
-        #expect(provider.commitMessageAgent(.claude) != nil)
+        provider.setDefaultAgent(.known(.codex))
+        #expect(defaults.string(forKey: AgentPreferences.defaultAgentKey) == "codex")
+        #expect(provider.defaultAgent == .known(.codex))
+        #expect(provider.generation()?.id == .known(.codex))
+        // Generate With can still run the other agent it found.
+        #expect(provider.generation(with: .known(.claude))?.id == .known(.claude))
+    }
 
-        defaults.set(true, forKey: AgentPreferences.enabledKey(.claude))
-        provider.reloadSettings()
-        #expect(provider.generateAgent == .claude)
-        #expect(defaults.string(forKey: AgentPreferences.generateAgentKey) == "claude")
+    @Test func turningAgentsOffLeavesNothingToRun() async throws {
+        defer { clean() }
+        let provider = try await started()
+        provider.setUsesAgents(false)
+        #expect(defaults.object(forKey: AgentPreferences.usesAgentsKey) as? Bool == false)
+        #expect(provider.availableAgents.isEmpty)
+        #expect(provider.defaultAgent == nil)
+        #expect(provider.generation() == nil)
+        #expect(provider.generation(with: .known(.claude)) == nil)
+        provider.setUsesAgents(true)
+        #expect(provider.defaultAgent == .known(.claude))
+    }
+
+    @Test func doesntLookForAgentsWhileTheyreOff() async throws {
+        defer { clean() }
+        try AgentTestSupport.claude(in: bin, log: log)
+        defaults.set(false, forKey: AgentPreferences.usesAgentsKey)
+        let provider = AgentTestSupport.provider(support: support, defaults: defaults, codexHome: codexHome)
+        provider.start(git: try await AgentTestSupport.git(searchPath: bin))
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(provider.lookups.isEmpty)
+        // Turning them on looks.
+        provider.setUsesAgents(true)
+        #expect(await AgentTestSupport.eventually { !provider.isLooking })
+        #expect(provider.foundAgents == [.claude])
+    }
+
+    @Test func aDefaultThatIsntFoundGivesWayToTheFirstThatIs() async throws {
+        defer { clean() }
+        try AgentTestSupport.claude(in: bin, log: log)
+        defaults.set("codex", forKey: AgentPreferences.defaultAgentKey)
+        let provider = AgentTestSupport.provider(support: support, defaults: defaults, codexHome: codexHome)
+        provider.start(git: try await AgentTestSupport.git(searchPath: bin))
+        #expect(await AgentTestSupport.eventually { !provider.isLooking })
+        #expect(provider.foundAgents == [.claude])
+        // What was chosen stays, for when Codex is back.
+        #expect(provider.defaultChoice == .known(.codex))
+        #expect(provider.defaultAgent == .known(.claude))
+        #expect(provider.generation()?.id == .known(.claude))
+    }
+
+    @Test func customAgentsCanBeTheDefaultUntilTheyreDeleted() async throws {
+        defer { clean() }
+        let provider = try await started()
+        let ollama = provider.addCustomAgent(name: "Ollama", command: "ollama run qwen2.5-coder:7b")
+        #expect(provider.availableAgents == [.known(.claude), .known(.codex), .custom(ollama.id)])
+        #expect(AgentPreferences.customAgents(in: defaults) == [ollama])
+        provider.setDefaultAgent(.custom(ollama.id))
+        let setup = try #require(provider.generation())
+        #expect(setup.agent == CommitMessageAgent(name: "Ollama", command: "ollama run qwen2.5-coder:7b"))
+        #expect(setup.label == "Ollama")
+
+        var renamed = ollama
+        renamed.name = "Qwen"
+        provider.updateCustomAgent(renamed)
+        #expect(provider.named(.custom(ollama.id))?.name == "Qwen")
+
+        provider.deleteCustomAgent(ollama.id)
+        #expect(provider.customAgents.isEmpty)
+        #expect(defaults.object(forKey: AgentPreferences.defaultAgentKey) == nil)
+        #expect(provider.defaultAgent == .known(.claude))
     }
 
     @Test func followsChangesToTheDefaultsByItself() async throws {
         defer { clean() }
         let provider = try await started()
-        defaults.set(false, forKey: AgentPreferences.enabledKey(.codex))
-        #expect(await AgentTestSupport.eventually { provider.usableAgents == [.claude] })
+        defaults.set(false, forKey: AgentPreferences.usesAgentsKey)
+        #expect(await AgentTestSupport.eventually { provider.defaultAgent == nil })
+        defaults.set(true, forKey: AgentPreferences.usesAgentsKey)
+        defaults.set("codex", forKey: AgentPreferences.defaultAgentKey)
+        #expect(await AgentTestSupport.eventually { provider.defaultAgent == .known(.codex) })
     }
 
     @Test func aGenerationRunsWhatsChosen() async throws {
         defer { clean() }
         let provider = try await started()
         let setup = try #require(provider.generation())
-        #expect(setup.kind == .claude)
+        #expect(setup.id == .known(.claude))
         #expect(setup.label == "Claude Code · haiku")
         #expect(setup.style == CommitMessagePrompt.defaultStyle)
         #expect(setup.matchesStyle)
         #expect(!setup.showsPath)
-        #expect(setup.agent == CommitMessageAgent(kind: .claude, executable: bin + "/claude", model: "haiku", effort: "low", extraArguments: [], timeLimit: .seconds(60)))
+        #expect(setup.agent == CommitMessageAgent(kind: .claude, executable: bin + "/claude", model: "haiku", effort: "low", timeLimit: .seconds(60)))
 
         let command = setup.command(worktree: "/work/api", hasDraft: false)
         #expect(command.executable == bin + "/claude")
@@ -207,35 +264,34 @@ struct AgentProviderTests {
         #expect(setup.terminal(worktree: "/work/api", hasDraft: false) == [.comment("Staged diff supplied via standard input"), .program(command, showsPath: false)])
     }
 
-    @Test func aGenerationWithTheAgentsOwnDefaultsAndExtras() async throws {
+    @Test func aGenerationWithTheAgentsOwnDefaults() async throws {
         defer { clean() }
         let provider = try await started()
         defaults.set("", forKey: AgentPreferences.modelKey(.claude))
         defaults.set("high", forKey: AgentPreferences.effortKey(.claude))
-        defaults.set("--append-system-prompt 'Use British spelling.'", forKey: AgentPreferences.extraArgumentsKey(.claude))
-        defaults.set(30, forKey: AgentPreferences.timeLimitKey(.claude))
         defaults.set("Write in French.", forKey: AgentPreferences.instructionsKey)
         defaults.set(false, forKey: AgentPreferences.matchesStyleKey)
         provider.reloadSettings()
 
-        let setup = try #require(provider.generation(with: .claude))
+        let setup = try #require(provider.generation(with: .known(.claude)))
         #expect(setup.label == "Claude Code")
         #expect(setup.style == "Write in French.")
         #expect(!setup.matchesStyle)
         let command = setup.command(worktree: "/work/api", hasDraft: true)
         #expect(!command.arguments.contains("--model"))
         #expect(command.arguments.prefix(6) == ["-p", "--safe-mode", "--setting-sources", "user", "--effort", "high"])
-        #expect(command.timeout == .seconds(30))
+        // The time limit is fixed (decision 89).
+        #expect(command.timeout == .seconds(60))
         let prompt = try #require(command.arguments.firstIndex(of: "--system-prompt"))
         #expect(command.arguments[prompt + 1].hasSuffix("Write in French."))
-        #expect(Array(command.arguments[(prompt + 2)...].prefix(3)) == ["--append-system-prompt", "Use British spelling.", "--"])
+        #expect(command.arguments[prompt + 2] == "--")
         #expect(command.arguments.last == CommitMessagePrompt.task(hasDraft: true))
 
-        let codex = try #require(provider.generation(with: .codex))
+        let codex = try #require(provider.generation(with: .known(.codex)))
         #expect(codex.label == "Codex")
         defaults.set("gpt-6-astra", forKey: AgentPreferences.modelKey(.codex))
         provider.reloadSettings()
-        #expect(provider.generation(with: .codex)?.label == "Codex · gpt-6-astra")
+        #expect(provider.generation(with: .known(.codex))?.label == "Codex · gpt-6-astra")
     }
 
     @Test func readsCodexsDefaultModelFromItsFolder() async throws {
@@ -268,14 +324,14 @@ struct AgentProviderTests {
             """.write(toFile: codexHome + "/config.toml", atomically: true, encoding: .utf8)
         let provider = try await started()
         #expect(provider.codexMCPServers == ["node_repl", "docs"])
-        let setup = try #require(provider.generation(with: .codex))
+        let setup = try #require(provider.generation(with: .known(.codex)))
         #expect(setup.agent.mcpServers == ["node_repl", "docs"])
         #expect(setup.agent.codexConfigurationFile == codexHome + "/config.toml")
         let arguments = setup.command(worktree: "/work/api", hasDraft: false).arguments
         #expect(arguments.contains("mcp_servers.node_repl.enabled=false"))
         #expect(arguments.contains("mcp_servers.docs.enabled=false"))
         // Claude Code turns its own off with --safe-mode.
-        let claude = try #require(provider.generation(with: .claude))
+        let claude = try #require(provider.generation(with: .known(.claude)))
         #expect(claude.agent.mcpServers.isEmpty && claude.agent.codexConfigurationFile == nil)
     }
 
@@ -294,7 +350,7 @@ struct AgentProviderTests {
         provider.reloadSettings()
         #expect(await AgentTestSupport.eventually { provider.lookups[.claude] != nil })
         #expect(provider.lookups[.claude] == .configuredMissing("/nonexistent/claude"))
-        #expect(provider.usableAgents == [.codex])
+        #expect(provider.foundAgents == [.codex])
         // Codex wasn't looked for again.
         #expect(provider.installation(.codex) != nil)
     }

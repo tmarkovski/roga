@@ -7,11 +7,15 @@ import SwiftUI
 /// Each agent is a row with its model and effort on a second line, and a check
 /// before the picked one, as setup's menus mark a choice. On the picked
 /// agent's row those two words are menus, so what's changed is plainly that
-/// agent's, and the other rows say theirs in gray. It's laid out as Roga's
-/// dialogs are (decision 29), with the command along its bottom edge. Every
-/// pick is stored as it's made, the same values the Commit page in Settings
-/// shows, so the next click of Generate uses them. It has no Generate of its
-/// own: the button it hangs from runs what's picked, and says which agent.
+/// agent's, and the other rows say theirs in gray. Custom agents come after
+/// Claude Code and Codex, with their command on the second line, since they
+/// have no model or effort. It's laid out as Roga's dialogs are (decision 29),
+/// with the command along its bottom edge. Every pick is stored as it's made:
+/// the agent is the default agent of Settings › Agents, which Resolve and Fix
+/// run too, and the model and effort are the ones on that agent's page
+/// (decision 89), so the next click of Generate uses them. It has no Generate
+/// of its own: the button it hangs from runs what's picked, and says which
+/// agent.
 ///
 /// It's the same size whichever agent is picked. The popover hangs from the
 /// button under it, so a change in its height would move every row above the
@@ -31,7 +35,7 @@ struct GeneratePopover: View {
     static var width: CGFloat { 400 }
 
     var body: some View {
-        let picked = agents.generateAgent
+        let picked = agents.defaultAgent
         let setup = picked.flatMap { agents.generation(with: $0) }
         VStack(alignment: .leading, spacing: 0) {
             Text("Agent")
@@ -40,9 +44,12 @@ struct GeneratePopover: View {
                 .accessibilityAddTraits(.isHeader)
             VStack(spacing: 2) {
                 ForEach(AgentKind.allCases, id: \.self) { kind in
-                    GeneratePopoverAgentRow(kind: kind, agents: agents, isPicked: kind == picked) {
+                    GeneratePopoverAgentRow(kind: kind, agents: agents, isPicked: .known(kind) == picked) {
                         openAgentSettings(kind)
                     }
+                }
+                ForEach(agents.customAgents) { custom in
+                    GeneratePopoverCustomRow(custom: custom, agents: agents, isPicked: .custom(custom.id) == picked)
                 }
             }
             .padding(.horizontal, 6)
@@ -58,7 +65,7 @@ struct GeneratePopover: View {
                     isCompact: true,
                     // Room for the other agents' commands, which wrap onto
                     // more or fewer lines.
-                    reserving: AgentKind.allCases.filter { $0 != setup.kind }.compactMap {
+                    reserving: agents.availableAgents.filter { $0 != setup.id }.compactMap {
                         agents.generation(with: $0)?.terminal(worktree: worktree, hasDraft: hasDraft)
                     }
                 )
@@ -99,7 +106,7 @@ extension GeneratePopover {
         guard let lookup = agents.lookups[kind] else { return "Searching…" }
         switch lookup {
         case .found:
-            return agents.settings[kind]?.isEnabled == false ? "Disabled" : nil
+            return nil
         case .notFound, .configuredMissing:
             return "Not found"
         case .unusable(let skipped):
@@ -178,7 +185,7 @@ struct GeneratePopoverAgentRow: View {
                     .accessibilityAddTraits(.isSelected)
             } else {
                 Button {
-                    agents.setGenerateAgent(kind)
+                    agents.setDefaultAgent(.known(kind))
                 } label: {
                     row(reason: reason)
                 }
@@ -251,6 +258,55 @@ struct GeneratePopoverAgentRow: View {
                 options: GenerateChoices.efforts(stored: effort).map { (value: $0, title: AgentKind.effortTitle($0)) }
             )
         }
+    }
+}
+
+/// A custom agent in the popover, with its command under its name, since it
+/// has no model or effort to choose. Its second line is as tall as the other
+/// rows' menus, so that picking it moves nothing.
+struct GeneratePopoverCustomRow: View {
+    let custom: CustomAgent
+    let agents: AgentProvider
+    let isPicked: Bool
+    @State private var isHovering = false
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 9, style: .continuous)
+        Button {
+            agents.setDefaultAgent(.custom(custom.id))
+        } label: {
+            HStack(alignment: .top, spacing: 6) {
+                ChoiceCheck(isChecked: isPicked)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(custom.shownName)
+                    Text(custom.command)
+                        .font(.system(size: 11.5, design: .monospaced))
+                        .foregroundStyle(DialogColors.note)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .frame(height: GeneratePopoverAgentRow.secondLineHeight)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.leading, 6)
+            .padding(.trailing, 10)
+            .padding(.vertical, 7)
+            .background {
+                if isPicked {
+                    shape.fill(DialogColors.card)
+                } else if isHovering {
+                    shape.fill(SettingsColors.hover)
+                }
+            }
+            .contentShape(shape)
+        }
+        .buttonStyle(GeneratePopoverRowStyle())
+        .disabled(isPicked)
+        .onHover { isHovering = $0 && !isPicked }
+        .onChange(of: isPicked) { isHovering = false }
+        .accessibilityLabel(custom.shownName)
+        .accessibilityValue(custom.command)
+        .accessibilityAddTraits(isPicked ? .isSelected : [])
     }
 }
 

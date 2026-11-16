@@ -34,18 +34,12 @@ extension ProgramMenu {
 
     /// An agent's menu: every copy Roga found.
     ///
-    /// - Parameters:
-    ///   - isOn: Whether Roga uses the agent, which says whether a copy or
-    ///     not using it has the check.
-    ///   - choose: Makes a path the program Roga runs, or goes back to the
-    ///     one Roga finds for nil.
-    ///   - skip: What not using the agent does, where the menu offers it.
+    /// - Parameter choose: Makes a path the program Roga runs, or goes back
+    ///   to the one Roga finds for nil.
     static func agent(
         _ kind: AgentKind,
         agents: AgentProvider,
-        isOn: Bool = true,
-        choose: @escaping (String?) -> Void,
-        skip: (() -> Void)? = nil
+        choose: @escaping (String?) -> Void
     ) -> ProgramMenu? {
         guard let survey = agents.surveys[kind] else { return nil }
         let program = agents.settings[kind]?.program
@@ -60,8 +54,7 @@ extension ProgramMenu {
                 if let path = ProgramPanel.choose(kind.executableName, startingAt: agents.installation(kind)?.executable) {
                     choose(path)
                 }
-            },
-            skip: skip.map { Skip(title: "Don't use \(kind.name)", isOn: !isOn, action: $0) }
+            }
         )
     }
 }
@@ -333,29 +326,22 @@ struct SetupGit: View {
 
 // MARK: Agents
 
-/// Whether to use the agents Roga found, which the buttons answer. Each
-/// agent's row has a menu of its copies, where one agent can be left out.
+/// Whether to use the agents Roga found, which the buttons answer, for all
+/// of them at once (decision 89). Each agent's row has a menu of its copies.
 struct SetupAgents: View {
     let setup: SetupModel
     let found: [AgentKind]
     @Environment(AgentProvider.self) private var agents
 
     var body: some View {
-        let on = found.filter { setup.isOn[$0] != false }
         VStack(spacing: SetupLayout.gap) {
-            SetupHead(eyebrow: "Agents", title: heading(on: on), sub: sub)
+            SetupHead(eyebrow: "Agents", title: heading, sub: sub)
             SetupCard {
                 ForEach(AgentKind.allCases) { kind in
                     ProgramRow(
                         icon: .squareTerminal,
-                        content: .agent(kind, lookup: agents.lookups[kind], isOn: setup.isOn[kind] != false),
-                        menu: .agent(
-                            kind,
-                            agents: agents,
-                            isOn: setup.isOn[kind] != false,
-                            choose: { setup.chooseProgram(kind, $0) },
-                            skip: { setup.setOn(kind, false) }
-                        ),
+                        content: .agent(kind, lookup: agents.lookups[kind]),
+                        menu: .agent(kind, agents: agents, choose: { setup.chooseProgram(kind, $0) }),
                         choose: { choose(kind) }
                     )
                 }
@@ -376,14 +362,13 @@ struct SetupAgents: View {
                 }
             } else {
                 let hint = SetupWords.copiesHint(found.map { (kind: $0, copies: agents.surveys[$0]?.copies.count ?? 1) })
-                SetupNote(lines: [hint, "You can change this later in Settings › Agents."].compactMap(\.self))
+                SetupNote(lines: [hint, SetupWords.defaultNote(SetupWords.defaultAgent(found: found, agents: agents))].compactMap(\.self))
                 SetupActions(back: back) {
                     Button("Don't Use Agents") { setup.dontUseAgents() }
                         .buttonStyle(.setup(.secondary))
                     Button("Use Agents") { setup.useAgents(found: found) }
                         .buttonStyle(.setup(.primary))
                         .keyboardShortcut(.defaultAction)
-                        .disabled(on.isEmpty)
                 }
             }
         }
@@ -399,10 +384,10 @@ struct SetupAgents: View {
         found.isEmpty && AgentKind.allCases.contains { agents.surveys[$0]?.copies.isEmpty == false }
     }
 
-    private func heading(on: [AgentKind]) -> String {
+    private var heading: String {
         if agents.isLooking { return "Detecting coding agents" }
         if foundOnlyUnusable { return "No compatible coding agents" }
-        return SetupWords.agentsHeading(found: found, on: on)
+        return SetupWords.agentsHeading(found: found)
     }
 
     private var sub: String {
@@ -781,7 +766,7 @@ struct SetupReady: View {
                                 agents.installation(kind).map { (kind: kind, version: $0.version.description) }
                             },
                             usable: usable,
-                            declined: setup.usesAgents == false
+                            defaultAgent: SetupWords.defaultAgent(found: found, agents: agents)
                         ),
                         isIn: isIn,
                         order: 1

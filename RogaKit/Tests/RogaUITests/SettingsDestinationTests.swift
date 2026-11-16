@@ -7,22 +7,31 @@ import Testing
 @Suite(.timeLimit(.minutes(1)))
 struct SettingsDestinationTests {
     @Test func anAgentsPageBelongsToAgents() {
-        #expect(SettingsDestination(page: .agents, agent: .codex) == .agent(.codex))
+        let ollama = UUID()
+        #expect(SettingsDestination(page: .agents, agent: .known(.codex)) == .agent(.known(.codex)))
+        #expect(SettingsDestination(page: .agents, agent: .custom(ollama)) == .agent(.custom(ollama)))
         #expect(SettingsDestination(page: .agents, agent: nil) == .page(.agents))
         // An agent stored with another page is left over, and the page shows.
-        #expect(SettingsDestination(page: .commit, agent: .claude) == .page(.commit))
-        #expect(SettingsDestination.agent(.claude).page == .agents)
+        #expect(SettingsDestination(page: .git, agent: .known(.claude)) == .page(.git))
+        #expect(SettingsDestination.agent(.known(.claude)).page == .agents)
     }
 
     @Test func storingSaysWhereTheSheetOpens() {
         let (defaults, name) = AgentTestSupport.defaults()
         defer { AgentTestSupport.remove(defaults, named: name) }
-        SettingsDestination.agent(.claude).store(in: defaults)
+        SettingsDestination.agent(.known(.claude)).store(in: defaults)
         #expect(defaults.string(forKey: SettingsDestination.pageKey) == "agents")
         #expect(defaults.string(forKey: SettingsDestination.agentKey) == "claude")
-        SettingsDestination.page(.commit).store(in: defaults)
-        #expect(defaults.string(forKey: SettingsDestination.pageKey) == "commit")
+        SettingsDestination.page(.git).store(in: defaults)
+        #expect(defaults.string(forKey: SettingsDestination.pageKey) == "git")
         #expect(defaults.string(forKey: SettingsDestination.agentKey) == nil)
+    }
+
+    @Test func theCommitPageIsGone() {
+        // It folded into Git (decision 89), so a stored `commit` is a page
+        // Settings doesn't know, and it opens on General.
+        #expect(SettingsPage(rawValue: "commit") == nil)
+        #expect(SettingsPage.groups == [[.general, .appearance], [.git], [.agents], [.advanced]])
     }
 
     @Test func theActionStaysEqualForItsWindow() {
@@ -37,9 +46,9 @@ struct SettingsDestinationTests {
         #expect(ShowSettingsAction() == ShowSettingsAction())
         #expect(ShowSettingsAction() != first)
 
-        first(.agent(.codex))
-        again(.page(.commit))
-        #expect(shown == [.agent(.codex), .page(.commit)])
+        first(.agent(.known(.codex)))
+        again(.page(.git))
+        #expect(shown == [.agent(.known(.codex)), .page(.git)])
         // Outside a window it does nothing.
         ShowSettingsAction()(.page(.agents))
         #expect(shown.count == 2)

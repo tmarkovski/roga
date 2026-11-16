@@ -63,7 +63,8 @@ struct AppThemeTests {
     /// either (decision 73).
     @Test func settingsShowsTheCodeFontUnderThePreview() {
         #expect(SettingsItem.codeFont.title == "Code font")
-        #expect(SettingsItem.codeFont.help == "For diffs and conflict resolution.")
+        // Its name says what it's for, so it has no gray help (decision 89).
+        #expect(SettingsItem.codeFont.help.isEmpty)
         #expect(SettingsGroup.interface.items.last == .codeFont)
         for query in ["font", "monospaced", "SF Mono", "typeface", "diff", "font size", "text size", "points"] {
             #expect(SettingsItem.codeFont.matches(query), "\(query)")

@@ -20,15 +20,15 @@ final class GitFixModel {
 
     enum Phase {
         /// Roga is gathering the facts, or the agent is working on them.
-        case asking(kind: AgentKind, program: ProgramCommand, showsPath: Bool)
+        case asking(agent: NamedAgent, program: ProgramCommand, showsPath: Bool)
         /// The agent has answered, and nothing has run.
-        case answered(kind: AgentKind, fix: AgentGitFix)
+        case answered(agent: NamedAgent, fix: AgentGitFix)
         /// The commands are running.
-        case running(kind: AgentKind, fix: AgentGitFix)
+        case running(agent: NamedAgent, fix: AgentGitFix)
         /// The commands have run, or stopped at the one that was refused.
         case finished(lines: [TerminalLine], count: Int, refused: RefusedCommand?)
         /// The agent couldn't answer.
-        case failed(kind: AgentKind, message: String, output: String?)
+        case failed(agent: NamedAgent, message: String, output: String?)
     }
 
     /// What the agent is being asked about.
@@ -58,7 +58,7 @@ final class GitFixModel {
 
     /// What the button that asks the agent again says.
     var askAgainTitle: String? {
-        question.map { "Fix with \($0.setup.kind.shortName)" }
+        question.map { "Fix with \($0.setup.agent.shortName)" }
     }
 
     /// Asks the agent Generate runs about what git said.
@@ -79,7 +79,7 @@ final class GitFixModel {
     private func ask(_ question: Question) {
         self.question = question
         let setup = question.setup
-        phase = .asking(kind: setup.kind, program: GitFixWriter.command(for: setup.agent, worktree: worktree), showsPath: setup.showsPath)
+        phase = .asking(agent: setup.named, program: GitFixWriter.command(for: setup.agent, worktree: worktree), showsPath: setup.showsPath)
         let run = runAgent ?? { [programs = setup.programs] command, input in
             try await programs.run(command, input: input)
         }
@@ -98,11 +98,11 @@ final class GitFixModel {
                 )
                 let fix = try await GitFixWriter.propose(request, with: setup.agent, run: run)
                 try Task.checkCancellation()
-                phase = .answered(kind: setup.kind, fix: fix)
+                phase = .answered(agent: setup.named, fix: fix)
             } catch {
                 // Stop has already put things back.
                 if error is CancellationError || Task.isCancelled { return }
-                phase = .failed(kind: setup.kind, message: String(describing: error), output: (error as? CommitMessageError)?.output)
+                phase = .failed(agent: setup.named, message: String(describing: error), output: (error as? CommitMessageError)?.output)
             }
             work = nil
         }
@@ -112,7 +112,7 @@ final class GitFixModel {
     /// first that fails. Only a person pressing Run calls this.
     func run() {
         guard case .answered(let kind, let fix) = phase, fix.canRun else { return }
-        phase = .running(kind: kind, fix: fix)
+        phase = .running(agent: kind, fix: fix)
         work = Task { [session, worktree] in
             var lines: [TerminalLine] = []
             var refused: RefusedCommand?

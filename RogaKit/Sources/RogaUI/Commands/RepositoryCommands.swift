@@ -316,7 +316,7 @@ public struct RepositoryCommands: Commands {
 extension RepositoryCommands {
     /// An agent in the Changes menu's Generate With (decision 41).
     struct GenerateWithItem: Equatable {
-        var kind: AgentKind
+        var id: AgentID
         /// The agent and its model, as in "Claude Code · haiku". With the
         /// agent's own default, that's Codex's model from its `config.toml`
         /// when Roga could read it, and otherwise the agent alone.
@@ -325,14 +325,20 @@ extension RepositoryCommands {
         var isCurrent: Bool
     }
 
-    /// What Generate With lists: each agent Roga can run, in the order Settings
-    /// lists them.
+    /// What Generate With lists: each agent Roga can run, in the order
+    /// Settings lists them, custom ones last, or none while Roga uses no
+    /// agents (decision 89).
     static func generateWithItems(_ agents: AgentProvider) -> [GenerateWithItem] {
-        let current = agents.generateAgent
-        return agents.usableAgents.map { kind in
-            var model = agents.settings[kind]?.model ?? kind.recommendedModel
-            if model.isEmpty, kind == .codex, let known = agents.codexDefaultModel { model = known }
-            return GenerateWithItem(kind: kind, title: GenerationSetup.label(kind, model: model), isCurrent: kind == current)
+        let current = agents.defaultAgent
+        return agents.availableAgents.compactMap { id in
+            switch id {
+            case .known(let kind):
+                var model = agents.settings[kind]?.model ?? kind.recommendedModel
+                if model.isEmpty, kind == .codex, let known = agents.codexDefaultModel { model = known }
+                return GenerateWithItem(id: id, title: GenerationSetup.label(kind.name, model: model), isCurrent: id == current)
+            case .custom:
+                return agents.named(id).map { GenerateWithItem(id: id, title: $0.name, isCurrent: id == current) }
+            }
         }
     }
 }
@@ -417,19 +423,19 @@ private struct ChangesMenuItems: View {
             composer?.generator.generate(with: agents.generation())
         }
         .keyboardShortcut(RepositoryCommands.generateMessageShortcut)
-        .disabled(!canGenerate || agents.generateAgent == nil)
+        .disabled(!canGenerate || agents.defaultAgent == nil)
         Menu("Generate With") {
-            // Choosing an agent makes it the one Generate runs, and runs it.
-            ForEach(RepositoryCommands.generateWithItems(agents), id: \.kind) { item in
+            // Choosing an agent makes it the default, and runs it.
+            ForEach(RepositoryCommands.generateWithItems(agents), id: \.id) { item in
                 Toggle(item.title, isOn: Binding { item.isCurrent } set: { _ in
-                    agents.setGenerateAgent(item.kind)
-                    composer?.generator.generate(with: agents.generation(with: item.kind))
+                    agents.setDefaultAgent(item.id)
+                    composer?.generator.generate(with: agents.generation(with: item.id))
                 })
                 .disabled(!canGenerate)
             }
             Divider()
             Button("Agent Settings…") {
-                openSettings?(.page(.commit))
+                openSettings?(.page(.agents))
             }
             .disabled(openSettings == nil)
         }

@@ -67,7 +67,7 @@ struct GitFixTests {
 
     func setup() -> GenerationSetup {
         GenerationSetup(
-            kind: .claude,
+            id: .known(.claude),
             agent: CommitMessageAgent(kind: .claude, executable: "/usr/local/bin/claude"),
             programs: Programs(searchPath: "/usr/bin"),
             style: "",

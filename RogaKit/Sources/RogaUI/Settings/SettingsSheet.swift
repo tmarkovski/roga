@@ -20,12 +20,12 @@ extension UserDefaults {
     }
 }
 
-/// The pages of Settings, in the order its sidebar lists them.
+/// The pages of Settings, in the order its sidebar lists them. Commit folded
+/// into Git (decision 89), so a stored `commit` opens General.
 enum SettingsPage: String, CaseIterable, Identifiable {
     case general
     case appearance
     case git
-    case commit
     case agents
     case advanced
 
@@ -36,7 +36,6 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .general: "General"
         case .appearance: "Appearance"
         case .git: "Git"
-        case .commit: "Commit"
         case .agents: "Agents"
         case .advanced: "Advanced"
         }
@@ -47,14 +46,13 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .general: .slidersHorizontal
         case .appearance: .palette
         case .git: .branch
-        case .commit: .gitCommitHorizontal
         case .agents: .squareTerminal
         case .advanced: .wrench
         }
     }
 
     /// The sidebar's groups, with a line between each, as on the canvas.
-    static let groups: [[SettingsPage]] = [[.general, .appearance], [.git, .commit], [.agents], [.advanced]]
+    static let groups: [[SettingsPage]] = [[.general, .appearance], [.git], [.agents], [.advanced]]
 }
 
 /// A heading on a page, and the settings under it.
@@ -67,8 +65,8 @@ enum SettingsGroup: CaseIterable {
     case installation
     case fetching
     case generate
-    case commandLineAgents
-    case workingStatus
+    case agents
+    case agentStatus
     case largeRepositories
 
     var title: String {
@@ -80,9 +78,9 @@ enum SettingsGroup: CaseIterable {
         case .lists: "Lists"
         case .installation: "Installation"
         case .fetching: "Fetching"
-        case .generate: "Commit message generation"
-        case .commandLineAgents: "Command-line agents"
-        case .workingStatus: "Agent status"
+        case .generate: "Commit messages"
+        case .agents: "Agents"
+        case .agentStatus: "Status"
         case .largeRepositories: "Large repositories"
         }
     }
@@ -91,9 +89,8 @@ enum SettingsGroup: CaseIterable {
         switch self {
         case .openIn, .updates: .general
         case .interface, .motion, .lists: .appearance
-        case .installation, .fetching: .git
-        case .generate: .commit
-        case .commandLineAgents, .workingStatus: .agents
+        case .installation, .fetching, .generate: .git
+        case .agents, .agentStatus: .agents
         case .largeRepositories: .advanced
         }
     }
@@ -101,14 +98,10 @@ enum SettingsGroup: CaseIterable {
     /// What the whole group is about, under its heading on its page.
     var description: String? {
         switch self {
-        case .openIn:
-            "Available terminal apps on this Mac."
         case .installation:
-            "Requires Git \(SetupWords.minimumGit) or later. The first compatible version in your login shell's PATH is selected by default."
-        case .commandLineAgents:
-            "Detect agents in your login shell's PATH and standard installation locations. Commit message generation runs locally with tools disabled."
-        case .workingStatus:
-            "Show agent activity for worktrees in the sidebar. Status updates come from agent hooks."
+            "Requires Git \(SetupWords.minimumGit) or later."
+        case .agents:
+            "Generate, Resolve and Fix run the default agent with its tools off, and send what they need to its provider."
         default:
             nil
         }
@@ -132,16 +125,18 @@ enum SettingsGroup: CaseIterable {
         self != .motion || HouseAnimationView.offersSpeed
     }
 
-    /// The groups Settings shows, in order.
-    static var shown: [SettingsGroup] {
-        allCases.filter(\.isShown)
+    /// The groups Settings shows, in order, with what's about agents only
+    /// while Roga uses them (decision 89).
+    static func shown(usesAgents: Bool = true) -> [SettingsGroup] {
+        allCases.filter { $0.isShown && (usesAgents || ($0 != .generate && $0 != .agentStatus)) }
     }
 
     /// What a search finds: each group Settings shows that has a setting
-    /// whose words match, with those settings.
-    static func found(_ query: String) -> [(group: SettingsGroup, items: [SettingsItem])] {
-        shown.compactMap { group in
-            let items = group.items.filter { $0.matches(query) }
+    /// whose words match, with those settings. While agents are off, Use
+    /// agents is all it finds about them.
+    static func found(_ query: String, usesAgents: Bool = true) -> [(group: SettingsGroup, items: [SettingsItem])] {
+        shown(usesAgents: usesAgents).compactMap { group in
+            let items = group.items.filter { $0.matches(query) && (usesAgents || $0.group != .agents || $0 == .usesAgents) }
             return items.isEmpty ? nil : (group, items)
         }
     }
@@ -164,15 +159,12 @@ enum SettingsItem: CaseIterable {
     case gitProgram
     case fetchesByItself
     case showsGenerateButton
-    case generateAgent
-    case generateModel
-    case generateEffort
     case matchesStyle
     case instructions
-    case generateCommand
+    case usesAgents
     case agentList
+    case defaultAgent
     case hooks
-    case showsMarks
     case marksLegend
     case keepsCommitGraphCurrent
 
@@ -185,9 +177,9 @@ enum SettingsItem: CaseIterable {
         case .fileLayout, .refsSort, .foldsDescriptions: .lists
         case .gitProgram: .installation
         case .fetchesByItself: .fetching
-        case .showsGenerateButton, .generateAgent, .generateModel, .generateEffort, .matchesStyle, .instructions, .generateCommand: .generate
-        case .agentList: .commandLineAgents
-        case .hooks, .showsMarks, .marksLegend: .workingStatus
+        case .showsGenerateButton, .matchesStyle, .instructions: .generate
+        case .usesAgents, .agentList, .defaultAgent: .agents
+        case .hooks, .marksLegend: .agentStatus
         case .keepsCommitGraphCurrent: .largeRepositories
         }
     }
@@ -207,75 +199,64 @@ enum SettingsItem: CaseIterable {
         case .gitProgram: "Git"
         case .fetchesByItself: "Fetch when Roga becomes active"
         case .showsGenerateButton: "Show Generate button"
-        case .generateAgent: "Agent"
-        case .generateModel: "Model"
-        case .generateEffort: "Reasoning effort"
         case .matchesStyle: "Match repository commit style"
         case .instructions: "Custom instructions"
-        case .generateCommand: "Command"
-        case .agentList: "Claude Code and Codex"
+        case .usesAgents: "Use agents"
+        case .agentList: "Claude Code, Codex and custom agents"
+        case .defaultAgent: "Default agent"
         case .hooks: "Hooks"
-        case .showsMarks: "Show agents in the sidebar"
         case .marksLegend: "Status indicators"
         case .keepsCommitGraphCurrent: "Keep commit-graph files up to date"
         }
     }
 
+    /// The gray words under the name, which only a setting whose name
+    /// doesn't say it all has: a side effect, what's sent somewhere, or a
+    /// requirement that isn't plain (decision 89).
     var help: String {
         switch self {
-        case .terminal:
-            "Default app for Open in Terminal."
         case .checksForUpdates:
             "Check roga.sh daily and show available updates in the sidebar."
         case .downloadsUpdates:
-            "Download updates in the background and install when Roga quits. Use Restart to Update to install immediately."
+            "Installs when Roga quits, or at once with Restart to Update."
         case .colors:
             "For the graph, branches, diffs and commands."
-        case .codeFont:
-            "For diffs and conflict resolution."
         case .animationSpeed:
             "House animation speed during Git operations."
-        case .fileLayout:
-            "In the commit and changes panels. Also in the View menu."
-        case .refsSort:
-            "In the refs panel. Also in its sort menu and the View menu."
-        case .foldsDescriptions:
-            "Show only the commit subject by default. Click to expand the description."
         case .fetchesByItself:
-            "Fetch the active repository at most once a minute to update upstream status. Only remote-tracking branches are updated; authentication prompts are disabled."
-        case .showsGenerateButton:
-            "Generate commit messages from the message editor or with ⌥⌘L."
-        case .generateAgent:
-            "The staged diff is sent to the selected agent's provider."
-        case .generateModel:
-            "Model used for commit message generation."
+            "At most once a minute. Only remote-tracking branches are updated."
         case .matchesStyle:
-            "Include the last 20 commit subjects as style examples."
-        case .generateCommand:
-            "Runs in the worktree with tools, hooks, plugins, MCP servers and repository agent settings disabled. Configure the executable and arguments in Agents."
-        case .showsMarks:
-            "Show working, waiting and finished states beside each worktree."
-        case .theme, .gitProgram, .generateEffort, .instructions, .agentList, .hooks, .marksLegend:
-            ""
+            "Sends the last 20 commit subjects with the diff."
+        case .usesAgents:
+            "Generate commit messages, resolve conflicts and fix Git errors with a coding agent, and see what your agents are doing in the sidebar."
         case .keepsCommitGraphCurrent:
-            "Run git commit-graph write in the background to speed up large repositories. Writes to the repository's objects folder without changing Git configuration."
+            "Runs git commit-graph write in the background, without changing Git configuration."
+        case .terminal, .theme, .codeFont, .fileLayout, .refsSort, .foldsDescriptions, .gitProgram, .showsGenerateButton,
+             .instructions, .agentList, .defaultAgent, .hooks, .marksLegend:
+            ""
         }
     }
 
     /// More words that find it, for what a block shows besides its title.
     private var keywords: [String] {
         switch self {
-        case .terminal: ["Open in Terminal", "iTerm", "Ghostty", "Warp"]
+        case .terminal: ["Open in Terminal", "iTerm", "Ghostty", "Warp", "Default app"]
         case .checksForUpdates: ["Sparkle", "version"]
         case .downloadsUpdates: ["install", "Restart to Update", "version"]
         case .theme: AppTheme.allCases.map(\.title) + ["Dark mode", "Light mode"]
         case .colors: ColorTheme.allCases.map(\.title) + ["Color theme", "Palette", "Graph"]
         case .codeFont: [CodeFont.systemFamilyTitle, "Monospaced", "Typeface", "Diff", "Font size", "Text size", "Points"]
+        case .fileLayout: ["List", "Tree", "Changes"]
+        case .refsSort: ["Name", "Date", "Refs", "Branches"]
+        case .foldsDescriptions: ["Collapse", "Expand", "Subject", "Body"]
+        case .showsGenerateButton: ["Generate", "⌥⌘L", "message editor"]
         case .gitProgram: ["Rescan", "Choose another", "executable", "program", "version", "PATH", "Xcode", "Command Line Tools", "Homebrew"]
-        case .instructions: ["Restore Defaults", "prompt"]
-        case .agentList: ["Rescan", "Enable", "executable", "program", "PATH"]
-        case .hooks: ["Install", "Remove", "roga-hooks", "plugin", "Claude Code", "Codex"]
-        case .marksLegend: ["Working", "Finished", "Waiting", "approval", "response"]
+        case .instructions: ["Restore Defaults", "prompt", "commit message"]
+        case .usesAgents: ["Claude Code", "Codex", "Generate", "Resolve", "Fix", "Turn off", "sidebar"]
+        case .agentList: ["Rescan", "executable", "program", "PATH", "model", "effort", "Run Test", "Add Custom Agent", "command", "Ollama", "local model"]
+        case .defaultAgent: ["Claude Code", "Codex", "Generate", "Resolve", "Fix", "conflicts", "commit message"]
+        case .hooks: ["Install", "Remove", "roga-hooks", "plugin", "Claude Code", "Codex", "Agent status", "sidebar"]
+        case .marksLegend: ["Working", "Finished", "Waiting", "approval", "response", "sidebar"]
         default: []
         }
     }
@@ -295,7 +276,7 @@ struct SettingsSheet: View {
     /// change the same thing again, and on General the first time.
     @AppStorage(SettingsDestination.pageKey) private var page = SettingsPage.general
     /// The agent whose own page shows, under Agents, or nil for the page itself.
-    @AppStorage(SettingsDestination.agentKey) private var agent: AgentKind?
+    @AppStorage(SettingsDestination.agentKey) private var agent: AgentID?
     @State private var query = ""
     /// Whether the agents have been asked about their hooks since the sheet
     /// opened. Each check costs a run of each agent, and of `claude agents`
@@ -385,21 +366,21 @@ struct SettingsSheet: View {
     private func show(_ destination: SettingsDestination) {
         query = ""
         page = destination.page
-        if case .agent(let kind) = destination { agent = kind } else { agent = nil }
+        if case .agent(let id) = destination { agent = id } else { agent = nil }
     }
 
     /// The page's name, rather than "Settings", which the sheet already is,
     /// or the agent's on its own page.
     private var title: String {
         guard trimmedQuery.isEmpty else { return "Search" }
-        if case .agent(let kind) = destination { return kind.name }
+        if case .agent(let id) = destination, let named = agents.named(id) { return named.name }
         return page.title
     }
 
     /// Whether the title bar has the back button, which an agent's page has
     /// before its title, as the canvas draws it.
     private var goesBack: Bool {
-        guard trimmedQuery.isEmpty, case .agent = destination else { return false }
+        guard trimmedQuery.isEmpty, case .agent(let id) = destination, agents.named(id) != nil else { return false }
         return true
     }
 
@@ -445,22 +426,29 @@ struct SettingsSheet: View {
     @ViewBuilder private var content: some View {
         if trimmedQuery.isEmpty {
             switch destination {
-            case .agent(let kind):
+            case .agent(.known(let kind)) where agents.usesAgents:
                 // Its settings are kept by kind, so another agent's page
                 // starts afresh.
                 AgentDetailPage(kind: kind)
                     .id(kind)
-            case .page(.agents):
+            case .agent(.custom(let id)) where agents.usesAgents && agents.customAgent(id) != nil:
+                if let custom = agents.customAgent(id) {
+                    CustomAgentPage(custom: custom) { agent = nil }
+                        .id(id)
+                }
+            case .agent, .page(.agents):
+                // A custom agent that's gone, or an agent's page while agents
+                // are off, is the Agents page.
                 AgentsPage(show: show)
             case .page(let page):
                 VStack(alignment: .leading, spacing: 30) {
-                    ForEach(SettingsGroup.shown.filter { $0.page == page }, id: \.self) { group in
+                    ForEach(SettingsGroup.shown(usesAgents: agents.usesAgents).filter { $0.page == page }, id: \.self) { group in
                         section(group, items: group.items, namesPage: false)
                     }
                 }
             }
         } else {
-            let found = SettingsGroup.found(trimmedQuery)
+            let found = SettingsGroup.found(trimmedQuery, usesAgents: agents.usesAgents)
             if found.isEmpty {
                 Text("No settings match “\(trimmedQuery)”.")
                     .foregroundStyle(SettingsColors.note)
@@ -476,7 +464,8 @@ struct SettingsSheet: View {
     }
 
     /// A group's section, on its page or among what search found. The
-    /// General, Commit and Agents pages draw their own groups.
+    /// General and Agents pages, and Git's installation and commit messages,
+    /// draw their own groups.
     @ViewBuilder private func section(_ group: SettingsGroup, items: [SettingsItem], namesPage: Bool) -> some View {
         switch group {
         case .openIn, .updates:
@@ -484,11 +473,11 @@ struct SettingsSheet: View {
         case .installation:
             GitProgramSection(items: items, namesPage: namesPage)
         case .generate:
-            CommitSection(items: items, namesPage: namesPage, show: show)
-        case .commandLineAgents:
+            CommitSection(items: items, namesPage: namesPage)
+        case .agents:
             AgentListSection(items: items, namesPage: namesPage, show: show)
-        case .workingStatus:
-            WorkingStatusSection(items: items, namesPage: namesPage)
+        case .agentStatus:
+            AgentStatusSection(items: items, namesPage: namesPage)
         case .interface, .motion, .lists, .fetching, .largeRepositories:
             SettingsSection(title: group.title) {
                 if namesPage {
@@ -614,10 +603,10 @@ struct SettingsSheet: View {
             case .keepsCommitGraphCurrent:
                 Toggle(item.title, isOn: $keepsCommitGraphCurrent)
                     .toggleStyle(.settings)
-            case .terminal, .checksForUpdates, .downloadsUpdates, .gitProgram, .showsGenerateButton, .generateAgent, .generateModel,
-                 .generateEffort, .matchesStyle, .instructions, .generateCommand, .agentList, .hooks, .showsMarks, .marksLegend, .codeFont:
-                // The General, Git, Commit and Agents pages draw their own, and
-                // the code font's row has two controls.
+            case .terminal, .checksForUpdates, .downloadsUpdates, .gitProgram, .showsGenerateButton, .matchesStyle, .instructions,
+                 .usesAgents, .agentList, .defaultAgent, .hooks, .marksLegend, .codeFont:
+                // The General, Git and Agents pages draw their own, and the
+                // code font's row has two controls.
                 EmptyView()
             }
         }
@@ -628,7 +617,7 @@ struct SettingsSheet: View {
 private struct SettingsSidebar: View {
     @Binding var page: SettingsPage
     /// The agent whose page shows. Choosing a page, Agents included, leaves it.
-    @Binding var agent: AgentKind?
+    @Binding var agent: AgentID?
     @Binding var query: String
 
     var body: some View {

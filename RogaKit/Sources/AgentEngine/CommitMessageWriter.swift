@@ -36,16 +36,17 @@ public enum CommitMessageWriter {
         if agent.kind == .codex, let file = agent.codexConfigurationFile {
             agent.mcpServers = CodexConfiguration.mcpServers(inFile: file) ?? []
         }
-        let command = CommitMessageCommand.command(
-            for: agent,
-            worktree: request.worktree,
-            style: request.style,
-            hasDraft: request.trimmedDraft != nil
-        )
+        let hasDraft = request.trimmedDraft != nil
+        let command = CommitMessageCommand.command(for: agent, worktree: request.worktree, style: request.style, hasDraft: hasDraft)
         var duration = Duration.zero
         var message = ""
         for _ in 0..<2 {
-            let input = Array(CommitMessagePrompt.input(for: request, token: makeToken()).utf8)
+            let input = CommitMessageCommand.standardInput(
+                for: agent,
+                instructions: CommitMessagePrompt.instructions(style: request.style),
+                task: CommitMessagePrompt.task(hasDraft: hasDraft),
+                data: CommitMessagePrompt.input(for: request, token: makeToken())
+            )
             let result: ProgramResult
             do {
                 result = try await run(command, input)
@@ -53,11 +54,11 @@ public enum CommitMessageWriter {
                 throw CommitMessageError.program(error)
             }
             duration += result.duration
-            message = CommitMessageCleanup.clean(try CommitMessageReply.message(from: result, agent: agent.kind), draft: request.draft)
+            message = CommitMessageCleanup.clean(try CommitMessageReply.message(from: result, for: agent), draft: request.draft)
             let subject = CommitMessageCleanup.subject(of: message)
             if !subject.isEmpty, !subject.hasSuffix("..."), !subject.hasSuffix("\u{2026}") { break }
         }
-        guard !CommitMessageCleanup.subject(of: message).isEmpty else { throw CommitMessageError.empty(agent.kind) }
+        guard !CommitMessageCleanup.subject(of: message).isEmpty else { throw CommitMessageError.empty(agent.name) }
         return WrittenMessage(text: message, duration: duration)
     }
 }

@@ -107,7 +107,7 @@ struct ConflictResolutionAgentTests {
     }
 
     @Test func aReplyWithNoConflictsIsAFailure() async throws {
-        await #expect(throws: CommitMessageError.agentFailed(.claude, message: "Claude Code replied without resolving any of the conflicts.", output: "Not sure.")) {
+        await #expect(throws: CommitMessageError.agentFailed("Claude Code", message: "Claude Code replied without resolving any of the conflicts.", output: "Not sure.")) {
             try await ConflictResolutionWriter.resolve(request, with: claude, run: claudeReply("Not sure."))
         }
     }

@@ -161,16 +161,28 @@ enum SetupWords {
 
     // MARK: Agents
 
-    static let agentsSub = "Generate commit messages, resolve conflicts and troubleshoot Git errors with a coding agent. Agents run only when requested."
+    static let agentsSub = "Generate commit messages, resolve conflicts and fix Git errors with a coding agent, and see what your agents are doing in the sidebar."
     static let noAgentsHeading = "No coding agents found"
     static let noAgentsSub = "No Claude Code or Codex installations were detected in PATH or standard installation locations. Agents are optional and can be configured later in Settings › Agents."
 
-    /// The question, which names the agents Roga would use: the ones it
-    /// found and that their rows leave on, or all it found when none is on.
-    static func agentsHeading(found: [AgentKind], on: [AgentKind]) -> String {
-        let asked = on.isEmpty ? found : on
-        guard !asked.isEmpty else { return noAgentsHeading }
-        return "Use \(and(asked.map(\.name))) in Roga?"
+    /// The question, which names the agents Roga found: they're used
+    /// together or not at all (decision 89).
+    static func agentsHeading(found: [AgentKind]) -> String {
+        guard !found.isEmpty else { return noAgentsHeading }
+        return "Use \(and(found.map(\.name))) in Roga?"
+    }
+
+    /// The agent Generate, Resolve and Fix would run: the default Settings
+    /// keeps, while Roga found it, and otherwise the first Roga found.
+    static func defaultAgent(found: [AgentKind], agents: AgentProvider) -> AgentKind? {
+        if case .known(let kind)? = agents.defaultChoice, found.contains(kind) { return kind }
+        return found.first
+    }
+
+    /// Under the agents' rows, which one is the default and where it changes.
+    static func defaultNote(_ kind: AgentKind?) -> String {
+        guard let kind else { return "You can change this later in Settings › Agents." }
+        return "\(kind.name) is the default. You can change this later in Settings › Agents."
     }
 
     /// Under the agents' rows: how many copies of each Roga found, when any
@@ -340,9 +352,9 @@ enum SetupWords {
 
     /// - Parameters:
     ///   - found: The agents Roga found, each with the version it would run.
-    ///   - usable: The ones in use.
-    ///   - declined: Whether Don't Use Agents was the answer.
-    static func chosenAgents(found: [(kind: AgentKind, version: String)], usable: [AgentKind], declined: Bool) -> Chosen {
+    ///   - usable: The ones in use, which is all of them or none.
+    ///   - defaultAgent: The one Generate, Resolve and Fix run.
+    static func chosenAgents(found: [(kind: AgentKind, version: String)], usable: [AgentKind], defaultAgent: AgentKind?) -> Chosen {
         guard !found.isEmpty else {
             return Chosen(mark: .off, value: "None found", detail: "Neither Claude Code nor Codex is installed.")
         }
@@ -350,12 +362,7 @@ enum SetupWords {
             return Chosen(mark: .off, value: "Not used", detail: "Agent commands and the Generate button are hidden.")
         }
         let names = found.filter { usable.contains($0.kind) }.map { "\($0.kind.name) \($0.version)" }
-        let leftOut = found.filter { !usable.contains($0.kind) }.map(\.kind.name)
-        return Chosen(
-            mark: .ok,
-            value: and(names),
-            detail: leftOut.isEmpty || declined ? nil : "\(and(leftOut)) \(leftOut.count == 1 ? "isn't" : "aren't") used."
-        )
+        return Chosen(mark: .ok, value: and(names), detail: defaultAgent.map { "\($0.name) is the default." })
     }
 
     /// What the hooks came to in the agents in use: where they're installed,

@@ -30,7 +30,7 @@ struct GitProgramSection: View {
                     gitProvider.lookAgain()
                 } label: {
                     HStack(spacing: 6) {
-                        AgentListSection.lookAgainIcon.image
+                        RescanButton.icon.image
                             .font(.system(size: 11))
                         Text("Rescan")
                     }

@@ -7,86 +7,43 @@ import IconUI
 import Observation
 import SwiftUI
 
-/// An agent's own page, under Agents: which program Roga runs and how it
-/// runs it to write a commit message, a test run, and the agent's hooks
-/// (decision 41). The model and effort are the same ones the Commit page and
-/// the Generate popover show.
+/// Claude Code's or Codex's own page, under Agents: which copy Roga runs, its
+/// model and effort, and a test run (decisions 41 and 89). The model and
+/// effort are the same ones the Generate popover shows. Its hooks are on the
+/// Agents page, under Status, and the exact command shows in the Generate
+/// popover.
 struct AgentDetailPage: View {
     let kind: AgentKind
     @Environment(AgentProvider.self) private var agents
-    @Environment(AgentMonitor.self) private var monitor
-    @Environment(RepositoryList.self) private var list
-    @AppStorage private var isEnabled: Bool
     /// The program someone chose, or nil for the one Roga finds. Changing it
     /// makes the provider look for the agent again.
     @AppStorage private var program: String?
-    @AppStorage private var extraArguments: String
-    @AppStorage private var timeLimit: Int
     @AppStorage(AgentPreferences.instructionsKey) private var instructions = CommitMessagePrompt.defaultStyle
     @State private var test = AgentTestRun()
-    @State private var dialog: HooksDialog.Request?
-    @State private var places = HeardPlaces()
 
     init(kind: AgentKind) {
         self.kind = kind
-        _isEnabled = AppStorage(wrappedValue: true, AgentPreferences.enabledKey(kind))
         _program = AppStorage(AgentPreferences.programKey(kind))
-        _extraArguments = AppStorage(wrappedValue: "", AgentPreferences.extraArgumentsKey(kind))
-        _timeLimit = AppStorage(wrappedValue: AgentPreferences.defaultTimeLimit, AgentPreferences.timeLimitKey(kind))
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 30) {
-            commandSection
-            runsSection
-            workingStatusSection
-        }
-        .sheet(item: $dialog) { request in
-            HooksDialog(request: request)
-                .environment(agents)
+        SettingsSection("Configuration") {
+            programRow
+            SettingsRow(title: "Model", help: nil) {
+                AgentModelControl(kind: kind)
+            }
+            SettingsRow(title: "Reasoning effort", help: nil) {
+                AgentEffortControl(kind: kind)
+            }
+            SettingsBlock {
+                AgentTestRow(test: test, name: kind.name, agent: agents.commitMessageAgent(kind), style: instructions)
+            }
         }
         .onDisappear { test.stop() }
     }
 
-    // MARK: Command
-
-    private var commandSection: some View {
-        SettingsSection("Configuration") {
-            SettingsRow(title: "Enable \(kind.name)", help: "Available for commit message generation. Hook settings are independent.") {
-                Toggle("Enable \(kind.name)", isOn: $isEnabled)
-                    .toggleStyle(.settings)
-            }
-            programRow
-            SettingsRow(title: "Model", help: GenerateChoices.modelHelp(kind, onAgentPage: true, agents: agents)) {
-                AgentModelControl(kind: kind, typesName: kind == .codex)
-            }
-            SettingsRow(title: "Reasoning effort", help: GenerateChoices.effortHelp(kind, agents: agents)) {
-                AgentEffortControl(kind: kind, isSegmented: false)
-            }
-            SettingsRow(title: "Additional arguments", help: "Appended after the default arguments.") {
-                SettingsTextField(
-                    text: $extraArguments,
-                    placeholder: kind == .claude ? "--append-system-prompt …" : "-c model_verbosity=low",
-                    width: 220,
-                    isMonospaced: true
-                )
-            }
-            SettingsRow(title: "Timeout", help: "Maximum duration for commit message generation.") {
-                SettingsPopup(
-                    selection: $timeLimit,
-                    options: GenerateChoices.timeLimits(stored: timeLimit).map { (value: $0, title: "\($0) seconds") }
-                )
-            }
-        }
-    }
-
     private var programRow: some View {
-        let detail = AgentDetailPage.programDetail(
-            kind,
-            lookup: agents.lookups[kind],
-            isChosen: program?.isEmpty == false,
-            isFirstInPath: agents.installation(kind).map { !agents.showsPath($0.executable) } ?? false
-        )
+        let detail = AgentDetailPage.programDetail(kind, lookup: agents.lookups[kind], isChosen: program?.isEmpty == false)
         return SettingsRow(title: "Executable", help: detail.plain, namesControl: false) {
             VStack(alignment: .leading, spacing: 2) {
                 if let path = detail.path {
@@ -96,8 +53,10 @@ struct AgentDetailPage: View {
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
-                Text(detail.sentence)
-                    .foregroundStyle(detail.isWarning ? AgentColors.warn : SettingsColors.note)
+                if let sentence = detail.sentence {
+                    Text(sentence)
+                        .foregroundStyle(detail.isWarning ? AgentColors.warn : SettingsColors.note)
+                }
             }
         } control: {
             // The same menu as on the agent's row in setup: every copy Roga
@@ -134,115 +93,17 @@ struct AgentDetailPage: View {
         return "None"
     }
 
-    // MARK: Command-line arguments
-
-    private var runsSection: some View {
-        SettingsSection(
-            title: "Command-line arguments",
-            description: AttributedString("Default arguments for commit message generation, applied before additional arguments.")
-        ) {
-            EmptyView()
-        } content: {
-            SettingsBlock {
-                SettingsCard {
-                    ForEach(Array(Self.flags(kind).enumerated()), id: \.offset) { _, flag in
-                        SettingsCardRow(flag.flag, flag.why)
-                    }
-                }
-            }
-            SettingsBlock {
-                VStack(alignment: .leading, spacing: 12) {
-                    SettingsCommand(lines: GenerateChoices.terminal(for: kind, agents: agents, style: instructions))
-                    testRow
-                }
-            }
-        }
-    }
-
-    private var testRow: some View {
-        HStack(spacing: 12) {
-            Button(test.isRunning ? "Stop" : "Run Test") {
-                if test.isRunning {
-                    test.stop()
-                } else if let agent = agents.commitMessageAgent(kind), let programs = agents.programs {
-                    test.start(agent, style: instructions) { try await programs.run($0, input: $1) }
-                }
-            }
-            .buttonStyle(.settings())
-            .disabled(!test.isRunning && (agents.commitMessageAgent(kind) == nil || agents.programs == nil))
-            AgentTestResult(kind: kind, state: test.state)
-        }
-    }
-
-    // MARK: Working status
-
-    private var workingStatusSection: some View {
-        SettingsSection(
-            title: "Agent status",
-            description: .settingsWords([
-                ("Hooks send session events and worktree paths via ", false),
-                ("roga hook --host \(kind.rawValue)", true),
-                (". They return immediately and have no effect when Roga is closed.", false),
-            ])
-        ) {
-            EmptyView()
-        } content: {
-            TimelineView(.everyMinute) { _ in
-                let line = AgentSummaries.hookLine(kind, agents: agents, heard: heard, now: .now) {
-                    places.place(of: $0, in: list)
-                }
-                SettingsRow(title: "Hooks", help: line.spoken, namesControl: false) {
-                    HookLineText(line: line)
-                } control: {
-                    if let button = line.button {
-                        Button(button.title) {
-                            dialog = HooksDialog.Request(
-                                kind: kind,
-                                action: button.action,
-                                offers: HooksDialog.otherAgent(for: kind, action: button.action, agents: agents)
-                            )
-                        }
-                        .buttonStyle(.settings(button.action == .install ? .primary : .secondary))
-                        .disabled(!button.isEnabled)
-                        .accessibilityLabel(button.spokenTitle(kind))
-                    }
-                }
-            }
-            SettingsBlock {
-                SettingsCard {
-                    ForEach(Array(Self.events(kind).enumerated()), id: \.offset) { _, event in
-                        SettingsCardRow(name: event.names, centersValue: true) {
-                            HStack(spacing: 7) {
-                                Group {
-                                    if let state = event.state {
-                                        AgentMark(state: state, size: 14)
-                                    } else {
-                                        Color.clear
-                                    }
-                                }
-                                .frame(width: 14, height: 14)
-                                Text(event.meaning)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private var heard: AgentProvider.Heard? {
-        AgentHost(rawValue: kind.rawValue).flatMap { monitor.lastHeard[$0] }
-    }
-
     // MARK: What it says
 
-    /// What the Program row says under its title.
+    /// What the Executable row says under its title.
     struct ProgramDetail: Equatable {
         /// The program's path, with the home folder as `~`.
         var path: String?
         /// The agent's name and version, as in "Claude Code 2.1.286".
         var version: String?
-        var sentence: String
+        /// Why there's no program Roga can use, or that it's looking. A copy
+        /// that's found needs no words: the menu says where it's from.
+        var sentence: String?
         var isWarning = false
 
         /// All of it in words, for VoiceOver.
@@ -261,28 +122,15 @@ struct AgentDetailPage: View {
         return Text("\(path)\(version)")
     }
 
-    /// Where the program is and how Roga came to it, or why it has none.
-    ///
-    /// - Parameter isFirstInPath: Whether the program is the one its name
-    ///   finds in the login shell's `PATH`.
-    static func programDetail(_ kind: AgentKind, lookup: AgentLookup?, isChosen: Bool, isFirstInPath: Bool) -> ProgramDetail {
+    /// Where the program is, or why there's none.
+    static func programDetail(_ kind: AgentKind, lookup: AgentLookup?, isChosen: Bool) -> ProgramDetail {
         switch lookup {
         case nil:
             return ProgramDetail(sentence: "Searching…")
         case .found(let installation)?:
-            let how = if isChosen {
-                "Custom executable."
-            } else if kind.prefersNewest, !installation.others.isEmpty {
-                "Latest detected version."
-            } else if isFirstInPath {
-                "Found in your login shell's PATH."
-            } else {
-                "Detected in a standard installation location outside your login shell's PATH."
-            }
             return ProgramDetail(
                 path: AgentSummaries.abbreviated(installation.executable),
-                version: "\(kind.name) \(installation.version)",
-                sentence: how
+                version: "\(kind.name) \(installation.version)"
             )
         case .notFound?:
             return ProgramDetail(sentence: "Not found in your login shell's PATH.")
@@ -298,50 +146,199 @@ struct AgentDetailPage: View {
             return ProgramDetail(sentence: AgentSummaries.sentence(skipped.description), isWarning: true)
         }
     }
+}
 
-    /// The flags Roga always gives the agent, and why, in the order the
-    /// command has them (`CommitMessageCommand`).
-    static func flags(_ kind: AgentKind) -> [(flag: String, why: String)] {
-        switch kind {
-        case .claude:
-            [
-                ("-p", "Print the response and exit."),
-                ("--safe-mode", "Disable hooks, plugins, skills, MCP servers and CLAUDE.md instructions."),
-                ("--setting-sources user", "Load user settings only; exclude the worktree's .claude settings."),
-                ("--tools=", "Disable all tools, including shell commands and file access."),
-                ("--no-session-persistence", "Disable session history."),
-            ]
-        case .codex:
-            [
-                ("exec", "Print the response and exit."),
-                ("--ephemeral", "Disable session history."),
-                ("--sandbox read-only", "Restrict access to reading files; block file changes and network access."),
-                ("--disable hooks …", "Disable hooks, plugins, apps and the shell tool."),
-                ("-c mcp_servers.<name>.enabled=false", "Disable each configured MCP server, which would otherwise run outside the sandbox."),
-            ]
+/// A custom agent's page, under Agents: its name and command, a test run,
+/// and Delete Agent… (decision 89).
+struct CustomAgentPage: View {
+    let custom: CustomAgent
+    /// Goes back to the Agents page, once the agent is deleted.
+    let back: () -> Void
+    @Environment(AgentProvider.self) private var agents
+    @AppStorage(AgentPreferences.instructionsKey) private var instructions = CommitMessagePrompt.defaultStyle
+    @State private var test = AgentTestRun()
+    @State private var isDeleting = false
+
+    var body: some View {
+        SettingsSection("Configuration") {
+            SettingsRow(title: "Name", help: nil) {
+                SettingsTextField(text: field(\.name), width: 220)
+            }
+            SettingsRow(title: "Command", help: CustomAgentWords.commandHelp) {
+                SettingsTextField(text: field(\.command), placeholder: CustomAgentWords.commandPlaceholder, width: 260, isMonospaced: true)
+            }
+            SettingsBlock {
+                AgentTestRow(test: test, name: custom.shownName, agent: custom.agent, style: instructions)
+            }
+            SettingsBlock {
+                Button("Delete Agent…") {
+                    isDeleting = true
+                }
+                .buttonStyle(.settings(.destructive))
+            }
+        }
+        .onDisappear { test.stop() }
+        .dialog {
+            guard isDeleting else { return nil }
+            return CustomAgentWords.deleteDialog(custom, agents: agents) {
+                isDeleting = false
+            } delete: {
+                isDeleting = false
+                test.stop()
+                agents.deleteCustomAgent(custom.id)
+                back()
+            }
         }
     }
 
-    /// Which of the agent's hook events change the sidebar's mark, and to
-    /// what, as `AgentSessions` reads them.
-    static func events(_ kind: AgentKind) -> [(names: String, state: AgentSummary.State?, meaning: String)] {
-        let waiting = switch kind {
-        case .claude: "Notification, PermissionRequest"
-        case .codex: "PermissionRequest"
+    /// A field of the agent, stored as it's typed.
+    private func field(_ path: WritableKeyPath<CustomAgent, String>) -> Binding<String> {
+        Binding {
+            agents.customAgent(custom.id)?[keyPath: path] ?? custom[keyPath: path]
+        } set: { value in
+            var changed = agents.customAgent(custom.id) ?? custom
+            changed[keyPath: path] = value
+            agents.updateCustomAgent(changed)
         }
-        return [
-            ("UserPromptSubmit, PreToolUse", .working, "Working"),
-            (waiting, .waiting(.permission), "Waiting for input"),
-            ("Stop", .finished, "Finished"),
-            ("SessionEnd", nil, "Removed from sidebar"),
-        ]
+    }
+}
+
+/// Adding a custom agent, as a Roga dialog (decision 29): its name and its
+/// command, with the command it'll run along the bottom edge, and Run Test to
+/// try it on a sample diff before it's added.
+struct AddCustomAgentDialog: View {
+    /// What to do with the agent once it's added.
+    let added: (CustomAgent) -> Void
+    @Environment(AgentProvider.self) private var agents
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage(AgentPreferences.instructionsKey) private var instructions = CommitMessagePrompt.defaultStyle
+    @State private var name = ""
+    @State private var command = ""
+    @State private var test = AgentTestRun()
+
+    private var draft: CustomAgent {
+        CustomAgent(name: name, command: command)
+    }
+
+    private var hasCommand: Bool {
+        !command.allSatisfy(\.isWhitespace)
+    }
+
+    var body: some View {
+        DialogSheet(content: content) {
+            VStack(alignment: .leading, spacing: 12) {
+                labeled("Name") {
+                    SettingsTextField(text: $name, placeholder: "Ollama", width: DialogSheet<EmptyView>.width - 36)
+                }
+                labeled("Command") {
+                    SettingsTextField(text: $command, placeholder: CustomAgentWords.commandPlaceholder, width: DialogSheet<EmptyView>.width - 36, isMonospaced: true)
+                }
+                AgentTestRow(test: test, name: draft.shownName, agent: hasCommand ? draft.agent : nil, style: instructions)
+            }
+        }
+        .onDisappear { test.stop() }
+    }
+
+    private var content: DialogContent {
+        DialogContent(
+            id: "addCustomAgent",
+            title: "Add Custom Agent",
+            message: DialogText(stringLiteral: CustomAgentWords.addMessage),
+            terminal: CustomAgentWords.terminal(command),
+            terminalHeight: 64,
+            buttons: [
+                DialogButton(title: "Cancel", kind: .secondary, action: close),
+                DialogButton(title: "Add Agent", kind: .primary, isEnabled: hasCommand) {
+                    test.stop()
+                    added(agents.addCustomAgent(name: name, command: command))
+                    dismiss()
+                },
+            ],
+            dismiss: close
+        )
+    }
+
+    private func close() {
+        test.stop()
+        dismiss()
+    }
+
+    private func labeled(_ title: String, @ViewBuilder field: () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title)
+                .font(.system(size: 12.5, weight: .medium))
+            field()
+        }
+    }
+}
+
+/// What the custom agents' page and dialogs say, kept apart from the views so
+/// that tests can check it.
+enum CustomAgentWords {
+    static let commandPlaceholder = "ollama run qwen2.5-coder:7b"
+
+    static let commandHelp = "Gets the instructions and the diff on standard input, and prints its answer."
+
+    static let addMessage = "Any command that reads from standard input and prints its answer, such as a local model. Roga can't install hooks in it, so it has no status in the sidebar."
+
+    /// What runs, as the dialog's block shows it: where the instructions and
+    /// the diff go, then the command in the shell, or the shell alone until
+    /// there's a command.
+    static func terminal(_ command: String) -> [TerminalLine] {
+        let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
+        let program = ProgramCommand(CommitMessageCommand.shell, trimmed.isEmpty ? ["-c", "…"] : ["-c", trimmed])
+        return [.comment("Instructions and staged diff supplied via standard input"), .program(program)]
+    }
+
+    /// Asks before deleting a custom agent, and says what Generate, Resolve
+    /// and Fix run instead when it's the default.
+    static func deleteDialog(_ custom: CustomAgent, agents: AgentProvider, cancel: @escaping () -> Void, delete: @escaping () -> Void) -> DialogContent {
+        let isDefault = agents.defaultAgent == .custom(custom.id)
+        let next = agents.availableAgents.first { $0 != .custom(custom.id) }.flatMap(agents.named)
+        let instead = isDefault ? (next.map { " Generate, Resolve and Fix run \($0.name) instead." } ?? " Generate, Resolve and Fix are hidden until there's another agent.") : ""
+        return DialogContent(
+            id: "deleteCustomAgent-\(custom.id)",
+            title: "Delete \(custom.shownName)?",
+            message: DialogText(stringLiteral: "Roga won't run its command any more.\(instead)"),
+            buttons: [
+                DialogButton(title: "Cancel", kind: .secondary, action: cancel),
+                DialogButton(title: "Delete Agent", kind: .destructive, action: delete),
+            ],
+            dismiss: cancel
+        )
+    }
+}
+
+/// Run Test and what it says, on an agent's page and in Add Custom Agent.
+struct AgentTestRow: View {
+    let test: AgentTestRun
+    /// What the agent is called, for "Waiting for Ollama…".
+    let name: String
+    /// How to run it, or nil while it can't be.
+    let agent: CommitMessageAgent?
+    let style: String
+    @Environment(AgentProvider.self) private var agents
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Button(test.isRunning ? "Stop" : "Run Test") {
+                if test.isRunning {
+                    test.stop()
+                } else if let agent, let programs = agents.programs {
+                    test.start(agent, style: style) { try await programs.run($0, input: $1) }
+                }
+            }
+            .buttonStyle(.settings())
+            .disabled(!test.isRunning && (agent == nil || agents.programs == nil))
+            AgentTestResult(name: name, state: test.state)
+        }
     }
 }
 
 /// What Run a Test says: what it does before it's run, that it's waiting,
 /// how long the agent took, or how it failed.
 struct AgentTestResult: View {
-    let kind: AgentKind
+    let name: String
     let state: AgentTestRun.State
 
     var body: some View {
@@ -353,7 +350,7 @@ struct AgentTestResult: View {
             case .running:
                 HStack(spacing: 7) {
                     SettingsSpinner()
-                    Text("Waiting for \(kind.name)…")
+                    Text("Waiting for \(name)…")
                         .foregroundStyle(SettingsColors.note)
                 }
             case .replied(let duration, let lines):
