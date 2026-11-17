@@ -181,6 +181,10 @@ struct DialogButton {
     /// isn't what it usually shows. It needs as many lines, because a sheet can't
     /// change size.
     var terminal: [TerminalLine]? = nil
+    /// For an agent's button, the job whose agent popover its chevron opens,
+    /// for choosing which agent runs (decision 91). Without it, an agent's
+    /// button is one button.
+    var agentChoice: AgentChoice? = nil
     var action: () -> Void
 
     /// What every question offers beside what it's asking about.

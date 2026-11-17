@@ -99,7 +99,7 @@ struct CommitMessageWriterTests {
 
     @Test func throwsWhenTheReplyIsEmptyTwice() async throws {
         let runs = Runs()
-        await #expect(throws: CommitMessageError.empty(.claude)) {
+        await #expect(throws: CommitMessageError.empty("Claude Code")) {
             try await CommitMessageWriter.write(request, with: claude, run: claudeReplies(["", "  "], runs: runs))
         }
         #expect(runs.count == 2)
@@ -113,7 +113,7 @@ struct CommitMessageWriterTests {
             return ProgramResult(status: .exited(1), output: Array(json.utf8), errorOutput: "", duration: .seconds(1))
         }
         await #expect(throws: CommitMessageError.agentFailed(
-            .claude, message: "Claude Code isn't signed in. Run claude auth login in Terminal.", output: "Not logged in · Please run /login"
+            "Claude Code", message: "Claude Code isn't signed in. Run claude auth login in Terminal.", output: "Not logged in · Please run /login"
         )) {
             try await CommitMessageWriter.write(request, with: claude, run: run)
         }

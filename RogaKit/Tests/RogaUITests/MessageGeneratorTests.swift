@@ -157,12 +157,12 @@ struct MessageGeneratorTests {
 
     func setup(_ kind: AgentKind = .claude, matchesStyle: Bool = true) -> GenerationSetup {
         GenerationSetup(
-            kind: kind,
+            id: .known(kind),
             agent: CommitMessageAgent(kind: kind, executable: "/usr/local/bin/" + kind.rawValue, model: "haiku", effort: "low"),
             programs: Programs(searchPath: "/usr/bin"),
             style: "Keep it short.",
             matchesStyle: matchesStyle,
-            label: GenerationSetup.label(kind, model: "haiku")
+            label: GenerationSetup.label(kind.name, model: "haiku")
         )
     }
 
@@ -350,7 +350,7 @@ struct MessageGeneratorTests {
         work.generator.run = agent.run
         work.generator.now = { Date(timeIntervalSince1970: 100) }
         work.generator.generate(with: setup())
-        #expect(work.generator.phase == .writing(.init(kind: .claude, since: Date(timeIntervalSince1970: 100))))
+        #expect(work.generator.phase == .writing(.init(agent: .claude, since: Date(timeIntervalSince1970: 100))))
         #expect(work.composer.isMessageReadOnly)
         #expect(work.composer.action.isEnabled == false)
         #expect(work.generator.readiness == .busy)
@@ -699,7 +699,7 @@ struct MessageGeneratorTests {
             Issue.record("Expected a failure, got \(work.generator.phase)")
             return
         }
-        #expect(failure.kind == .claude)
+        #expect(failure.agent == .claude)
         #expect(failure.message == "Claude Code isn't signed in. Run claude auth login in Terminal.")
         #expect(failure.output == "Failed to authenticate. OAuth session expired and could not be refreshed")
         #expect(MessageGenerator.failureTitle(.claude) == "Claude Code generation failed")
@@ -733,7 +733,7 @@ struct MessageGeneratorTests {
             Issue.record("Expected a failure")
             return
         }
-        #expect(failure.kind == .codex)
+        #expect(failure.agent == .codex)
         #expect(failure.message == "codex timed out after 1 minute.")
         #expect(failure.output == nil)
     }

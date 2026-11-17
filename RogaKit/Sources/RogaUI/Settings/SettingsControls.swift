@@ -383,6 +383,9 @@ struct SettingsButtonStyle: ButtonStyle {
     enum Kind {
         case secondary
         case primary
+        /// What can't be brought back, such as Delete Agent…: red words with
+        /// a line around them, as the canvas draws it.
+        case destructive
     }
 
     var kind = Kind.secondary
@@ -396,10 +399,31 @@ struct SettingsButtonStyle: ButtonStyle {
             .lineLimit(1)
             .padding(.horizontal, isSmall ? 9 : 12)
             .frame(height: isSmall ? 24 : 28)
-            .foregroundStyle(kind == .primary ? DialogColors.onInk : .primary)
-            .background(kind == .primary ? SettingsColors.ink : SettingsColors.secondaryButton, in: shape)
+            .foregroundStyle(foreground)
+            .background(background, in: shape)
+            .overlay {
+                if kind == .destructive {
+                    shape.strokeBorder(SettingsColors.line, lineWidth: 1)
+                }
+            }
             .opacity(!isEnabled ? 0.45 : configuration.isPressed ? 0.75 : 1)
             .contentShape(shape)
+    }
+
+    private var foreground: Color {
+        switch kind {
+        case .secondary: .primary
+        case .primary: DialogColors.onInk
+        case .destructive: SettingsColors.danger
+        }
+    }
+
+    private var background: Color {
+        switch kind {
+        case .secondary: SettingsColors.secondaryButton
+        case .primary: SettingsColors.ink
+        case .destructive: .clear
+        }
     }
 }
 
@@ -547,10 +571,11 @@ struct SettingsChoices<Value: Hashable>: View {
     }
 }
 
-/// The check before what's chosen, where a choice of one is a list of rows:
-/// setup's menus of programs and Generate's popover. Roga marks a choice of
-/// one with a check everywhere, as its menus do, rather than a radio. Every
-/// row keeps the check's column, so their names line up.
+/// The check before what's chosen, where a choice of one is a list of rows in
+/// a menu, such as setup's menus of programs, as the system's menus mark a
+/// choice. Every row keeps the check's column, so their names line up. The
+/// agent popover is a panel rather than a menu, so it has radios instead
+/// (decision 91).
 struct ChoiceCheck: View {
     let isChecked: Bool
 

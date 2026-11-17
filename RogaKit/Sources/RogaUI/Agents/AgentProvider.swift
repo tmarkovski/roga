@@ -5,7 +5,9 @@ import GitRunner
 import Observation
 
 /// Finds the agents' command-line tools, installs Roga's hooks in them, and
-/// says how to run them to write a commit message (decision 41).
+/// says how to run them to write a commit message (decision 41), along with
+/// the agents someone added as commands, and whether Roga uses agents at all
+/// (decision 89).
 ///
 /// There's one for the whole app, like `GitProvider`, because the agents
 /// belong to the Mac rather than to a repository. It starts once git is
@@ -88,8 +90,13 @@ public final class AgentProvider {
     /// Whether this copy of Roga holds the hooks' socket, which makes it the
     /// copy that writes the launcher.
     @ObservationIgnored private var pointsTheHooksHere = false
-    /// The agent chosen for Generate, as stored, whether or not it's usable.
-    private var chosenGenerateAgent: AgentKind?
+    /// Whether Roga uses agents: while it doesn't, it doesn't look for them,
+    /// and has none to run (decision 89).
+    private(set) var usesAgents: Bool
+    /// The default agent as stored, whether or not Roga can run it.
+    private(set) var defaultChoice: AgentID?
+    /// The agents someone added as commands, in the order they were added.
+    private(set) var customAgents: [CustomAgent]
 
     @ObservationIgnored private let defaults: UserDefaults
     /// Codex's folder, for tests, or nil for `CODEX_HOME` or `~/.codex`.
@@ -128,8 +135,11 @@ public final class AgentProvider {
         self.defaults = defaults
         self.codexHome = codexHome
         self.wellKnown = wellKnown
+        AgentPreferences.migrate(defaults)
         settings = Self.readSettings(from: defaults)
-        chosenGenerateAgent = defaults.string(forKey: AgentPreferences.generateAgentKey).flatMap(AgentKind.init(rawValue:))
+        usesAgents = AgentPreferences.usesAgents(in: defaults)
+        defaultChoice = AgentPreferences.defaultAgent(in: defaults)
+        customAgents = AgentPreferences.customAgents(in: defaults)
         defaultsObserver = NotificationCenter.default.addObserver(
             forName: UserDefaults.didChangeNotification,
             object: nil,
@@ -163,8 +173,8 @@ public final class AgentProvider {
 
     /// Starts once git is ready: writes the plugin's files and the launcher
     /// if this copy of Roga hears the hooks and there's a helper to point the
-    /// launcher at, finds both agents, then asks each one found whether it
-    /// runs Roga's hooks. Calling it again does nothing.
+    /// launcher at, finds both agents while Roga uses them, then asks each
+    /// one found whether it runs Roga's hooks. Calling it again does nothing.
     func start(git: Git) {
         guard self.git == nil else { return }
         self.git = git
@@ -178,8 +188,23 @@ public final class AgentProvider {
             if writesFiles, let helperPath {
                 pluginFilesError = await Self.writeFiles(installer, helperPath: helperPath)
             }
-            look(for: AgentKind.allCases)
+            if usesAgents { look(for: AgentKind.allCases) }
         }
+    }
+
+    /// Turns agents on or off for the whole app (decision 89). Turning them
+    /// on looks for them, if Roga hasn't yet.
+    func setUsesAgents(_ isOn: Bool) {
+        defaults.set(isOn, forKey: AgentPreferences.usesAgentsKey)
+        usesAgents = isOn
+        if isOn { lookIfNotYet() }
+    }
+
+    /// Looks for both agents unless Roga has already, as setup does when it
+    /// asks about them with agents turned off.
+    func lookIfNotYet() {
+        let unlooked = AgentKind.allCases.filter { lookGeneration[$0] == nil }
+        if !unlooked.isEmpty { look(for: unlooked) }
     }
 
     /// Points the launcher, and so the hooks, at this copy's helper, because
@@ -263,28 +288,87 @@ public final class AgentProvider {
 
     // MARK: What's chosen
 
-    /// The agents Roga can run, found and turned on, in `AgentKind.allCases`
-    /// order.
-    var usableAgents: [AgentKind] {
-        AgentKind.allCases.filter { installation($0) != nil && settings[$0]?.isEnabled != false }
+    /// The agents Roga found and can run, in `AgentKind.allCases` order.
+    var foundAgents: [AgentKind] {
+        AgentKind.allCases.filter { installation($0) != nil }
     }
 
-    /// The agent Generate runs: the one chosen when it's usable, and
-    /// otherwise the first usable one.
-    var generateAgent: AgentKind? {
-        let usable = usableAgents
-        if let chosenGenerateAgent, usable.contains(chosenGenerateAgent) { return chosenGenerateAgent }
-        return usable.first
+    /// Every agent Roga can run while it uses agents: the ones it found, then
+    /// the custom ones.
+    var availableAgents: [AgentID] {
+        guard usesAgents else { return [] }
+        return foundAgents.map(AgentID.known) + customAgents.map { .custom($0.id) }
     }
 
-    /// Makes `kind` the agent Generate runs, from now on.
-    func setGenerateAgent(_ kind: AgentKind) {
-        defaults.set(kind.rawValue, forKey: AgentPreferences.generateAgentKey)
-        chosenGenerateAgent = kind
+    /// The agent Generate, Resolve and Fix run, or nil while Roga uses no
+    /// agents or has none to run: the one chosen while Roga can run it, and
+    /// otherwise the first it can.
+    var defaultAgent: AgentID? {
+        let available = availableAgents
+        if let defaultChoice, available.contains(defaultChoice) { return defaultChoice }
+        return available.first
     }
 
-    /// How to run an agent that Roga found, with what's chosen for it, whether
-    /// or not it's turned on, so that Settings can show its command.
+    /// Makes `id` the default agent from now on.
+    func setDefaultAgent(_ id: AgentID) {
+        defaults.set(id.stored, forKey: AgentPreferences.defaultAgentKey)
+        defaultChoice = id
+    }
+
+    /// What an agent is called, or nil for a custom agent that's gone.
+    func named(_ id: AgentID) -> NamedAgent? {
+        switch id {
+        case .known(let kind): return NamedAgent(kind)
+        case .custom(let customID):
+            guard let custom = customAgents.first(where: { $0.id == customID }) else { return nil }
+            return NamedAgent(id: id, name: custom.shownName, shortName: custom.shownName)
+        }
+    }
+
+    /// The custom agent with this ID, while it's there.
+    func customAgent(_ id: UUID) -> CustomAgent? {
+        customAgents.first { $0.id == id }
+    }
+
+    /// Adds an agent that runs a command, and returns it.
+    @discardableResult
+    func addCustomAgent(name: String, command: String) -> CustomAgent {
+        let custom = CustomAgent(name: name.trimmingCharacters(in: .whitespacesAndNewlines), command: command.trimmingCharacters(in: .whitespacesAndNewlines))
+        customAgents.append(custom)
+        AgentPreferences.setCustomAgents(customAgents, in: defaults)
+        return custom
+    }
+
+    /// Stores a custom agent's new name or command.
+    func updateCustomAgent(_ custom: CustomAgent) {
+        guard let index = customAgents.firstIndex(where: { $0.id == custom.id }), customAgents[index] != custom else { return }
+        customAgents[index] = custom
+        AgentPreferences.setCustomAgents(customAgents, in: defaults)
+    }
+
+    /// Deletes a custom agent. While it was the default, the first agent Roga
+    /// can run is the default instead.
+    func deleteCustomAgent(_ id: UUID) {
+        customAgents.removeAll { $0.id == id }
+        AgentPreferences.setCustomAgents(customAgents, in: defaults)
+        if defaultChoice == .custom(id) {
+            defaults.removeObject(forKey: AgentPreferences.defaultAgentKey)
+            defaultChoice = nil
+        }
+    }
+
+    /// How to run an agent, whether or not it's the default, so that Settings
+    /// can test it: Claude Code or Codex once Roga has found it, with what's
+    /// chosen for it, or a custom agent's command.
+    func commitMessageAgent(_ id: AgentID) -> CommitMessageAgent? {
+        switch id {
+        case .known(let kind): commitMessageAgent(kind)
+        case .custom(let customID): customAgent(customID)?.agent
+        }
+    }
+
+    /// How to run Claude Code or Codex once Roga has found it, with what's
+    /// chosen for it.
     func commitMessageAgent(_ kind: AgentKind) -> CommitMessageAgent? {
         guard let installation = installation(kind) else { return nil }
         let settings = settings[kind] ?? AgentSettings.read(kind, from: defaults)
@@ -293,27 +377,26 @@ public final class AgentProvider {
             executable: installation.executable,
             model: settings.model.isEmpty ? nil : settings.model,
             effort: settings.effort.isEmpty ? nil : settings.effort,
-            extraArguments: settings.extraArguments,
-            timeLimit: settings.timeLimit,
             mcpServers: kind == .codex ? codexMCPServers : [],
             codexConfigurationFile: kind == .codex ? installer.map(Self.codexConfigurationFile) : nil
         )
     }
 
-    /// Everything a run of Generate needs, with `kind` or the agent Generate
-    /// runs, or nil when that agent can't be used.
-    func generation(with kind: AgentKind? = nil) -> GenerationSetup? {
-        guard let kind = kind ?? generateAgent, usableAgents.contains(kind),
-              let agent = commitMessageAgent(kind), let programs
+    /// Everything a run of Generate, Resolve or Fix needs, with `id` or the
+    /// default agent, or nil when that agent can't be run, or while Roga uses
+    /// no agents.
+    func generation(with id: AgentID? = nil) -> GenerationSetup? {
+        guard usesAgents, let id = id ?? defaultAgent, availableAgents.contains(id),
+              let agent = commitMessageAgent(id), let programs
         else { return nil }
         return GenerationSetup(
-            kind: kind,
+            id: id,
             agent: agent,
             programs: programs,
             style: AgentPreferences.instructions(in: defaults),
             matchesStyle: AgentPreferences.matchesStyle(in: defaults),
-            label: GenerationSetup.label(kind, model: agent.model ?? ""),
-            showsPath: showsPath(agent.executable)
+            label: GenerationSetup.label(agent.name, model: agent.model ?? ""),
+            showsPath: agent.executable.map(showsPath) ?? false
         )
     }
 
@@ -333,8 +416,15 @@ public final class AgentProvider {
     /// Reads what's chosen again. A program that changed means looking for
     /// that agent again, so Settings doesn't have to ask.
     func reloadSettings() {
-        let chosen = defaults.string(forKey: AgentPreferences.generateAgentKey).flatMap(AgentKind.init(rawValue:))
-        if chosen != chosenGenerateAgent { chosenGenerateAgent = chosen }
+        let uses = AgentPreferences.usesAgents(in: defaults)
+        if uses != usesAgents {
+            usesAgents = uses
+            if uses { lookIfNotYet() }
+        }
+        let chosen = AgentPreferences.defaultAgent(in: defaults)
+        if chosen != defaultChoice { defaultChoice = chosen }
+        let customs = AgentPreferences.customAgents(in: defaults)
+        if customs != customAgents { customAgents = customs }
         let read = Self.readSettings(from: defaults)
         guard read != settings else { return }
         let changedPrograms = AgentKind.allCases.filter { read[$0]?.program != settings[$0]?.program }
@@ -539,10 +629,12 @@ public final class AgentProvider {
         hookStatus: [AgentKind: HookStatus]? = nil,
         hookWork: [AgentKind: HookWork]? = nil,
         codexDefaultModel: String?? = nil,
+        codexMCPServers: [String]? = nil,
         programs: Programs?? = nil,
         installCommands: [AgentKind: [ProgramCommand]]? = nil
     ) {
         if let installCommands { shownInstallCommands = installCommands }
+        if let codexMCPServers { self.codexMCPServers = codexMCPServers }
         if let lookups { self.lookups = lookups }
         if let surveys { self.surveys = surveys }
         if let hookStatus { self.hookStatus = hookStatus }
@@ -552,9 +644,9 @@ public final class AgentProvider {
     }
 }
 
-/// Everything one run of Generate needs (decision 41).
+/// Everything one run of Generate, Resolve or Fix needs (decisions 41 and 89).
 struct GenerationSetup: Sendable {
-    var kind: AgentKind
+    var id: AgentID
     var agent: CommitMessageAgent
     var programs: Programs
     /// The instructions for the message's style, which are Roga's own unless
@@ -569,11 +661,16 @@ struct GenerationSetup: Sendable {
     /// wouldn't find it.
     var showsPath = false
 
-    /// The command, as a command block shows it: a line that says where the
-    /// staged changes go, since the command reads them from standard input,
-    /// and then the command.
+    /// Which agent runs and what it's called, for what the run shows after.
+    var named: NamedAgent {
+        NamedAgent(id: id, name: agent.name, shortName: agent.shortName)
+    }
+
+    /// Generate's command, as a command block shows it: a line that says where
+    /// the staged changes go, since the command reads them from standard input,
+    /// and then the command. A custom agent reads its instructions there too.
     func terminal(worktree: String, hasDraft: Bool) -> [TerminalLine] {
-        [.comment("Staged diff supplied via standard input"), .program(command(worktree: worktree, hasDraft: hasDraft), showsPath: showsPath)]
+        terminal(for: .generate(hasDraft: hasDraft), worktree: worktree)
     }
 
     /// The exact command the run starts, for the popover and the Commit page
@@ -582,7 +679,7 @@ struct GenerationSetup: Sendable {
         CommitMessageCommand.command(for: agent, worktree: worktree, style: style, hasDraft: hasDraft)
     }
 
-    static func label(_ kind: AgentKind, model: String) -> String {
-        model.isEmpty ? kind.name : "\(kind.name) · \(model)"
+    static func label(_ name: String, model: String) -> String {
+        model.isEmpty ? name : "\(name) · \(model)"
     }
 }

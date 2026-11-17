@@ -1,6 +1,6 @@
 # 69. Set Roga up in the whole window, the first time it runs
 
-Accepted on 2026-11-09. This adds a first screen to the window of [decision 13](0013-repositories-in-a-sidebar.md), lets someone choose the git that [decision 3](0003-use-the-users-git.md) finds, and asks about the agents and hooks of [decision 41](0041-agents-status-from-their-hooks-and-messages-from-their-clis.md) before anyone has to find them in Settings.
+Accepted on 2026-11-09. This adds a first screen to the window of [decision 13](0013-repositories-in-a-sidebar.md), lets someone choose the git that [decision 3](0003-use-the-users-git.md) finds, and asks about the agents and hooks of [decision 41](0041-agents-status-from-their-hooks-and-messages-from-their-clis.md) before anyone has to find them in Settings. [Decision 89](0089-one-switch-for-agents.md) has the Agents screen's answer turn Settings' one switch for agents on or off, and drops Don't use Codex from the rows' menus.
 
 ## Context
 

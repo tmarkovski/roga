@@ -39,13 +39,23 @@ public enum CommitMessageCommand {
     /// The command for any request that an agent answers with text alone, such as
     /// resolving conflicts (decision 60), with the same flags that keep the run
     /// small.
+    ///
+    /// A custom agent's command runs in the shell as someone typed it, with
+    /// nothing added, since Roga doesn't know its flags (decision 89). Its
+    /// instructions and task go on standard input instead, ahead of the data,
+    /// as `standardInput` puts them.
     public static func command(for agent: CommitMessageAgent, worktree: String, instructions: String, task: String) -> ProgramCommand {
         let model = nonEmpty(agent.model)
         let effort = nonEmpty(agent.effort)
 
+        let executable: String
         var arguments: [String]
-        switch agent.kind {
-        case .claude:
+        switch agent.program {
+        case .custom(_, let line):
+            executable = shell
+            arguments = ["-c", line]
+        case .known(.claude, let path):
+            executable = path
             // `--safe-mode` turns off CLAUDE.md, skills, plugins, hooks and MCP
             // servers while signing in still works, which `--bare` doesn't.
             // It still reads the worktree's own settings, with their helpers
@@ -61,9 +71,9 @@ public enum CommitMessageCommand {
                 "--tools=", "--no-session-persistence", "--output-format", "json",
                 "--system-prompt", instructions,
             ]
-            arguments += agent.extraArguments
             arguments += ["--", task]
-        case .codex:
+        case .known(.codex, let path):
+            executable = path
             // Codex has no system prompt to set from the command line, so the
             // instructions and the task are its prompt, and it adds standard
             // input after them in a block of its own. Without its shell tool,
@@ -80,15 +90,26 @@ public enum CommitMessageCommand {
             }
             if let model { arguments += ["-m", model] }
             if let effort { arguments += ["-c", "model_reasoning_effort=" + effort] }
-            arguments += agent.extraArguments
             arguments.append(instructions + "\n\n" + task)
         }
 
-        var command = ProgramCommand(agent.executable, arguments, in: worktree)
+        var command = ProgramCommand(executable, arguments, in: worktree)
         command.environment = [generatingVariable: "1"]
         command.timeout = agent.timeLimit
         command.priority = .normal
         return command
+    }
+
+    /// The shell that runs a custom agent's command, which finds its program
+    /// in the same `PATH` as git's.
+    public static let shell = "/bin/sh"
+
+    /// What goes on the agent's standard input: the data alone for Claude Code
+    /// and Codex, which take the instructions and the task on the command
+    /// line, and for a custom agent, the instructions and the task first.
+    public static func standardInput(for agent: CommitMessageAgent, instructions: String, task: String, data: String) -> [UInt8] {
+        guard agent.kind == nil else { return Array(data.utf8) }
+        return Array((instructions + "\n\n" + task + "\n\n" + data).utf8)
     }
 
     private static func nonEmpty(_ value: String?) -> String? {

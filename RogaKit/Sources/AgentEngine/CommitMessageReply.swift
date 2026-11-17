@@ -15,19 +15,20 @@ public struct WrittenMessage: Sendable, Hashable {
 
 /// Why an agent didn't write a commit message.
 public enum CommitMessageError: Error, Sendable, Hashable, CustomStringConvertible {
-    /// The agent ran and said it failed. The message is one sentence that says
-    /// what to do about it, and the output is what the agent printed, for
-    /// someone who wants the details.
-    case agentFailed(AgentKind, message: String, output: String)
-    /// The agent's reply had nothing left once it was cleaned up, twice.
-    case empty(AgentKind)
+    /// The agent, by its name, ran and said it failed. The message is one
+    /// sentence that says what to do about it, and the output is what the
+    /// agent printed, for someone who wants the details.
+    case agentFailed(String, message: String, output: String)
+    /// The agent, by its name, replied with nothing left once the reply was
+    /// cleaned up, twice.
+    case empty(String)
     /// The agent couldn't start, ran past its time limit, or printed too much.
     case program(ProgramError)
 
     public var description: String {
         switch self {
         case .agentFailed(_, let message, _): message
-        case .empty(let kind): "\(kind.name) replied without a message."
+        case .empty(let name): "\(name) replied without a message."
         case .program(let error): error.description
         }
     }
@@ -64,6 +65,26 @@ public enum CommitMessageReply {
         }
     }
 
+    /// The same for any agent. A custom agent's answer is what it printed,
+    /// and its failure is an exit status other than 0, with the first line
+    /// it printed to standard error, or else to standard output.
+    public static func message(from result: ProgramResult, for agent: CommitMessageAgent) throws(CommitMessageError) -> String {
+        switch agent.program {
+        case .known(let kind, _): try message(from: result, agent: kind)
+        case .custom(let name, _): try customMessage(from: result, name: name)
+        }
+    }
+
+    // MARK: Custom agents
+
+    private static func customMessage(from result: ProgramResult, name: String) throws(CommitMessageError) -> String {
+        if result.succeeded { return result.text }
+        let errorOutput = CommitMessageText.trimmed(result.errorOutput)
+        let output = [errorOutput, CommitMessageText.trimmed(result.text)].filter { !$0.isEmpty }.joined(separator: "\n")
+        let message = CommitMessageText.firstLine(output) ?? "\(name) \(result.status) without saying why."
+        throw .agentFailed(name, message: message, output: output)
+    }
+
     // MARK: Claude Code
 
     private static func claudeMessage(from result: ProgramResult) throws(CommitMessageError) -> String {
@@ -72,7 +93,7 @@ public enum CommitMessageReply {
             let output = [CommitMessageText.trimmed(result.text), errorOutput].filter { !$0.isEmpty }.joined(separator: "\n")
             if result.succeeded {
                 throw .agentFailed(
-                    .claude,
+                    AgentKind.claude.name,
                     message: "Couldn't read Claude Code's reply: " + (CommitMessageText.firstLine(output) ?? "nothing") + ".",
                     output: output
                 )
@@ -135,7 +156,7 @@ public enum CommitMessageReply {
     // MARK: Explaining failures
 
     private static func failure(_ kind: AgentKind, said: String, status: ExitStatus, httpStatus: Int?, output: String) -> CommitMessageError {
-        .agentFailed(kind, message: explanation(kind, said: said, status: status, httpStatus: httpStatus), output: output)
+        .agentFailed(kind.name, message: explanation(kind, said: said, status: status, httpStatus: httpStatus), output: output)
     }
 
     static func explanation(_ kind: AgentKind, said: String, status: ExitStatus, httpStatus: Int?) -> String {

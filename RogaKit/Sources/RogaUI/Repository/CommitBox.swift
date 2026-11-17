@@ -45,7 +45,7 @@ struct CommitBox: View {
     private var generateButton: GenerateButtonState {
         GenerateButtonState(
             showsButton: showsGenerateButton,
-            agent: agents?.generateAgent,
+            agent: agents?.defaultAgent.flatMap { agents?.named($0) },
             // What the box shows, which during a rebase is the message of the
             // commit it stopped on rather than the draft underneath.
             hasText: !composer.shownMessage.allSatisfy(\.isWhitespace),
@@ -57,7 +57,7 @@ struct CommitBox: View {
     /// Whether the box leaves room for the Generate button, which it keeps while
     /// the button gives way to an agent writing, so that the box doesn't jump.
     private var leavesGenerateRoom: Bool {
-        showsGenerateButton && agents?.generateAgent != nil
+        showsGenerateButton && agents?.defaultAgent != nil
     }
 
     var body: some View {
@@ -157,9 +157,9 @@ struct CommitBox: View {
         case .failed(let failure):
             CommitBoxGenerateFailure(
                 failure: failure,
-                canTryAgain: generator.readiness == .ready && agents?.usableAgents.contains(failure.kind) == true,
-                tryAgain: { generator.generate(with: agents?.generation(with: failure.kind)) },
-                openSettings: { openSettings(.agent(failure.kind)) }
+                canTryAgain: generator.readiness == .ready && agents?.generation(with: failure.agent.id) != nil,
+                tryAgain: { generator.generate(with: agents?.generation(with: failure.agent.id)) },
+                openSettings: { openSettings(.page(.agents)) }
             )
         }
     }
@@ -235,13 +235,13 @@ struct CommitBox: View {
                     isChoosingAgent = false
                     generator.generate(with: agents.generation())
                 } choices: {
-                    GeneratePopover(
+                    AgentPopover(
                         agents: agents,
+                        job: .generate(hasDraft: composer.hasMessage),
                         worktree: composer.worktree,
-                        hasDraft: composer.hasMessage,
-                        openAgentSettings: { kind in
+                        openAgentSettings: { id in
                             isChoosingAgent = false
-                            openSettings(.agent(kind))
+                            openSettings(.agent(id))
                         }
                     ) {
                         isChoosingAgent = false
@@ -285,7 +285,7 @@ private struct CommitBoxWriting: View {
             // In a narrow panel the words go onto a second line rather than
             // losing the seconds, which are what keeps changing.
             TimelineView(.periodic(from: writing.since, by: 1)) { context in
-                Text(MessageGenerator.writingWords(writing.kind, since: writing.since, now: context.date))
+                Text(MessageGenerator.writingWords(writing.agent, since: writing.since, now: context.date))
                     .monospacedDigit()
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -370,7 +370,7 @@ private struct CommitBoxGenerateFailure: View {
     var body: some View {
         // Each line wraps in a narrow panel rather than losing its end.
         VStack(alignment: .leading, spacing: 4) {
-            Text(MessageGenerator.failureTitle(failure.kind))
+            Text(MessageGenerator.failureTitle(failure.agent))
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(Palette.red)
                 .fixedSize(horizontal: false, vertical: true)
@@ -386,7 +386,7 @@ private struct CommitBoxGenerateFailure: View {
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
                         Chevron(pointsDown: showsOutput)
                             .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
-                        Text("\(failure.kind.name) output")
+                        Text("\(failure.agent.name) output")
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .contentShape(Rectangle())
@@ -394,7 +394,7 @@ private struct CommitBoxGenerateFailure: View {
                 .buttonStyle(.plain)
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
-                .accessibilityLabel(showsOutput ? "Hide \(failure.kind.name) output" : "Show \(failure.kind.name) output")
+                .accessibilityLabel(showsOutput ? "Hide \(failure.agent.name) output" : "Show \(failure.agent.name) output")
                 if showsOutput {
                     ScrollView {
                         Text(output)

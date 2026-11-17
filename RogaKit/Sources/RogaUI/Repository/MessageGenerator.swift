@@ -27,7 +27,7 @@ final class MessageGenerator {
     }
 
     struct Writing: Equatable {
-        var kind: AgentKind
+        var agent: NamedAgent
         /// When it started, which the box counts the seconds from.
         var since: Date
     }
@@ -46,7 +46,7 @@ final class MessageGenerator {
     }
 
     struct Failure: Equatable {
-        var kind: AgentKind
+        var agent: NamedAgent
         /// What went wrong in one sentence, in the error's own words.
         var message: String
         /// What the agent printed, when there's more to see than the message.
@@ -141,7 +141,7 @@ final class MessageGenerator {
         }
         before = message
         amends = amending
-        phase = .writing(Writing(kind: setup.kind, since: now()))
+        phase = .writing(Writing(agent: setup.named, since: now()))
         holding = composer
         generators.started(self, in: worktree)
         running = Task { [session, worktree, changes] in
@@ -188,7 +188,7 @@ final class MessageGenerator {
             } catch {
                 guard run == runs else { return }
                 ended()
-                fail(error, kind: setup.kind)
+                fail(error, agent: setup.named)
             }
         }
     }
@@ -238,16 +238,16 @@ final class MessageGenerator {
         }
     }
 
-    private func fail(_ error: any Error, kind: AgentKind) {
+    private func fail(_ error: any Error, agent: NamedAgent) {
         if error is CancellationError {
             phase = .idle
         } else if let error = error as? CommitMessageError {
             // Output that only says what the sentence says isn't worth unfolding.
             let output = error.output.flatMap { $0 == error.description ? nil : $0 }
-            phase = .failed(Failure(kind: kind, message: error.description, output: output))
+            phase = .failed(Failure(agent: agent, message: error.description, output: output))
         } else {
             // git couldn't say what's staged.
-            phase = .failed(Failure(kind: kind, message: error.dialogMessage, output: nil))
+            phase = .failed(Failure(agent: agent, message: error.dialogMessage, output: nil))
         }
     }
 
@@ -260,7 +260,7 @@ final class MessageGenerator {
 
     /// The line under the box while an agent writes, which counts the seconds
     /// from the first one on: "Claude Code is writing… 3 s".
-    static func writingWords(_ kind: AgentKind, since: Date, now: Date) -> String {
+    static func writingWords(_ kind: NamedAgent, since: Date, now: Date) -> String {
         let seconds = Int(now.timeIntervalSince(since))
         return seconds >= 1 ? "Generating with \(kind.name)… \(seconds) s" : "Generating with \(kind.name)…"
     }
@@ -276,7 +276,7 @@ final class MessageGenerator {
     }
 
     /// The heading of the card that says an agent failed.
-    static func failureTitle(_ kind: AgentKind) -> String {
+    static func failureTitle(_ kind: NamedAgent) -> String {
         "\(kind.name) generation failed"
     }
 

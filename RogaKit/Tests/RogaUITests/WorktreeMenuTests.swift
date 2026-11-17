@@ -379,12 +379,12 @@ struct WorktreeMenuTests {
             return chip.facts.map { $0.agent?.state }
         }
 
-        // The menu says what agents are doing until the person turns the
-        // marks off in Settings.
+        // The menu says what agents are doing until the person turns agents
+        // off in Settings.
         #expect(agents() == [nil, .working])
-        defaults.set(false, forKey: AgentPreferences.showsMarksKey)
+        defaults.set(false, forKey: AgentPreferences.usesAgentsKey)
         #expect(agents() == [nil, nil])
-        defaults.set(true, forKey: AgentPreferences.showsMarksKey)
+        defaults.set(true, forKey: AgentPreferences.usesAgentsKey)
         #expect(agents() == [nil, .working])
     }
 

@@ -348,8 +348,6 @@ nonisolated struct ProgramRowContent: Equatable {
     }
 
     static let looking = "Looking…"
-    /// Under an agent someone chose not to use.
-    static let unused = "Disabled. Select an installation to enable it."
 
     /// The row for git.
     static func git(
@@ -416,13 +414,9 @@ nonisolated struct ProgramRowContent: Equatable {
     }
 
     /// The row for an agent.
-    ///
-    /// - Parameter isOn: Whether Roga uses the agent. One that's off keeps
-    ///   its menu, to turn it back on by picking a copy.
     static func agent(
         _ kind: AgentKind,
         lookup: AgentLookup?,
-        isOn: Bool,
         home: String = NSHomeDirectory()
     ) -> ProgramRowContent {
         func source(_ executable: String) -> String {
@@ -444,9 +438,6 @@ nonisolated struct ProgramRowContent: Equatable {
             )
         default:
             break
-        }
-        guard isOn else {
-            return ProgramRowContent(name: kind.name, line: unused, tone: .plain, select: .menu("Not used"), isDimmed: true)
         }
         switch lookup {
         case .found(let installation)?:

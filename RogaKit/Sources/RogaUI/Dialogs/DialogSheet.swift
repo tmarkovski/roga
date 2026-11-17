@@ -251,15 +251,20 @@ private struct DialogActionButton: View {
     @State private var isHovering = false
 
     var body: some View {
-        switch button.kind {
-        case .secondary, .partlyDestructive, .agent:
-            base
-        case .primary where button.pressesWithReturn:
-            base.keyboardShortcut(.defaultAction)
-        case .primary:
-            base
-        case .destructive:
-            base.keyboardShortcut(.return, modifiers: .command)
+        if button.kind == .agent, let choice = button.agentChoice {
+            // Its chevron opens the agent popover (decision 91).
+            AgentSplitButton(title: button.title, look: .dialog, choice: choice, isEnabled: button.isEnabled, action: button.action)
+        } else {
+            switch button.kind {
+            case .secondary, .partlyDestructive, .agent:
+                base
+            case .primary where button.pressesWithReturn:
+                base.keyboardShortcut(.defaultAction)
+            case .primary:
+                base
+            case .destructive:
+                base.keyboardShortcut(.return, modifiers: .command)
+            }
         }
     }
 

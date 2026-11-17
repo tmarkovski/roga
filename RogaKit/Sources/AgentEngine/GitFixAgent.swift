@@ -194,18 +194,23 @@ public enum GitFixWriter {
         if agent.kind == .codex, let file = agent.codexConfigurationFile {
             agent.mcpServers = CodexConfiguration.mcpServers(inFile: file) ?? []
         }
-        let input = Array(GitFixPrompt.input(for: request, token: makeToken()).utf8)
+        let input = CommitMessageCommand.standardInput(
+            for: agent,
+            instructions: GitFixPrompt.instructions,
+            task: GitFixPrompt.task,
+            data: GitFixPrompt.input(for: request, token: makeToken())
+        )
         let result: ProgramResult
         do {
             result = try await run(command(for: agent, worktree: request.worktree), input)
         } catch let error as ProgramError {
             throw CommitMessageError.program(error)
         }
-        let reply = try CommitMessageReply.message(from: result, agent: agent.kind)
+        let reply = try CommitMessageReply.message(from: result, for: agent)
         guard let parsed = GitFixPrompt.parse(reply) else {
             throw CommitMessageError.agentFailed(
-                agent.kind,
-                message: "Couldn't read commands in \(agent.kind.name)'s reply.",
+                agent.name,
+                message: "Couldn't read commands in \(agent.name)'s reply.",
                 output: CommitMessageText.trimmed(reply)
             )
         }

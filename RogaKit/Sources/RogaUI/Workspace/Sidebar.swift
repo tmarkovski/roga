@@ -1013,27 +1013,27 @@ struct UncommittedCount: View {
     }
 }
 
-/// Whether the person has agents' marks turned on in Settings, for the views
-/// that say what agents are doing: the sidebar's rows and the worktree menu.
-/// While the marks are off, neither says anything about agents, so that
-/// nothing shows what the person turned off (decision 41).
+/// Whether the person uses agents, as Settings › Agents turns them on, for the
+/// views that say what agents are doing: the sidebar's rows and the worktree
+/// menu. While agents are off, neither says anything about them, so that
+/// nothing shows what the person turned off (decisions 41 and 89).
 ///
 /// Both views read it through this, rather than each keeping the key, so that
 /// they can't come to disagree, and so that tests can give it defaults of
 /// their own.
 struct AgentMarksSetting: DynamicProperty {
-    @AppStorage private var showsMarks: Bool
+    @AppStorage private var usesAgents: Bool
 
     /// - Parameter store: Where the choice is kept. Nil is the view's
     ///   `defaultAppStorage`, which is the standard defaults unless something
     ///   sets others.
     init(store: UserDefaults? = nil) {
-        _showsMarks = AppStorage(wrappedValue: true, AgentPreferences.showsMarksKey, store: store)
+        _usesAgents = AppStorage(wrappedValue: true, AgentPreferences.usesAgentsKey, store: store)
     }
 
-    /// The monitor while the marks show, or nil while they're turned off.
+    /// The monitor while agents are on, or nil while they're turned off.
     func monitor(_ monitor: AgentMonitor) -> AgentMonitor? {
-        showsMarks ? monitor : nil
+        usesAgents ? monitor : nil
     }
 }
 

@@ -2,7 +2,7 @@ import AgentEngine
 import Foundation
 
 /// Where Roga keeps what people chose about agents, in UserDefaults
-/// (decision 41).
+/// (decisions 41 and 89).
 ///
 /// Every value has a default that holds while its key is absent, so views can
 /// bind with `@AppStorage(AgentPreferences.modelKey(kind)) var model = kind.recommendedModel`
@@ -11,15 +11,19 @@ import Foundation
 /// agent's own default, which the pickers call Default, while an absent one
 /// means Roga's recommendation.
 enum AgentPreferences {
-    /// Whether the sidebar marks worktrees that agents work in. A Bool, on
-    /// unless someone turned it off.
-    static let showsMarksKey = "agentsShowInSidebar"
+    /// Whether Roga uses agents at all: Generate, Resolve and Fix, the marks
+    /// in the sidebar, and looking for agents. A Bool, on unless someone
+    /// turned it off (decision 89).
+    static let usesAgentsKey = "useAgents"
+    /// The agent Generate, Resolve and Fix run, as `AgentID.stored`. While
+    /// it's absent, or names an agent Roga can't run, they run the first
+    /// agent Roga can.
+    static let defaultAgentKey = "defaultAgent"
+    /// The agents someone added as commands, as JSON.
+    static let customAgentsKey = "customAgents"
     /// Whether the commit box shows the Generate button. A Bool, on unless
     /// someone turned it off.
     static let showsGenerateButtonKey = "generateShowsButton"
-    /// The agent Generate runs, as an `AgentKind` raw value. While it's absent,
-    /// or names an agent that can't be used, Generate runs the first usable one.
-    static let generateAgentKey = "generateAgent"
     /// Whether Generate sends the repository's recent subjects, so that the
     /// message matches its style. A Bool, on unless someone turned it off.
     static let matchesStyleKey = "generateMatchesStyle"
@@ -27,8 +31,6 @@ enum AgentPreferences {
     /// Roga's own, `CommitMessagePrompt.defaultStyle`.
     static let instructionsKey = "generateInstructions"
 
-    /// Whether Roga uses an agent at all. A Bool, on unless someone turned it off.
-    static func enabledKey(_ kind: AgentKind) -> String { "agent.\(kind.rawValue).enabled" }
     /// The program someone chose for an agent, as a path. While it's absent,
     /// Roga finds the agent itself.
     static func programKey(_ kind: AgentKind) -> String { "agent.\(kind.rawValue).program" }
@@ -38,24 +40,14 @@ enum AgentPreferences {
     /// How hard the model thinks. An empty string is the agent's own default,
     /// and an absent one is `recommendedEffort`.
     static func effortKey(_ kind: AgentKind) -> String { "agent.\(kind.rawValue).effort" }
-    /// Arguments someone added, as one string that's split the way a shell
-    /// would split it. Empty while absent.
-    static func extraArgumentsKey(_ kind: AgentKind) -> String { "agent.\(kind.rawValue).extraArguments" }
-    /// How long Generate waits for the agent, in seconds, as an Int. 60 while
-    /// absent.
-    static func timeLimitKey(_ kind: AgentKind) -> String { "agent.\(kind.rawValue).timeLimit" }
 
     /// The effort Roga recommends. A commit message doesn't need much
     /// thought, and low effort answers in a few seconds.
     static let recommendedEffort = "low"
-    /// The time limit while nobody has chosen one, in seconds.
-    static let defaultTimeLimit = 60
-    /// What the Time limit popup offers, in seconds.
-    static let timeLimits = [30, 60, 120]
 
-    /// Whether the sidebar shows agents' marks.
-    static func showsMarks(in defaults: UserDefaults = .standard) -> Bool {
-        defaults.object(forKey: showsMarksKey) as? Bool ?? true
+    /// Whether Roga uses agents.
+    static func usesAgents(in defaults: UserDefaults = .standard) -> Bool {
+        defaults.object(forKey: usesAgentsKey) as? Bool ?? true
     }
 
     /// Whether the commit box shows the Generate button.
@@ -72,6 +64,167 @@ enum AgentPreferences {
     static func instructions(in defaults: UserDefaults = .standard) -> String {
         defaults.string(forKey: instructionsKey) ?? CommitMessagePrompt.defaultStyle
     }
+
+    /// The default agent as stored, whether or not Roga can run it.
+    static func defaultAgent(in defaults: UserDefaults = .standard) -> AgentID? {
+        defaults.string(forKey: defaultAgentKey).flatMap(AgentID.init(stored:))
+    }
+
+    /// The custom agents, in the order they were added. What can't be read
+    /// is none.
+    static func customAgents(in defaults: UserDefaults = .standard) -> [CustomAgent] {
+        guard let data = defaults.data(forKey: customAgentsKey) else { return [] }
+        return (try? JSONDecoder().decode([CustomAgent].self, from: data)) ?? []
+    }
+
+    static func setCustomAgents(_ agents: [CustomAgent], in defaults: UserDefaults = .standard) {
+        if agents.isEmpty {
+            defaults.removeObject(forKey: customAgentsKey)
+        } else if let data = try? JSONEncoder().encode(agents) {
+            defaults.set(data, forKey: customAgentsKey)
+        }
+    }
+
+    // MARK: Before decision 89
+
+    /// Each agent's switch for whether Roga ran it, which Use agents
+    /// replaced.
+    static func legacyEnabledKey(_ kind: AgentKind) -> String { "agent.\(kind.rawValue).enabled" }
+    /// The agent Generate ran, which the default agent replaced.
+    static let legacyGenerateAgentKey = "generateAgent"
+    /// Whether the sidebar showed agents' marks, which Use agents covers now.
+    static let legacyShowsMarksKey = "agentsShowInSidebar"
+    /// Arguments someone added after Roga's own, and how long Generate waited,
+    /// which Settings no longer offers.
+    static func legacyExtraArgumentsKey(_ kind: AgentKind) -> String { "agent.\(kind.rawValue).extraArguments" }
+    static func legacyTimeLimitKey(_ kind: AgentKind) -> String { "agent.\(kind.rawValue).timeLimit" }
+
+    /// Turns what Settings kept before decision 89 into Use agents and the
+    /// default agent, and removes it. It changes nothing once it's gone, so
+    /// it's safe to call at each launch.
+    ///
+    /// Both agents switched off means agents are off. Generate's agent stays
+    /// the default while it was switched on, and with only one switched on,
+    /// that one is. What's already stored the new way wins.
+    static func migrate(_ defaults: UserDefaults = .standard) {
+        let switches = AgentKind.allCases.compactMap { kind in
+            (defaults.object(forKey: legacyEnabledKey(kind)) as? Bool).map { (kind: kind, isOn: $0) }
+        }
+        let generate = defaults.string(forKey: legacyGenerateAgentKey)
+        let others = [legacyShowsMarksKey] + AgentKind.allCases.flatMap { [legacyExtraArgumentsKey($0), legacyTimeLimitKey($0)] }
+        defer {
+            for kind in AgentKind.allCases { defaults.removeObject(forKey: legacyEnabledKey(kind)) }
+            defaults.removeObject(forKey: legacyGenerateAgentKey)
+            for key in others { defaults.removeObject(forKey: key) }
+        }
+        guard !switches.isEmpty || generate != nil else { return }
+        let on = AgentKind.allCases.filter { kind in switches.first { $0.kind == kind }?.isOn ?? true }
+        if on.isEmpty {
+            if defaults.object(forKey: usesAgentsKey) == nil { defaults.set(false, forKey: usesAgentsKey) }
+            return
+        }
+        guard defaults.object(forKey: defaultAgentKey) == nil else { return }
+        let picked = generate.flatMap(AgentKind.init(rawValue:))
+        if let picked, on.contains(picked) {
+            defaults.set(AgentID.known(picked).stored, forKey: defaultAgentKey)
+        } else if on.count == 1, let only = on.first {
+            defaults.set(AgentID.known(only).stored, forKey: defaultAgentKey)
+        }
+    }
+}
+
+/// An agent Roga can run: Claude Code or Codex, which Roga finds, or one
+/// someone added as a command (decision 89).
+enum AgentID: Hashable, Sendable {
+    case known(AgentKind)
+    case custom(UUID)
+
+    /// How the default agent is stored: `claude`, `codex`, or `custom.` and
+    /// the custom agent's ID.
+    var stored: String {
+        switch self {
+        case .known(let kind): kind.rawValue
+        case .custom(let id): "custom." + id.uuidString
+        }
+    }
+
+    /// The agent that's stored, or nil for anything Roga doesn't know.
+    init?(stored: String) {
+        if let kind = AgentKind(rawValue: stored) {
+            self = .known(kind)
+        } else if stored.hasPrefix("custom."), let id = UUID(uuidString: String(stored.dropFirst("custom.".count))) {
+            self = .custom(id)
+        } else {
+            return nil
+        }
+    }
+
+    /// Claude Code or Codex, or nil for a custom agent.
+    var kind: AgentKind? {
+        if case .known(let kind) = self { kind } else { nil }
+    }
+}
+
+/// Stored as `stored` says, so that Settings can keep the agent whose page
+/// shows with `@AppStorage`.
+extension AgentID: RawRepresentable {
+    var rawValue: String { stored }
+
+    init?(rawValue: String) {
+        self.init(stored: rawValue)
+    }
+}
+
+/// An agent someone added in Settings as a command, such as a local model
+/// (decision 89). Roga runs the command in the shell with its instructions
+/// and the data on standard input, and takes what it prints as its answer. It
+/// has no hooks, no model or effort, and nothing for Roga to find.
+struct CustomAgent: Codable, Hashable, Identifiable, Sendable {
+    var id: UUID
+    var name: String
+    var command: String
+
+    init(id: UUID = UUID(), name: String, command: String) {
+        self.id = id
+        self.name = name
+        self.command = command
+    }
+
+    /// The name without spaces around it, or the command's first word when
+    /// there's no name.
+    var shownName: String {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !name.isEmpty { return name }
+        return command.split(whereSeparator: \.isWhitespace).first.map(String.init) ?? "Custom agent"
+    }
+
+    /// How Roga runs it.
+    var agent: CommitMessageAgent {
+        CommitMessageAgent(name: shownName, command: command.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+}
+
+/// An agent as a run of Generate, Resolve or Fix names it: which one, so that
+/// Try Again runs the same one, and what it's called.
+struct NamedAgent: Hashable, Sendable {
+    var id: AgentID
+    /// As in Claude Code, or a custom agent's name.
+    var name: String
+    /// As in Resolve with Claude.
+    var shortName: String
+
+    init(id: AgentID, name: String, shortName: String) {
+        self.id = id
+        self.name = name
+        self.shortName = shortName
+    }
+
+    init(_ kind: AgentKind) {
+        self.init(id: .known(kind), name: kind.name, shortName: kind.shortName)
+    }
+
+    static let claude = NamedAgent(.claude)
+    static let codex = NamedAgent(.codex)
 }
 
 extension AgentKind {
@@ -113,92 +266,22 @@ extension AgentKind {
     }
 }
 
-/// What's chosen for one agent, as UserDefaults has it, with each default
-/// filled in.
+/// What's chosen for Claude Code or Codex, as UserDefaults has it, with each
+/// default filled in.
 struct AgentSettings: Equatable {
-    /// Whether Roga uses the agent.
-    var isEnabled: Bool
     /// The program someone chose, or nil for the one Roga finds.
     var program: String?
     /// The model, where "" is the agent's own default.
     var model: String
     /// The effort, where "" is the agent's own default.
     var effort: String
-    /// The arguments someone added, already split.
-    var extraArguments: [String]
-    var timeLimit: Duration
 
     static func read(_ kind: AgentKind, from defaults: UserDefaults) -> AgentSettings {
         let program = defaults.string(forKey: AgentPreferences.programKey(kind))?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let seconds = defaults.object(forKey: AgentPreferences.timeLimitKey(kind)) as? Int ?? AgentPreferences.defaultTimeLimit
         return AgentSettings(
-            isEnabled: defaults.object(forKey: AgentPreferences.enabledKey(kind)) as? Bool ?? true,
             program: program?.isEmpty == false ? program : nil,
             model: defaults.string(forKey: AgentPreferences.modelKey(kind)) ?? kind.recommendedModel,
-            effort: defaults.string(forKey: AgentPreferences.effortKey(kind)) ?? AgentPreferences.recommendedEffort,
-            extraArguments: splitArguments(defaults.string(forKey: AgentPreferences.extraArgumentsKey(kind)) ?? ""),
-            // A limit of nothing would stop every run at once.
-            timeLimit: .seconds(seconds > 0 ? seconds : AgentPreferences.defaultTimeLimit)
+            effort: defaults.string(forKey: AgentPreferences.effortKey(kind)) ?? AgentPreferences.recommendedEffort
         )
-    }
-
-    /// Splits what someone typed into arguments the way a shell would, without
-    /// running anything: at spaces, tabs and new lines, with '…' taken as it
-    /// is, and "…" and a backslash escaping what follows. Quotes join what's
-    /// next to them, so `--x="a b"` is one argument, and `''` is an empty one.
-    /// A backslash at the end of a line joins it to the next, outside single
-    /// quotes, as a shell continues a line. A quote that isn't closed runs to
-    /// the end.
-    static func splitArguments(_ text: String) -> [String] {
-        var arguments: [String] = []
-        var current = ""
-        // Whether there's an argument under way, which quotes start even when
-        // they're empty.
-        var isInArgument = false
-        var characters = text.makeIterator()
-        enum Quote { case none, single, double }
-        var quote = Quote.none
-        while let character = characters.next() {
-            switch quote {
-            case .single:
-                if character == "'" { quote = .none } else { current.append(character) }
-            case .double:
-                if character == "\"" {
-                    quote = .none
-                } else if character == "\\", let next = characters.next() {
-                    // In double quotes a backslash only escapes what a shell
-                    // would treat specially there. Before a new line, both go.
-                    if !"\"\\$`\n".contains(next) { current.append(character) }
-                    if next != "\n" { current.append(next) }
-                } else {
-                    current.append(character)
-                }
-            case .none:
-                if character.isWhitespace {
-                    if isInArgument {
-                        arguments.append(current)
-                        current = ""
-                        isInArgument = false
-                    }
-                } else if character == "'" {
-                    quote = .single
-                    isInArgument = true
-                } else if character == "\"" {
-                    quote = .double
-                    isInArgument = true
-                } else if character == "\\" {
-                    // A new line after it joins the lines, so the two are
-                    // nothing, and don't start an argument between others.
-                    let next = characters.next()
-                    if next != "\n" { isInArgument = true }
-                    if let next, next != "\n" { current.append(next) }
-                } else {
-                    current.append(character)
-                    isInArgument = true
-                }
-            }
-        }
-        if isInArgument { arguments.append(current) }
-        return arguments
     }
 }

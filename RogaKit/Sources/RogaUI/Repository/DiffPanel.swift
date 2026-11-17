@@ -90,16 +90,20 @@ struct DiffPanel: View {
                 if group == .conflicted, let conflicts = selection.shown?.conflicts, selection.shown?.file.path == file.path {
                     let setup = conflicts.left > 0 && changes.agentWork[file.path]?.isWorking != true ? agents?.generation() : nil
                     if let setup, let worktree {
-                        ResolveWithAgentButton(title: "Resolve with \(setup.kind.shortName)") {
+                        AgentSplitButton(
+                            title: "Resolve with \(setup.agent.shortName)",
+                            look: .header,
+                            choice: AgentChoice(job: .resolve, worktree: worktree),
+                            help: Self.agentHelp(setup, worktree: worktree, left: conflicts.left)
+                        ) {
                             changes.askAgent(setup)
                         }
-                        .help(Self.agentHelp(setup, worktree: worktree, left: conflicts.left))
                     }
                     ConflictFileMenu(
                         file: file,
                         sides: conflicts.sides,
                         worktree: worktree,
-                        agent: setup.map { setup in ("Resolve with \(setup.kind.name)", { changes.askAgent(setup) }) },
+                        agent: setup.map { setup in ("Resolve with \(setup.agent.name)", { changes.askAgent(setup) }) },
                         keep: { changes.keep($0, of: file) },
                         putBack: { changes.putConflictsBack(in: file) }
                     )
@@ -152,7 +156,7 @@ struct DiffPanel: View {
                     stop: { changes.stopAgent(for: path) },
                     putBack: { if let file = selection.file { changes.putConflictsBack(in: file) } },
                     close: { changes.forgetAgentWork(for: path) },
-                    tryAgain: agents?.generation(with: work.kind).map { setup in { changes.askAgent(setup) } }
+                    tryAgain: agents?.generation(with: work.agent.id).map { setup in { changes.askAgent(setup) } }
                 )
             }
             ZStack {
@@ -513,28 +517,6 @@ private struct ConflictFileMenu: View {
     }
 }
 
-/// The button in the header for asking an agent to resolve a file's conflicts,
-/// with the orange line that marks an agent's command (decision 68).
-private struct ResolveWithAgentButton: View {
-    let title: String
-    let action: () -> Void
-    @State private var isHovering = false
-
-    var body: some View {
-        Button(title, action: action)
-            .buttonStyle(.plain)
-            .font(.system(size: 12))
-            .padding(.horizontal, 8)
-            .frame(height: 24)
-            .contentShape(Rectangle())
-            .overlay {
-                AgentOutline(shape: .outline(cornerRadius: 6), isHovering: isHovering)
-            }
-            .onHover { isHovering = $0 }
-            .fixedSize()
-    }
-}
-
 /// What an agent asked to resolve a file's conflicts is doing, or what came of it,
 /// in a strip above the file (decision 60).
 private struct AgentNote: View {
@@ -598,7 +580,7 @@ private struct AgentNote: View {
             let which = resolved == work.asked ? conflicts : "\(resolved) of \(work.asked) conflicts"
             Text("\(work.label) resolved \(which) in \(seconds) s. Review the changes before marking the file resolved.")
         case .failed:
-            Text("\(work.kind.name) didn't resolve them")
+            Text("\(work.agent.name) didn't resolve them")
         }
     }
 

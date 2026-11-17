@@ -56,7 +56,7 @@ struct CommitMessageReplyTests {
             """
         let error = failure(result(real + "\n", status: 1), .claude)
         #expect(error == .agentFailed(
-            .claude,
+            "Claude Code",
             message: "Claude Code isn't signed in. Run claude auth login in Terminal.",
             output: "Failed to authenticate: OAuth session expired and could not be refreshed"
         ))
@@ -91,7 +91,7 @@ struct CommitMessageReplyTests {
 
     @Test func readsClaudeCodesStandardErrorWhenThereIsNoJSON() {
         let error = failure(result("", errorOutput: "error: unknown option '--safe-mode'\n", status: 1), .claude)
-        #expect(error == .agentFailed(.claude, message: "error: unknown option '--safe-mode'", output: "error: unknown option '--safe-mode'"))
+        #expect(error == .agentFailed("Claude Code", message: "error: unknown option '--safe-mode'", output: "error: unknown option '--safe-mode'"))
 
         let silent = failure(ProgramResult(status: .signaled(9), output: [], errorOutput: "", duration: .zero), .claude)
         #expect(message(of: silent) == "Claude Code stopped by signal 9 without saying why.")
@@ -138,7 +138,7 @@ struct CommitMessageReplyTests {
             """
         let error = failure(result("", errorOutput: stderr, status: 1), .codex)
         #expect(error == .agentFailed(
-            .codex,
+            "Codex",
             message: "This model needs a newer version of Codex. Choose one on the Agents page.",
             output: line + "\n" + line
         ))
@@ -177,21 +177,44 @@ struct CommitMessageReplyTests {
         let stderr = "Reading additional input from stdin...\nError: unexpected argument '--frobnicate' found\n\n"
         let error = failure(result("", errorOutput: stderr, status: 2), .codex)
         #expect(error == .agentFailed(
-            .codex,
+            "Codex",
             message: "Error: unexpected argument '--frobnicate' found",
             output: "Reading additional input from stdin...\nError: unexpected argument '--frobnicate' found"
         ))
     }
 
+    // MARK: Custom agents
+
+    @Test func takesWhatACustomAgentPrinted() throws {
+        let agent = CommitMessageAgent(name: "Ollama", command: "ollama run qwen2.5-coder:7b")
+        #expect(try CommitMessageReply.message(from: result("Add the sidebar\n"), for: agent) == "Add the sidebar\n")
+    }
+
+    @Test func saysWhatACustomAgentPrintedWhenItFails() {
+        let agent = CommitMessageAgent(name: "Ollama", command: "ollama run qwen2.5-coder:7b")
+        let said = result("", errorOutput: "Error: model 'qwen2.5-coder:7b' not found\n", status: 1)
+        #expect(throws: CommitMessageError.agentFailed(
+            "Ollama",
+            message: "Error: model 'qwen2.5-coder:7b' not found",
+            output: "Error: model 'qwen2.5-coder:7b' not found"
+        )) {
+            try CommitMessageReply.message(from: said, for: agent)
+        }
+        let silent = result("", status: 3)
+        #expect(throws: CommitMessageError.agentFailed("Ollama", message: "Ollama \(ExitStatus.exited(3)) without saying why.", output: "")) {
+            try CommitMessageReply.message(from: silent, for: agent)
+        }
+    }
+
     // MARK: Errors
 
     @Test func describesEachError() {
-        #expect(CommitMessageError.empty(.codex).description == "Codex replied without a message.")
+        #expect(CommitMessageError.empty("Codex").description == "Codex replied without a message.")
         let command = ProgramCommand("/bin/claude", ["-p"])
         let timedOut = ProgramError.timedOut(command, .seconds(60), errorOutput: "partway\n")
         #expect(CommitMessageError.program(timedOut).description == timedOut.description)
         #expect(CommitMessageError.program(timedOut).output == "partway\n")
-        #expect(CommitMessageError.agentFailed(.claude, message: "Sign in.", output: "").output == nil)
-        #expect(CommitMessageError.agentFailed(.claude, message: "Sign in.", output: "details").output == "details")
+        #expect(CommitMessageError.agentFailed("Claude Code", message: "Sign in.", output: "").output == nil)
+        #expect(CommitMessageError.agentFailed("Claude Code", message: "Sign in.", output: "details").output == "details")
     }
 }

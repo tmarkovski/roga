@@ -157,16 +157,9 @@ struct SetupCard<Content: View>: View {
 // MARK: The menu
 
 /// The menu a program's row opens: every copy Roga found, then Choose
-/// another…, and for an agent the way to not use it.
+/// another…. There's no way to leave one agent out, since agents are on or
+/// off together (decision 89).
 struct ProgramMenu {
-    /// Not using the program at all, as in Don't use Codex.
-    struct Skip {
-        var title: String
-        /// Whether it's what's chosen now.
-        var isOn: Bool
-        var action: () -> Void
-    }
-
     /// Which row's menu it is, so that only one is open.
     var id: String
     /// What VoiceOver calls it, as in "Every Git Roga found".
@@ -176,7 +169,6 @@ struct ProgramMenu {
     var checked: String?
     var choose: (ProgramChoice) -> Void
     var chooseAnother: () -> Void
-    var skip: Skip?
 }
 
 /// Which program's menu is open, for everything under one `programMenus()`.
@@ -360,11 +352,10 @@ private struct ProgramMenuView: View {
     private enum Item: Equatable {
         case choice(String)
         case another
-        case skip
     }
 
     private var items: [Item] {
-        menu.choices.filter(\.canChoose).map { .choice($0.executable) } + [.another] + (menu.skip == nil ? [] : [.skip])
+        menu.choices.filter(\.canChoose).map { .choice($0.executable) } + [.another]
     }
 
     var body: some View {
@@ -373,7 +364,7 @@ private struct ProgramMenuView: View {
             ForEach(menu.choices) { choice in
                 ProgramChoiceRow(
                     choice: choice,
-                    isChecked: choice.executable == menu.checked && menu.skip?.isOn != true,
+                    isChecked: choice.executable == menu.checked,
                     isHighlighted: isHighlighted(.choice(choice.executable))
                 ) {
                     pick(.choice(choice.executable))
@@ -386,11 +377,6 @@ private struct ProgramMenuView: View {
                 .padding(.vertical, 5)
             ProgramCommandRow(title: "Choose another…", isChecked: false, isHighlighted: isHighlighted(.another)) {
                 pick(.another)
-            }
-            if let skip = menu.skip {
-                ProgramCommandRow(title: skip.title, isChecked: skip.isOn, isHighlighted: isHighlighted(.skip)) {
-                    pick(.skip)
-                }
             }
         }
         .padding(6)
@@ -444,8 +430,6 @@ private struct ProgramMenuView: View {
             if let choice = menu.choices.first(where: { $0.executable == executable }) { menu.choose(choice) }
         case .another:
             menu.chooseAnother()
-        case .skip:
-            menu.skip?.action()
         }
     }
 }
