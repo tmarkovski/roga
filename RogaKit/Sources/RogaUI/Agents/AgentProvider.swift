@@ -666,12 +666,11 @@ struct GenerationSetup: Sendable {
         NamedAgent(id: id, name: agent.name, shortName: agent.shortName)
     }
 
-    /// The command, as a command block shows it: a line that says where the
-    /// staged changes go, since the command reads them from standard input,
+    /// Generate's command, as a command block shows it: a line that says where
+    /// the staged changes go, since the command reads them from standard input,
     /// and then the command. A custom agent reads its instructions there too.
     func terminal(worktree: String, hasDraft: Bool) -> [TerminalLine] {
-        let input = agent.kind == nil ? "Instructions and staged diff supplied via standard input" : "Staged diff supplied via standard input"
-        return [.comment(input), .program(command(worktree: worktree, hasDraft: hasDraft), showsPath: showsPath)]
+        terminal(for: .generate(hasDraft: hasDraft), worktree: worktree)
     }
 
     /// The exact command the run starts, for the popover and the Commit page

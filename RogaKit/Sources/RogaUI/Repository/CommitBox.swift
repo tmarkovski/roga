@@ -235,13 +235,13 @@ struct CommitBox: View {
                     isChoosingAgent = false
                     generator.generate(with: agents.generation())
                 } choices: {
-                    GeneratePopover(
+                    AgentPopover(
                         agents: agents,
+                        job: .generate(hasDraft: composer.hasMessage),
                         worktree: composer.worktree,
-                        hasDraft: composer.hasMessage,
-                        openAgentSettings: { kind in
+                        openAgentSettings: { id in
                             isChoosingAgent = false
-                            openSettings(.agent(.known(kind)))
+                            openSettings(.agent(id))
                         }
                     ) {
                         isChoosingAgent = false

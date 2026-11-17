@@ -48,21 +48,44 @@ struct RepositoryDialogs: ViewModifier {
         } set: { newValue in
             if newValue == nil { dialog?.dismiss() }
         }) { dialog in
-            switch dialog {
-            case .message(let content):
-                DialogSheet(content: content)
-            case .pull(let choice, _):
-                PullChoiceSheet(asked: choice, branch: model.branch)
-            case .branchChoice(let choice, _):
-                BranchChoiceSheet(asked: choice, branch: model.branch)
-            case .reset(let choice, _):
-                ResetChoiceSheet(asked: choice, model: model)
-            case .addRemote:
-                AddRemoteSheet(model: model)
-            case .gitFix(let content):
-                GitFixSheet(model: model.gitFix, shown: content)
+            Group {
+                switch dialog {
+                case .message(let content):
+                    RepositoryMessageSheet(model: model, agents: agents, shown: content)
+                case .pull(let choice, _):
+                    PullChoiceSheet(asked: choice, branch: model.branch)
+                case .branchChoice(let choice, _):
+                    BranchChoiceSheet(asked: choice, branch: model.branch)
+                case .reset(let choice, _):
+                    ResetChoiceSheet(asked: choice, model: model)
+                case .addRemote:
+                    AddRemoteSheet(model: model)
+                case .gitFix(let content):
+                    GitFixSheet(model: model.gitFix, agents: agents, shown: content)
+                }
             }
+            // For the agent popover under a Fix button's chevron.
+            .agentProvider(agents)
         }
+    }
+}
+
+/// Reads its dialog in its own body, because a sheet's item doesn't update what
+/// the sheet shows while its `id` stays the same. A refusal's Fix button then
+/// names, and asks, the agent picked from its chevron (decision 91).
+private struct RepositoryMessageSheet: View {
+    let model: RepositoryModel
+    let agents: AgentProvider?
+    /// The dialog as it was shown, for while the sheet closes and it's gone.
+    let shown: DialogContent
+
+    var body: some View {
+        DialogSheet(content: current ?? shown)
+    }
+
+    private var current: DialogContent? {
+        guard case .message(let content) = model.dialog(fixingWith: agents?.generation()), content.id == shown.id else { return nil }
+        return content
     }
 }
 
@@ -161,9 +184,13 @@ extension RepositoryModel {
     }
 
     private func gitFixOffer(_ setup: GenerationSetup?) -> GitFixOffer {
-        { [weak self] command, said, close in
+        { [weak self, worktree] command, said, close in
             guard let setup, let command else { return nil }
-            return DialogButton(title: "Fix with \(setup.agent.shortName)", kind: .agent) { [weak self] in
+            return DialogButton(
+                title: "Fix with \(setup.agent.shortName)",
+                kind: .agent,
+                agentChoice: AgentChoice(job: .fix, worktree: worktree)
+            ) { [weak self] in
                 close()
                 self?.gitFix.start(command: command, said: said, with: setup)
             }

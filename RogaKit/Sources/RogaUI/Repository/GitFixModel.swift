@@ -42,7 +42,9 @@ final class GitFixModel {
     private(set) var phase: Phase?
 
     @ObservationIgnored private let session: RepositorySession
-    @ObservationIgnored private let worktree: String
+    /// The worktree's folder, where the agent's command and the suggested
+    /// commands run.
+    @ObservationIgnored let worktree: String
     @ObservationIgnored private var question: Question?
     /// What's running, which Stop cancels and tests wait for.
     @ObservationIgnored private(set) var work: Task<Void, Never>?
@@ -56,9 +58,9 @@ final class GitFixModel {
         self.worktree = worktree
     }
 
-    /// What the button that asks the agent again says.
-    var askAgainTitle: String? {
-        question.map { "Fix with \($0.setup.agent.shortName)" }
+    /// The agent asked last, which asking again asks unless another is picked.
+    var askedAgent: GenerationSetup? {
+        question?.setup
     }
 
     /// Asks the agent Generate runs about what git said.
@@ -67,11 +69,20 @@ final class GitFixModel {
         ask(Question(setup: setup, command: command, said: said))
     }
 
-    /// Asks the agent again after git refused what it suggested, and tells it what
-    /// was tried and what git said about that.
-    func askAgain() {
-        guard case .finished(_, _, let refused?) = phase, var question else { return }
-        question.attempts.append(.init(command: refused.command, said: refused.said))
+    /// Asks again, with `setup`'s agent or else the agent asked last: after git
+    /// refused what was suggested, telling the agent what was tried and what
+    /// git said about that, or after the agent couldn't answer.
+    func askAgain(with setup: GenerationSetup? = nil) {
+        guard var question else { return }
+        switch phase {
+        case .finished(_, _, let refused?):
+            question.attempts.append(.init(command: refused.command, said: refused.said))
+        case .failed:
+            break
+        default:
+            return
+        }
+        if let setup { question.setup = setup }
         phase = nil
         ask(question)
     }

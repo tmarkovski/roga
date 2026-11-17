@@ -571,10 +571,11 @@ struct SettingsChoices<Value: Hashable>: View {
     }
 }
 
-/// The check before what's chosen, where a choice of one is a list of rows:
-/// setup's menus of programs and Generate's popover. Roga marks a choice of
-/// one with a check everywhere, as its menus do, rather than a radio. Every
-/// row keeps the check's column, so their names line up.
+/// The check before what's chosen, where a choice of one is a list of rows in
+/// a menu, such as setup's menus of programs, as the system's menus mark a
+/// choice. Every row keeps the check's column, so their names line up. The
+/// agent popover is a panel rather than a menu, so it has radios instead
+/// (decision 91).
 struct ChoiceCheck: View {
     let isChecked: Bool
 

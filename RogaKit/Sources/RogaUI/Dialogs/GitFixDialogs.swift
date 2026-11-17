@@ -10,7 +10,15 @@ extension GitFixModel {
 
     /// What to say now, if anything, at each step of asking an agent (decision 63).
     var dialog: DialogContent? {
-        switch phase {
+        dialog(fixingWith: nil)
+    }
+
+    /// What to say now, where asking again asks `setup`'s agent, the default
+    /// that the buttons' chevrons pick (decision 91), or else the agent asked
+    /// last.
+    func dialog(fixingWith setup: GenerationSetup?) -> DialogContent? {
+        let again = setup ?? askedAgent
+        return switch phase {
         case nil:
             nil
         case .asking(let kind, let program, let showsPath):
@@ -20,9 +28,17 @@ extension GitFixModel {
         case .running(let kind, let fix):
             answer(from: kind, fix, isRunning: true)
         case .finished(let lines, let count, let refused):
-            finished(lines, count: count, refused: refused)
+            finished(lines, count: count, refused: refused, again: again)
         case .failed(let kind, let message, let output):
-            failure(kind, message: message, output: output)
+            failure(kind, message: message, output: output, again: again)
+        }
+    }
+
+    /// A button that asks `setup`'s agent again, with the chevron that picks
+    /// another agent first.
+    private func askAgainButton(_ title: String, with setup: GenerationSetup) -> DialogButton {
+        DialogButton(title: title, kind: .agent, agentChoice: AgentChoice(job: .fix, worktree: worktree)) { [weak self] in
+            self?.askAgain(with: setup)
         }
     }
 
@@ -93,7 +109,7 @@ extension GitFixModel {
         return .sentences(["\(code: ShellCommand.text(command.arguments)) won't run from here, because \(reason).", copy])
     }
 
-    private func finished(_ lines: [TerminalLine], count: Int, refused: RefusedCommand?) -> DialogContent {
+    private func finished(_ lines: [TerminalLine], count: Int, refused: RefusedCommand?, again: GenerationSetup?) -> DialogContent {
         let close = { [weak self] in self?.dismiss(); return () }
         let ok = DialogButton(title: "OK", kind: .primary, action: close)
         guard let refused else {
@@ -111,10 +127,9 @@ extension GitFixModel {
             sentences.append(refused.skipped == 1 ? "The command after it didn't run." : "The \(refused.skipped.formatted()) commands after it didn't run.")
         }
         sentences.append("Git output is shown below.")
-        // The agent often gets it right once it has seen what git said.
-        let askAgain = askAgainTitle.map { title in
-            DialogButton(title: title, kind: .secondary) { [weak self] in self?.askAgain() }
-        }
+        // The agent often gets it right once it has seen what git said, and
+        // another agent might.
+        let askAgain = again.map { askAgainButton("Fix with \($0.agent.shortName)", with: $0) }
         return DialogContent(
             id: "gitFix-finished",
             title: count == 1 ? "git refused the command" : "The commands stopped partway",
@@ -125,14 +140,17 @@ extension GitFixModel {
         )
     }
 
-    private func failure(_ kind: NamedAgent, message: String, output: String?) -> DialogContent {
+    private func failure(_ kind: NamedAgent, message: String, output: String?, again: GenerationSetup?) -> DialogContent {
         let close = { [weak self] in self?.dismiss(); return () }
+        // Another agent, or a bigger model, is often what an agent that
+        // couldn't answer needs, and its chevron picks one.
+        let tryAgain = again.map { askAgainButton("Try Again", with: $0) }
         return DialogContent(
             id: "gitFix-failed",
             title: "\(kind.name) couldn't suggest a fix",
             message: DialogText(stringLiteral: message),
             terminal: output.map { [.output($0)] } ?? [],
-            buttons: [DialogButton(title: "OK", kind: .primary, action: close)],
+            buttons: [tryAgain, DialogButton(title: "OK", kind: .primary, action: close)].compactMap(\.self),
             dismiss: close
         )
     }
@@ -147,12 +165,15 @@ extension GitFixModel {
 /// changes its window's height to fit each step, which no other dialog needs.
 struct GitFixSheet: View {
     let model: GitFixModel
+    /// Whose agent asking again asks, which a chevron can change while the
+    /// sheet shows.
+    let agents: AgentProvider?
     /// The dialog as it was shown, for while the sheet closes and it's gone.
     let shown: DialogContent
     @State private var height: CGFloat = 0
 
     var body: some View {
-        DialogSheet(content: model.dialog ?? shown)
+        DialogSheet(content: model.dialog(fixingWith: agents?.generation()) ?? shown)
             // As tall as it needs, whatever height the window has at the moment.
             .fixedSize(horizontal: false, vertical: true)
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }

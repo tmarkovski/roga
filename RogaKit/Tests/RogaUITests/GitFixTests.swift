@@ -76,8 +76,24 @@ struct GitFixTests {
         )
     }
 
+    func codexSetup() -> GenerationSetup {
+        GenerationSetup(
+            id: .known(.codex),
+            agent: CommitMessageAgent(kind: .codex, executable: "/usr/local/bin/codex"),
+            programs: Programs(searchPath: "/usr/bin"),
+            style: "",
+            matchesStyle: false,
+            label: "Codex"
+        )
+    }
+
     final class Inputs: Sendable {
         let text = Mutex<String?>(nil)
+    }
+
+    /// The programs an agent was run with, in turn.
+    final class Asked: Sendable {
+        let executables = Mutex<[String]>([])
     }
 
     /// An agent that answers with Claude Code's JSON around `reply`.
@@ -273,6 +289,9 @@ struct GitFixTests {
         let refused = try await work.settledDialog()
         #expect(refused.title == "git refused the command")
         #expect(refused.message?.plain.contains("after it") == false)
+        // Its chevron can pick another agent first, which the button then names.
+        #expect(try button("Fix with Claude", in: refused).agentChoice == AgentChoice(job: .fix, worktree: work.path))
+        #expect(try work.fix.dialog(fixingWith: codexSetup())?.buttons.first?.title == "Fix with Codex")
         try button("Fix with Claude", in: refused).action()
         #expect(work.fix.dialog?.id == "gitFix-asking")
 
@@ -296,6 +315,33 @@ struct GitFixTests {
         #expect(failed.id == "gitFix-failed")
         #expect(failed.title == "Claude Code couldn't suggest a fix")
         #expect(failed.terminal == [.output("Try running git fsck.")])
+    }
+
+    /// Another agent, or a bigger model, is often what an agent that couldn't
+    /// answer needs, so Try Again's chevron picks one and Try Again asks it.
+    @Test func tryingAgainAsksTheAgentPickedFromItsChevron() async throws {
+        let work = try await broken()
+        let asked = Asked()
+        let reply = agent("Try running git fsck.")
+        work.fix.runAgent = { command, input in
+            asked.executables.withLock { $0.append(command.executable) }
+            return try await reply(command, input)
+        }
+        work.fix.start(command: ["pull"], said: "fatal: no", with: setup())
+        let failed = try await work.settledDialog()
+        #expect(failed.buttons.map(\.title) == ["Try Again", "OK"])
+        #expect(try button("Try Again", in: failed).agentChoice == AgentChoice(job: .fix, worktree: work.path))
+        try button("Try Again", in: try #require(work.fix.dialog(fixingWith: codexSetup()))).action()
+        await work.fix.work?.value
+        #expect(asked.executables.withLock { $0 } == ["/usr/local/bin/claude", "/usr/local/bin/codex"])
+    }
+
+    @Test func aRefusalsFixButtonHasTheAgentChevron() async throws {
+        let work = try await broken()
+        work.model.branch.failure = .init(title: "Can't pull main", message: "fatal: no", command: ["pull"])
+        let fix = try #require(try work.offered(setup()))
+        #expect(fix.kind == .agent)
+        #expect(fix.agentChoice == AgentChoice(job: .fix, worktree: work.path))
     }
 
     @Test func stoppingLeavesNothingBehind() async throws {
