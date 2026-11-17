@@ -431,7 +431,8 @@ struct SetupHooks: View {
         let commandKinds = commandKinds(phase, usable: usable)
         VStack(spacing: SetupLayout.gap) {
             SetupHead(eyebrow: "Hooks", title: SetupWords.hooksHeading, sub: SetupWords.hooksSub)
-            MarksFigure()
+            MarksPreview()
+                .frame(maxWidth: .infinity)
             if !commandKinds.isEmpty {
                 SetupSay(
                     button: "Install Hooks",
@@ -612,121 +613,6 @@ private struct HookStatusRow: View {
         case .warn: AgentColors.warn
         case .none, .spinner: SetupColors.note
         }
-    }
-}
-
-/// Three rows of the sidebar, as it draws a worktree an agent is in, each
-/// with a line out to what its mark means, so that it reads as a picture of
-/// what hooks are for and not as a list.
-private struct MarksFigure: View {
-    private struct Row {
-        var name: String
-        var words: String
-        var howLong: String
-        var count: String
-        var state: AgentSummary.State
-        var title: String
-        var meaning: String
-    }
-
-    private static let rows = [
-        Row(name: "agent/fix-login", words: "Editing LoginView.swift", howLong: "2 min", count: "3", state: .working,
-            title: "Working", meaning: "Agent active in this worktree."),
-        Row(name: "agent/billing", words: "Approval required: git push", howLong: "1 min", count: "1", state: .waiting(.permission),
-            title: "Waiting", meaning: "Approval or response required."),
-        Row(name: "agent/search-index", words: "Finished", howLong: "4 min", count: "7", state: .finished,
-            title: "Finished", meaning: "Session finished, changes not yet reviewed."),
-    ]
-
-    private static let rowHeight: CGFloat = 52
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 0) {
-            VStack(spacing: 0) {
-                ForEach(Array(Self.rows.enumerated()), id: \.offset) { index, row in
-                    sidebarRow(row, isSelected: index == 0)
-                }
-            }
-            .padding(6)
-            .frame(width: 276)
-            .background(SettingsColors.sidebar, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(SetupColors.rule, lineWidth: 1)
-            }
-            .shadow(color: .black.opacity(0.05), radius: 3, y: 2)
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(Self.rows.enumerated()), id: \.offset) { _, row in
-                    callout(row)
-                }
-            }
-            .padding(.top, 6)
-        }
-        .frame(maxWidth: .infinity)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Worktree status indicators. Ring: working. Amber circle: waiting for approval or a response. Blue dot: finished, unread.")
-    }
-
-    /// A worktree's row with a second line, as the sidebar draws one
-    /// (decisions 51 and 58): its name, how many files are uncommitted and
-    /// the mark on the first line, and what the agent is doing and for how
-    /// long on the second.
-    private func sidebarRow(_ row: Row, isSelected: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 0) {
-                Text(verbatim: row.name)
-                    .lineLimit(1)
-                Spacer(minLength: 6)
-                Text(verbatim: row.count)
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-                AgentMark(state: row.state, size: 14)
-                    .frame(width: 24)
-            }
-            .frame(height: 30)
-            HStack(spacing: 0) {
-                Text(row.words)
-                    .lineLimit(1)
-                Spacer(minLength: 8)
-                Text(row.howLong)
-                    .monospacedDigit()
-            }
-            .font(.system(size: 12))
-            .foregroundStyle(row.state == .waiting(.permission) ? AnyShapeStyle(AgentColors.warn) : AnyShapeStyle(SetupColors.note))
-            .padding(.trailing, 5)
-            .frame(height: 16)
-        }
-        .font(.system(size: 13))
-        .padding(.leading, 10)
-        .padding(.trailing, 3)
-        .frame(height: Self.rowHeight, alignment: .top)
-        .background {
-            if isSelected {
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(SettingsColors.selectedPage)
-            }
-        }
-    }
-
-    /// A line from a row's mark out to what the mark means.
-    private func callout(_ row: Row) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Rectangle()
-                .fill(SetupColors.note.opacity(0.45))
-                .frame(width: 30, height: 1)
-                .padding(.top, 15)
-            VStack(alignment: .leading, spacing: 0) {
-                Text(row.title)
-                    .fontWeight(.semibold)
-                    .frame(height: 20)
-                Text(row.meaning)
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(SetupColors.note)
-                    .frame(height: 18)
-            }
-            .padding(.top, 5)
-        }
-        .frame(height: Self.rowHeight, alignment: .top)
     }
 }
 

@@ -300,7 +300,7 @@ struct AgentStatusSection: View {
             }
         case .marksLegend:
             SettingsBlock {
-                MarksLegend()
+                MarksPreview()
             }
         default:
             EmptyView()
@@ -426,36 +426,6 @@ private struct AgentName: View {
             .fontWeight(.medium)
             .foregroundStyle(isDimmed ? SettingsColors.note : .primary)
             .alignmentGuide(.settingsFirstLine) { $0[VerticalAlignment.center] }
-    }
-}
-
-/// What each of the sidebar's marks means, beside a made-up worktree.
-private struct MarksLegend: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            row(.working, "agent/fix-login", "Working")
-            row(.finished, "agent/search-index", "Finished, unread")
-            row(.waiting(.question), "agent/billing", "Waiting for a response")
-        }
-        .padding(EdgeInsets(top: 6, leading: 8, bottom: 6, trailing: 8))
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(SettingsColors.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Ring: working. Blue dot: finished, unread. Amber circle: waiting for approval or a response.")
-    }
-
-    private func row(_ state: AgentSummary.State, _ worktree: String, _ meaning: String) -> some View {
-        HStack(spacing: 9) {
-            AgentMark(state: state, size: 14)
-            Text(verbatim: worktree)
-                .font(.system(size: 12, design: .monospaced))
-                .frame(width: 150, alignment: .leading)
-            Text(meaning)
-                .foregroundStyle(SettingsColors.note)
-        }
-        .font(.system(size: 12.5))
-        .padding(.horizontal, 6)
-        .frame(height: 26)
     }
 }
 
