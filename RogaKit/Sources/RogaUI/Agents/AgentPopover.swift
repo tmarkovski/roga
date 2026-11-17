@@ -1,5 +1,6 @@
 import AgentEngine
 import IconUI
+import MenuUI
 import SwiftUI
 
 /// What the chevron beside Generate, Resolve and Fix opens: which agent runs,
@@ -8,9 +9,10 @@ import SwiftUI
 ///
 /// Each agent is a card with a radio, its name, and its model and effort, its
 /// command or why it can't be used under the name. The default agent's card
-/// has an ink edge. A ⋯ at the right of each card's first line opens the
-/// agent's models and efforts, and its page in Settings, so a row looks the
-/// same whether or not it's picked, and picking one moves nothing. Custom
+/// has an ink edge. A ⋯ at the right of each card's first line opens a menu
+/// with Model and Effort, each a submenu that shows what's chosen, as Sort by
+/// does in the sidebar's menu, and the agent's page in Settings. So a row
+/// looks the same whether or not it's picked, and picking one moves nothing. Custom
 /// agents come after Claude Code and Codex, with their command on the second
 /// line, since they have no model or effort. It's laid out as Roga's dialogs
 /// are (decision 29), with the job's command along its bottom edge.
@@ -57,13 +59,9 @@ struct AgentPopover: View {
                         isMonospaced: true,
                         isPicked: .custom(custom.id) == picked,
                         isUsable: true,
-                        hasOptions: openAgentSettings != nil,
+                        options: Self.settingsEntries(custom.shownName, open: settings(for: .custom(custom.id))),
                         pick: { agents.setDefaultAgent(.custom(custom.id)) }
-                    ) {
-                        if let open = settings(for: .custom(custom.id)) {
-                            Button("\(custom.shownName) Settings…", action: open)
-                        }
-                    }
+                    )
                 }
             }
             .padding(.horizontal, 10)
@@ -167,13 +165,50 @@ extension AgentPopover {
         if model.isEmpty, kind == .codex, let codexDefaultModel { return "Default · \(codexDefaultModel)" }
         return AgentKind.modelTitle(model)
     }
+
+    /// Claude Code's or Codex's ⋯ menu: Model and Effort, each a submenu of its
+    /// choices with a check on the chosen one, which its row also names, as
+    /// the sidebar's Sort by does. Then the agent's page in Settings, when the
+    /// popover can show it, where Codex's Another model… also goes.
+    static func options(
+        _ kind: AgentKind,
+        model: String,
+        effort: String,
+        codexDefaultModel: String?,
+        setModel: @escaping (String) -> Void,
+        setEffort: @escaping (String) -> Void,
+        openSettings: (() -> Void)?
+    ) -> [RefMenu.Entry] {
+        var models: [RefMenu.Entry] = GenerateChoices.models(for: kind, stored: model).map { value in
+            .option(RefMenu.Title(modelTitle(value, kind: kind, codexDefaultModel: codexDefaultModel)), isChecked: value == model) { setModel(value) }
+        }
+        // Codex's models come from the account, so they're typed on its page.
+        if kind == .codex, let openSettings {
+            models += [.divider, .command("Another model…", action: openSettings)]
+        }
+        let efforts: [RefMenu.Entry] = GenerateChoices.efforts(stored: effort).map { value in
+            .option(RefMenu.Title(AgentKind.effortTitle(value)), isChecked: value == effort) { setEffort(value) }
+        }
+        let entries: [RefMenu.Entry] = [
+            .submenu("Model", value: modelTitle(model, kind: kind, codexDefaultModel: codexDefaultModel), entries: models),
+            .submenu("Effort", value: AgentKind.effortTitle(effort), entries: efforts),
+        ]
+        let settings = settingsEntries(kind.name, open: openSettings)
+        return settings.isEmpty ? entries : entries + [.divider] + settings
+    }
+
+    /// The command that shows an agent's page in Settings, or nothing when the
+    /// popover can't show it, as inside a dialog.
+    static func settingsEntries(_ name: String, open: (() -> Void)?) -> [RefMenu.Entry] {
+        open.map { [.command("\(name) settings…", action: $0)] } ?? []
+    }
 }
 
 /// Claude Code or Codex in the popover, with its model and effort under its
-/// name, or why it can't be used. Its ⋯ menu has the models and efforts, with
-/// a check on the ones chosen, and its page in Settings. Changing them doesn't
-/// pick the agent, so another agent's model can change without making it the
-/// default.
+/// name, or why it can't be used. Its ⋯ menu has Model and Effort submenus,
+/// and its page in Settings. Changing them doesn't pick the agent, so another
+/// agent's model can change without making it the default. One that can't be
+/// used has only its page.
 struct AgentPopoverRow: View {
     let kind: AgentKind
     let agents: AgentProvider
@@ -200,34 +235,19 @@ struct AgentPopoverRow: View {
             isMonospaced: false,
             isPicked: isPicked,
             isUsable: reason == nil,
-            hasOptions: reason == nil || openSettings != nil,
+            options: reason == nil
+                ? AgentPopover.options(
+                    kind,
+                    model: model,
+                    effort: effort,
+                    codexDefaultModel: codexDefault,
+                    setModel: { model = $0 },
+                    setEffort: { effort = $0 },
+                    openSettings: openSettings
+                )
+                : AgentPopover.settingsEntries(kind.name, open: openSettings),
             pick: { agents.setDefaultAgent(.known(kind)) }
-        ) {
-            if reason == nil {
-                Section("Model") {
-                    SettingsChoices(
-                        selection: $model,
-                        options: GenerateChoices.models(for: kind, stored: model).map {
-                            (value: $0, title: AgentPopover.modelTitle($0, kind: kind, codexDefaultModel: codexDefault))
-                        }
-                    )
-                    // Codex's models come from the account, so they're typed on its page.
-                    if kind == .codex, let openSettings {
-                        Button("Another Model…", action: openSettings)
-                    }
-                }
-                Section("Effort") {
-                    SettingsChoices(
-                        selection: $effort,
-                        options: GenerateChoices.efforts(stored: effort).map { (value: $0, title: AgentKind.effortTitle($0)) }
-                    )
-                }
-            }
-            if let openSettings {
-                if reason == nil { Divider() }
-                Button("\(kind.name) Settings…", action: openSettings)
-            }
-        }
+        )
     }
 }
 
@@ -235,18 +255,22 @@ struct AgentPopoverRow: View {
 /// line under it, with a ⋯ at the right of the name's line for `options`. The
 /// default agent's card has an ink edge twice as thick as the others' line. One
 /// that can't be picked is gray, its radio too, and says why.
-private struct AgentCard<Options: View>: View {
+private struct AgentCard: View {
     let name: String
     let detail: String
     /// Whether the second line is a command, in the code font.
     let isMonospaced: Bool
     let isPicked: Bool
     let isUsable: Bool
-    /// Whether it has a ⋯, which it doesn't when there's nothing in its menu.
-    let hasOptions: Bool
+    /// What the ⋯ opens, in one of Roga's own menus. With nothing in it, the
+    /// card has no ⋯.
+    let options: [RefMenu.Entry]
     let pick: () -> Void
-    @ViewBuilder let options: () -> Options
     @State private var isHovering = false
+    /// Opens the ⋯'s menu for VoiceOver's press.
+    @State private var opener = RefMenuOpener()
+
+    private var hasOptions: Bool { !options.isEmpty }
 
     /// How tall the second line is, whether it's words or a command.
     private static var secondLineHeight: CGFloat { 17 }
@@ -302,16 +326,17 @@ private struct AgentCard<Options: View>: View {
         .accessibilityAddTraits(isPicked ? .isSelected : [])
         .overlay(alignment: .topTrailing) {
             if hasOptions {
-                Menu(content: options) {
-                    Icon.ellipsis.image
-                }
-                .menuStyle(.button)
-                .buttonStyle(.icon(size: Self.optionsSize))
-                .menuIndicator(.hidden)
-                .fixedSize()
-                .padding(EdgeInsets(top: 4, leading: 0, bottom: 0, trailing: 6))
-                .help("\(name) Options")
-                .accessibilityLabel("\(name) Options")
+                // Roga's own menu, as the sidebar's Group and Sort button opens,
+                // whose submenus name what's chosen on their rows.
+                HoverIcon(size: Self.optionsSize) { Icon.ellipsis.image }
+                    .overlay { RefMenuArea(entries: options, opensOnClick: true, opener: opener) }
+                    .padding(EdgeInsets(top: 4, leading: 0, bottom: 0, trailing: 6))
+                    .help("\(name) Options")
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("\(name) Options")
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityAction { opener.open() }
+                    .accessibilityActions { refMenuActions(options) }
             }
         }
     }

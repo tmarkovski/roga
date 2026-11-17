@@ -2,6 +2,7 @@ import AgentEngine
 import AppKit
 import Foundation
 import GitRunner
+import MenuUI
 import SwiftUI
 import Testing
 @testable import RogaUI
@@ -143,6 +144,70 @@ struct GenerateButtonTests {
         #expect(command.executable == "/nonexistent/bin/codex")
         #expect(command.arguments.first == "exec")
         #expect(command.directory == "/tmp/work")
+    }
+
+    /// What a menu's options say, whether each is checked, and what each does.
+    private static func options(_ entries: [RefMenu.Entry]) -> [(title: String, isChecked: Bool, action: () -> Void)] {
+        entries.compactMap { entry in
+            if case let .option(title, isChecked, action) = entry { (title.plain, isChecked, action) } else { nil }
+        }
+    }
+
+    /// A card's ⋯ has Model and Effort as submenus whose rows name what's
+    /// chosen, as the sidebar's Sort by does, then the agent's page.
+    @Test func theOptionsMenuNamesWhatsChosen() throws {
+        final class Picked {
+            var model: String?
+            var effort: String?
+        }
+        let picked = Picked()
+        let entries = AgentPopover.options(
+            .claude, model: "haiku", effort: "low", codexDefaultModel: nil,
+            setModel: { picked.model = $0 }, setEffort: { picked.effort = $0 }, openSettings: {}
+        )
+        try #require(entries.count == 4)
+        guard case let .submenu(model, modelValue, _, models) = entries[0],
+              case let .submenu(effort, effortValue, _, efforts) = entries[1],
+              case .divider = entries[2],
+              case let .command(settings, _, _, _, _) = entries[3]
+        else {
+            Issue.record("Expected Model, Effort and the agent's page")
+            return
+        }
+        #expect(model.plain == "Model")
+        #expect(modelValue == "haiku")
+        #expect(effort.plain == "Effort")
+        #expect(effortValue == "Low")
+        #expect(settings.plain == "Claude Code settings…")
+        let modelOptions = Self.options(models)
+        #expect(modelOptions.map(\.title) == ["Default", "haiku", "sonnet", "opus"])
+        #expect(modelOptions.map(\.isChecked) == [false, true, false, false])
+        modelOptions[2].action()
+        #expect(picked.model == "sonnet")
+        let effortOptions = Self.options(efforts)
+        #expect(effortOptions.map(\.title) == ["Default", "Low", "Medium", "High"])
+        effortOptions[3].action()
+        #expect(picked.effort == "high")
+    }
+
+    /// Codex's models end with Another model…, which opens its page, and in a
+    /// dialog, where Settings can't open, neither that nor the page is there.
+    @Test func aDialogsOptionsLeaveOutSettings() throws {
+        let entries = AgentPopover.options(.codex, model: "", effort: "", codexDefaultModel: "gpt-6-astra", setModel: { _ in }, setEffort: { _ in }, openSettings: {})
+        guard case let .submenu(_, value, _, models) = try #require(entries.first), case let .command(another, _, _, _, _)? = models.last else {
+            Issue.record("Expected Model with Another model… at its end")
+            return
+        }
+        #expect(value == "Default · gpt-6-astra")
+        #expect(another.plain == "Another model…")
+        let inDialog = AgentPopover.options(.codex, model: "", effort: "", codexDefaultModel: "gpt-6-astra", setModel: { _ in }, setEffort: { _ in }, openSettings: nil)
+        #expect(inDialog.count == 2)
+        guard case let .submenu(_, _, _, dialogModels) = try #require(inDialog.first) else {
+            Issue.record("Expected Model")
+            return
+        }
+        #expect(Self.options(dialogModels).count == dialogModels.count)
+        #expect(AgentPopover.settingsEntries("Ollama", open: nil).isEmpty)
     }
 
     /// Resolve's and Fix's popovers show the command that job runs, with the
