@@ -838,8 +838,9 @@ struct SettingsPagesTests {
         // Git and the agents each have one.
         #expect(found("Rescan") == [.gitProgram, .agentList])
         #expect(found("Homebrew") == [.gitProgram])
-        // Commit messages folded into Git (decision 89).
-        #expect(SettingsGroup.allCases.filter { $0.page == .git } == [.installation, .fetching, .generate])
+        // Commit messages folded into Git (decision 89), and so did Advanced's
+        // large repositories (decision 90).
+        #expect(SettingsGroup.allCases.filter { $0.page == .git } == [.installation, .fetching, .largeRepositories, .generate])
         #expect(SettingsGroup.generate.title == "Commit messages")
         #expect(found("Codex").contains(.agentList))
         #expect(found("Codex").contains(.hooks))
@@ -856,7 +857,7 @@ struct SettingsPagesTests {
     /// While agents are off, nothing about them shows, in search or on Git's
     /// page, but the switch that turns them back on.
     @Test func withAgentsOffOnlyUseAgentsIsFound() {
-        #expect(SettingsGroup.shown(usesAgents: false).filter { $0.page == .git } == [.installation, .fetching])
+        #expect(SettingsGroup.shown(usesAgents: false).filter { $0.page == .git } == [.installation, .fetching, .largeRepositories])
         #expect(!SettingsGroup.shown(usesAgents: false).contains(.agentStatus))
         #expect(SettingsGroup.found("Agents", usesAgents: false).map(\.items) == [[.usesAgents]])
         #expect(SettingsGroup.found("Generate button", usesAgents: false).isEmpty)

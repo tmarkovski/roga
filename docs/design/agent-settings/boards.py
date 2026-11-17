@@ -119,7 +119,7 @@ def claude_line(model: str = "haiku", effort: str = "low") -> list[list[tuple[st
 def test_row(result: str, rest: str = "with a two-line message for a sample diff.") -> str:
     return (
         '<div style="display:flex;align-items:center;gap:12px"><button class="b sec">Run Test</button>'
-        f'<span class="res"><span class="ok">{ic("check", "ic s")}{esc(result)}</span>{esc(rest)}</span></div>'
+        f'<span class="res"><span class="ok" style="white-space:nowrap">{ic("check", "ic s")}{esc(result)}</span>{esc(rest)}</span></div>'
     )
 
 
@@ -302,7 +302,7 @@ def add_custom_dialog() -> str:
         '<div class="fld"><label for="an">Name</label><input id="an" class="tf" type="text" value="Ollama"></div>'
         f'<div class="fld"><label for="ac">Command</label><input id="ac" class="tf mono" type="text" value="{esc(OLLAMA)}"></div>'
         + test_row("Replied in 3.1 s", "with a three-line message for a sample diff.")
-        '</div><div class="dft">'
+        + '</div><div class="dft">'
         + command(lines, comment="Instructions and staged diff supplied via standard input")
         + '<div class="btns"><button class="b sec">Cancel</button><button class="b pri">Add Agent</button></div>'
         "</div></div></div>"
@@ -316,6 +316,9 @@ def git_page(ctx: Ctx) -> tuple[str, int]:
         section("Installation", [git], aside=rescan(), desc="Requires Git 2.44 or later."),
         section("Fetching", [
             row("Fetch when Roga becomes active", toggle(ctx, "fetch", True, "Fetch when Roga becomes active"), "At most once a minute. Only remote-tracking branches are updated."),
+        ]),
+        section("Large repositories", [
+            row("Keep commit-graph files up to date", toggle(ctx, "graph", True, "Keep commit-graph files up to date"), "Runs git commit-graph write in the background, without changing Git configuration."),
         ]),
         section("Commit messages", [
             row("Show Generate button", toggle(ctx, "gb", True, "Show Generate button")),
@@ -371,8 +374,8 @@ def scr_ready_one_switch(v) -> str:
 
 
 TODAY_NAV = s.NAV
-# Settings' sidebar loses Commit, which folds into Git.
-NEW_NAV = [[(k, t) for k, t in group if k != "commit"] for group in s.NAV]
+# Settings' sidebar loses Commit and Advanced, which fold into Git.
+NEW_NAV = [g for g in ([(k, t) for k, t in group if k not in ("commit", "advanced")] for group in s.NAV) if g]
 
 
 def settings_board(file: str, title: str, page: str, selected: str, content: tuple[str, int], theme: str = "light", overlay: str = "", page_title: str = "", today: bool = False) -> Board:
@@ -409,7 +412,7 @@ def all_boards() -> list[list[Board]]:
         settings_board("As-Claude.dc.html", "Agents › Claude Code", "claude", "agents", agent_page("claude")),
         settings_board("As-Codex-Dark.dc.html", "Agents › Codex, dark", "codex", "agents", agent_page("codex"), theme="dark"),
         settings_board("As-Custom.dc.html", "Agents › Ollama, a custom agent", "codex", "agents", custom_page(), page_title="Ollama"),
-        settings_board("As-Git.dc.html", "Git, with commit messages", "git", "git", git_page(c)),
+        settings_board("As-Git.dc.html", "Git, with large repositories and commit messages", "git", "git", git_page(c)),
     ]
     setup = [
         setup_board("As-Setup-Agents.dc.html", "First run · Agents", scr_agents_one_switch, "agents"),
@@ -426,7 +429,7 @@ TITLES = [
 
 INTROS = [
     "Where agents are set up on main. The same two agents are listed twice on the Agents page and again on each agent's page, Enable only decides whether Roga runs an agent, and the agent, its model and effort are chosen on the Commit page, on the agent's page and in the Generate popover.",
-    "Use agents turns everything about agents on or off. While it's on, the page lists the agents Roga found and any custom ones, which one is the default for Generate, Resolve and Fix, and Status for the agents whose hooks Roga can install. An agent's page is its copy, model, effort and Run Test. The Commit page folds into Git.",
+    "Use agents turns everything about agents on or off. While it's on, the page lists the agents Roga found and any custom ones, which one is the default for Generate, Resolve and Fix, and Status for the agents whose hooks Roga can install. An agent's page is its copy, model, effort and Run Test. The Commit and Advanced pages fold into Git.",
     "Setup asks one question about agents, answered with its buttons, as before. Don't use Codex leaves each copy's menu, since there's no switch for one agent. The first agent found is the default, and Hooks follows Use Agents.",
 ]
 
@@ -441,7 +444,7 @@ NOTES = {
     "As-Claude.dc.html": "An agent's page is its copy, model, effort and Run Test, and nothing else. The flags, the command, extra arguments, the timeout and the hooks are gone. The exact command still shows in the Generate popover, and the time limit is fixed: 60 seconds for a message, at least 3 minutes to resolve or fix.",
     "As-Codex-Dark.dc.html": "Codex's model is typed, since its names depend on the account, and the placeholder says what Default is.",
     "As-Custom.dc.html": "A custom agent's page: its name, its command, Run Test, and Delete.",
-    "As-Git.dc.html": "The Commit page folds into Git as Commit messages: the Generate button, the repository's style and the instructions. It shows only while agents are on. Help stays only where it says something the title doesn't.",
+    "As-Git.dc.html": "The Commit page folds into Git as Commit messages: the Generate button, the repository's style and the instructions. It shows only while agents are on. Advanced folds in too, since its one setting runs git in each repository: Large repositories comes after Fetching, and the sidebar ends at Agents. Help stays only where it says something the title doesn't.",
     "As-Setup-Agents.dc.html": "Use Claude Code and Codex in Roga? with Don't Use Agents and Use Agents, as setup asks today, with each row's menu of copies. The menu loses Don't use Codex, since agents are on or off together.",
     "As-Setup-Ready.dc.html": "Ready says which agents are in use and which is the default, and Hooks follows as before.",
 }

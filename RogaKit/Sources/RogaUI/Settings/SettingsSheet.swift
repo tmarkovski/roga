@@ -21,13 +21,13 @@ extension UserDefaults {
 }
 
 /// The pages of Settings, in the order its sidebar lists them. Commit folded
-/// into Git (decision 89), so a stored `commit` opens General.
+/// into Git (decision 89), and so did Advanced (decision 90), so a stored
+/// `commit` or `advanced` opens General.
 enum SettingsPage: String, CaseIterable, Identifiable {
     case general
     case appearance
     case git
     case agents
-    case advanced
 
     var id: Self { self }
 
@@ -37,7 +37,6 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .appearance: "Appearance"
         case .git: "Git"
         case .agents: "Agents"
-        case .advanced: "Advanced"
         }
     }
 
@@ -47,15 +46,15 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .appearance: .palette
         case .git: .branch
         case .agents: .squareTerminal
-        case .advanced: .wrench
         }
     }
 
     /// The sidebar's groups, with a line between each, as on the canvas.
-    static let groups: [[SettingsPage]] = [[.general, .appearance], [.git], [.agents], [.advanced]]
+    static let groups: [[SettingsPage]] = [[.general, .appearance], [.git], [.agents]]
 }
 
-/// A heading on a page, and the settings under it.
+/// A heading on a page, and the settings under it, in the order the page
+/// shows them.
 enum SettingsGroup: CaseIterable {
     case openIn
     case updates
@@ -64,10 +63,10 @@ enum SettingsGroup: CaseIterable {
     case lists
     case installation
     case fetching
+    case largeRepositories
     case generate
     case agents
     case agentStatus
-    case largeRepositories
 
     var title: String {
         switch self {
@@ -78,10 +77,10 @@ enum SettingsGroup: CaseIterable {
         case .lists: "Lists"
         case .installation: "Installation"
         case .fetching: "Fetching"
+        case .largeRepositories: "Large repositories"
         case .generate: "Commit messages"
         case .agents: "Agents"
         case .agentStatus: "Status"
-        case .largeRepositories: "Large repositories"
         }
     }
 
@@ -89,9 +88,8 @@ enum SettingsGroup: CaseIterable {
         switch self {
         case .openIn, .updates: .general
         case .interface, .motion, .lists: .appearance
-        case .installation, .fetching, .generate: .git
+        case .installation, .fetching, .largeRepositories, .generate: .git
         case .agents, .agentStatus: .agents
-        case .largeRepositories: .advanced
         }
     }
 

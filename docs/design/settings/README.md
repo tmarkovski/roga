@@ -79,6 +79,8 @@ Each hook runs `roga-hook hook --host <agent> --event <name>`, a launcher in Rog
 
 - **One switch for agents** ([decision 89](../../decisions/0089-one-switch-for-agents.md)). The Agents page starts with Use agents, and while it's on, has Agents, Claude Code, Codex and custom agents with Add Custom Agent… and Default agent, and Status, the hooks and the legend. Claude Code's and Codex's pages are their copy, model, effort and Run Test, and a custom agent's page is its name, command, Run Test and Delete Agent…. The Commit page folds into Git as Commit messages, and help that restated a title is gone. The boards here still draw the earlier pages. The Agent settings page of the canvas draws the new ones, from [`../agent-settings/boards.py`](../agent-settings/boards.py). Built on November 16, 2026.
 
+- **Advanced folds into Git** ([decision 90](../../decisions/0090-fold-advanced-into-git.md)). Advanced had one setting, Keep commit-graph files up to date, so its Large repositories section moves to Git, after Fetching, and the sidebar ends at Agents. The boards here still draw Advanced, with the command log and reset it would have had. The Agent settings page of the canvas draws the Git page with Large repositories. Built on November 16, 2026.
+
 ## Still to decide
 
 - **Which proposals to keep.** Open in Editor, reopening windows at launch, text size and date formats would each need work outside Settings first. Grouping and sorting the sidebar are app-wide already, so they could move here as they are.

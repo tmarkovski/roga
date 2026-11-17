@@ -27,11 +27,17 @@ struct SettingsDestinationTests {
         #expect(defaults.string(forKey: SettingsDestination.agentKey) == nil)
     }
 
-    @Test func theCommitPageIsGone() {
-        // It folded into Git (decision 89), so a stored `commit` is a page
-        // Settings doesn't know, and it opens on General.
+    @Test func theCommitAndAdvancedPagesAreGone() {
+        // They folded into Git (decisions 89 and 90), so a stored `commit` or
+        // `advanced` is a page Settings doesn't know, and it opens on General.
         #expect(SettingsPage(rawValue: "commit") == nil)
-        #expect(SettingsPage.groups == [[.general, .appearance], [.git], [.agents], [.advanced]])
+        #expect(SettingsPage(rawValue: "advanced") == nil)
+        #expect(SettingsPage.groups == [[.general, .appearance], [.git], [.agents]])
+        // Git has Advanced's one group after Fetching, and commit messages
+        // last.
+        let git = SettingsGroup.shown().filter { $0.page == .git }
+        #expect(git == [.installation, .fetching, .largeRepositories, .generate])
+        #expect(SettingsGroup.largeRepositories.items == [.keepsCommitGraphCurrent])
     }
 
     @Test func theActionStaysEqualForItsWindow() {

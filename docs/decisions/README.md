@@ -97,3 +97,4 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [87](0087-sort-refs-from-the-panels-menu.md) | Sort refs from the panel's menu | Accepted |
 | [88](0088-messages-dont-narrate-what-roga-did.md) | Messages don't narrate what Roga did | Accepted |
 | [89](0089-one-switch-for-agents.md) | One switch for agents, a default agent, and custom agents | Accepted |
+| [90](0090-fold-advanced-into-git.md) | Fold Advanced into Git | Accepted |
