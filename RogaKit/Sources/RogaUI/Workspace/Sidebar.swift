@@ -382,8 +382,9 @@ private struct ListHeader<Trailing: View>: View {
 /// expands the group. A collapsed group's label has the mark of the most
 /// urgent agent among the worktrees it hides, in the column of the rows'
 /// marks, so that one waiting for you still shows. It has no commands, so the
-/// mark stays on hover.
-private struct GroupLabel: View {
+/// mark stays on hover. The marks' preview in Settings and setup draws one
+/// too, over the rows it shows.
+struct GroupLabel: View {
     let title: String
     let isCollapsed: Bool
     let agents: RowAgents?
@@ -608,15 +609,16 @@ enum RowLine: Equatable {
 /// conflicts.
 private struct RowLineView: View {
     let line: RowLine
+    @Environment(\.sidebarPictureDate) private var pictureDate
 
     var body: some View {
         switch line {
         case .agent(let summary):
             TimelineView(WholeMinutes(of: [summary])) { context in
-                let parts = summary.rowParts(now: context.date)
+                let parts = summary.rowParts(now: pictureDate ?? context.date)
                 Self.parts(words: parts.words, end: parts.time)
                     .foregroundStyle(Self.isWaiting(summary) ? AnyShapeStyle(AgentColors.warn) : AnyShapeStyle(.secondary))
-                    .help(summary.help(now: context.date))
+                    .help(summary.help(now: pictureDate ?? context.date))
             }
         case .unfinished(let unfinished):
             let parts = unfinished.rowParts
@@ -649,7 +651,7 @@ private struct RowLineView: View {
 /// row's first line, which is the middle of a one-line row (decision 48). Each
 /// row also draws the gap above it, since a row drawn later would cover
 /// anything the one above drew over it.
-private struct WorktreeConnector: View {
+struct WorktreeConnector: View {
     let isLast: Bool
     /// How far the row's text stands from the row's content, to clear the line.
     static let textIndent: CGFloat = 20
@@ -975,6 +977,14 @@ extension NavigationSplitViewVisibility {
     }
 }
 
+extension EnvironmentValues {
+    /// The moment a picture of the sidebar stands at, such as the marks'
+    /// preview in Settings. Its rows and their tooltips say how long an agent
+    /// has been at it as of this moment, so the picture doesn't change while
+    /// it's open. Nil in the sidebar itself, whose rows go by the time now.
+    @Entry var sidebarPictureDate: Date? = nil
+}
+
 extension FocusedValues {
     /// Whether the focused window shows its sidebar, for the View menu.
     @Entry var sidebarVisibility: Binding<NavigationSplitViewVisibility>?
@@ -986,7 +996,7 @@ extension FocusedValues {
 /// How many files a row's worktrees have uncommitted, in orange, or in red with a
 /// triangle when some of them have conflicts, so that a stuck worktree shows
 /// without selecting it (decision 28).
-private struct UncommittedCount: View {
+struct UncommittedCount: View {
     let count: Int
     let hasConflicts: Bool
 
@@ -1048,12 +1058,13 @@ struct RowAgents {
 /// minutes". It redraws as that reaches another minute, and not in between.
 struct SidebarMark: View {
     let summary: AgentSummary
+    @Environment(\.sidebarPictureDate) private var pictureDate
 
     var body: some View {
         TimelineView(minutes) { context in
             // The canvas draws marks 14 points wide, which is AgentMark's size.
             AgentMark(state: summary.state)
-                .help(summary.help(now: context.date))
+                .help(summary.help(now: pictureDate ?? context.date))
         }
     }
 
