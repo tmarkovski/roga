@@ -15,7 +15,7 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [5](0005-read-the-commit-graph-and-run-git.md) | Read history from the commit-graph file and run git for everything else | Accepted |
 | [6](0006-keep-the-commit-graph-up-to-date.md) | Keep the commit-graph file up to date automatically | Accepted |
 | [7](0007-commit-list-is-an-nstableview.md) | Build the commit list on NSTableView | Accepted |
-| [8](0008-require-git-2-44.md) | Require git 2.44 or later | Accepted |
+| [8](0008-require-git-2-45.md) | Require git 2.45 or later | Accepted |
 | [9](0009-diff-view-uses-textkit-1.md) | Show diffs in a TextKit 1 text view | Its font and size made a choice by [73](0073-choose-the-code-font-and-its-size.md), and a layout that shows the whole file added by [74](0074-switch-a-diff-between-its-hunks-and-the-whole-file.md) |
 | [10](0010-our-own-tabs-in-one-window.md) | Show repositories as tabs that yaga draws itself | Partly superseded by [13](0013-repositories-in-a-sidebar.md) |
 | [11](0011-thin-xcode-project-and-a-local-package.md) | Keep the Xcode project thin and the code in a local Swift package | Accepted |

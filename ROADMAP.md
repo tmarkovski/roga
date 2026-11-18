@@ -14,7 +14,7 @@ The project is set up, so the next step is release 1. It has:
 
 - a thin Xcode project in the JSON format and the RogaKit package (decision 11), with the modules that the architecture lists
 - Swift 6 language mode with strict concurrency checking
-- CI that runs the tests against both the oldest supported git (2.44) and the newest release, and builds the app
+- CI that runs the tests against both the oldest supported git (2.45) and the newest release, and builds the app
 - a release workflow that signs and notarizes the app and publishes the Sparkle appcast, so updates work from the first public build
 
 Some of the setup comes later, when there's something for it to work on:

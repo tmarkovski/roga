@@ -53,7 +53,7 @@ struct GitSurveyTests {
 
     @Test func recommendsTheGitThatLocateFinds() async throws {
         let old = try folder(withGit: "2.40.0")
-        let first = try folder(withGit: "2.44.0")
+        let first = try folder(withGit: "2.45.0")
         let newer = try folder(withGit: "2.54.0")
         let survey = await survey(searchPath: [old, first, newer])
         let located = try await GitInstallation.locate(

@@ -20,7 +20,7 @@ macOS alerts traditionally name the app, as in "Safari can't open the page", bec
 - the "Roga: before …" message on a stash it makes, which shows wherever git lists stashes
 - the window's title, the wordmark and "Replayed in Roga"
 
-**Setup names Roga at most once on a screen,** where it says what Roga needs or does: "Roga needs Git 2.44 or newer", or "Roga runs the Git on your Mac, with your own configuration…". The heading above that sentence is now "Git 2.54.0 is ready".
+**Setup names Roga at most once on a screen,** where it says what Roga needs or does: "Roga needs Git 2.45 or newer", or "Roga runs the Git on your Mac, with your own configuration…". The heading above that sentence is now "Git 2.54.0 is ready".
 
 **The hooks' plugin keeps its words,** although its description, which Claude Code shows, names Roga twice. Codex trusts a plugin's hooks by a hash of its files, so new words there would ask everyone to trust Roga's hooks again, and the files would need checking with `claude plugin validate` again. It can change the next time the plugin has to.
 

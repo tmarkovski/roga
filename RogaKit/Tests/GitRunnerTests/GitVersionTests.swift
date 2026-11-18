@@ -19,9 +19,9 @@ struct GitVersionTests {
         #expect(GitVersion(versionOutput: output) == nil)
     }
 
-    @Test func requiresGit2_44() {
-        #expect(!GitVersion(major: 2, minor: 43, patch: 7).isSupported)
-        #expect(GitVersion(major: 2, minor: 44).isSupported)
+    @Test func requiresGit2_45() {
+        #expect(!GitVersion(major: 2, minor: 44, patch: 4).isSupported)
+        #expect(GitVersion(major: 2, minor: 45).isSupported)
         #expect(GitVersion(major: 3, minor: 0).isSupported)
     }
 }
