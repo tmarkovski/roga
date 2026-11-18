@@ -208,6 +208,7 @@ struct Sidebar: View {
                 worktree: worktree,
                 uncommittedFiles: repository.uncommittedFiles[worktree.path] ?? 0,
                 hasConflicts: repository.conflictedWorktrees.contains(worktree.path),
+                statusFailure: .worktree(repository.statusFailures[worktree.path]),
                 unfinished: repository.unfinishedWork[worktree.path],
                 isDeleting: repository.deletingWorktrees.contains(worktree.path),
                 isSelected: selection == row,
@@ -227,8 +228,8 @@ struct Sidebar: View {
             }
             .modifier(newWorktreePopover(on: row, from: worktree))
             .id(row)
-        case .hiddenWorktrees(let repository, let title, _, let uncommittedFiles, let hasConflicts):
-            HiddenWorktreesRow(title: title, uncommittedFiles: uncommittedFiles, hasConflicts: hasConflicts, agents: agents(of: item)) {
+        case .hiddenWorktrees(let repository, let title, _, let uncommittedFiles, let hasConflicts, let statusFailures):
+            HiddenWorktreesRow(title: title, uncommittedFiles: uncommittedFiles, hasConflicts: hasConflicts, statusFailure: .hidden(statusFailures), agents: agents(of: item)) {
                 isFocused = true
                 list.setExpanded(true, repository)
             }
@@ -742,8 +743,8 @@ private struct RepositoryRow: View {
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
                     .padding(.trailing, 7)
-            } else if ownUncommittedFiles > 0 {
-                UncommittedCount(count: ownUncommittedFiles, hasConflicts: ownHasConflicts)
+            } else if ownUncommittedFiles > 0 || ownStatusFailure != nil {
+                UncommittedCount(count: ownUncommittedFiles, hasConflicts: ownHasConflicts, failure: ownStatusFailure)
             }
         } commands: {
             RowMenu(entries: menu)
@@ -753,7 +754,7 @@ private struct RepositoryRow: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
         .accessibilityValue(
-            [detail, linkedWorktreesDescription, unfinished?.title, agent?.description, uncommittedFilesDescription(ownUncommittedFiles, hasConflicts: ownHasConflicts), linkedWorktrees > 0 ? (repository.isExpanded ? "Expanded" : "Collapsed") : nil, problem]
+            [detail, linkedWorktreesDescription, unfinished?.title, agent?.description, uncommittedFilesDescription(ownUncommittedFiles, hasConflicts: ownHasConflicts), ownStatusFailure?.spoken, linkedWorktrees > 0 ? (repository.isExpanded ? "Expanded" : "Collapsed") : nil, problem]
                 .compactMap(\.self)
                 .joined(separator: ", ")
         )
@@ -780,6 +781,10 @@ private struct RepositoryRow: View {
 
     private var ownHasConflicts: Bool {
         repository.worktrees.first.map { repository.conflictedWorktrees.contains($0.path) } ?? false
+    }
+
+    private var ownStatusFailure: StatusFailureNote? {
+        .worktree(repository.worktrees.first.flatMap { repository.statusFailures[$0.path] })
     }
 
     /// What the main worktree stopped partway through, if it did.
@@ -835,6 +840,7 @@ private struct WorktreeRow: View {
     let worktree: Worktree
     let uncommittedFiles: Int
     let hasConflicts: Bool
+    let statusFailure: StatusFailureNote?
     /// What the worktree stopped partway through, if it did.
     let unfinished: UnfinishedWork?
     let isDeleting: Bool
@@ -867,8 +873,8 @@ private struct WorktreeRow: View {
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
                     .padding(.trailing, 7)
-            } else if uncommittedFiles > 0 {
-                UncommittedCount(count: uncommittedFiles, hasConflicts: hasConflicts)
+            } else if uncommittedFiles > 0 || statusFailure != nil {
+                UncommittedCount(count: uncommittedFiles, hasConflicts: hasConflicts, failure: statusFailure)
             }
         } commands: {
             RowMenu(entries: menu)
@@ -878,7 +884,7 @@ private struct WorktreeRow: View {
         .help(worktree.path)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(worktree.title)
-        .accessibilityValue([subtitle, unfinished?.title, agent?.description, uncommittedFilesDescription(uncommittedFiles, hasConflicts: hasConflicts)].compactMap(\.self).joined(separator: ", "))
+        .accessibilityValue([subtitle, unfinished?.title, agent?.description, uncommittedFilesDescription(uncommittedFiles, hasConflicts: hasConflicts), statusFailure?.spoken].compactMap(\.self).joined(separator: ", "))
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction(.default) {
             if canSelect { select() }
@@ -919,6 +925,7 @@ private struct HiddenWorktreesRow: View {
     let title: String
     let uncommittedFiles: Int
     let hasConflicts: Bool
+    let statusFailure: StatusFailureNote?
     let agents: RowAgents?
     let show: () -> Void
 
@@ -930,8 +937,8 @@ private struct HiddenWorktreesRow: View {
                 .foregroundStyle(.secondary)
                 .padding(.leading, WorktreeConnector.textIndent)
         } trailing: {
-            if uncommittedFiles > 0 {
-                UncommittedCount(count: uncommittedFiles, hasConflicts: hasConflicts)
+            if uncommittedFiles > 0 || statusFailure != nil {
+                UncommittedCount(count: uncommittedFiles, hasConflicts: hasConflicts, failure: statusFailure)
             }
         } commands: {
             EmptyView()
@@ -939,7 +946,7 @@ private struct HiddenWorktreesRow: View {
         .overlay { WorktreeConnector(isLast: true) }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
-        .accessibilityValue([agent?.description, uncommittedFilesDescription(uncommittedFiles, hasConflicts: hasConflicts)].compactMap(\.self).joined(separator: ", "))
+        .accessibilityValue([agent?.description, uncommittedFilesDescription(uncommittedFiles, hasConflicts: hasConflicts), statusFailure?.spoken].compactMap(\.self).joined(separator: ", "))
         .accessibilityAddTraits(.isButton)
         .accessibilityAction(.default, show)
     }
@@ -996,20 +1003,56 @@ extension FocusedValues {
 /// How many files a row's worktrees have uncommitted, in orange, or in red with a
 /// triangle when some of them have conflicts, so that a stuck worktree shows
 /// without selecting it (decision 28).
+///
+/// A worktree whose files git can't list has a triangle too, in orange, so
+/// that it doesn't pass for one with nothing to commit. Its tooltip says what
+/// git said. The count leaves that worktree out, and there's no number when
+/// it's the row's only one.
 struct UncommittedCount: View {
     let count: Int
     let hasConflicts: Bool
+    var failure: StatusFailureNote?
 
     var body: some View {
+        if let failure {
+            label.help(failure.help)
+        } else {
+            label
+        }
+    }
+
+    private var label: some View {
         HStack(spacing: 3) {
-            if hasConflicts {
+            if hasConflicts || failure != nil {
                 Icon.warning.image
             }
-            Text(count, format: .number)
+            if count > 0 || failure == nil {
+                Text(count, format: .number)
+            }
         }
         .font(.system(size: 13))
         .foregroundStyle(hasConflicts ? Palette.red : Color.orange)
         .padding(.trailing, 7)
+    }
+}
+
+/// What a sidebar row says about worktrees whose uncommitted files git
+/// couldn't list: for one worktree, what git said, and for the row of hidden
+/// worktrees, how many of them.
+struct StatusFailureNote: Equatable {
+    /// The tooltip of the row's triangle.
+    var help: String
+    /// What VoiceOver reads among the row's other facts.
+    var spoken: String
+
+    static func worktree(_ message: String?) -> Self? {
+        message.map { Self(help: "\(RepositoryModel.statusFailureTitle): \($0)", spoken: "can't list uncommitted files") }
+    }
+
+    static func hidden(_ count: Int) -> Self? {
+        guard count > 0 else { return nil }
+        let which = count == 1 ? "1 of these worktrees" : "\(count) of these worktrees"
+        return Self(help: "\(RepositoryModel.statusFailureTitle) in \(which).", spoken: "can't list uncommitted files in \(which)")
     }
 }
 

@@ -368,7 +368,9 @@ private enum Metrics {
     }
 
     static func countWidth(_ count: RefMenu.Count) -> Double {
-        textWidth(count.text, font: countFont) + (count.icon == nil ? 0 : countIconSize + countIconGap)
+        // An icon without a number, as for a worktree whose files git can't
+        // list, needs no gap after it.
+        textWidth(count.text, font: countFont) + (count.icon == nil ? 0 : countIconSize + (count.text.isEmpty ? 0 : countIconGap))
     }
 
     static let countIconSize = 13.0

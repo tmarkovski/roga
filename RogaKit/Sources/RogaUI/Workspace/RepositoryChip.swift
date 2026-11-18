@@ -94,6 +94,8 @@ struct WorktreeFacts: Equatable {
     var worktree: Worktree
     var uncommittedFiles = 0
     var hasConflicts = false
+    /// What git said when it couldn't list the uncommitted files.
+    var statusFailure: String?
     var unfinished: UnfinishedWork?
     var upstream: UpstreamCounts?
     var isDeleting = false
@@ -201,7 +203,9 @@ enum WorktreeMenu {
             count: count(for: facts),
             isCurrent: isCurrent,
             isEnabled: !worktree.isPrunable && !facts.isDeleting,
-            help: worktree.path,
+            // What git said, under the folder, since the triangle has no
+            // tooltip of its own in a menu.
+            help: [worktree.path, StatusFailureNote.worktree(facts.statusFailure)?.help].compactMap(\.self).joined(separator: "\n"),
             action: isCurrent ? {} : action
         )
     }
@@ -258,8 +262,12 @@ enum WorktreeMenu {
     }
 
     /// Its uncommitted files, in orange as in the sidebar, or in red with a
-    /// triangle when some have conflicts.
+    /// triangle when some have conflicts. A worktree whose files git can't
+    /// list has an orange triangle without a number, as in the sidebar.
     static func count(for facts: WorktreeFacts) -> RefMenu.Count? {
+        if facts.statusFailure != nil {
+            return RefMenu.Count("", color: .systemOrange, icon: Icon.warning.nsImage)
+        }
         guard facts.uncommittedFiles > 0 else { return nil }
         return facts.hasConflicts
             ? RefMenu.Count(facts.uncommittedFiles.formatted(), color: GitColors.red, icon: Icon.warning.nsImage)
@@ -285,6 +293,7 @@ enum WorktreeMenu {
                 worktree: worktree,
                 uncommittedFiles: repository.uncommittedFiles[worktree.path] ?? 0,
                 hasConflicts: repository.conflictedWorktrees.contains(worktree.path),
+                statusFailure: repository.statusFailures[worktree.path],
                 unfinished: repository.unfinishedWork[worktree.path],
                 upstream: worktree.branch.flatMap { repository.upstreams[$0] },
                 isDeleting: repository.deletingWorktrees.contains(worktree.path)

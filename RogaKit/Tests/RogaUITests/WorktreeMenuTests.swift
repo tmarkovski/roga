@@ -161,6 +161,17 @@ struct WorktreeMenuTests {
         #expect(conflicted.icon != nil)
     }
 
+    /// One whose files git can't list has an orange triangle without a number,
+    /// as in the sidebar, and its tooltip has what git said under the folder.
+    @Test func aWorktreeGitCantListHasATriangleAndGitsMessage() throws {
+        let facts = WorktreeFacts(worktree: fixLogin, statusFailure: "fatal: index file corrupt")
+        let count = try #require(WorktreeMenu.count(for: facts))
+        #expect(count.text.isEmpty)
+        #expect(count.color == .systemOrange)
+        #expect(count.icon != nil)
+        #expect(WorktreeMenu.choice(for: facts, isCurrent: false) {}.help == fixLogin.path + "\nCan't list uncommitted files: fatal: index file corrupt")
+    }
+
     // MARK: What's known
 
     @Test func takesWhatTheSidebarKnowsAboutEachWorktree() {

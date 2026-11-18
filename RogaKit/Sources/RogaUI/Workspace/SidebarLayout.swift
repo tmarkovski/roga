@@ -165,14 +165,14 @@ enum SidebarItem: Identifiable {
     /// The row that stands for the worktrees a collapsed repository hides, with
     /// their folders and how many uncommitted files they have. Clicking it
     /// shows them.
-    case hiddenWorktrees(ListedRepository, title: String, worktrees: [String], uncommittedFiles: Int, hasConflicts: Bool)
+    case hiddenWorktrees(ListedRepository, title: String, worktrees: [String], uncommittedFiles: Int, hasConflicts: Bool, statusFailures: Int)
 
     var id: String {
         switch self {
         case .group(let group, _, _, _): "group \(group.key)"
         case .repository(let repository, _, _): "repository \(repository.path)"
         case .worktree(_, let worktree, _): "worktree \(worktree.path)"
-        case .hiddenWorktrees(let repository, _, _, _, _): "hidden worktrees \(repository.path)"
+        case .hiddenWorktrees(let repository, _, _, _, _, _): "hidden worktrees \(repository.path)"
         }
     }
 
@@ -187,7 +187,7 @@ enum SidebarItem: Identifiable {
         case .group(_, _, _, let worktrees): worktrees
         case .repository(let repository, _, _): repository.worktrees.first.map { [$0.path] } ?? []
         case .worktree(_, let worktree, _): [worktree.path]
-        case .hiddenWorktrees(_, _, let worktrees, _, _): worktrees
+        case .hiddenWorktrees(_, _, let worktrees, _, _, _): worktrees
         }
     }
 }
@@ -276,7 +276,8 @@ struct SidebarLayout {
             title: shown.isEmpty ? "\(hidden.count) \(noun)" : "\(hidden.count) more \(noun)",
             worktrees: hidden.map(\.path),
             uncommittedFiles: hidden.reduce(0) { $0 + repository.uncommittedFiles[$1.path, default: 0] },
-            hasConflicts: hidden.contains { repository.conflictedWorktrees.contains($0.path) }
+            hasConflicts: hidden.contains { repository.conflictedWorktrees.contains($0.path) },
+            statusFailures: hidden.count { repository.statusFailures[$0.path] != nil }
         ))
     }
 

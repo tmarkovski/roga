@@ -180,6 +180,40 @@ struct RepositoryListTests {
         #expect(listed.uncommittedFiles[repository] == 1)
     }
 
+    /// A worktree git can't list, here because its index is damaged, has what
+    /// git said rather than a count, so that it doesn't pass for one with
+    /// nothing to commit. The other worktrees still have theirs.
+    @Test func keepsWhatGitSaidAboutAWorktreeItCantList() async throws {
+        let repository = try await copyRepository(try await Fixture.repository("basic"), into: folder)
+        try await runGit("worktree", "add", "--quiet", folder + "/notes", "feature", in: repository)
+        let list = try await makeList()
+        _ = try await list.add(folder: repository)
+        let listed = try #require(list.repositories.first)
+        try Data("a\n".utf8).write(to: URL(filePath: folder + "/notes/a.txt"))
+
+        try Data("garbage".utf8).write(to: URL(filePath: repository + "/.git/index"))
+        await list.refresh()
+        #expect(listed.uncommittedFiles == [folder + "/notes": 1])
+        #expect(listed.statusFailures.keys.sorted() == [repository])
+        #expect(listed.statusFailures[repository]?.contains("index file smaller than expected") == true)
+
+        try FileManager.default.removeItem(atPath: repository + "/.git/index")
+        try await runGit("read-tree", "HEAD", in: repository)
+        await list.refresh()
+        #expect(listed.uncommittedFiles == [repository: 0, folder + "/notes": 1])
+        #expect(listed.statusFailures.isEmpty)
+
+        // A window's newer answer takes over until the list looks again,
+        // whether it's a failure or a count.
+        let selection = WorktreeSelection(repository: listed.path, worktree: repository)
+        list.setUncommittedFiles(0, failure: "git status failed", in: selection)
+        #expect(listed.uncommittedFiles[repository] == nil)
+        #expect(listed.statusFailures[repository] == "git status failed")
+        list.setUncommittedFiles(2, in: selection)
+        #expect(listed.uncommittedFiles[repository] == 2)
+        #expect(listed.statusFailures.isEmpty)
+    }
+
     @Test func findsWhichWorktreesHaveConflicts() async throws {
         let repository = try await copyRepository(try await Fixture.repository("basic"), into: folder)
         try await runGit("config", "user.name", "T", in: repository)
@@ -216,6 +250,7 @@ struct RepositoryListTests {
         _ = try await list.add(folder: repository)
         await list.refresh()
         #expect(list.repositories.first?.uncommittedFiles == [:])
+        #expect(list.repositories.first?.statusFailures == [:])
     }
 
     /// A git whose `git status` takes a second, for catching what waits for it and

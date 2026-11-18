@@ -454,8 +454,9 @@ public struct WorkspaceView: View {
     }
 
     private func model(for selected: WorktreeSelection, session: RepositorySession) -> RepositoryModel {
-        recent.model(for: selected, session: session) { [list] count in
-            list.setUncommittedFiles(count, in: selected)
+        let isBare = list.repository(at: selected.repository)?.worktrees.first { $0.path == selected.worktree }?.isBare ?? false
+        return recent.model(for: selected, session: session, isBare: isBare) { [list] count, failure in
+            list.setUncommittedFiles(count, failure: failure, in: selected)
         } reportConflicts: { [list] hasConflicts in
             list.setHasConflicts(hasConflicts, in: selected)
         } reportBranchChange: { [list] in
@@ -777,8 +778,11 @@ final class RecentWorktrees {
     private var order: [WorktreeSelection] = []
 
     /// - Parameters:
+    ///   - isBare: Whether the worktree is a bare repository's entry, which
+    ///     has no files to list.
     ///   - reportUncommittedFiles: What a new model calls with how many
-    ///     uncommitted files it finds.
+    ///     uncommitted files it finds, or what git said when it couldn't list
+    ///     them.
     ///   - reportConflicts: What a new model calls with whether it finds conflicts.
     ///   - reportBranchChange: What a new model calls when it has put the
     ///     worktree on another branch or made a new worktree, which returns once
@@ -786,7 +790,8 @@ final class RecentWorktrees {
     func model(
         for selection: WorktreeSelection,
         session: RepositorySession,
-        reportUncommittedFiles: @escaping (Int) -> Void = { _ in },
+        isBare: Bool = false,
+        reportUncommittedFiles: @escaping (_ count: Int, _ failure: String?) -> Void = { _, _ in },
         reportConflicts: @escaping (Bool) -> Void = { _ in },
         reportBranchChange: @escaping () async -> Void = {}
     ) -> RepositoryModel {
@@ -797,6 +802,7 @@ final class RecentWorktrees {
         let model = RepositoryModel(
             session: session,
             worktree: selection.worktree,
+            isBare: isBare,
             reportUncommittedFiles: reportUncommittedFiles,
             reportConflicts: reportConflicts,
             reportBranchChange: reportBranchChange

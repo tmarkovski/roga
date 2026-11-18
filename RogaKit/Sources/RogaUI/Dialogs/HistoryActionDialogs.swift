@@ -12,6 +12,9 @@ struct PendingReset: Equatable {
     var commits: [ListedCommit]
     /// How many files have uncommitted changes.
     var uncommittedFiles: Int
+    /// Whether git couldn't list the uncommitted files, so there may be some
+    /// that Hard would throw away.
+    var filesAreUnknown = false
     /// What's picked so far. This lives with the question rather than in the view,
     /// so that a button reads it when it's pressed.
     var mode = ResetMode.keep
@@ -34,7 +37,7 @@ struct PendingReset: Equatable {
         switch mode {
         case .keep: commitSwitch.lostCount > 0
         case .soft, .mixed: false
-        case .hard: commitSwitch.lostCount > 0 || uncommittedFiles > 0
+        case .hard: commitSwitch.lostCount > 0 || uncommittedFiles > 0 || filesAreUnknown
         }
     }
 
@@ -148,7 +151,9 @@ extension RepositoryModel {
             cards.append([.commit(hash: short, subject: subject)])
         }
         var note: DialogText?
-        if pending.uncommittedFiles > 0 {
+        if pending.filesAreUnknown {
+            note = "The uncommitted files can't be listed, so there may be some."
+        } else if pending.uncommittedFiles > 0 {
             note = pending.uncommittedFiles == 1 ? "1 file has uncommitted changes." : "\(pending.uncommittedFiles.formatted()) files have uncommitted changes."
         }
         let kind: DialogButton.Kind = pending.isDestructive ? .destructive : pending.isPartlyDestructive ? .partlyDestructive : .primary

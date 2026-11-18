@@ -580,6 +580,52 @@ struct RepositoryModelTests {
         #expect(model.selectedCommit.id == selected)
     }
 
+    /// A worktree git can't list, here because its index is damaged, keeps its
+    /// row, which says so in red, and the panel has git's message, rather than
+    /// the worktree passing for one with nothing to commit.
+    @Test func aWorktreeGitCantListKeepsItsRowAndThePanelSaysWhy() async throws {
+        let (model, repository) = try await modelOfACopy()
+        await model.appear()
+        #expect(!model.hasWorkingTreeRow)
+
+        try write("garbage", to: ".git/index", in: repository)
+        await becomeActive(model)
+        #expect(model.hasWorkingTreeRow)
+        #expect(model.statusFailure?.contains("index file smaller than expected") == true)
+        let row = model.rowContent(0)
+        #expect(row.subject == "Can't list uncommitted files")
+        #expect(row.isWorkingTree)
+        #expect(row.isWarning)
+
+        model.selectRow(0)
+        await settled(model)
+        guard case .failed(let message) = model.selectedChanges.files else {
+            Issue.record("Expected the panel to say why, got \(model.selectedChanges.files)")
+            return
+        }
+        #expect(message.contains("index file smaller than expected"))
+
+        try FileManager.default.removeItem(atPath: repository + "/.git/index")
+        _ = try await TestGit.make().run(GitCommand("read-tree", "HEAD", in: repository))
+        await becomeActive(model)
+        await settled(model)
+        #expect(!model.hasWorkingTreeRow)
+        #expect(model.statusFailure == nil)
+        #expect(model.selectedRow == nil)
+    }
+
+    /// A bare repository has no files, so there's nothing to list and no row,
+    /// rather than a row saying git couldn't list them.
+    @Test func aBareRepositoryHasNoRowForUncommittedChanges() async throws {
+        let bare = try makeTemporaryFolder() + "/basic.git"
+        _ = try await TestGit.make().run(GitCommand("clone", "--quiet", "--bare", try await Fixture.repository("basic"), bare))
+        let session = try await RepositorySession.open(containing: bare, git: try await TestGit.make())
+        let model = RepositoryModel(session: session, worktree: bare, isBare: true)
+        await model.appear()
+        #expect(!model.hasWorkingTreeRow)
+        #expect(model.statusFailure == nil)
+    }
+
     @Test func nothingIsSelectedOnceTheSelectedChangesAreGone() async throws {
         let (model, repository) = try await modelOfACopy()
         try write("new\n", to: "new.txt", in: repository)
@@ -755,9 +801,20 @@ struct RepositoryModelTests {
         try write("new\n", to: "new.txt", in: repository)
         let session = try await RepositorySession.open(containing: repository, git: try await TestGit.make())
         var reported: [Int] = []
-        let model = RepositoryModel(session: session, worktree: repository, keepsCommitGraphCurrent: { false }) { reported.append($0) }
+        var failures: [String?] = []
+        let model = RepositoryModel(session: session, worktree: repository, keepsCommitGraphCurrent: { false }) { count, failure in
+            reported.append(count)
+            failures.append(failure)
+        }
         await model.appear()
         #expect(reported.last == 1)
+        #expect(failures.last == .some(nil))
+
+        // What git said when it can't list them, for the sidebar.
+        try write("garbage", to: ".git/index", in: repository)
+        await becomeActive(model)
+        #expect(reported.last == 0)
+        #expect(failures.last??.contains("index file smaller than expected") == true)
     }
 
     func chainExists(in repository: String) -> Bool {
