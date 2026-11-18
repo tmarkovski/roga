@@ -301,7 +301,11 @@ jobs:
           set -euo pipefail
           BUILD="${{ needs.build.outputs.build }}"
           for attempt in 1 2 3 4 5 6; do
-            if curl -fsSL https://roga.sh/appcast.xml | grep -q "<sparkle:version>$BUILD</sparkle:version>"; then
+            # The whole feed is read before it's searched. Piped into grep -q,
+            # curl fails writing the rest once grep stops at the build, and
+            # pipefail then failed the check for a feed that offered it.
+            if feed="$(curl -fsSL https://roga.sh/appcast.xml)" &&
+              grep -q "<sparkle:version>$BUILD</sparkle:version>" <<<"$feed"; then
               echo "roga.sh/appcast.xml offers build $BUILD."
               exit 0
             fi
