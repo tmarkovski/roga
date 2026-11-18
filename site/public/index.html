@@ -184,6 +184,19 @@
     stroke-linecap: round;
   }
 
+  /* Where graph.js's tracker is, with ?tracker in the address, for working
+     on the timing. It's white, and the difference blend keeps it showing on
+     the light paper and the dark band alike. */
+  .graph-tracker {
+    position: fixed;
+    left: 0;
+    z-index: 1;
+    height: 1px;
+    background: #fff;
+    mix-blend-mode: difference;
+    pointer-events: none;
+  }
+
   /* The graph draws the list's line and dots itself, in main's color. */
   .graph-on .history li::before,
   .graph-on .history li::after {

@@ -56,6 +56,13 @@
   svg.setAttribute("class", "graph");
   svg.setAttribute("aria-hidden", "true");
 
+  // A line across the margin where the tracker is, for working on the
+  // timing. It shows only with ?tracker in the page's address.
+  const showsTracker = new URLSearchParams(location.search).has("tracker");
+  const guide = document.createElement("div");
+  guide.className = "graph-tracker";
+  guide.setAttribute("aria-hidden", "true");
+
   let scene = null;
   let queued = false;
 
@@ -393,6 +400,7 @@
     svg.replaceChildren();
     if (!g) {
       svg.remove();
+      guide.remove();
       document.documentElement.classList.remove("graph-on");
       scene = null;
       return;
@@ -406,6 +414,10 @@
     svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
     // On the page before drawing, so that the lines can be measured.
     if (!svg.isConnected) document.body.prepend(svg);
+    if (showsTracker) {
+      guide.style.width = `${page.left - page.rem}px`;
+      if (!guide.isConnected) document.body.append(guide);
+    }
 
     const defs = element("defs", {}, svg);
     const [bandTop, bandBottom] = history.band;
@@ -444,6 +456,8 @@
     if (!scene) return;
     const y = tracker();
     const still = settle || reducesMotion.matches;
+    guide.hidden = !Number.isFinite(y);
+    if (!guide.hidden) guide.style.top = `${y - scrollY}px`;
     for (const point of scene.points.all) {
       point.target = y >= point.y ? 1 : 0;
       if (still) point.p = point.target;
