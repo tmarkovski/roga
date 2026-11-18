@@ -35,7 +35,7 @@ struct SidebarLayoutTests {
             case .group(_, let title, let isCollapsed, _): (isCollapsed ? "<\(title) ›>" : "<\(title)>")
             case .repository(_, let title, let detail): title + (detail.map { " (\($0))" } ?? "")
             case .worktree(_, let worktree, let isLast): (isLast ? "└ " : "│ ") + worktree.title
-            case .hiddenWorktrees(_, let title, _, let uncommittedFiles, _): "└ " + title + (uncommittedFiles > 0 ? " (\(uncommittedFiles))" : "")
+            case .hiddenWorktrees(_, let title, _, let uncommittedFiles, _, _): "└ " + title + (uncommittedFiles > 0 ? " (\(uncommittedFiles))" : "")
             }
         }
     }
@@ -220,7 +220,7 @@ struct SidebarLayoutTests {
         func hidesConflicts(in conflicted: Set<String>) throws -> Bool {
             let api = ListedRepository(path: "/git/api/.git", owners: ["acme"], worktrees: worktrees, conflictedWorktrees: conflicted)
             let items = SidebarLayout(groups: RepositoryGroups([api]), arrangement: SidebarArrangement(), selection: nil).items
-            guard case .hiddenWorktrees(_, _, _, _, let hasConflicts) = try #require(items.last) else {
+            guard case .hiddenWorktrees(_, _, _, _, let hasConflicts, _) = try #require(items.last) else {
                 Issue.record("There's no row for hidden worktrees.")
                 return false
             }
@@ -230,6 +230,37 @@ struct SidebarLayoutTests {
         #expect(try !hidesConflicts(in: []))
         // The main worktree has its own row, so this one isn't hiding that.
         #expect(try !hidesConflicts(in: ["/git/api"]))
+    }
+
+    @Test func thatRowCountsTheWorktreesItHidesThatGitCantList() throws {
+        let worktrees = [
+            Worktree(path: "/git/api", branch: "refs/heads/main", isMain: true),
+            Worktree(path: "/git/a", branch: "refs/heads/a"),
+            Worktree(path: "/git/b", branch: "refs/heads/b"),
+        ]
+        func failures(_ statusFailures: [String: String]) throws -> Int {
+            let api = ListedRepository(path: "/git/api/.git", owners: ["acme"], worktrees: worktrees, statusFailures: statusFailures)
+            let items = SidebarLayout(groups: RepositoryGroups([api]), arrangement: SidebarArrangement(), selection: nil).items
+            guard case .hiddenWorktrees(_, _, _, _, _, let failures) = try #require(items.last) else {
+                Issue.record("There's no row for hidden worktrees.")
+                return 0
+            }
+            return failures
+        }
+        #expect(try failures(["/git/a": "fatal: index file corrupt", "/git/b": "too many"]) == 2)
+        #expect(try failures([:]) == 0)
+        // The main worktree has its own row.
+        #expect(try failures(["/git/api": "fatal: index file corrupt"]) == 0)
+    }
+
+    @Test func aRowSaysWhatGitSaidWhenItCantListAWorktree() {
+        #expect(StatusFailureNote.worktree(nil) == nil)
+        let one = StatusFailureNote.worktree("fatal: index file corrupt")
+        #expect(one?.help == "Can't list uncommitted files: fatal: index file corrupt")
+        #expect(one?.spoken == "can't list uncommitted files")
+        #expect(StatusFailureNote.hidden(0) == nil)
+        #expect(StatusFailureNote.hidden(1)?.help == "Can't list uncommitted files in 1 of these worktrees.")
+        #expect(StatusFailureNote.hidden(2)?.spoken == "can't list uncommitted files in 2 of these worktrees")
     }
 
     @Test func aCollapsedRepositoryStillShowsTheSelectedWorktree() {

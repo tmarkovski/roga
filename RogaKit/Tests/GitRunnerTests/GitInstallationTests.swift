@@ -40,7 +40,7 @@ struct GitInstallationTests {
     }
 
     @Test func searchesWellKnownFoldersAfterThePath() async throws {
-        let onPath = try folder(withGit: "2.44.0")
+        let onPath = try folder(withGit: "2.45.0")
         let homebrew = try folder(withGit: "2.52.0")
         #expect(try await locate(searchPath: [onPath], wellKnown: [homebrew]).executable == onPath + "/git")
         #expect(try await locate(searchPath: [], wellKnown: [homebrew]).executable == homebrew + "/git")
@@ -109,7 +109,7 @@ struct GitInstallationTests {
 
     @Test func usesTheConfiguredGitOrNothing() async throws {
         let onPath = try folder(withGit: "2.52.0")
-        let configured = try folder(withGit: "2.44.2") + "/git"
+        let configured = try folder(withGit: "2.45.2") + "/git"
         #expect(try await locate(configuredPath: configured, searchPath: [onPath]).executable == configured)
 
         let tooOld = try folder(withGit: "2.40.0") + "/git"

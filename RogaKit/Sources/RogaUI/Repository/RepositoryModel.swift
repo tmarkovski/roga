@@ -102,6 +102,11 @@ final class RepositoryModel {
     private(set) var uncommittedFiles = 0
     /// How many of them have staged changes, which their row says too.
     private(set) var stagedFiles = 0
+    /// What git said the last time it couldn't list the uncommitted files, or
+    /// nil when it could. The row for uncommitted changes stays while it's
+    /// set, so that a worktree git can't look at doesn't pass for one with
+    /// nothing to commit, and selecting the row shows git's message.
+    private(set) var statusFailure: String?
     /// The message of the next commit, and making it.
     let composer: CommitComposer
     /// The selected rows: usually one, and several when commits are picked
@@ -163,8 +168,12 @@ final class RepositoryModel {
     @ObservationIgnored private let now = Date()
     /// Whether the user wants commit-graph files kept up to date.
     @ObservationIgnored private let keepsCommitGraphCurrent: () -> Bool
-    /// Says how many files are uncommitted, whenever that's been checked.
-    @ObservationIgnored private let reportUncommittedFiles: (Int) -> Void
+    /// Says how many files are uncommitted, or what git said when it couldn't
+    /// list them, whenever that's been checked.
+    @ObservationIgnored private let reportUncommittedFiles: (_ count: Int, _ failure: String?) -> Void
+    /// Whether the worktree is a bare repository's entry, which has no files,
+    /// so there's nothing to list.
+    @ObservationIgnored private let isBare: Bool
     /// Says whether the worktree has conflicts, whenever that's been checked.
     @ObservationIgnored private let reportConflicts: (Bool) -> Void
     /// Says that the worktree is on another branch, or the repository has a new
@@ -234,8 +243,9 @@ final class RepositoryModel {
     init(
         session: RepositorySession,
         worktree: String,
+        isBare: Bool = false,
         keepsCommitGraphCurrent: @escaping () -> Bool = { UserDefaults.standard.keepsCommitGraphCurrent },
-        reportUncommittedFiles: @escaping (Int) -> Void = { _ in },
+        reportUncommittedFiles: @escaping (_ count: Int, _ failure: String?) -> Void = { _, _ in },
         reportConflicts: @escaping (Bool) -> Void = { _ in },
         reportBranchChange: @escaping () async -> Void = {},
         fetchesByItself: @escaping () -> Bool = { UserDefaults.standard.fetchesByItself },
@@ -244,6 +254,7 @@ final class RepositoryModel {
     ) {
         self.session = session
         self.worktree = worktree
+        self.isBare = isBare
         self.keepsCommitGraphCurrent = keepsCommitGraphCurrent
         self.reportUncommittedFiles = reportUncommittedFiles
         self.reportConflicts = reportConflicts
@@ -746,7 +757,8 @@ final class RepositoryModel {
                     commitSwitch: commitSwitch,
                     subject: subject,
                     commits: await branch.listed(commitSwitch.lost),
-                    uncommittedFiles: uncommittedFiles
+                    uncommittedFiles: uncommittedFiles,
+                    filesAreUnknown: statusFailure != nil
                 )
             } catch {
                 branch.failure = BranchModel.Failure(title: "Can't reset to \(id.hex.prefix(8))", error: error, changedNothing: true)
@@ -940,11 +952,21 @@ final class RepositoryModel {
     ///   number, which lets it share a `git status` with the sidebar. Nil runs
     ///   git afresh.
     private func updateUncommittedFiles(asNewAs change: Int? = nil) async {
-        // A failure is usually a bare repository, which has no files to list.
-        let status = if let change {
-            try? await session.status(in: worktree, asNewAs: change)
-        } else {
-            try? await session.status(in: worktree)
+        var status: WorktreeChanges?
+        var failure: String?
+        if !isBare {
+            do {
+                status = if let change {
+                    try await session.status(in: worktree, asNewAs: change)
+                } else {
+                    try await session.status(in: worktree)
+                }
+            } catch {
+                // Too many files to read, a damaged index, a partial clone
+                // that would have to download what it's missing, or anything
+                // else git refuses. A cancelled look stops below.
+                failure = String(describing: error)
+            }
         }
         let stopped = try? await session.stoppedWork(in: worktree)
         // The tooltip names the commit being reverted.
@@ -952,7 +974,7 @@ final class RepositoryModel {
         if case .revert(let commit?) = stopped { subject = (try? await session.commits([commit]))?.first??.subject }
         if case .cherryPick(let commit?) = stopped { subject = (try? await session.commits([commit]))?.first??.subject }
         guard !Task.isCancelled else { return }
-        show(uncommittedFiles: status?.fileCount ?? 0, staged: status?.staged.count ?? 0)
+        show(uncommittedFiles: status?.fileCount ?? 0, staged: status?.staged.count ?? 0, failure: failure)
         show(unfinished: UnfinishedWork(work: stopped, conflicts: status?.conflicted.count ?? 0, subject: subject))
         composer.worktreeIsPartway(through: stopped)
         selectedChanges.refresh()
@@ -974,15 +996,19 @@ final class RepositoryModel {
 
     /// Adds or removes the row for uncommitted changes, which moves the rows
     /// below it.
-    private func show(uncommittedFiles count: Int, staged: Int) {
-        reportUncommittedFiles(count)
-        guard count != uncommittedFiles || staged != stagedFiles else {
+    ///
+    /// - Parameter failure: What git said when it couldn't list the files,
+    ///   which keeps the row there to say so.
+    private func show(uncommittedFiles count: Int, staged: Int, failure: String? = nil) {
+        reportUncommittedFiles(count, failure)
+        guard count != uncommittedFiles || staged != stagedFiles || failure != statusFailure else {
             selectChangesIfAsked()
             return
         }
         let hadRow = hasWorkingTreeRow
         uncommittedFiles = count
         stagedFiles = staged
+        statusFailure = failure
         if hasWorkingTreeRow != hadRow {
             workingTreeLine = history.map { WorkingTreeLine(layout: $0.lanes, head: $0.head) }
             if selectedChanges.isSelected {
@@ -1403,7 +1429,11 @@ final class RepositoryModel {
         history.graph.position(of: id).flatMap { history.rows.firstIndex(of: $0) }
     }
 
-    var hasWorkingTreeRow: Bool { uncommittedFiles > 0 }
+    var hasWorkingTreeRow: Bool { uncommittedFiles > 0 || statusFailure != nil }
+
+    /// What the row for uncommitted changes says while git can't list them,
+    /// as the sidebar's mark does in its tooltip.
+    static let statusFailureTitle = "Can't list uncommitted files"
 
     /// How many rows come before the first commit.
     private var rowOffset: Int { hasWorkingTreeRow ? 1 : 0 }
@@ -1413,9 +1443,20 @@ final class RepositoryModel {
     /// What a row shows, with whatever text has loaded.
     func rowContent(_ row: Int) -> CommitRowContent {
         if hasWorkingTreeRow, row == 0 {
+            let unfinished = branch.unfinished
+            if statusFailure != nil {
+                // In red, since nobody can tell what's uncommitted until it's
+                // fixed. The panel has git's message.
+                return CommitRowContent(
+                    shortID: "",
+                    subject: [unfinished?.verb, Self.statusFailureTitle].compactMap(\.self).joined(separator: " · "),
+                    lanes: workingTreeLine?.row,
+                    isWorkingTree: true,
+                    isWarning: true
+                )
+            }
             var files = uncommittedFiles == 1 ? "1 uncommitted file" : "\(uncommittedFiles.formatted()) uncommitted files"
             if stagedFiles > 0 { files += ", \(stagedFiles.formatted()) staged" }
-            let unfinished = branch.unfinished
             let isWarning = unfinished?.hasConflicts == true
             return CommitRowContent(
                 shortID: "",

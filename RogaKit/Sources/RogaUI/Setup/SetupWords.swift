@@ -93,7 +93,7 @@ enum SetupWords {
 
     static let gitSub = "Roga runs the Git on your Mac, with your own configuration, and needs \(minimumGit) or newer."
 
-    /// The oldest git Roga runs, as people say it: 2.44.
+    /// The oldest git Roga runs, as people say it: 2.45.
     static var minimumGit: String {
         "\(GitVersion.minimumSupported.major).\(GitVersion.minimumSupported.minor)"
     }

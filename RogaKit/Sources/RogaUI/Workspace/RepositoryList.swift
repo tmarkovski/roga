@@ -301,11 +301,16 @@ public final class RepositoryList {
     }
 
     /// Records how many uncommitted files a window found in the worktree it
-    /// shows, which may be newer than what the list last counted.
-    func setUncommittedFiles(_ count: Int, in selection: WorktreeSelection) {
+    /// shows, which may be newer than what the list last counted, or what git
+    /// said when it couldn't list them.
+    func setUncommittedFiles(_ count: Int, failure: String? = nil, in selection: WorktreeSelection) {
         guard let repository = repository(at: selection.repository) else { return }
-        if repository.uncommittedFiles[selection.worktree] != count {
-            repository.uncommittedFiles[selection.worktree] = count
+        let counted = failure == nil ? count : nil
+        if repository.uncommittedFiles[selection.worktree] != counted {
+            repository.uncommittedFiles[selection.worktree] = counted
+        }
+        if repository.statusFailures[selection.worktree] != failure {
+            repository.statusFailures[selection.worktree] = failure
         }
     }
 
@@ -569,8 +574,11 @@ public final class RepositoryList {
     /// Counts the uncommitted files of each of a repository's worktrees, or of
     /// `only` these, one worktree at a time and at utility priority, because
     /// each one looks at every file in the worktree. One that git can't look at
-    /// has no count. The same listing says which of them have conflicts, and the
-    /// files git keeps for a merge or a rebase say whether one stopped partway.
+    /// has no count, and keeps what git said instead, so that it doesn't pass
+    /// for a worktree with nothing to commit. A bare repository has no files,
+    /// so it's left out. The same listing says which of them have conflicts,
+    /// and the files git keeps for a merge or a rebase say whether one stopped
+    /// partway.
     ///
     /// - Parameter change: The change on disk that the counts have to be as new
     ///   as, which lets a window looking at the same worktree share git's work,
@@ -578,24 +586,32 @@ public final class RepositoryList {
     private func countUncommittedFiles(in repository: ListedRepository, session: RepositorySession, only: Set<String>? = nil, asNewAs change: Int? = nil) async {
         // Counting only some of them keeps what it knew about the others.
         var counts = only == nil ? [:] : repository.uncommittedFiles
+        var failures = only == nil ? [:] : repository.statusFailures
         var conflicted = only == nil ? [] : repository.conflictedWorktrees
         var unfinished = only == nil ? [:] : repository.unfinishedWork
         for worktree in repository.worktrees where !worktree.isBare && !worktree.isPrunable && only?.contains(worktree.path) != false {
             counts[worktree.path] = nil
+            failures[worktree.path] = nil
             conflicted.remove(worktree.path)
             unfinished[worktree.path] = nil
-            let status = if let change {
-                try? await session.status(in: worktree.path, isUpkeep: true, asNewAs: change)
-            } else {
-                try? await session.status(in: worktree.path, isUpkeep: true)
+            let status: WorktreeChanges
+            do {
+                status = if let change {
+                    try await session.status(in: worktree.path, isUpkeep: true, asNewAs: change)
+                } else {
+                    try await session.status(in: worktree.path, isUpkeep: true)
+                }
+            } catch {
+                if !Task.isCancelled { failures[worktree.path] = String(describing: error) }
+                continue
             }
-            guard let status else { continue }
             counts[worktree.path] = status.fileCount
             if !status.conflicted.isEmpty { conflicted.insert(worktree.path) }
             let stopped = await session.stoppedWorkFromFiles(in: worktree.path)
             unfinished[worktree.path] = UnfinishedWork(work: stopped, conflicts: status.conflicted.count)
         }
         if counts != repository.uncommittedFiles { repository.uncommittedFiles = counts }
+        if failures != repository.statusFailures { repository.statusFailures = failures }
         if conflicted != repository.conflictedWorktrees { repository.conflictedWorktrees = conflicted }
         if unfinished != repository.unfinishedWork { repository.unfinishedWork = unfinished }
     }
@@ -718,6 +734,9 @@ public final class ListedRepository: Identifiable {
     fileprivate(set) var worktrees: [Worktree] = []
     /// How many files have uncommitted changes in each worktree, by its folder.
     fileprivate(set) var uncommittedFiles: [String: Int] = [:]
+    /// What git said about each worktree whose uncommitted files it couldn't
+    /// list, by its folder. Those worktrees have no count.
+    fileprivate(set) var statusFailures: [String: String] = [:]
     /// The folders of the worktrees that have conflicts.
     fileprivate(set) var conflictedWorktrees: Set<String> = []
     /// What each worktree is stuck partway through, by its folder, for the
@@ -756,7 +775,7 @@ public final class ListedRepository: Identifiable {
     }
 
     /// A repository that isn't in a list, for checking how a sidebar lays out.
-    init(path: String, owners: [String] = [], isExpanded: Bool = false, keptWorktrees: Set<String> = [], state: State = .opening, worktrees: [Worktree] = [], uncommittedFiles: [String: Int] = [:], conflictedWorktrees: Set<String> = [], unfinishedWork: [String: UnfinishedWork] = [:], upstreams: [String: UpstreamCounts] = [:], deletingWorktrees: Set<String> = []) {
+    init(path: String, owners: [String] = [], isExpanded: Bool = false, keptWorktrees: Set<String> = [], state: State = .opening, worktrees: [Worktree] = [], uncommittedFiles: [String: Int] = [:], statusFailures: [String: String] = [:], conflictedWorktrees: Set<String> = [], unfinishedWork: [String: UnfinishedWork] = [:], upstreams: [String: UpstreamCounts] = [:], deletingWorktrees: Set<String> = []) {
         self.path = path
         self.owners = owners
         self.isExpanded = isExpanded
@@ -764,6 +783,7 @@ public final class ListedRepository: Identifiable {
         self.state = state
         self.worktrees = worktrees
         self.uncommittedFiles = uncommittedFiles
+        self.statusFailures = statusFailures
         self.conflictedWorktrees = conflictedWorktrees
         self.unfinishedWork = unfinishedWork
         self.upstreams = upstreams

@@ -89,7 +89,7 @@ private enum Found {
         #expect(choices.map(\.version) == ["2.33.0", "2.54.0", "2.50.1"])
         #expect(choices.map(\.tag) == [.tooOld, .recommended, nil])
         #expect(choices.map(\.canChoose) == [false, true, true])
-        #expect(choices[0].why == "Your terminal runs this one, but 2.44 or later is required.")
+        #expect(choices[0].why == "Your terminal runs this one, but 2.45 or later is required.")
         #expect(choices[1].why == "First compatible Git in PATH.")
         #expect(choices[2].why == "Not in your PATH.")
         #expect(choices[1].spoken == "Xcode 2.54.0, Recommended, /usr/bin/git, First compatible Git in PATH.")
@@ -101,7 +101,7 @@ private enum Found {
         survey.firstInPath = "/usr/bin/git"
         let choices = ProgramChoices.git(survey, chosenPath: nil, current: Found.git, failure: nil, home: Found.home)
         #expect(choices[0].why == "Default in your shell's PATH.")
-        #expect(choices[1].why == "2.44 or later is required.")
+        #expect(choices[1].why == "2.45 or later is required.")
     }
 
     @Test func aGitFromSomewhereElseGoesFirstAndSaysWhetherRogaCanUseIt() {
@@ -417,7 +417,7 @@ struct SetupModelTests {
 
     @Test func withNoGitTheScreenOffersTheToolsOnlyWhenTheyreMissing() {
         let missing = SetupWords.noGit(found: 1, developerToolsMissing: true)
-        #expect(missing.heading == "Roga needs Git 2.44 or newer")
+        #expect(missing.heading == "Roga needs Git 2.45 or newer")
         #expect(missing.sub.contains("The only one found is older than that."))
         #expect(missing.offersTools)
         #expect(missing.say != nil)

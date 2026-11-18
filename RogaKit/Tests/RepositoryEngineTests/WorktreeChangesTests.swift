@@ -333,8 +333,7 @@ struct WorktreeChangesTests {
     /// A clone of a local folder with only commits, like the one for measuring
     /// history, where git status would fetch every tree in HEAD.
     @Test func doesntDownloadAnythingInAPartialClone() async throws {
-        let (server, repository) = try await makeRepository(files: ["a/x/1.txt": "1\n", "a/y/2.txt": "2\n", "b/x/3.txt": "3\n"])
-        guard server.git.installation.version >= GitVersion(major: 2, minor: 45) else { return }
+        let (_, repository) = try await makeRepository(files: ["a/x/1.txt": "1\n", "a/y/2.txt": "2\n", "b/x/3.txt": "3\n"])
         try await runGit("config", "uploadpack.allowFilter", "true", in: repository)
         try await runGit("config", "uploadpack.allowAnySHA1InWant", "true", in: repository)
         let clone = (repository as NSString).deletingLastPathComponent + "/clone"

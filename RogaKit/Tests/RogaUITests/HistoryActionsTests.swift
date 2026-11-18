@@ -436,6 +436,23 @@ struct HistoryActionsTests {
         #expect(try read("README.md", in: work) == "yaga\n")
     }
 
+    /// When git can't list the uncommitted files, here because the index is
+    /// damaged, there may be some, so Hard is in red and says why.
+    @Test func hardIsInRedWhenTheUncommittedFilesCantBeListed() async throws {
+        let work = try await worktree()
+        try Data("garbage".utf8).write(to: URL(filePath: work.path + "/.git/index"))
+        await changedBehindItsBack(work)
+        var pending = try await askToReset(work, to: addTheApp)
+        #expect(pending.filesAreUnknown)
+        #expect(pending.uncommittedFiles == 0)
+        pending.mode = .hard
+        #expect(pending.isDestructive)
+        #expect(work.model.dialog(for: pending).buttons.map(\.kind) == [.secondary, .destructive])
+        #expect(work.model.dialog(for: pending).note?.plain == "The uncommitted files can't be listed, so there may be some.")
+        pending.mode = .keep
+        #expect(!pending.isDestructive)
+    }
+
     @Test func commitsThatWouldBeLostAreListed() async throws {
         let work = try await worktree()
         try write("new\n", to: "README.md", in: work)

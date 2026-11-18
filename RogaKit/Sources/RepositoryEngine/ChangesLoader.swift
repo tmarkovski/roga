@@ -25,8 +25,8 @@ enum ChangesLoader {
     /// sidebar without anyone asking. In a partial clone without its files
     /// checked out, git would otherwise fetch every tree in `HEAD`, one folder
     /// at a time, and Roga would do that just by opening. git fails instead,
-    /// and there's no list of changes. git versions that don't know the
-    /// variable ignore it.
+    /// and there's no list of changes. `GIT_NO_LAZY_FETCH` came in git 2.45,
+    /// which is why that's the oldest git Roga supports (decision 8).
     ///
     /// - Parameter isUpkeep: Whether nobody is waiting for the answer, which
     ///   runs git at utility priority.

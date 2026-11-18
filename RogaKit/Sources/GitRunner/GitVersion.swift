@@ -5,7 +5,7 @@ public struct GitVersion: Comparable, Hashable, Sendable, CustomStringConvertibl
     public var patch: Int
 
     /// The oldest git that Roga supports (decision 8).
-    public static let minimumSupported = GitVersion(major: 2, minor: 44, patch: 0)
+    public static let minimumSupported = GitVersion(major: 2, minor: 45, patch: 0)
 
     public init(major: Int, minor: Int, patch: Int = 0) {
         self.major = major
