@@ -178,7 +178,7 @@ struct AgentInstallationTests {
             "\(shown[1]) stopped by signal 6 before saying its version: Library not loaded: @rpath/libnode.dylib",
             "\(shown[2]) didn't say its version within 5 seconds",
             "\(shown[3]) didn't print a readable version: no version here",
-            "\(shown[4]) is Codex 0.120.0, older than 0.131.0",
+            "\(shown[4]) is Codex 0.120.0, older than 0.137.0",
         ]
         #expect(skipped.map(\.description) == descriptions)
     }
@@ -189,7 +189,7 @@ struct AgentInstallationTests {
             executable: NSHomeDirectory() + "/.local/bin/codex",
             reason: .tooOld(AgentVersion(major: 0, minor: 120, patch: 0))
         )
-        #expect(skipped.description == "~/.local/bin/codex is Codex 0.120.0, older than 0.131.0")
+        #expect(skipped.description == "~/.local/bin/codex is Codex 0.120.0, older than 0.137.0")
         let unstartable = SkippedAgent(kind: .claude, executable: "/opt/claude", reason: .noVersion(status: nil, errorOutput: ""))
         #expect(unstartable.description == "/opt/claude couldn't be started")
     }
@@ -226,7 +226,7 @@ struct AgentInstallationTests {
         #expect(AgentKind.claude.executableName == "claude")
         #expect(AgentKind.codex.executableName == "codex")
         #expect(AgentKind.claude.minimumVersion == AgentVersion(major: 2, minor: 1, patch: 169))
-        #expect(AgentKind.codex.minimumVersion == AgentVersion(major: 0, minor: 131, patch: 0))
+        #expect(AgentKind.codex.minimumVersion == AgentVersion(major: 0, minor: 137, patch: 0))
         #expect(!AgentKind.claude.prefersNewest)
         #expect(AgentKind.codex.prefersNewest)
     }

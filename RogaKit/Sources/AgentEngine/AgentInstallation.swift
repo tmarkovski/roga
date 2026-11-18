@@ -37,12 +37,15 @@ extension AgentKind {
 
     /// The oldest version Roga can use. Claude Code needs 2.1.169 for
     /// `--safe-mode`, which keeps every hook and plugin out of the runs that
-    /// write commit messages. Codex needs 0.131.0, the first that runs a
-    /// plugin's hooks by default and asks people to trust them.
+    /// write commit messages. Codex needs 0.137.0, the first whose
+    /// `plugin list` answers in JSON, which is how Roga asks whether its
+    /// hooks are installed. Codex has run a plugin's hooks by default and
+    /// asked people to trust them since 0.131.0, and everything else Roga
+    /// runs works from there too.
     public var minimumVersion: AgentVersion {
         switch self {
         case .claude: AgentVersion(major: 2, minor: 1, patch: 169)
-        case .codex: AgentVersion(major: 0, minor: 131, patch: 0)
+        case .codex: AgentVersion(major: 0, minor: 137, patch: 0)
         }
     }
 

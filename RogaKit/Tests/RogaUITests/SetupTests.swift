@@ -157,7 +157,7 @@ private enum Found {
         #expect(why(.noVersion(status: .exited(3), errorOutput: "")) == "It stopped before saying its version.")
         #expect(why(.timedOut) == "It didn't say its version within 5 seconds.")
         #expect(why(.timedOut, terminal: true) == "Your terminal runs this one, but it didn't say its version within 5 seconds.")
-        #expect(why(.tooOld(AgentVersion(major: 0, minor: 100))) == "0.131.0 or later is required.")
+        #expect(why(.tooOld(AgentVersion(major: 0, minor: 100))) == "0.137.0 or later is required.")
     }
 
     @Test func anAgentFromSomewhereElseGoesFirst() {
