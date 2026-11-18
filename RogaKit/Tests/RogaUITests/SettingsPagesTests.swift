@@ -119,7 +119,7 @@ struct SettingsPagesTests {
 
     @Test func anAgentRogaCantUseSaysWhyInAmber() {
         let old = SkippedAgent(kind: .codex, executable: NSHomeDirectory() + "/nonexistent/bin/codex", reason: .tooOld(AgentVersion(major: 0, minor: 120, patch: 0)))
-        #expect(AgentSummaries.programLine(.unusable([old])) == ProgramLine(text: "~/nonexistent/bin/codex is Codex 0.120.0, older than 0.131.0.", tone: .warn))
+        #expect(AgentSummaries.programLine(.unusable([old])) == ProgramLine(text: "~/nonexistent/bin/codex is Codex 0.120.0, older than 0.137.0.", tone: .warn))
         #expect(AgentSummaries.programLine(.configuredUnusable(old)).tone == .warn)
         #expect(AgentSummaries.programLine(.configuredMissing("/nonexistent/local/bin/codex")) == ProgramLine(text: "Custom executable not found or cannot be run: /nonexistent/local/bin/codex.", tone: .warn))
     }

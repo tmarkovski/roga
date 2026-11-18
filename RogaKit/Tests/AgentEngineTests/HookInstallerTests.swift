@@ -147,7 +147,8 @@ struct HookInstallerTests {
             ["plugin", "marketplace", "remove", "roga"],
         ])
         #expect(installer.statusCommand(.claude, executable: claude).arguments == ["plugin", "list", "--json"])
-        #expect(installer.statusCommand(.codex, executable: codex).arguments == ["plugin", "list", "--json"])
+        // Only Roga's marketplace, so that Codex doesn't download its remote catalog first.
+        #expect(installer.statusCommand(.codex, executable: codex).arguments == ["plugin", "list", "--json", "--marketplace", "roga"])
 
         let all = installer.installCommands(.claude, executable: claude) + installer.removeCommands(.codex, executable: codex)
         for command in all {

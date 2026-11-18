@@ -54,7 +54,8 @@ struct AgentProviderTests {
         #expect(provider.programs != nil)
         // Both were asked about their plugins, Codex in its own folder.
         let asked = AgentTestSupport.runs(in: log)
-        #expect(asked.filter { $0 == ["plugin", "list", "--json"] }.count == 2)
+        #expect(asked.filter { $0 == ["plugin", "list", "--json"] }.count == 1)
+        #expect(asked.filter { $0 == ["plugin", "list", "--json", "--marketplace", "roga"] }.count == 1)
     }
 
     @Test func anAgentThatIsntThereIsNotFound() async throws {
@@ -492,7 +493,7 @@ struct AgentProviderTests {
         #expect(await AgentTestSupport.eventually { provider.hookStatus[.codex] == .notInstalled })
         let runs = AgentTestSupport.runs(in: log).filter { $0.first == "plugin" }
         #expect(Array(runs.prefix(commands.count)) == commands.map(\.arguments))
-        #expect(runs.dropFirst(commands.count).contains(["plugin", "list", "--json"]))
+        #expect(runs.dropFirst(commands.count).contains(["plugin", "list", "--json", "--marketplace", "roga"]))
     }
 
     @Test func aProgramTheNameWouldntFindShowsItsPath() async throws {

@@ -201,8 +201,20 @@ public struct HookInstaller: Sendable {
     }
 
     /// The command that lists the agent's plugins, which `status` reads.
+    ///
+    /// Codex is asked only about the `roga` marketplace. Listing every
+    /// marketplace includes OpenAI's remote one, and when Codex's copy of
+    /// that catalog is out of date it downloads it again first: 84 MB, which
+    /// took more than a minute, so the check ran out of time on every try.
+    /// With a marketplace named, Codex lists it from its configuration and
+    /// downloads nothing. When the marketplace isn't added, the list is empty.
     public func statusCommand(_ kind: AgentKind, executable: String) -> ProgramCommand {
-        asking(kind, executable, ["plugin", "list", "--json"])
+        switch kind {
+        case .claude:
+            asking(kind, executable, ["plugin", "list", "--json"])
+        case .codex:
+            asking(kind, executable, ["plugin", "list", "--json", "--marketplace", HookPlugin.marketplaceName])
+        }
     }
 
     /// The command that lists Claude Code's marketplaces and their folders.
