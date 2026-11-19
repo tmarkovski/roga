@@ -1,9 +1,10 @@
 // Draws a branch graph down the page's left margin, the way the app draws
-// history beside commit subjects. Each section's heading is a commit on main,
-// and each section is something that happens in the repository: agents branch
-// off, one branch is reviewed and merged, an agent resolves a merge, and main
-// runs into the list of promises at the bottom, ending in a hollow ring for
-// what's planned.
+// history beside commit subjects. Main starts with a commit of its own at the
+// top of the first section, and from there each section's heading is a commit
+// on main. Each section is something that happens in the repository: agents
+// branch off, one branch is reviewed and merged, an agent resolves a merge, and
+// main runs into the list of promises at the bottom, ending in a hollow ring
+// for what's planned.
 //
 // Scrolling is time. An invisible tracker sits at a fixed height in the window,
 // and a commit lands when the tracker reaches it: the line from the commit
@@ -33,8 +34,9 @@
   // The app's sizes at 1×, in points.
   const app = { spacing: 12, row: 28, dot: 4, ring: 6, line: 1.5, arrow: 3, flatRun: 0.6 };
   const fadedOpacity = 0.35;
-  // How far down the window the tracker sits.
-  const trackerHeight = 0.6;
+  // How far down the window the tracker sits, a third of the way from 60% to
+  // the bottom.
+  const trackerHeight = 0.73;
   // How long a commit takes to land and to be taken away, in milliseconds. The
   // line runs in over the first part of a landing, and the dot comes in over
   // the last part, a little before the line has quite arrived.
@@ -98,7 +100,7 @@
     return {
       left: promises.querySelector(".wide").getBoundingClientRect().left + scrollX,
       rem: parseFloat(getComputedStyle(document.documentElement).fontSize),
-      agents: { heading: heading(agents) },
+      agents: { top: top(agents.querySelector(".wide")), heading: heading(agents) },
       review: { heading: heading(review), bottom: bottom(review.querySelector("img")) },
       assist: { heading: heading(assist) },
       mac: { heading: heading(mac), bottom: bottom(mac.querySelector(".compare-labels")) },
@@ -234,10 +236,15 @@
     const third = lane(3);
     const next = lane(4);
 
-    // The first heading is the first commit, and three agents branch off while
-    // it's read, each in a worktree of its own.
+    // Main's first commit is alone, at the top of the first section's
+    // content, beside the top of its picture. When the picture goes under the
+    // text, it stays two rows above the heading, so that it doesn't crowd it.
+    // Three agents then branch off while the heading is read, each in a
+    // worktree of its own.
+    const start = Math.min(agents.top, agents.heading - 2 * row);
     const forks = [agents.heading, agents.heading + 2 * row, agents.heading + 4 * row];
-    begin(main, g.col(0), forks[0]);
+    begin(main, g.col(0), start);
+    head(main, start);
     for (const y of forks) head(main, y);
     fork(main, forks[0], reviewed, 1);
     fork(main, forks[1], resolved, 2);

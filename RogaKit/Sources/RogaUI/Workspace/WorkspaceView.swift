@@ -210,6 +210,12 @@ public struct WorkspaceView: View {
     @State private var settingsWindow = UUID()
     /// Settings asked for with no Roga window in front, which a new window shows.
     @Environment(SettingsRequest.self) private var settingsRequest: SettingsRequest?
+    /// Whether the dialog for Report an Issue… shows on this window (decision 94).
+    @State private var showsIssueReport = false
+    /// Report an Issue… chosen with no Roga window in front, which a new window
+    /// shows.
+    @Environment(IssueReportRequest.self) private var issueReportRequest: IssueReportRequest?
+    @Environment(\.openURL) private var openURL
 
     public init(window: Binding<WorkspaceWindow?>) {
         _window = window
@@ -238,6 +244,19 @@ public struct WorkspaceView: View {
             }
         }
         .frame(minWidth: 720, minHeight: 480)
+        // On the window rather than the workspace, so that someone stuck in
+        // setup, such as without a git that works, can report it too.
+        .dialog {
+            guard showsIssueReport else { return nil }
+            return .issueReport(.current(git: gitProvider), open: { openURL($0) }, dismiss: { showsIssueReport = false })
+        }
+        .focusedSceneValue(\.showsIssueReport, $showsIssueReport)
+        .onAppear {
+            if issueReportRequest?.isPending == true {
+                issueReportRequest?.isPending = false
+                showsIssueReport = true
+            }
+        }
         .task(id: Connection(hasGit: gitProvider.git != nil, isSettingUp: setup.isShowing, usesAgents: agents.usesAgents)) {
             guard let git = gitProvider.git else { return }
             // The agents run with git's environment, and the monitor asks
