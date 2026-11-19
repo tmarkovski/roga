@@ -47,6 +47,14 @@
     --agent-light: #e8590c;
     --agent-glow: rgb(232 89 12 / 0.45);
     --agent-light-width: 2.5px;
+    /* The graph's lanes and the current branch, in the app's Monokai colors
+       (decision 27). */
+    --lane-0: #db1c61;
+    --lane-1: #10819e;
+    --lane-2: #608a00;
+    --lane-3: #7240c0;
+    --lane-4: #968505;
+    --current: #547a02;
   }
 
   @media (prefers-color-scheme: dark) {
@@ -66,7 +74,113 @@
       --agent-light: #ffb27d;
       --agent-glow: rgb(255 160 100 / 0.6);
       --agent-light-width: 1.5px;
+      --lane-0: #ff3478;
+      --lane-1: #66d9ef;
+      --lane-2: #a6e22e;
+      --lane-3: #ae81ff;
+      --lane-4: #e6db74;
+      --current: #a6e22e;
     }
+  }
+
+  /* The graph down the left margin, which graph.js draws as the page
+     scrolls. The knock is what's behind it, which rings fill with to stop
+     lines at their edge, as the app does. Over the dark band it takes the
+     dark appearance's colors. */
+  .graph {
+    --knock: var(--paper);
+    position: absolute;
+    top: 0;
+    left: 0;
+    overflow: visible;
+    pointer-events: none;
+  }
+
+  .graph-band {
+    --lane-0: #ff3478;
+    --lane-1: #66d9ef;
+    --lane-2: #a6e22e;
+    --lane-3: #ae81ff;
+    --lane-4: #e6db74;
+    --current: #a6e22e;
+    --knock: var(--band);
+  }
+
+  /* A lane fades during the review, as commits the checked-out branch is
+     missing do in the app. It doesn't fade while the page loads or for
+     someone who asked for less motion. */
+  .graph-lane {
+    transition: opacity 0.6s ease;
+  }
+
+  .graph-settling .graph-lane {
+    transition: none;
+  }
+
+  .graph-line {
+    fill: none;
+    stroke: var(--c);
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .graph-dot {
+    fill: var(--c);
+  }
+
+  .graph-hollow {
+    fill: var(--knock);
+    stroke: var(--c);
+  }
+
+  .graph-knock {
+    fill: var(--knock);
+  }
+
+  .graph-head {
+    fill: none;
+    stroke: var(--current);
+  }
+
+  .graph-track {
+    fill: none;
+    stroke: var(--line);
+  }
+
+  .graph-arc {
+    fill: none;
+    stroke: var(--orange);
+    stroke-linecap: round;
+  }
+
+  .graph-agent {
+    fill: none;
+    stroke: var(--agent-outline);
+  }
+
+  .graph-agent-light {
+    fill: none;
+    stroke: var(--agent-light);
+    stroke-linecap: round;
+  }
+
+  /* Where graph.js's tracker is, with ?tracker in the address, for working
+     on the timing. It's white, and the difference blend keeps it showing on
+     the light paper and the dark band alike. */
+  .graph-tracker {
+    position: fixed;
+    left: 0;
+    z-index: 1;
+    height: 1px;
+    background: #fff;
+    mix-blend-mode: difference;
+    pointer-events: none;
+  }
+
+  /* The graph draws the list's line and dots itself, in main's color. */
+  .graph-on .history li::before,
+  .graph-on .history li::after {
+    visibility: hidden;
   }
 
   * {
@@ -999,6 +1113,7 @@
 <script src="/compare.js" defer></script>
 <script src="/copy.js" defer></script>
 <script src="/tabs.js" defer></script>
+<script src="/graph.js" defer></script>
 </head>
 <body>
 <header class="top">
@@ -1087,7 +1202,7 @@
     </div>
   </section>
 
-  <section class="feature">
+  <section class="feature" data-graph="agents">
     <div class="wide side">
       <div>
         <h2>Track agents across worktrees.</h2>
@@ -1100,7 +1215,7 @@
     </div>
   </section>
 
-  <section class="feature">
+  <section class="feature" data-graph="review">
     <div class="wide">
       <h2>Review a branch in one diff.</h2>
       <p>Compare a branch with its base to review the full change. See its commits, changed files and a combined diff with individual word changes highlighted.</p>
@@ -1111,7 +1226,7 @@
     </div>
   </section>
 
-  <section class="feature">
+  <section class="feature" data-graph="assist">
     <div class="wide">
       <h2>Add intelligence with the tools you already have.</h2>
       <p>Roga works with the Claude Code or Codex you already have installed and signed in, so there’s no new account or API key to set up. You review every result, and suggested commands run only after you approve them.</p>
@@ -1166,7 +1281,7 @@
     </div>
   </section>
 
-  <section class="feature">
+  <section class="feature" data-graph="mac">
     <div class="wide">
       <h2>Built for macOS.</h2>
       <p>Roga is written in Swift, with standard Mac menus, keyboard shortcuts and support for light and dark appearance. Updates are delivered in the app.</p>
@@ -1183,7 +1298,7 @@
     </div>
   </section>
 
-  <section class="band">
+  <section class="band" data-graph="replay">
     <div class="wide">
       <span class="soon">Coming in the next release</span>
       <h2>Git history as a metro map.</h2>
@@ -1195,7 +1310,7 @@
     </div>
   </section>
 
-  <section class="feature">
+  <section class="feature" data-graph="promises">
     <div class="wide">
       <ul class="history">
         <li><strong>Built for large repositories.</strong> Roga loads visible history as needed. In our Linux kernel benchmark, branch checkout took about 0.4 seconds. <a href="https://github.com/tmarkovski/roga/blob/main/docs/performance/2026-11-03-actions-waiting-on-background-work.md">View the measurements.</a></li>
@@ -1208,7 +1323,7 @@
 
   <section class="close">
     <div class="wide">
-      <h2>Download the Roga beta.</h2>
+      <h2>Try Roga on your own repositories.</h2>
       <div class="install">
         <a class="button" href="/download">Download the beta for macOS</a>
         <span class="or">or</span>
