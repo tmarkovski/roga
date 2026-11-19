@@ -1210,7 +1210,14 @@ struct BranchModelTests {
         model.branch.push()
         await model.branch.running?.value
         #expect(model.branch.finished == "Pushed")
+        // So that the house keeps pushing beside the words (decision 93).
+        #expect(model.branch.finishedAction == .pushing)
         #expect(try await git("rev-parse", "main", in: clones.remote) == mine)
+
+        // Words announced by something else aren't the push's, so they don't
+        // keep its house.
+        model.branch.announce("Discarded README.md", undo: nil)
+        #expect(model.branch.finishedAction == nil)
     }
 
     @Test func aRejectedPushFetchesWhichCorrectsTheCounts() async throws {

@@ -1,0 +1,19 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "site",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "--yes",
+        "wrangler@4.157.0",
+        "dev",
+        "--cwd",
+        ".claude/worktrees/landing-page-graph/site",
+        "--port",
+        "8787"
+      ],
+      "port": 8787
+    }
+  ]
+}
