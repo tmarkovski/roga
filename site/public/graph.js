@@ -365,18 +365,17 @@
       }
 
       // The ring of an agent at work (decision 46), on its branch's newest
-      // commit: a gray ring with an orange quarter that turns once a second.
-      // Lines stop at it, as at HEAD's ring. The turning group holds an unseen
-      // circle as big as the ring, so that it turns about the ring's center.
+      // commit: a gray ring with an orange quarter from the top. It stands
+      // still, as the design canvas draws it, rather than turning as in the
+      // sidebar, because a ring turning beside the text would keep catching
+      // the eye of someone reading it. Lines stop at it, as at HEAD's ring.
       if (l.work !== null) {
         const r = g.ring;
         const ring = element("g", { style: "display: none" }, group);
         element("circle", { class: "graph-knock", r }, ring);
         element("circle", { class: "graph-dot", r: g.dot }, ring);
         element("circle", { class: "graph-track", r, "stroke-width": g.line }, ring);
-        const spin = element("g", { class: "graph-spin" }, ring);
-        element("circle", { r, fill: "none" }, spin);
-        element("path", { class: "graph-arc", d: `M0 ${-r}A${r} ${r} 0 0 1 ${r} 0`, "stroke-width": g.line }, spin);
+        element("path", { class: "graph-arc", d: `M0 ${-r}A${r} ${r} 0 0 1 ${r} 0`, "stroke-width": g.line }, ring);
         const commits = l.dots.map((dot) => ({ dot, point: at(dot.y) }));
         parts.agents.push({ lane: l, commits, node: ring, last: "" });
       }

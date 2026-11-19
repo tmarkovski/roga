@@ -117,26 +117,6 @@
     transition: none;
   }
 
-  /* The orange quarter of an agent's ring turns once a second, as in the
-     sidebar (decision 46). */
-  .graph-spin {
-    transform-box: fill-box;
-    transform-origin: center;
-    animation: graph-spin 1s linear infinite;
-  }
-
-  @keyframes graph-spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .graph-spin {
-      animation: none;
-    }
-  }
-
   .graph-line {
     fill: none;
     stroke: var(--c);
