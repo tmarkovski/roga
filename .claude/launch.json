@@ -9,7 +9,7 @@
         "wrangler@4.157.0",
         "dev",
         "--cwd",
-        ".claude/worktrees/landing-page-graph/site",
+        "site",
         "--port",
         "8787"
       ],
