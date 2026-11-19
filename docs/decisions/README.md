@@ -101,3 +101,4 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [91](0091-one-agent-popover-for-every-agent-button.md) | One agent popover for every agent's button | Accepted |
 | [92](0092-say-when-git-cant-list-a-worktrees-uncommitted-files.md) | Say when git can't list a worktree's uncommitted files | Accepted |
 | [93](0093-keep-the-house-going-while-the-title-row-says-pushed-or-pulled.md) | Keep the house going while the title row says Pushed or Pulled | Accepted |
+| [94](0094-report-an-issue-from-the-help-menu-after-a-dialog.md) | Report an issue from the Help menu, after a dialog says what it opens | Accepted |

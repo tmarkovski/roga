@@ -19,6 +19,9 @@ struct RogaApplication: App {
     @State private var setup: SetupModel
     /// Settings asked for with no window open, which the next window shows.
     @State private var settingsRequest = SettingsRequest()
+    /// Report an Issue… chosen with no window open, which the next window
+    /// shows.
+    @State private var issueReportRequest = IssueReportRequest()
     /// The agents' command-line tools, which every window uses, and which
     /// start once git is ready (decision 41).
     @State private var agents = AgentProvider(supportFolder: AgentProvider.standardSupportFolder, helperPath: AgentProvider.bundledHelperPath)
@@ -51,6 +54,7 @@ struct RogaApplication: App {
                 .environment(gitProvider)
                 .environment(repositories)
                 .environment(settingsRequest)
+                .environment(issueReportRequest)
                 .environment(agents)
                 .environment(agentMonitor)
                 .environment(updates)
@@ -66,6 +70,7 @@ struct RogaApplication: App {
             }
             RepositoryCommands(list: repositories, agents: agents)
             SettingsCommands(request: settingsRequest)
+            HelpCommands(request: issueReportRequest)
         }
         #if DEBUG
         // For looking at the house's animations up close. It's listed in the
