@@ -262,9 +262,10 @@ struct BranchMenuItems: View {
 
 /// `↓3` and `↑1`, then what git is doing or just did. A pull or a push goes in
 /// steps: the house zooms in where the counts were, then the words come out
-/// beside it and move what's to their right along. When git is done the counts
-/// come back, the words change to what happened and the house zooms out, and
-/// when those words have had their moment, they close up again. A commit or a
+/// beside it and move what's to their right along. When git is done the words
+/// change to what happened while the house keeps going, and when those words
+/// have had their moment, the house zooms out and the words close up as the
+/// counts come back, all at once (decision 93). A commit or a
 /// discard has no house, so its words open after the counts, which stay, so that
 /// `↑` can push what was just committed while `Committed 9f2c1ab` and its Undo
 /// are still showing (decision 76). A fetch shows nothing here, because the house
@@ -293,7 +294,8 @@ private struct BranchCounts: View {
     private enum Activity: Equatable {
         case idle
         case running(BranchModel.Action)
-        case finished(String)
+        /// The words, and the house of the action they're about, if it had one.
+        case finished(String, house: HouseAnimation?)
     }
 
     let branch: BranchModel
@@ -303,7 +305,7 @@ private struct BranchCounts: View {
 
     private var activity: Activity {
         if let action = branch.action, action != .fetching { .running(action) }
-        else if let finished = branch.finished { .finished(finished) }
+        else if let finished = branch.finished { .finished(finished, house: branch.finishedAction?.houseAnimation) }
         else { .idle }
     }
 
@@ -387,12 +389,16 @@ private struct BranchCounts: View {
                 shown.showsWords = false
                 shown.showsCounts = true
             }
-        case .finished(let words):
+        case .finished(let words, let house):
+            // The house keeps going beside what it did, so that it's still
+            // there to see after a quick push, and the counts wait for it to
+            // go. Words that something else announced take it away, as a
+            // discard does just after a push.
             move(Motion.words) {
-                shown.house = nil
+                shown.house = house
                 shown.words = words
                 shown.showsWords = true
-                shown.showsCounts = true
+                shown.showsCounts = house == nil
             }
         case .running(let action):
             guard let house = action.houseAnimation else {

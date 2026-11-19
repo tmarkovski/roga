@@ -301,6 +301,9 @@ final class BranchModel {
 
     /// What just happened, as in `Pulled`, for a moment.
     private(set) var finished: String?
+    /// The action that `finished` is about, so that its house can keep going
+    /// beside the words, or nil when they were announced rather than run.
+    private(set) var finishedAction: Action?
     /// What takes back what just happened, as for a commit. It's set before `work`
     /// returns, and it goes along with the words.
     var undoFinished: FinishedUndo?
@@ -1219,15 +1222,16 @@ final class BranchModel {
         preview(nil)
         self.action = action
         finished = nil
+        finishedAction = nil
         undoFinished = nil
         let started = ContinuousClock.now
         running = Task {
             do {
                 if let message = try await work() {
-                    // A quick git shouldn't cut the house off partway through.
-                    // Bad news doesn't wait for it.
+                    // A quick git shouldn't change the words before the house
+                    // has played once. Bad news doesn't wait for it.
                     if let action { try? await Task.sleep(until: started + timeToPlayHouse(action), clock: .continuous) }
-                    show(finished: message)
+                    show(finished: message, by: action)
                 }
             } catch {
                 failure = Failure(title: title, error: error, changedNothing: changesNothing)
@@ -1260,13 +1264,15 @@ final class BranchModel {
         show(finished: message, lingers: lingers)
     }
 
-    private func show(finished message: String, lingers: Bool = false) {
+    private func show(finished message: String, by action: Action? = nil, lingers: Bool = false) {
         finished = message
+        finishedAction = action
         finishedNote?.cancel()
         let duration = timeToShowFinished(undoFinished != nil || lingers)
         finishedNote = Task {
             guard (try? await Task.sleep(for: duration)) != nil else { return }
             finished = nil
+            finishedAction = nil
             undoFinished = nil
         }
     }
