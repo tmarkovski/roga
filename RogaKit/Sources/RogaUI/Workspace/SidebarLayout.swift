@@ -56,6 +56,11 @@ struct SidebarArrangement: Equatable {
     var sort = SidebarSort.name
     /// The groups showing only their label.
     var collapsed: Set<SidebarGroup> = []
+    /// Whether each repository's linked worktrees have rows under it. Without
+    /// them, the repository's row stands for all its worktrees, whose tabs are
+    /// along the top of the window (decision 95). The setting starts with them
+    /// hidden, and a list that doesn't say shows them, as before the tabs.
+    var showsWorktrees = true
 
     /// The collapsed groups, from what the setting saves.
     static func collapsed(from saved: String) -> Set<SidebarGroup> {
@@ -73,6 +78,11 @@ enum SidebarSettings {
     static let groupsByOrganization = "sidebarGroupsByOrganization"
     static let sort = "sidebarSort"
     static let collapsedGroups = "sidebarCollapsedGroups"
+    /// Whether the list has rows for linked worktrees (decision 95).
+    static let showsWorktrees = "sidebarShowsWorktrees"
+    /// Where that setting starts: the tabs list the worktrees, so the sidebar
+    /// lists repositories.
+    static let showsWorktreesByDefault = false
 }
 
 /// The repositories with one owner, when there are at least two of them.
@@ -257,9 +267,11 @@ struct SidebarLayout {
     }
 
     /// A collapsed repository shows only its selected worktree and the ones it's
-    /// keeping, and a row for the rest.
+    /// keeping, and a row for the rest. With worktrees hidden, a repository has
+    /// only its own row.
     private func append(_ repository: ListedRepository, title: String? = nil, to items: inout [SidebarItem]) {
         items.append(.repository(repository, title: title ?? repository.name, detail: detail(of: repository)))
+        guard arrangement.showsWorktrees else { return }
         let linked = repository.worktrees.filter { !$0.isMain }
         func isShown(_ worktree: Worktree) -> Bool {
             repository.isExpanded || repository.keptWorktrees.contains(worktree.path) || isSelected(worktree, in: repository)

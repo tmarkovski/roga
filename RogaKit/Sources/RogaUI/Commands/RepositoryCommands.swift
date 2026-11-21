@@ -20,6 +20,7 @@ public struct RepositoryCommands: Commands {
     @AppStorage(RefsPanelSettings.sort) private var refsSort = RefsModel.Sort.name
     @AppStorage(SidebarSettings.groupsByOrganization) private var groupsByOrganization = true
     @AppStorage(SidebarSettings.sort) private var sidebarSort = SidebarSort.name
+    @AppStorage(SidebarSettings.showsWorktrees) private var sidebarShowsWorktrees = SidebarSettings.showsWorktreesByDefault
     @AppStorage(FileListSettings.layout) private var fileLayout = FileLayout.list
     @AppStorage(DiffSettings.layout) private var diffLayout = DiffLayout.hunks
     @Environment(\.openWindow) private var openWindow
@@ -73,6 +74,11 @@ public struct RepositoryCommands: Commands {
     static func worktreeShortcut(_ index: Int) -> KeyboardShortcut? {
         (0..<9).contains(index) ? KeyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command) : nil
     }
+
+    /// Control-Tab and Control-Shift-Tab show the next and the previous tab,
+    /// as they do in a browser (decision 95).
+    static let nextWorktreeShortcut = KeyboardShortcut(.tab, modifiers: .control)
+    static let previousWorktreeShortcut = KeyboardShortcut(.tab, modifiers: [.control, .shift])
 
     /// The shortcuts for a worktree's uncommitted changes (decision 30).
     static let goToChangesShortcut = KeyboardShortcut("u", modifiers: [.shift, .command])
@@ -170,6 +176,7 @@ public struct RepositoryCommands: Commands {
                     Text(sort.title.capitalized).tag(sort)
                 }
             }
+            Toggle("Show Worktrees in Sidebar", isOn: $sidebarShowsWorktrees)
             Button(refsPanelVisibility?.commandTitle ?? "Hide Refs") {
                 refsPanelVisibility?.isWanted.wrappedValue.toggle()
             }
@@ -203,8 +210,8 @@ public struct RepositoryCommands: Commands {
             Divider()
         }
         CommandGroup(before: .toolbar) {
-            // The worktrees of the window's repository, as the title row's menu
-            // lists them, with a checkmark on the one on screen.
+            // The worktrees of the window's repository, in the order of their
+            // tabs, with a checkmark on the one on screen.
             Menu("Show Worktree") {
                 let worktrees = worktreeCommands?.worktrees ?? []
                 ForEach(Array(worktrees.enumerated()), id: \.element.path) { index, worktree in
@@ -212,6 +219,17 @@ public struct RepositoryCommands: Commands {
                         .keyboardShortcut(Self.worktreeShortcut(index))
                         .disabled(!worktree.isEnabled)
                 }
+                Divider()
+                Button("Next Worktree") {
+                    worktreeCommands?.worktree(after: 1)?.show()
+                }
+                .keyboardShortcut(Self.nextWorktreeShortcut)
+                .disabled(worktreeCommands?.worktree(after: 1) == nil)
+                Button("Previous Worktree") {
+                    worktreeCommands?.worktree(after: -1)?.show()
+                }
+                .keyboardShortcut(Self.previousWorktreeShortcut)
+                .disabled(worktreeCommands?.worktree(after: -1) == nil)
             }
             .disabled(worktreeCommands?.worktrees.isEmpty != false)
             // The inline picker brings its own line above it.

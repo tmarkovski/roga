@@ -346,7 +346,7 @@ final class BranchModel {
     /// Whether the popover for a new branch shows.
     var isCreatingBranch = false
     /// Whether that popover starts with In a new worktree checked, as it does
-    /// from the menu bar's New Worktree… while the sidebar is hidden.
+    /// from Create's Worktree… in history.
     var startsInNewWorktree = false
     /// The commit that popover starts the branch from, when someone chose one.
     var newBranchStart: NewRefStart?
@@ -364,15 +364,6 @@ final class BranchModel {
     /// from where the worktree is.
     func startNewBranch() {
         newRefPlace = nil
-        isCreatingBranch = true
-    }
-
-    /// Shows the popover for a new branch under the New Branch button, ready to
-    /// make it in a new worktree.
-    func startNewWorktree() {
-        guard !isBusy else { return }
-        newRefPlace = nil
-        startsInNewWorktree = true
         isCreatingBranch = true
     }
 

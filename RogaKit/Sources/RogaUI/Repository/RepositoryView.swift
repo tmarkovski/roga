@@ -114,7 +114,8 @@ private struct LoadingHistory: View {
 }
 
 /// The list of commits. It has no header, because what it would say is at the
-/// right end of the title row: how many commits there are, and its commands.
+/// right end of the branch's row above it: how many commits there are, and its
+/// commands.
 struct HistoryPanel: View {
     let model: RepositoryModel
     let showWorktree: (String, ObjectID?) -> Void
@@ -137,55 +138,30 @@ struct HistoryPanel: View {
 }
 
 /// A checkout that's taking a while, which says so before the branch's buttons in
-/// the title row, so that its words opening moves nothing to their right.
-struct CheckoutNote: ToolbarContent {
+/// the branch's row, so that its words opening moves nothing to their right.
+struct CheckoutNote: View {
     let model: RepositoryModel
 
-    /// How wide it is, for leaving room for it.
-    static func width(for branch: String) -> Double {
-        let text = "Checking out \(branch)…" as NSString
-        return text.size(withAttributes: [.font: NSFont.systemFont(ofSize: 12)]).width.rounded(.up)
-    }
-
-    var body: some ToolbarContent {
+    var body: some View {
         if let branch = model.slowCheckout {
-            ToolbarItem {
-                Text("Checking out \(branch)…")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            .sharedBackgroundVisibility(.hidden)
+            Text("Checking out \(branch)…")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .fixedSize()
         }
     }
 }
 
-/// History's part of the title row: how many commits it shows, and its commands.
-/// The window declares it, because macOS puts the items of a view inside another
-/// after that view's, and the button for the refs panel has to come last.
-struct HistoryCommands: ToolbarContent {
+/// History's part of the branch's row: how many commits it shows, and its
+/// commands. The number of commits is the first thing to go when the row is
+/// short of room, before the branch's name is cut short.
+struct HistoryCommands: View {
     @Bindable var model: RepositoryModel
-    /// How wide the left part of the title row is, and the middle of the window.
-    let titleRow: TitleRowWidth
-    /// How much of the middle's width the rest of the title row takes.
-    let titleRowTaken: Double
 
-    /// The font of the number of commits.
-    private static let commitCountFont = NSFont.systemFont(ofSize: 12)
-
-    /// Whether the number of commits has room. It's the first thing to go when the
-    /// row is short of room, before the branch's name truncates. The toolbar keeps
-    /// an item's room after what's in it has shrunk, so the item comes and goes,
-    /// by how wide its words are.
-    private func showsCommitCount(_ commits: String) -> Bool {
-        var width = (commits as NSString).size(withAttributes: [.font: Self.commitCountFont]).width.rounded(.up)
-        if let branch = model.slowCheckout { width += CheckoutNote.width(for: branch) + TitleRowWidth.toolbarSpacing }
-        return titleRow.leavesRoom(for: width, besides: titleRowTaken)
-    }
-
-    var body: some ToolbarContent {
-        if model.historyWasSlowToLoad, let explanation = model.slowHistoryExplanation {
-            ToolbarItem {
+    var body: some View {
+        HStack(spacing: 4) {
+            if model.historyWasSlowToLoad, let explanation = model.slowHistoryExplanation {
                 Group {
                     if model.commitGraphState == .updating {
                         Text("Writing commit-graph file…")
@@ -197,43 +173,51 @@ struct HistoryCommands: ToolbarContent {
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+                .fixedSize()
                 .help(explanation)
+                .padding(.trailing, 4)
             }
-            .sharedBackgroundVisibility(.hidden)
-        }
-        if let commits = model.commitCountDescription, showsCommitCount(commits) {
-            // Every commit history shows, from every branch, remote branch and
-            // tag, rather than the branch's, so it goes with history's commands.
-            ToolbarItem {
-                Text(commits)
-                    .font(Font(Self.commitCountFont))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .fixedSize()
-                    .help("History shows \(commits), from every branch, remote branch and tag")
-            }
-            .sharedBackgroundVisibility(.hidden)
-        }
-        ToolbarItem {
-            Menu {
-                Picker("Order", selection: $model.sort) {
-                    Text("Topological order").tag(HistoryOrder.Sort.topological)
-                    Text("Date order").tag(HistoryOrder.Sort.date)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    commitCount
+                    orderMenu
                 }
-                .pickerStyle(.inline)
-            } label: {
-                // The refs panel's icon for sorting, since this orders history
-                // rather than leaving anything out.
-                HoverIcon { Icon.sort.image }
+                orderMenu
             }
-            .menuStyle(.button)
-            .buttonStyle(.plain)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .help("Order of History")
-            .accessibilityLabel("Order of History")
         }
-        .sharedBackgroundVisibility(.hidden)
+    }
+
+    /// Every commit history shows, from every branch, remote branch and tag,
+    /// rather than the branch's, so it goes with history's commands.
+    @ViewBuilder private var commitCount: some View {
+        if let commits = model.commitCountDescription {
+            Text(commits)
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .fixedSize()
+                .help("History shows \(commits), from every branch, remote branch and tag")
+        }
+    }
+
+    private var orderMenu: some View {
+        Menu {
+            Picker("Order", selection: $model.sort) {
+                Text("Topological order").tag(HistoryOrder.Sort.topological)
+                Text("Date order").tag(HistoryOrder.Sort.date)
+            }
+            .pickerStyle(.inline)
+        } label: {
+            // The refs panel's icon for sorting, since this orders history
+            // rather than leaving anything out.
+            HoverIcon { Icon.sort.image }
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Order of History")
+        .accessibilityLabel("Order of History")
     }
 }
 

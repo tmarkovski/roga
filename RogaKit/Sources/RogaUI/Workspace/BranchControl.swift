@@ -5,9 +5,10 @@ import MenuUI
 import RepositoryEngine
 import SwiftUI
 
-/// The branch in the title row, as a chip with a menu, and after it the counts
-/// that pull and push (decision 19). The counts show only when there's something
-/// to do, and the row reads as a sentence: `agents-demo main ↓3 ↑1`.
+/// The branch at the start of the branch's row, under the tabs, as a chip with a
+/// menu, and after it the counts that pull and push (decisions 19 and 95). The
+/// counts show only when there's something to do, and the row reads as a
+/// sentence: `main ↓3 ↑1`.
 struct BranchControl: View {
     let branch: BranchModel
     let worktree: Worktree
@@ -86,8 +87,8 @@ private struct BranchChip: View {
     }
 }
 
-/// Fetch and New Branch, as icons at the right end of the title row, before
-/// history's commands (decision 45). They stay where they are while the branch's
+/// Fetch and New Branch, as icons at the right end of the branch's row, before
+/// history's commands (decisions 45 and 95). They stay where they are while the branch's
 /// name and counts change. The branch's menu has both as well.
 struct BranchButtons: View {
     let branch: BranchModel
@@ -126,12 +127,11 @@ private struct FetchButton: View {
 }
 
 /// Opens the popover for a new branch, which hangs from this button when it's
-/// asked for here, from the branch's menu, with Shift-Command-B, or from New
-/// Worktree… in the menu bar while the sidebar is hidden. Asked for from a row's
-/// menu, such as Create in history or New branch from stash… in the refs panel,
-/// the same popover hangs from that row instead (decision 83), and a new
-/// worktree starts from its row in the sidebar (decision 82). The button shows
-/// all of these, so that they follow the branch's model.
+/// asked for here, from the branch's menu, or with Shift-Command-B. Asked for
+/// from a row's menu, such as Create in history or New branch from stash… in the
+/// refs panel, the same popover hangs from that row instead (decision 83), and a
+/// new worktree starts from its tab or its row in the sidebar (decisions 82 and
+/// 95). The button shows all of these, so that they follow the branch's model.
 private struct NewBranchButton: View {
     @Bindable var branch: BranchModel
     let worktree: Worktree

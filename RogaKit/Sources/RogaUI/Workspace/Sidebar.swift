@@ -38,6 +38,13 @@ struct Sidebar: View {
     /// The groups that are collapsed, one to a line. Like how the list is
     /// grouped and sorted, it's one setting for every window.
     @AppStorage(SidebarSettings.collapsedGroups) private var collapsedGroups = ""
+    /// Whether linked worktrees have rows, which the tabs along the top of the
+    /// window make optional (decision 95). It's one setting for every window too.
+    @AppStorage(SidebarSettings.showsWorktrees) private var showsWorktrees = SidebarSettings.showsWorktreesByDefault
+    /// The worktree this window showed last in each repository, by the
+    /// repository's git directory, which a repository's row goes back to while
+    /// worktrees have no rows of their own.
+    @State private var lastShown: [String: WorktreeSelection] = [:]
     @State private var isAddingRepositories = false
     /// Opens the menu that groups and sorts the list for VoiceOver's press.
     @State private var arrangementOpener = RefMenuOpener()
@@ -97,7 +104,7 @@ struct Sidebar: View {
 
     /// How the list is grouped and sorted, and which groups are collapsed.
     private var arrangement: SidebarArrangement {
-        SidebarArrangement(groupsByOrganization: groupsByOrganization, sort: sort, collapsed: SidebarArrangement.collapsed(from: collapsedGroups))
+        SidebarArrangement(groupsByOrganization: groupsByOrganization, sort: sort, collapsed: SidebarArrangement.collapsed(from: collapsedGroups), showsWorktrees: showsWorktrees)
     }
 
     private func setCollapsed(_ isCollapsed: Bool, _ group: SidebarGroup) {
@@ -107,15 +114,16 @@ struct Sidebar: View {
     }
 
     /// The button at the right of the list's header, with a menu that groups
-    /// and sorts the list, as the View menu does. It's one of Roga's own menus,
-    /// which puts the checkmark at the right of the option that's chosen.
+    /// and sorts the list and shows or hides worktrees, as the View menu does.
+    /// It's one of Roga's own menus, which puts the checkmark at the right of
+    /// the option that's chosen.
     private var arrangementMenu: some View {
         let entries = arrangementEntries
         return HoverIcon(size: 24) { Icon.slidersHorizontal.image }
             .overlay { RefMenuArea(entries: entries, opensOnClick: true, opener: arrangementOpener) }
-            .help("Group and Sort")
+            .help("Group, Sort and Show")
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Group and Sort")
+            .accessibilityLabel("Group, Sort and Show")
             .accessibilityAddTraits(.isButton)
             .accessibilityAction { arrangementOpener.open() }
             .accessibilityActions { refMenuActions(entries) }
@@ -125,8 +133,10 @@ struct Sidebar: View {
         SidebarMenus.arrangement(
             groupsByOrganization: groupsByOrganization,
             sort: sort,
+            showsWorktrees: showsWorktrees,
             setGrouping: { groupsByOrganization = $0 },
-            setSort: { sort = $0 }
+            setSort: { sort = $0 },
+            setShowsWorktrees: { showsWorktrees = $0 }
         )
     }
 
@@ -169,7 +179,10 @@ struct Sidebar: View {
             }
             .focusedValue(\.deleteSelectedWorktree, deleteSelectedWorktree(items: items))
             .onChange(of: arrangement) {
-                if let selection { scroller.scrollTo(selection) }
+                if let selection { scroller.scrollTo(row(showing: selection)) }
+            }
+            .onChange(of: selection, initial: true) { _, selection in
+                if let selection { lastShown[selection.repository] = selection }
             }
             // The menu bar's New Worktree… opens the popover on the selected
             // row, which has to be in view for it to hang from.
@@ -188,8 +201,21 @@ struct Sidebar: View {
             }
         case .repository(let repository, let title, let detail):
             let home = repository.home
-            RepositoryRow(repository: repository, list: list, title: title, detail: detail, isSelected: selection == home, isOpen: newWorktreeRow == home, agents: agents(of: item)) {
-                select(home)
+            // With worktrees hidden, the row stands for every worktree of its
+            // repository: it's selected while the window shows any of them,
+            // and goes back to the one this window showed last.
+            // Its mark is then the most urgent of theirs, so that an agent
+            // waiting in one still shows.
+            let isSelected = showsWorktrees ? selection == home : selection?.repository == repository.path
+            let rowAgents = showsWorktrees ? agents(of: item) : agents(forWorktrees: repository.worktrees.map(\.path))
+            RepositoryRow(repository: repository, list: list, title: title, detail: detail, standsForWorktrees: !showsWorktrees, isSelected: isSelected, isOpen: newWorktreeRow == home, agents: rowAgents) {
+                if showsWorktrees {
+                    select(home)
+                } else if selection?.repository != repository.path {
+                    select(lastShownWorktree(of: home))
+                } else {
+                    isFocused = true
+                }
             } toggle: {
                 isFocused = true
                 list.setExpanded(!repository.isExpanded, repository)
@@ -259,7 +285,27 @@ struct Sidebar: View {
     /// Where a row finds what agents are doing in the worktrees it stands for,
     /// or nil while the marks are turned off.
     func agents(of item: SidebarItem) -> RowAgents? {
-        marks.monitor(monitor).map { RowAgents(monitor: $0, list: list, worktrees: item.markedWorktrees) }
+        agents(forWorktrees: item.markedWorktrees)
+    }
+
+    /// Where a row finds what agents are doing in these worktrees, by their
+    /// folders, or nil while the marks are turned off.
+    private func agents(forWorktrees worktrees: [String]) -> RowAgents? {
+        marks.monitor(monitor).map { RowAgents(monitor: $0, list: list, worktrees: worktrees) }
+    }
+
+    /// The row that shows a worktree: its own, or with worktrees hidden, its
+    /// repository's.
+    private func row(showing selection: WorktreeSelection) -> WorktreeSelection {
+        guard !showsWorktrees, let repository = list.repository(at: selection.repository) else { return selection }
+        return repository.home
+    }
+
+    /// What a repository's row shows while worktrees are hidden: the worktree
+    /// this window showed last in the repository, while it's still there, or
+    /// else the main worktree.
+    private func lastShownWorktree(of home: WorktreeSelection) -> WorktreeSelection {
+        lastShown[home.repository].flatMap { list.resolve($0) } ?? home
     }
 
     private func select(_ row: WorktreeSelection) {
@@ -295,13 +341,15 @@ struct Sidebar: View {
                 }
             }
             let step = key == .downArrow ? 1 : -1
-            let index = (rows.firstIndex { $0 == selection } ?? (step > 0 ? -1 : rows.count)) + step
+            let shownRow = selection.map { row(showing: $0) }
+            let index = (rows.firstIndex { $0 == shownRow } ?? (step > 0 ? -1 : rows.count)) + step
             guard rows.indices.contains(index) else { return .handled }
-            select(rows[index])
+            select(showsWorktrees ? rows[index] : lastShownWorktree(of: rows[index]))
             scroller.scrollTo(rows[index])
             return .handled
         case .leftArrow, .rightArrow:
-            guard let selection, let repository = list.repository(at: selection.repository) else { return .ignored }
+            // With worktrees hidden, there are none to show or hide.
+            guard showsWorktrees, let selection, let repository = list.repository(at: selection.repository) else { return .ignored }
             list.setExpanded(key == .rightArrow, repository)
             return .handled
         default:
@@ -699,11 +747,16 @@ private struct RowMenu: View {
 
 /// A repository's row, which selects its main worktree. The chevron after its
 /// name shows or hides its linked worktrees.
+///
+/// While worktrees have no rows (decision 95), it stands for all of them: it
+/// has no chevron, its count adds up their files, and its mark and second line
+/// are for the most urgent of them.
 private struct RepositoryRow: View {
     let repository: ListedRepository
     let list: RepositoryList
     let title: String
     let detail: String?
+    let standsForWorktrees: Bool
     let isSelected: Bool
     /// Whether its popover for a new worktree is open, which keeps the row's
     /// gray to say where the popover came from, as Add Repositories' row does.
@@ -722,7 +775,7 @@ private struct RepositoryRow: View {
                 FadingText(title)
                     .font(.system(size: 13))
                     .layoutPriority(1)
-                if linkedWorktrees > 0 {
+                if linkedWorktrees > 0, !standsForWorktrees {
                     Button(action: toggle) {
                         Chevron(pointsDown: repository.isExpanded)
                     }
@@ -754,14 +807,14 @@ private struct RepositoryRow: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
         .accessibilityValue(
-            [detail, linkedWorktreesDescription, unfinished?.title, agent?.description, uncommittedFilesDescription(ownUncommittedFiles, hasConflicts: ownHasConflicts), ownStatusFailure?.spoken, linkedWorktrees > 0 ? (repository.isExpanded ? "Expanded" : "Collapsed") : nil, problem]
+            [detail, linkedWorktreesDescription, unfinished?.title, agent?.description, uncommittedFilesDescription(ownUncommittedFiles, hasConflicts: ownHasConflicts), ownStatusFailure?.spoken, linkedWorktrees > 0 && !standsForWorktrees ? (repository.isExpanded ? "Expanded" : "Collapsed") : nil, problem]
                 .compactMap(\.self)
                 .joined(separator: ", ")
         )
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction(.default, select)
         .accessibilityActions {
-            if linkedWorktrees > 0 {
+            if linkedWorktrees > 0, !standsForWorktrees {
                 Button(repository.isExpanded ? "Hide Worktrees" : "Show Worktrees", action: toggle)
             }
             refMenuActions(menu)
@@ -773,23 +826,32 @@ private struct RepositoryRow: View {
         repository.worktrees.count { !$0.isMain }
     }
 
-    /// The row counts its own files, and the rows under it count theirs.
+    /// The worktrees the row counts: its own, the main one, while the rows under
+    /// it count theirs, or all of them while there are no rows under it.
+    private var countedWorktrees: [Worktree] {
+        standsForWorktrees ? repository.worktrees : Array(repository.worktrees.prefix(1))
+    }
+
     private var ownUncommittedFiles: Int {
-        guard let main = repository.worktrees.first else { return 0 }
-        return repository.uncommittedFiles[main.path] ?? 0
+        countedWorktrees.reduce(0) { $0 + (repository.uncommittedFiles[$1.path] ?? 0) }
     }
 
     private var ownHasConflicts: Bool {
-        repository.worktrees.first.map { repository.conflictedWorktrees.contains($0.path) } ?? false
+        countedWorktrees.contains { repository.conflictedWorktrees.contains($0.path) }
     }
 
     private var ownStatusFailure: StatusFailureNote? {
-        .worktree(repository.worktrees.first.flatMap { repository.statusFailures[$0.path] })
+        guard standsForWorktrees, repository.worktrees.count > 1 else {
+            return .worktree(repository.worktrees.first.flatMap { repository.statusFailures[$0.path] })
+        }
+        return .hidden(countedWorktrees.count { repository.statusFailures[$0.path] != nil })
     }
 
-    /// What the main worktree stopped partway through, if it did.
+    /// What the main worktree stopped partway through, if it did. While the row
+    /// stands for every worktree, one stopped on conflicts comes first.
     private var unfinished: UnfinishedWork? {
-        repository.worktrees.first.flatMap { repository.unfinishedWork[$0.path] }
+        let stopped = countedWorktrees.compactMap { repository.unfinishedWork[$0.path] }
+        return stopped.first(where: \.hasConflicts) ?? stopped.first
     }
 
     private var linkedWorktreesDescription: String? {

@@ -46,6 +46,25 @@ struct SidebarMenusTests {
         #expect(sorting == [.name])
     }
 
+    @Test func theListsMenuEndsWithWhetherWorktreesShowAndFlipsIt() {
+        var shows: [Bool] = []
+        func entries(_ showsWorktrees: Bool) -> [RefMenu.Entry] {
+            SidebarMenus.arrangement(
+                groupsByOrganization: true,
+                sort: .name,
+                showsWorktrees: showsWorktrees,
+                setGrouping: { _ in },
+                setSort: { _ in },
+                setShowsWorktrees: { shows.append($0) }
+            )
+        }
+        #expect(titles(entries(false)) == ["Group by ▸", "Sort by ▸", "—", "  Show worktrees"])
+        #expect(titles(entries(true)) == ["Group by ▸", "Sort by ▸", "—", "✓ Show worktrees"])
+        if case let .option(_, _, action) = entries(false).last { action() }
+        if case let .option(_, _, action) = entries(true).last { action() }
+        #expect(shows == [true, false])
+    }
+
     private func command(_ title: String, in entries: [RefMenu.Entry]) -> (isEnabled: Bool, action: () -> Void)? {
         for case let .command(found, _, isEnabled, _, action) in entries where found.plain == title {
             return (isEnabled, action)

@@ -370,7 +370,7 @@ struct WorktreeMenuTests {
         #expect(WorktreeMenu.facts(of: repository, shown: main.path, model: nil, agents: nil, in: list).allSatisfy { $0.agent == nil })
     }
 
-    @Test func theChipSaysWhatAgentsAreDoingOnlyWhileTheMarksShow() {
+    @Test func theTabsSayWhatAgentsAreDoingOnlyWhileTheMarksShow() {
         let (defaults, name) = AgentTestSupport.defaults()
         defer { AgentTestSupport.remove(defaults, named: name) }
         let repository = ListedRepository(path: main.path + "/.git", worktrees: [main, fixLogin])
@@ -378,19 +378,28 @@ struct WorktreeMenuTests {
         let monitor = newMonitor()
         monitor.receive(event("UserPromptSubmit", "a", in: fixLogin.path, at: 0))
         func agents() -> [AgentSummary.State?] {
-            let chip = WorktreeChip(
+            let strip = WorktreeTabStrip(
                 repository: repository,
-                worktree: main,
+                shown: main.path,
                 model: nil,
-                actions: actions(),
                 monitor: monitor,
                 list: list,
+                actions: WorktreeTabActions(
+                    show: { _ in },
+                    openInNewWindow: { _ in },
+                    createWorktree: { _, _ in nil },
+                    locate: { _ in },
+                    delete: { _ in },
+                    locateRepository: {},
+                    removeRepository: {}
+                ),
+                newWorktreeFrom: .constant(nil),
                 marks: AgentMarksSetting(store: defaults)
             )
-            return chip.facts.map { $0.agent?.state }
+            return strip.facts.map { $0.agent?.state }
         }
 
-        // The menu says what agents are doing until the person turns agents
+        // The tabs say what agents are doing until the person turns agents
         // off in Settings.
         #expect(agents() == [nil, .working])
         defaults.set(false, forKey: AgentPreferences.usesAgentsKey)
