@@ -171,6 +171,9 @@ public struct WorkspaceView: View {
     /// Whether the window is in full screen, where the title row keeps no room
     /// for the traffic lights, since they slide down with the menu bar.
     @State private var isFullScreen = false
+    /// Where the middle's part of the title row starts, from the window's
+    /// leading edge, which moves as the sidebar shows or hides.
+    @State private var titleRowMinX: CGFloat = 0
     @State private var sidebarLine = SidebarLineHover()
     @State private var showsSettings = false
     /// The sidebar row whose popover for a new worktree is open (decision 82).
@@ -222,9 +225,13 @@ public struct WorkspaceView: View {
             }
         }
         .frame(minWidth: 720, minHeight: 480)
-        // During setup too, so that the traffic lights don't move when it ends.
-        .background {
-            TrafficLightsPlacement(isFullScreen: $isFullScreen)
+        // Roga's own traffic lights, in the title row's middle (decision 96).
+        // Over setup too, so that they don't move when it ends.
+        .overlay(alignment: .topLeading) {
+            TitleRowCorner {
+                TrafficLights(isFullScreen: $isFullScreen)
+                    .padding(.leading, TitleBar.trafficLightsLeading)
+            }
         }
         // On the window rather than the workspace, so that someone stuck in
         // setup, such as without a git that works, can report it too.
@@ -274,15 +281,10 @@ public struct WorkspaceView: View {
     private var workspace: some View {
         NavigationSplitView(columnVisibility: $columns) {
             VStack(spacing: 0) {
-                // The sidebar's part of the title row: the traffic lights, then
-                // the button that hides the sidebar. The middle's row has the
-                // button in the same place while the sidebar is hidden.
-                HStack(spacing: 0) {
-                    SidebarToggle(visibility: $columns)
-                        .padding(.leading, isFullScreen ? TitleBar.trafficLightsLeading : TitleBar.trafficLightsRoom)
-                    Spacer(minLength: 0)
-                }
-                .frame(height: TitleBar.height)
+                // The sidebar's part of the title row, which the traffic
+                // lights and the sidebar's button sit over.
+                Color.clear
+                    .frame(height: TitleBar.height)
                 Sidebar(list: list, monitor: agentMonitor, selection: selection, showsSettings: $showsSettings, locate: locate, newWorktreeRow: $newWorktreeRow, createWorktree: createWorktree)
             }
             .ignoresSafeArea(.container, edges: .top)
@@ -319,6 +321,15 @@ public struct WorkspaceView: View {
             .ignoresSafeArea(.container, edges: .top)
             .background(Palette.surface)
             .onGeometryChange(for: Bool.self) { RefsPanelVisibility.fits(column: $0.size.width) } action: { refsPanelFits = $0 }
+        }
+        // The button that hides the sidebar stays beside the traffic lights,
+        // over both columns, whether the sidebar shows or not, so that it
+        // doesn't move when it's clicked and nothing slides under it.
+        .overlay(alignment: .topLeading) {
+            TitleRowCorner {
+                SidebarToggle(visibility: $columns)
+                    .padding(.leading, TitleBar.sidebarButtonLeading(isFullScreen: isFullScreen))
+            }
         }
         .background {
             PointerTracker { sidebarLine.pointerMoved(toX: $0) }
@@ -540,18 +551,15 @@ public struct WorkspaceView: View {
     /// draws itself (decision 96). It has the shown repository's worktrees as
     /// tabs (decision 95), or the repository's name until it's open and git has
     /// listed them. When there's no room, the tabs get narrower and their names
-    /// fade out at their ends. While the sidebar is hidden, the row starts with
-    /// the traffic lights and the sidebar's button, where the sidebar has them,
-    /// and while the refs panel is hidden, it ends with the panel's button,
-    /// where the panel has it (decision 85).
+    /// fade out at their ends. The tabs keep clear of the traffic lights and
+    /// the sidebar's button, which stay in the window's corner, wherever the
+    /// row is as the sidebar shows or hides. While the refs panel is hidden,
+    /// the row ends with the panel's button, where the panel has it
+    /// (decision 85).
     private var titleRow: some View {
         HStack(spacing: 0) {
-            if columns == .detailOnly {
-                SidebarToggle(visibility: $columns)
-                    .padding(.leading, isFullScreen ? TitleBar.trafficLightsLeading : TitleBar.trafficLightsRoom)
-            }
             tabs
-                .padding(.leading, 8)
+                .padding(.leading, titleRowLeading + 8)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .clipped()
             if !refsPanelVisibility.isShowing {
@@ -566,6 +574,18 @@ public struct WorkspaceView: View {
                 .fill(Palette.separator)
                 .frame(height: 1)
         }
+        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minX } action: { titleRowMinX = $0 }
+    }
+
+    /// How much of the middle's row, from its leading end, the traffic lights
+    /// and the sidebar's button cover. While the sidebar is hidden, the row
+    /// starts at the window's edge, under both. While it shows, they're over
+    /// the sidebar, once the row has moved out from under them: the split
+    /// view moves the row a frame or two after the sidebar is asked to show.
+    private var titleRowLeading: CGFloat {
+        let corner = TitleBar.cornerWidth(isFullScreen: isFullScreen)
+        if columns == .detailOnly { return corner }
+        return max(0, corner - titleRowMinX)
     }
 
     @ViewBuilder private var tabs: some View {
