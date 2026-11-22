@@ -16,17 +16,14 @@ enum Palette {
     /// The fill under a selected row.
     static let selection = Color.primary.opacity(0.11)
     /// The fill under a button while the pointer is over it: an icon, a chip,
-    /// or the button at the end of a row. In the light theme it's 10% black,
-    /// darker than a row's, as in the Claude app, so that a button stands out
-    /// on the row it covers. In the dark theme it's the same as a row's.
-    static let buttonHover = shade(light: 0.10, dark: primaryOpacity * 0.075)
-    /// The fill under a button that's pressed or turned on, a step darker than
-    /// `buttonHover`, as `selection` is than `hover`. In the dark theme it's
-    /// the same as `selection`.
-    static let buttonPressed = shade(light: 0.13, dark: primaryOpacity * 0.11)
-    /// How opaque `Color.primary` is in both themes, since it's
-    /// `NSColor.labelColor`: black or white at 85%.
-    private static let primaryOpacity = 0.847
+    /// or the button at the end of a row. It's stronger than a row's, as in the
+    /// Claude app, so that a button stands out on the row it covers: 10% black
+    /// in the light theme, and 15% white in the dark, where a gray as light as
+    /// a row's hardly shows.
+    static let buttonHover = shade(light: 0.10, dark: 0.15)
+    /// The fill under a button that's pressed or turned on, a step stronger
+    /// than `buttonHover`, as `selection` is than `hover`.
+    static let buttonPressed = shade(light: 0.13, dark: 0.20)
     /// The strongest mark that isn't a color: the main button in a dialog, and a
     /// line that's about to be dragged.
     static let ink = gray(light: 0.102, dark: 0.925)
