@@ -92,7 +92,7 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [82](0082-make-worktrees-from-the-sidebar-where-theyre-listed.md) | Make worktrees from the sidebar, where they're listed | The menu bar's New Worktree… opened on a tab, and the sidebar's worktree rows made a choice, by [95](0095-a-repositorys-worktrees-as-tabs.md) |
 | [83](0083-open-a-new-refs-popover-where-it-was-asked-for.md) | Open a new ref's popover where it was asked for | Accepted |
 | [84](0084-headers-show-no-counts.md) | Headers show no counts | Accepted |
-| [85](0085-keep-the-refs-panels-button-in-the-windows-corner.md) | Keep the refs panel's button in the window's corner | Accepted |
+| [85](0085-keep-the-refs-panels-button-in-the-windows-corner.md) | Keep the refs panel's button in the window's corner | The row it's in drawn by Roga rather than the toolbar in [96](0096-draw-the-title-row-at-44-points.md) |
 | [86](0086-gray-the-words-of-the-uncommitted-row.md) | Gray the words of the uncommitted row | Accepted |
 | [87](0087-sort-refs-from-the-panels-menu.md) | Sort refs from the panel's menu | Accepted |
 | [88](0088-messages-dont-narrate-what-roga-did.md) | Messages don't narrate what Roga did | Accepted |
@@ -102,4 +102,5 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [92](0092-say-when-git-cant-list-a-worktrees-uncommitted-files.md) | Say when git can't list a worktree's uncommitted files | Accepted |
 | [93](0093-keep-the-house-going-while-the-title-row-says-pushed-or-pulled.md) | Keep the house going while the title row says Pushed or Pulled | Accepted |
 | [94](0094-report-an-issue-from-the-help-menu-after-a-dialog.md) | Report an issue from the Help menu, after a dialog says what it opens | Accepted |
-| [95](0095-a-repositorys-worktrees-as-tabs.md) | A repository's worktrees as tabs | Accepted |
+| [95](0095-a-repositorys-worktrees-as-tabs.md) | A repository's worktrees as tabs | Its title row drawn by Roga at 44 points, rather than the toolbar, in [96](0096-draw-the-title-row-at-44-points.md) |
+| [96](0096-draw-the-title-row-at-44-points.md) | Draw the title row ourselves, 44 points tall | Accepted |

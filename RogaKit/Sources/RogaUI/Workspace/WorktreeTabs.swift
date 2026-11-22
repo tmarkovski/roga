@@ -276,9 +276,6 @@ private struct WorktreeTab: View {
     let menu: [RefMenu.Entry]
     let select: () -> Void
     @State private var isHovering = false
-    /// Whether the mouse button is down on the tab, which goes back to false
-    /// when it's let go and when the press is cancelled.
-    @GestureState private var isPressing = false
 
     private static let height: CGFloat = 32
     private static let menuButtonSize: CGFloat = 24
@@ -301,48 +298,46 @@ private struct WorktreeTab: View {
     var body: some View {
         let showsMenu = isHovering && !facts.isDeleting
         let badge = WorktreeTabs.badge(for: facts)
-        HStack(spacing: 6) {
-            TabMark(mark: WorktreeTabs.mark(for: facts))
-            label
-                .opacity(worktree.isPrunable ? 0.6 : 1)
-            ZStack(alignment: .trailing) {
-                Color.clear
-                    .frame(width: Self.menuButtonSize, height: 1)
-                if let badge {
-                    TabBadge(badge: badge)
-                        .opacity(showsMenu ? 0 : 1)
+        // A button, so that a press on it in the title row isn't taken for
+        // the start of moving the window, as one on a view with a gesture is.
+        Button {
+            if canSelect { select() }
+        } label: {
+            HStack(spacing: 6) {
+                TabMark(mark: WorktreeTabs.mark(for: facts))
+                label
+                    .opacity(worktree.isPrunable ? 0.6 : 1)
+                ZStack(alignment: .trailing) {
+                    Color.clear
+                        .frame(width: Self.menuButtonSize, height: 1)
+                    if let badge {
+                        TabBadge(badge: badge)
+                            .opacity(showsMenu ? 0 : 1)
+                    }
+                }
+                .fixedSize()
+            }
+            .padding(.leading, 9)
+            .padding(.trailing, 4)
+            .frame(height: Self.height)
+            .background {
+                shape.fill(isSelected ? Palette.selection : isHovering && canSelect ? Palette.hover : .clear)
+            }
+            .overlay {
+                if isSelected {
+                    shape.strokeBorder(Self.edge)
                 }
             }
-            .fixedSize()
+            .contentShape(shape)
         }
-        .padding(.leading, 9)
-        .padding(.trailing, 4)
-        .frame(height: Self.height)
-        .background {
-            shape.fill(isSelected ? Palette.selection : isHovering && canSelect ? Palette.hover : .clear)
-        }
-        .overlay {
-            if isSelected {
-                shape.strokeBorder(Self.edge)
-            }
-        }
-        .contentShape(shape)
-        // A drag that needs no distance starts when the button goes down,
-        // where a button's action waits for it to come back up.
-        .gesture(
-            DragGesture(minimumDistance: 0)
-                .updating($isPressing) { _, isPressing, _ in isPressing = true }
-        )
-        .onChange(of: isPressing) { _, isPressing in
-            if isPressing && canSelect { select() }
-        }
+        .buttonStyle(SelectsOnPress { if canSelect { select() } })
         .overlay(alignment: .trailing) {
             if showsMenu {
                 TabMenuButton(entries: menu, size: Self.menuButtonSize)
                     .padding(.trailing, 4)
             }
         }
-        .overlay { RefMenuArea(entries: menu, isInToolbar: true) }
+        .overlay { RefMenuArea(entries: menu) }
         .opacity(facts.isDeleting ? 0.5 : 1)
         .onHover { isHovering = $0 }
         .help(help)
@@ -372,6 +367,21 @@ private struct WorktreeTab: View {
     private static func shortestLabelWidth(_ name: String) -> CGFloat {
         let width = (name as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 13)]).width.rounded(.up)
         return min(width, 36)
+    }
+}
+
+/// Runs as the mouse button goes down on the button, where a button's action
+/// waits for it to come back up, and draws the label as it is, with no look of
+/// its own while it's held. The action still runs as the button comes up, and
+/// for the keyboard.
+private struct SelectsOnPress: ButtonStyle {
+    let pressed: () -> Void
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .onChange(of: configuration.isPressed) { _, isPressed in
+                if isPressed { pressed() }
+            }
     }
 }
 

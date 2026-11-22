@@ -31,11 +31,9 @@ struct SetupView: View {
         let steps = setup.steps(found: found)
         let isWelcome = setup.step == .welcome
         GeometryReader { proxy in
-            // The window's title row is empty during setup, and the dots sit
-            // in it. A view with no title row over it, as in a test, keeps
-            // room for one at its top instead.
-            let titleRow = proxy.safeAreaInsets.top
-            let ownRow = titleRow > 0 ? 0 : SetupLayout.titleRow
+            // The window has no title bar over setup (decision 96), so it
+            // keeps room for the title row at its top, and the dots sit in it.
+            let ownRow = SetupLayout.titleRow
             // The floor is at the bottom of the window. A screen that leaves
             // no room for it goes without it, and scrolls if it has to, so
             // the house never stands on a button.
@@ -99,9 +97,10 @@ struct SetupView: View {
                     }
                 }
                 .animation(SetupMotion.step(reducesMotion), value: isWelcome)
-                .offset(y: titleRow > 0 ? -titleRow / 2 - 3 : ownRow / 2 - 3)
+                .offset(y: ownRow / 2 - 3)
             }
         }
+        .ignoresSafeArea(.container, edges: .top)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background {
             SetupColors.surface
@@ -109,18 +108,6 @@ struct SetupView: View {
         }
         .font(.system(size: 13))
         .programMenus(open: openMenu)
-        // The same title row as the app's own window, with nothing in it,
-        // so that the window's buttons stay where they are when setup ends.
-        .toolbar(removing: .title)
-        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
-                Color.clear
-                    .frame(width: 1, height: 1)
-                    .accessibilityHidden(true)
-            }
-            .sharedBackgroundVisibility(.hidden)
-        }
         .navigationTitle("Roga")
         // Settings… does nothing during setup, which sets the same things,
         // rather than opening another window to show Settings on.
@@ -156,9 +143,9 @@ struct SetupView: View {
 enum SetupLayout {
     /// How wide the column is.
     static let column: CGFloat = 620
-    /// How tall the window's title row is on the boards, which a view with
-    /// no title row over it keeps room for.
-    static let titleRow: CGFloat = 52
+    /// How tall the window's title row is, which setup keeps room for at its
+    /// top, with its dots in the row's middle, beside the traffic lights.
+    static let titleRow: CGFloat = TitleBar.height
     /// The room between the title row and where a screen starts.
     static let top: CGFloat = 20
     /// The space between a screen's parts.

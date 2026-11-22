@@ -33,25 +33,6 @@ public struct WorkspaceWindow: Codable, Hashable, Sendable {
     }
 }
 
-/// How wide the tabs in the title row are, and the middle of the window they
-/// sit over. Both change on every frame, the second while a line beside the
-/// middle is dragged, so they're kept here rather than in the window's state,
-/// which would update the whole window each time.
-@MainActor @Observable final class TitleRowWidth {
-    /// How wide it is, once it's been laid out.
-    var shown: Double?
-    /// How wide the middle of the window is, once it's been laid out.
-    var middle: Double?
-    /// About how much space the toolbar keeps between two items.
-    static let toolbarSpacing = 12.0
-
-    /// The most the tabs can take, given how much of the middle's width the
-    /// rest of the row takes, or nil before the window has been laid out.
-    func room(besides taken: Double) -> Double? {
-        middle.map { max(0, $0 - taken) }
-    }
-}
-
 /// Says how far the pointer is from the leading edge of the window, or nil once
 /// it has left. It's an AppKit tracking area behind the window's views rather
 /// than SwiftUI's hover, which hit-tests the views under the pointer again
@@ -187,11 +168,9 @@ public struct WorkspaceView: View {
     /// panel. It's kept rather than the column's width, which changes on every
     /// frame of a drag and would update the whole window each time.
     @State private var refsPanelFits = true
-    @State private var titleRowShown = TitleRowWidth()
-    /// The most the left part of the title row can take, once the window has
-    /// been laid out. It's kept apart from the middle's width, and changes only
-    /// when that changes what the row shows (`updateTitleRowRoom`).
-    @State private var titleRowRoom: Double?
+    /// Whether the window is in full screen, where the title row keeps no room
+    /// for the traffic lights, since they slide down with the menu bar.
+    @State private var isFullScreen = false
     @State private var sidebarLine = SidebarLineHover()
     @State private var showsSettings = false
     /// The sidebar row whose popover for a new worktree is open (decision 82).
@@ -243,6 +222,10 @@ public struct WorkspaceView: View {
             }
         }
         .frame(minWidth: 720, minHeight: 480)
+        // During setup too, so that the traffic lights don't move when it ends.
+        .background {
+            TrafficLightsPlacement(isFullScreen: $isFullScreen)
+        }
         // On the window rather than the workspace, so that someone stuck in
         // setup, such as without a git that works, can report it too.
         .dialog {
@@ -290,26 +273,31 @@ public struct WorkspaceView: View {
     /// The sidebar and the worktree selected in it.
     private var workspace: some View {
         NavigationSplitView(columnVisibility: $columns) {
-            Sidebar(list: list, monitor: agentMonitor, selection: selection, showsSettings: $showsSettings, locate: locate, newWorktreeRow: $newWorktreeRow, createWorktree: createWorktree)
-                .overlay(alignment: .trailing) {
-                    // A line between the sidebar and the worktree, from the
-                    // top of the window to the bottom.
-                    SidebarLine(hover: sidebarLine)
-                        .ignoresSafeArea()
+            VStack(spacing: 0) {
+                // The sidebar's part of the title row: the traffic lights, then
+                // the button that hides the sidebar. The middle's row has the
+                // button in the same place while the sidebar is hidden.
+                HStack(spacing: 0) {
+                    SidebarToggle(visibility: $columns)
+                        .padding(.leading, isFullScreen ? TitleBar.trafficLightsLeading : TitleBar.trafficLightsRoom)
+                    Spacer(minLength: 0)
                 }
-                .onGeometryChange(for: Double.self) { $0.size.width } action: { sidebarLine.sidebarWidth = $0 }
-                .toolbar(removing: .sidebarToggle)
-                .toolbar {
-                    // macOS keeps the sidebar's toolbar items next to the
-                    // traffic lights while the sidebar is hidden.
-                    ToolbarItem {
-                        SidebarToggle(visibility: $columns)
-                    }
-                    .sharedBackgroundVisibility(.hidden)
-                }
-                // It has to come last, or macOS ignores it and opens a new
-                // window with a sidebar 144 points wide.
-                .navigationSplitViewColumnWidth(min: 256, ideal: 312, max: 560)
+                .frame(height: TitleBar.height)
+                Sidebar(list: list, monitor: agentMonitor, selection: selection, showsSettings: $showsSettings, locate: locate, newWorktreeRow: $newWorktreeRow, createWorktree: createWorktree)
+            }
+            .ignoresSafeArea(.container, edges: .top)
+            .overlay(alignment: .trailing) {
+                // A line between the sidebar and the worktree, from the
+                // top of the window to the bottom.
+                SidebarLine(hover: sidebarLine)
+                    .ignoresSafeArea()
+            }
+            .onGeometryChange(for: Double.self) { $0.size.width } action: { sidebarLine.sidebarWidth = $0 }
+            // Or macOS adds a button of its own, and a toolbar to hold it.
+            .toolbar(removing: .sidebarToggle)
+            // It has to come last, or macOS ignores it and opens a new
+            // window with a sidebar 144 points wide.
+            .navigationSplitViewColumnWidth(min: 256, ideal: 312, max: 560)
         } detail: {
             SidePanelColumns(
                 isShown: refsPanelVisibility.isShowing,
@@ -318,43 +306,19 @@ public struct WorkspaceView: View {
                 maximumWidth: RefsPanelVisibility.maximumWidth,
                 minimumMainWidth: RefsPanelVisibility.minimumMiddleWidth
             ) {
-                detail
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .onGeometryChange(for: Double.self) { $0.size.width } action: {
-                        titleRowShown.middle = $0
-                        updateTitleRowRoom()
-                    }
-            } side: { width in
-                refsPanel(width: width)
+                VStack(spacing: 0) {
+                    titleRow
+                    detail
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            } side: { _ in
+                refsPanel
             }
-            // A line at the bottom of the title row, from the sidebar to the
-            // edge of the window, like the one in a panel's header. It replaces
-            // macOS's own, which is thinner and sits under the row.
-            .overlay(alignment: .top) {
-                Rectangle()
-                    .fill(Palette.separator)
-                    .frame(height: 1)
-                    .offset(y: -1)
-                    .allowsHitTesting(false)
-            }
+            // The title row and the refs panel's header go up to the top of
+            // the window, where the traffic lights are.
+            .ignoresSafeArea(.container, edges: .top)
             .background(Palette.surface)
             .onGeometryChange(for: Bool.self) { RefsPanelVisibility.fits(column: $0.size.width) } action: { refsPanelFits = $0 }
-            .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
-            .toolbar(removing: .title)
-            .toolbar {
-                ToolbarItem(placement: .navigation) {
-                    titleRow
-                }
-                .sharedBackgroundVisibility(.hidden)
-                ToolbarSpacer(.flexible)
-                // While the panel shows, the button is the last of its row.
-                if !refsPanelVisibility.isShowing {
-                    ToolbarItem {
-                        RefsPanelToggle(visibility: refsPanelVisibility)
-                    }
-                    .sharedBackgroundVisibility(.hidden)
-                }
-            }
         }
         .background {
             PointerTracker { sidebarLine.pointerMoved(toX: $0) }
@@ -383,9 +347,6 @@ public struct WorkspaceView: View {
         }
         .onChange(of: list.resolve(window?.selection)) { _, resolved in
             if resolved != window?.selection { selection.wrappedValue = resolved }
-        }
-        .onChange(of: titleRowTaken) {
-            updateTitleRowRoom()
         }
         .onChange(of: shown?.0.deletionCount) {
             shownModel?.refsChanged()
@@ -441,15 +402,15 @@ public struct WorkspaceView: View {
     }
 
     /// The refs of the repository whose worktree the window shows.
-    @ViewBuilder private func refsPanel(width: Double) -> some View {
+    @ViewBuilder private var refsPanel: some View {
         if let selected = window?.selection,
            let repository = list.repository(at: selected.repository),
            case .open(let session) = repository.state,
            repository.worktrees.contains(where: { $0.path == selected.worktree }) {
-            RefsPanel(model: model(for: selected, session: session), width: width, visibility: refsPanelVisibility, showWorktree: showWorktree(of: selected, session: session))
+            RefsPanel(model: model(for: selected, session: session), visibility: refsPanelVisibility, showWorktree: showWorktree(of: selected, session: session))
                 .id(selected)
         } else {
-            RefsPanelPlaceholder(width: width, visibility: refsPanelVisibility)
+            RefsPanelPlaceholder(visibility: refsPanelVisibility)
         }
     }
 
@@ -575,11 +536,39 @@ public struct WorkspaceView: View {
         return model(for: selected, session: session)
     }
 
-    /// The shown repository's worktrees as tabs (decision 95), or the
-    /// repository's name until it's open and git has listed them. When there's
-    /// no room, the worktrees' tabs get narrower and their names fade out at
-    /// their ends.
+    /// The middle's part of the row along the top of the window, which Roga
+    /// draws itself (decision 96). It has the shown repository's worktrees as
+    /// tabs (decision 95), or the repository's name until it's open and git has
+    /// listed them. When there's no room, the tabs get narrower and their names
+    /// fade out at their ends. While the sidebar is hidden, the row starts with
+    /// the traffic lights and the sidebar's button, where the sidebar has them,
+    /// and while the refs panel is hidden, it ends with the panel's button,
+    /// where the panel has it (decision 85).
     private var titleRow: some View {
+        HStack(spacing: 0) {
+            if columns == .detailOnly {
+                SidebarToggle(visibility: $columns)
+                    .padding(.leading, isFullScreen ? TitleBar.trafficLightsLeading : TitleBar.trafficLightsRoom)
+            }
+            tabs
+                .padding(.leading, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .clipped()
+            if !refsPanelVisibility.isShowing {
+                RefsPanelToggle(visibility: refsPanelVisibility)
+                    .padding(.leading, 8)
+            }
+        }
+        .padding(.trailing, TitleBar.trailingInset)
+        .frame(height: TitleBar.height)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Palette.separator)
+                .frame(height: 1)
+        }
+    }
+
+    @ViewBuilder private var tabs: some View {
         Group {
             if let selected = window?.selection, let repository = shown?.0, !repository.worktrees.isEmpty {
                 WorktreeTabStrip(
@@ -601,13 +590,6 @@ public struct WorkspaceView: View {
             }
         }
         .lineLimit(1)
-        // Inside the frame, which can be wider than what's in it, so that it's
-        // how wide the row really is.
-        .onGeometryChange(for: Double.self) { $0.size.width } action: {
-            titleRowShown.shown = $0
-            updateTitleRowRoom()
-        }
-        .frame(maxWidth: titleRowRoom ?? .infinity, alignment: .leading)
     }
 
     /// What the tabs of a repository's worktrees do, which is what the rows of
@@ -637,24 +619,6 @@ public struct WorkspaceView: View {
         )
     }
 
-    /// Gives the title row the room it has now, when that changes what it shows.
-    /// While the row has room to spare, before and after, its frame doesn't hold
-    /// it in, so a new room changes nothing, and leaving it alone keeps a drag
-    /// beside the middle from updating the whole window on every frame. Once the
-    /// row is near its room or cut short, the room changes the row, and the whole
-    /// toolbar has to update for macOS to measure the row again, or it keeps the
-    /// row's old width and moves the commands at the other end into a menu.
-    private func updateTitleRowRoom() {
-        guard let room = titleRowShown.room(besides: titleRowTaken) else { return }
-        let toSpare = (titleRowShown.shown ?? 0) + Self.titleRowRoomToSpare
-        if let current = titleRowRoom, current >= toSpare, room >= toSpare { return }
-        if room != titleRowRoom { titleRowRoom = room }
-    }
-
-    /// How much more room than it takes the title row has to have before a
-    /// change of room is left alone.
-    private static let titleRowRoomToSpare = 24.0
-
     /// What the menu bar's worktree commands do for the worktree on screen.
     private func worktreeMenuActions(shown worktree: Worktree, selected: WorktreeSelection, model: RepositoryModel?) -> WorktreeMenu.Actions {
         WorktreeMenu.Actions(
@@ -674,25 +638,6 @@ public struct WorkspaceView: View {
     private var worktreeCommands: WorktreeCommands? {
         guard let selected = window?.selection, let (repository, worktree) = shown, let worktree else { return nil }
         return WorktreeMenu.commands(of: repository, shown: worktree, actions: worktreeMenuActions(shown: worktree, selected: selected, model: shownModel))
-    }
-
-    /// How far apart macOS puts two toolbar items of one button each, measured
-    /// on macOS 27: what the refs panel's button takes from the middle of the
-    /// title row while the panel is hidden.
-    private static let refsPanelButtonPitch = 44.0
-
-    /// How much of the middle's width the rest of the title row takes, which
-    /// leaves the most the tabs can get, because the toolbar moves what doesn't
-    /// fit into a menu.
-    private var titleRowTaken: Double {
-        // The space the toolbar keeps at the row's ends.
-        var taken = 2 * TitleRowWidth.toolbarSpacing
-        // The button for the refs panel, while the panel is hidden. While it
-        // shows, the button is in the panel's own row (decision 85).
-        if !refsPanelVisibility.isShowing { taken += Self.refsPanelButtonPitch }
-        // The window's buttons and the button for the sidebar.
-        if columns == .detailOnly { taken += 140 }
-        return taken
     }
 
     private func open() {

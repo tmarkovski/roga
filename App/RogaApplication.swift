@@ -63,7 +63,8 @@ struct RogaApplication: App {
         // Wide enough for the sidebar, the refs panel and the panels between
         // them.
         .defaultSize(width: 1280, height: 800)
-        .windowToolbarStyle(.unifiedCompact)
+        // Roga draws the row along the top itself (decision 96).
+        .windowStyle(.hiddenTitleBar)
         .commands {
             CommandGroup(after: .appInfo) {
                 CheckForUpdatesButton(updater: sparkle.updater)

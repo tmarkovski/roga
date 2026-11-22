@@ -14,8 +14,6 @@ import SwiftUI
 /// arrow keys itself.
 struct RefsPanel: View {
     let model: RepositoryModel
-    /// How wide the panel is, which its row in the toolbar has to match.
-    let width: Double
     /// Whether the panel shows, for the button at the end of its row and Hide
     /// refs in its menu.
     let visibility: RefsPanelVisibility
@@ -39,21 +37,11 @@ struct RefsPanel: View {
     private var refs: RefsModel { model.refs }
 
     var body: some View {
-        content
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .toolbar {
-                // The panel goes up to the top of the window, and this is what it
-                // has there. A view's items come after those of the views around
-                // it, so this one ends the row, and it's as wide as the panel so
-                // that it starts at the panel's edge. The button that hides the
-                // panel is its last, in the window's corner, where the title row
-                // has it while the panel is hidden (decision 85).
-                ToolbarItem {
-                    commands
-                        .frame(width: RefsPanelVisibility.toolbarItemWidth(panel: width), alignment: .trailing)
-                }
-                .sharedBackgroundVisibility(.hidden)
-            }
+        VStack(spacing: 0) {
+            RefsPanelHeader { commands }
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
             .task(id: model.refsChecks) {
                 await refs.load()
             }
@@ -91,7 +79,6 @@ struct RefsPanel: View {
             .help(refs.isFilterShown ? "Close the Filter" : "Filter Refs (\(RepositoryCommands.filterRefsShortcut.symbols))")
             moreMenu
             RefsPanelToggle(visibility: visibility)
-                .padding(.trailing, RefsPanelVisibility.toggleInset)
         }
     }
 
@@ -568,21 +555,40 @@ private struct RefsNote: View {
 
 /// What the panel shows when the window isn't showing a worktree.
 struct RefsPanelPlaceholder: View {
-    let width: Double
     let visibility: RefsPanelVisibility
 
     var body: some View {
-        RefsNote("Choose a worktree to see its repository's refs.")
-            .toolbar {
-                // Holds the place of the panel's row, with the button that
-                // hides the panel at its end, as the panel has it.
-                ToolbarItem {
-                    RefsPanelToggle(visibility: visibility)
-                        .padding(.trailing, RefsPanelVisibility.toggleInset)
-                        .frame(width: RefsPanelVisibility.toolbarItemWidth(panel: width), alignment: .trailing)
-                }
-                .sharedBackgroundVisibility(.hidden)
+        VStack(spacing: 0) {
+            // The panel's header, with the button that hides the panel at its
+            // end, as the panel has it.
+            RefsPanelHeader {
+                RefsPanelToggle(visibility: visibility)
             }
+            RefsNote("Choose a worktree to see its repository's refs.")
+        }
+    }
+}
+
+/// The panel's row at the top of the window, beside the title row and as tall
+/// (decision 96). Its commands are at its end, and the button that hides the
+/// panel is its last, in the window's corner, where the title row has it while
+/// the panel is hidden (decision 85).
+private struct RefsPanelHeader<Commands: View>: View {
+    @ViewBuilder var commands: Commands
+
+    var body: some View {
+        HStack(spacing: 4) {
+            commands
+        }
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .padding(.leading, 10)
+        .padding(.trailing, TitleBar.trailingInset)
+        .frame(height: TitleBar.height)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Palette.separator)
+                .frame(height: 1)
+        }
     }
 }
 
@@ -922,23 +928,6 @@ struct RefsPanelVisibility {
 
     var isShowing: Bool { isWanted.wrappedValue && fits }
     var commandTitle: String { isShowing ? "Hide Refs" : "Show Refs" }
-
-    /// How much narrower than the panel its row in the toolbar is: the toolbar's
-    /// margin at the edge of the window, measured on macOS 27, and what keeps the
-    /// button before the row off the line between the panel and the middle.
-    static let toolbarMargins = 14.0
-
-    /// How much further from the window's edge macOS puts the button that hides
-    /// the panel than the end of the panel's row, while the panel is hidden and
-    /// the button is a toolbar item of its own, measured on macOS 27. The
-    /// panel's row leaves that much after the button, so that it doesn't move
-    /// when it's clicked (decision 85).
-    static let toggleInset = 4.0
-
-    /// How wide the panel's row in the toolbar is.
-    static func toolbarItemWidth(panel: Double) -> Double {
-        panel - toolbarMargins
-    }
 
     /// Whether the panel fits in the column it shares with the middle of the
     /// window, at its narrowest. The window works it out as it's laid out, away

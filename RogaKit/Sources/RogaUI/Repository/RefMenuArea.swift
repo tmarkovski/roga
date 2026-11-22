@@ -14,9 +14,6 @@ struct RefMenuArea: NSViewRepresentable {
     /// Builds the menu as it opens, in place of `entries`, for a menu that needs
     /// something too slow to find out whenever the row is drawn.
     var entriesOnOpen: (() -> [RefMenu.Entry])?
-    /// Whether it's in the window's toolbar, as a worktree's tab is, where the
-    /// window keeps right-clicks and Control-clicks from it.
-    var isInToolbar = false
 
     func makeNSView(context: Context) -> RefMenuAreaView {
         RefMenuAreaView()
@@ -26,7 +23,6 @@ struct RefMenuArea: NSViewRepresentable {
         view.entries = entries
         view.entriesOnOpen = entriesOnOpen
         view.opensOnClick = opensOnClick
-        view.isInToolbar = isInToolbar
         opener?.view = view
     }
 }
@@ -45,49 +41,6 @@ final class RefMenuAreaView: NSView {
     var entries: [RefMenu.Entry] = []
     var entriesOnOpen: (() -> [RefMenu.Entry])?
     var opensOnClick = false
-    var isInToolbar = false {
-        didSet {
-            if isInToolbar != oldValue { watchContextClicks() }
-        }
-    }
-    private var contextClickMonitor: Any?
-
-    isolated deinit {
-        if let contextClickMonitor { NSEvent.removeMonitor(contextClickMonitor) }
-    }
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        watchContextClicks()
-    }
-
-    /// The window hands a right-click or a Control-click in its toolbar to the
-    /// toolbar, for the toolbar's own menu, even when it lands on a view with a
-    /// menu of its own, so the view never hears of it, and Roga's toolbar has no
-    /// menu. So in the toolbar, the view watches for those clicks itself, before
-    /// the window sees them, and opens its menu for the ones that land on it. It
-    /// can't tell it's in the toolbar from where it is, because in full screen
-    /// the toolbar moves to a window of its own, whose content it's in.
-    private func watchContextClicks() {
-        if let contextClickMonitor { NSEvent.removeMonitor(contextClickMonitor) }
-        contextClickMonitor = nil
-        guard isInToolbar, window != nil else { return }
-        contextClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.rightMouseDown, .leftMouseDown]) { [weak self] event in
-            guard let self, isContextClick(onSelf: event), let menu = menu(for: event) else { return event }
-            NSMenu.popUpContextMenu(menu, with: event, for: self)
-            return nil
-        }
-    }
-
-    /// Whether a click opens a menu rather than pressing what's under it, and
-    /// lands on this view rather than on something over it.
-    private func isContextClick(onSelf event: NSEvent) -> Bool {
-        let opensMenu = event.type == .rightMouseDown
-            || (event.type == .leftMouseDown && event.modifierFlags.contains(.control))
-        guard opensMenu, let window, event.windowNumber == window.windowNumber,
-              let frameView = window.contentView?.superview else { return false }
-        return frameView.hitTest(event.locationInWindow) === self
-    }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard let event = NSApp.currentEvent else { return nil }
