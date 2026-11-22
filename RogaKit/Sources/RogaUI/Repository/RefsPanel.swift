@@ -584,6 +584,9 @@ private struct RefsPanelHeader<Commands: View>: View {
         .padding(.leading, 10)
         .padding(.trailing, TitleBar.trailingInset)
         .frame(height: TitleBar.height)
+        .background {
+            TitleRowDragArea()
+        }
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(Palette.separator)

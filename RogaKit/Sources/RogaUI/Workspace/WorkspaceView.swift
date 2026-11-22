@@ -283,7 +283,7 @@ public struct WorkspaceView: View {
             VStack(spacing: 0) {
                 // The sidebar's part of the title row, which the traffic
                 // lights and the sidebar's button sit over.
-                Color.clear
+                TitleRowDragArea()
                     .frame(height: TitleBar.height)
                 Sidebar(list: list, monitor: agentMonitor, selection: selection, showsSettings: $showsSettings, locate: locate, newWorktreeRow: $newWorktreeRow, createWorktree: createWorktree)
             }
@@ -569,6 +569,9 @@ public struct WorkspaceView: View {
         }
         .padding(.trailing, TitleBar.trailingInset)
         .frame(height: TitleBar.height)
+        .background {
+            TitleRowDragArea()
+        }
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(Palette.separator)

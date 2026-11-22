@@ -82,7 +82,13 @@ struct TrafficLights: NSViewRepresentable {
         /// it answered with them before any of these were in the window. Once
         /// these are, it answers with these, even after they've gone, so
         /// another of these views in the same window finds them here.
-        private static let windowsOwnByWindow = NSMapTable<NSWindow, NSArray>.weakToStrongObjects()
+        fileprivate static let windowsOwnByWindow = NSMapTable<NSWindow, NSArray>.weakToStrongObjects()
+
+        /// The view macOS draws its title bar in, which holds the window's own
+        /// buttons.
+        static func macOSTitleBar(of window: NSWindow) -> NSView? {
+            (windowsOwnByWindow.object(forKey: window) as? [NSButton])?.first?.superview
+        }
 
         var fullScreenChanged: (Bool) -> Void = { _ in }
         private var buttons: [NSButton] = []
@@ -217,6 +223,42 @@ struct TrafficLights: NSViewRepresentable {
         /// answer here, they'd never show them.
         @objc func _mouseInGroup(_ button: NSButton) -> Bool {
             isPointerInside
+        }
+    }
+}
+
+/// Behind the empty parts of the title row, where dragging moves the window,
+/// as on a title bar. macOS's own title bar moves it over the row's top 32
+/// points, its own height, and takes double-clicks there, so this stays out
+/// of its way there. Below that, this moves the window itself. A double-click
+/// there does nothing: macOS recognizes one only as it comes into its title
+/// bar, and only macOS does every one of the choices in System Settings, such
+/// as Fill.
+struct TitleRowDragArea: NSViewRepresentable {
+    func makeNSView(context: Context) -> DragView {
+        DragView()
+    }
+
+    func updateNSView(_ view: DragView, context: Context) {}
+
+    final class DragView: NSView {
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            guard let window, !window.styleMask.contains(.fullScreen) else { return nil }
+            // macOS's title bar, in this window rather than the one it slides
+            // down in during full screen.
+            if let titleBar = TrafficLights.ButtonsView.macOSTitleBar(of: window), titleBar.window === window,
+               let location = superview?.convert(point, to: nil),
+               titleBar.convert(titleBar.bounds, to: nil).contains(location) {
+                return nil
+            }
+            return super.hitTest(point)
+        }
+
+        /// A press on an inactive window moves it, as on its title bar.
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+        override func mouseDown(with event: NSEvent) {
+            window?.performDrag(with: event)
         }
     }
 }
