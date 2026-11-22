@@ -78,6 +78,8 @@ public final class CommitTableController: NSObject, NSTableViewDataSource, NSTab
     /// The report of what the user selected, while it waits for the frame that
     /// shows it to be drawn.
     private var waitingReport: Timer?
+    /// Whether a report is waiting for its frame, which tests read.
+    var isHoldingReport: Bool { waitingReport != nil }
     /// The row that the last press in the window selected, so that the click
     /// doesn't report it again when the button comes up.
     private var rowSelectedByPress: Int?
