@@ -8,11 +8,14 @@ import SwiftUI
 enum TitleBar {
     /// How tall the row is, as tall as a panel's header.
     static let height = PanelSplitLayout.headerHeight
-    /// Where the close button starts, from the window's leading edge.
-    static let trafficLightsLeading: CGFloat = 16
+    /// Where the close button starts, from the window's leading edge, as in
+    /// the Claude app.
+    static let trafficLightsLeading: CGFloat = 17
     /// How much of the row the traffic lights take from its leading edge,
-    /// with the room after them, where the sidebar's button goes.
-    static let trafficLightsRoom: CGFloat = 78
+    /// with the room after them, where the sidebar's button goes. They end 77
+    /// points in, and the Claude app leaves 7 points between them and the fill
+    /// of its sidebar's button.
+    static let trafficLightsRoom: CGFloat = 84
     /// The room at the row's trailing end, after the button that hides the
     /// refs panel, the same in the middle's row and in the panel's header,
     /// so that the button doesn't move when it's clicked (decision 85).
@@ -22,10 +25,12 @@ enum TitleBar {
 /// Puts the window's traffic lights in the middle of the title row, and keeps
 /// them there. macOS places them for a title bar of its own height, and puts
 /// them back as it lays the title bar out again: as the window resizes or
-/// becomes key, and sometimes as one of them is moved. So this watches the
-/// title bar and the buttons, and places them again on the next turn of the
-/// run loop each time one of them moves. In full screen they're in a title bar
-/// that slides down over the window, and they're left alone.
+/// becomes key, as the sidebar shows or hides, and sometimes as one of them is
+/// moved. So this watches the title bar and the buttons, and each time one of
+/// them moves, places them again right away, before the window draws them
+/// where macOS put them, and once more on the next turn of the run loop. In
+/// full screen they're in a title bar that slides down over the window, and
+/// they're left alone.
 ///
 /// It also says whether the window is in full screen, where the row doesn't
 /// keep room for them.
@@ -108,12 +113,23 @@ struct TrafficLightsPlacement: NSViewRepresentable {
                 for view in [titleBar, titleBar.superview].compactMap(\.self) + buttons {
                     view.postsFrameChangedNotifications = true
                     observers.append(center.addObserver(forName: NSView.frameDidChangeNotification, object: view, queue: nil) { [weak self] _ in
-                        MainActor.assumeIsolated { self?.placeAgain() }
+                        MainActor.assumeIsolated { self?.moved() }
                     })
                 }
             }
             fullScreenChanged(window.styleMask.contains(.fullScreen))
             place()
+        }
+
+        /// The title bar or one of the buttons moved, most likely because
+        /// macOS laid the title bar out again. The buttons go back right away,
+        /// in the same pass, or the window draws them where macOS put them
+        /// for a moment first, and again once that pass is over, in case
+        /// macOS moves them later in it.
+        private func moved() {
+            guard !isPlacing else { return }
+            place()
+            placeAgain()
         }
 
         /// Places the buttons again on the next turn of the run loop, once
