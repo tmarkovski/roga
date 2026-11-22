@@ -397,7 +397,7 @@ private struct HoverFill<Label: View>: View {
         label
             .background {
                 RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .fill(isPressed ? Palette.selection : isHovering ? Palette.hover : .clear)
+                    .fill(isPressed ? Palette.buttonPressed : isHovering ? Palette.buttonHover : .clear)
             }
             .contentShape(Rectangle())
             .opacity(isEnabled ? 1 : 0.4)

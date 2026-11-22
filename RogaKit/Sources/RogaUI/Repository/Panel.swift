@@ -10,11 +10,20 @@ import ThemeUI
 enum Palette {
     static let surface = gray(light: 1.0, dark: 0.135)
     static let separator = gray(light: 0.885, dark: 0.225)
-    /// The fill under a row or an icon button while the pointer is over it.
-    /// It darkens whatever is behind it, such as the sidebar's material.
+    /// The fill under a row while the pointer is over it. It darkens whatever
+    /// is behind it, such as the sidebar's material.
     static let hover = Color.primary.opacity(0.075)
     /// The fill under a selected row.
     static let selection = Color.primary.opacity(0.11)
+    /// The fill under a button while the pointer is over it: an icon, a chip,
+    /// or the button at the end of a row. It's stronger than a row's, as in the
+    /// Claude app, so that a button stands out on the row it covers: 10% black
+    /// in the light theme, and 15% white in the dark, where a gray as light as
+    /// a row's hardly shows.
+    static let buttonHover = shade(light: 0.10, dark: 0.15)
+    /// The fill under a button that's pressed or turned on, a step stronger
+    /// than `buttonHover`, as `selection` is than `hover`.
+    static let buttonPressed = shade(light: 0.13, dark: 0.20)
     /// The strongest mark that isn't a color: the main button in a dialog, and a
     /// line that's about to be dragged.
     static let ink = gray(light: 0.102, dark: 0.925)
@@ -57,6 +66,16 @@ enum Palette {
         Color(nsColor: NSColor(name: nil) { appearance in
             let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             return NSColor(white: isDark ? dark : light, alpha: 1)
+        })
+    }
+
+    /// Black at one opacity in the light theme and white at another in the
+    /// dark, so that it darkens or lightens whatever is behind it.
+    static func shade(light: CGFloat, dark: CGFloat) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                ? NSColor(white: 1, alpha: dark)
+                : NSColor(white: 0, alpha: light)
         })
     }
 }
@@ -312,7 +331,7 @@ struct PanelLine: View {
 /// A thin icon that gets a rounded gray square while the pointer is over it,
 /// for the commands in panel headers and the sidebar (docs/main-window.md).
 struct IconButtonStyle: ButtonStyle {
-    var size: CGFloat = 28
+    var size: CGFloat = 32
     /// Whether it stays looking pressed, for as long as what it opened shows.
     var isOn = false
 
@@ -375,7 +394,7 @@ private struct HoverOutline<Label: View>: View {
         if style.isNext {
             return isPressed ? .white.opacity(0.22) : isHovering ? .white.opacity(0.12) : .clear
         }
-        return isPressed ? Palette.selection : isHovering ? Palette.hover : .clear
+        return isPressed ? Palette.buttonPressed : isHovering ? Palette.buttonHover : .clear
     }
 
     var body: some View {
@@ -422,19 +441,19 @@ struct Chevron: View {
 /// Menus use it as their label, because they don't take a button style.
 struct HoverIcon<Icon: View>: View {
     var isPressed = false
-    var size: CGFloat = 28
+    var size: CGFloat = 32
     @ViewBuilder var icon: Icon
     @State private var isHovering = false
     @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
         icon
-            .font(.system(size: size >= 28 ? 14 : 12.5))
+            .font(.system(size: size >= 28 ? 16 : 12.5))
             .foregroundStyle(isHovering || isPressed ? .primary : .secondary)
             .frame(width: size, height: size)
             .background {
                 RoundedRectangle(cornerRadius: size >= 28 ? 8 : 7, style: .continuous)
-                    .fill(isPressed ? Palette.selection : isHovering ? Palette.hover : .clear)
+                    .fill(isPressed ? Palette.buttonPressed : isHovering ? Palette.buttonHover : .clear)
             }
             .contentShape(Rectangle())
             .opacity(isEnabled ? 1 : 0.4)
@@ -496,7 +515,7 @@ struct PanelSearchField: View {
             }
         }
         .padding(.leading, 8)
-        .frame(height: 28)
+        .frame(height: 32)
         .background(Palette.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 8, style: .continuous)

@@ -398,7 +398,7 @@ extension ButtonStyle where Self == OutlinedButtonStyle {
     /// until the pointer is over it, when it gets a gray fill with no outline,
     /// or orange when it's what comes next. One that takes something away is red.
     static func diffHeader(isNext: Bool = false, isDestructive: Bool = false) -> OutlinedButtonStyle {
-        OutlinedButtonStyle(height: 24, cornerRadius: 6, isNext: isNext, isOutlined: false, isDestructive: isDestructive)
+        OutlinedButtonStyle(height: 28, cornerRadius: 7, isNext: isNext, isOutlined: false, isDestructive: isDestructive)
     }
 }
 

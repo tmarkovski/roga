@@ -5,91 +5,7 @@ import IconUI
 import MenuUI
 import SwiftUI
 
-/// The repository's name in the title row, which opens the menu of its
-/// worktrees. Its icon says whether the window shows the main worktree or a
-/// linked one, which nothing else in the title row does.
-struct RepositoryChip: View {
-    let name: String
-    let isMain: Bool
-    let entries: [RefMenu.Entry]
-    @State private var isHovering = false
-    @State private var opener = RefMenuOpener()
-
-    var body: some View {
-        HStack(spacing: 5) {
-            (isMain ? Icon.repository : Icon.worktree).image
-                .foregroundStyle(.secondary)
-            Text(name)
-                .fontWeight(.medium)
-            Icon.dropdown.image
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.secondary)
-        }
-        .font(.system(size: 13))
-        .lineLimit(1)
-        .padding(.leading, 5)
-        .padding(.trailing, 7)
-        .frame(height: 26)
-        .background {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(isHovering ? Palette.hover : .clear)
-        }
-        .contentShape(Rectangle())
-        .onHover { isHovering = $0 }
-        .overlay { RefMenuArea(entries: entries, opensOnClick: true, opener: opener) }
-        .help(description)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Repository \(name)")
-        .accessibilityValue(isMain ? "Main worktree" : "Linked worktree")
-        .accessibilityAddTraits(.isButton)
-        // Pressing it opens the menu, as a click does, and each worktree and
-        // command is an action of its own too.
-        .accessibilityAction { opener.open() }
-        .accessibilityActions { refMenuActions(entries) }
-    }
-
-    private var description: String {
-        isMain ? "The main worktree of \(name)" : "A linked worktree of \(name)"
-    }
-}
-
-/// The chip for the worktree a window shows, with the menu of its repository's
-/// worktrees.
-///
-/// It works the menu out in its own body, which reads what agents are doing,
-/// so that a mark changing redraws the chip rather than the whole window.
-/// While an agent works or waits in one of the worktrees, it also redraws as
-/// that agent reaches another minute, so that the menu says for how long.
-struct WorktreeChip: View {
-    let repository: ListedRepository
-    let worktree: Worktree
-    /// The model of the worktree on screen, once its repository is open.
-    let model: RepositoryModel?
-    let actions: WorktreeMenu.Actions
-    let monitor: AgentMonitor
-    let list: RepositoryList
-    /// Whether the menu says what agents are doing. It follows the sidebar's
-    /// marks, so that turning them off hides agents here too.
-    var marks = AgentMarksSetting()
-
-    var body: some View {
-        let facts = facts
-        TimelineView(WholeMinutes(of: facts.map(\.agent))) { context in
-            RepositoryChip(
-                name: repository.name,
-                isMain: worktree.isMain,
-                entries: WorktreeMenu.entries(for: facts, shown: worktree.path, now: context.date, actions: actions)
-            )
-        }
-    }
-
-    /// What the menu says about each of the repository's worktrees.
-    var facts: [WorktreeFacts] {
-        WorktreeMenu.facts(of: repository, shown: worktree.path, model: model, agents: marks.monitor(monitor), in: list)
-    }
-}
-
-/// What the menu of a repository's worktrees says about one of them.
+/// What a worktree's tab, and its row in a menu of worktrees, say about it.
 struct WorktreeFacts: Equatable {
     var worktree: Worktree
     var uncommittedFiles = 0
@@ -104,8 +20,7 @@ struct WorktreeFacts: Equatable {
 }
 
 /// What the menu bar does with the worktree a window shows, and the other
-/// worktrees in its repository it can switch to, as the menu of them in the
-/// title row does.
+/// worktrees in its repository it can switch to, in the order of their tabs.
 struct WorktreeCommands {
     struct Worktree {
         var path: String
@@ -122,6 +37,16 @@ struct WorktreeCommands {
     /// Each nil while the worktree's folder is missing.
     var reveal: (() -> Void)?
     var openInTerminal: (() -> Void)?
+
+    /// The worktree that many tabs after the one on screen, going around from
+    /// the last to the first, and skipping any that can't be shown, or nil when
+    /// there's no other to go to.
+    func worktree(after step: Int) -> Worktree? {
+        let shown = worktrees.filter { $0.isEnabled || $0.isCurrent }
+        guard shown.count > 1, let current = shown.firstIndex(where: \.isCurrent) else { return nil }
+        let index = ((current + step) % shown.count + shown.count) % shown.count
+        return index == current ? nil : shown[index]
+    }
 }
 
 extension FocusedValues {
@@ -140,11 +65,11 @@ extension RefMenu.Shortcut {
     }
 }
 
-/// The menu that the repository's name in the title row opens. It lists each of
-/// the repository's worktrees on two lines, the main worktree first, for
-/// switching between them. Making, showing and opening a worktree are the
-/// sidebar's, where worktrees are listed and managed (decision 82), and the menu
-/// bar's.
+/// A menu of a repository's worktrees, each on two lines, the main worktree
+/// first, and what the menu bar's worktree commands do. The repository's name
+/// in the title row opened it until the worktrees became tabs (decision 95),
+/// whose tooltips say what its second lines say. Its rows are kept for a menu of
+/// the tabs that don't fit the window, which isn't built yet.
 enum WorktreeMenu {
     /// What the menu and the menu bar do. Only `show` is in the menu, and the
     /// rest are the menu bar's.

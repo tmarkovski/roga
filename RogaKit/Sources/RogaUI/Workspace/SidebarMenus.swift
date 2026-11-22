@@ -36,15 +36,22 @@ enum SidebarMenus {
     }
 
     /// The menu that groups and sorts the list, with what's chosen on each row
-    /// and the choices in a submenu.
+    /// and the choices in a submenu, and then whether the list has rows for
+    /// worktrees, with a checkmark while it does (decision 95).
+    ///
+    /// - Parameters:
+    ///   - showsWorktrees: Whether the list has rows for worktrees, or nil to
+    ///     leave that out of the menu.
     static func arrangement(
         groupsByOrganization: Bool,
         sort: SidebarSort,
+        showsWorktrees: Bool? = nil,
         setGrouping: @escaping (Bool) -> Void,
-        setSort: @escaping (SidebarSort) -> Void
+        setSort: @escaping (SidebarSort) -> Void,
+        setShowsWorktrees: @escaping (Bool) -> Void = { _ in }
     ) -> [RefMenu.Entry] {
         let grouping: [(value: Bool, title: String)] = [(true, "Organization"), (false, "None")]
-        return [
+        var entries: [RefMenu.Entry] = [
             .submenu("Group by", value: grouping.first { $0.value == groupsByOrganization }?.title, entries: grouping.map { option in
                 .option(RefMenu.Title(option.title), isChecked: groupsByOrganization == option.value) { setGrouping(option.value) }
             }),
@@ -52,6 +59,13 @@ enum SidebarMenus {
                 .option(RefMenu.Title(option.title), isChecked: sort == option) { setSort(option) }
             }),
         ]
+        if let showsWorktrees {
+            entries += [
+                .divider,
+                .option("Show worktrees", isChecked: showsWorktrees) { setShowsWorktrees(!showsWorktrees) },
+            ]
+        }
+        return entries
     }
 
     /// A repository's menu.

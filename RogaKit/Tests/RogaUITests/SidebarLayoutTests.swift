@@ -197,6 +197,16 @@ struct SidebarLayoutTests {
 
     // MARK: Worktrees
 
+    /// While the tabs list the worktrees, the sidebar can list only
+    /// repositories (decision 95), however each repository was left.
+    @Test func withWorktreesHiddenEachRepositoryHasOnlyItsOwnRow() {
+        let api = repository("api", owner: "acme", linked: ["a", "b"], isExpanded: true)
+        let web = repository("web", owner: "acme", linked: ["c"], kept: ["c"])
+        let hidden = SidebarArrangement(groupsByOrganization: false, showsWorktrees: false)
+        #expect(rows([api, web], arrangement: hidden, selection: select(api, "b")) == ["api", "web"])
+        #expect(rows([api, web], selection: select(api, "b")) == ["api", "│ a", "└ b", "web", "└ c"])
+    }
+
     @Test func aRepositoryWithoutLinkedWorktreesHasNoRowsUnderIt() {
         #expect(rows([repository("api", owner: "acme", isExpanded: true), repository("web", owner: "acme")]) == ["api", "web"])
     }

@@ -33,34 +33,6 @@ public struct WorkspaceWindow: Codable, Hashable, Sendable {
     }
 }
 
-/// How wide the left part of the title row is, and the middle of the window it
-/// sits over, which only the number of commits at the row's other end reads.
-/// Both change on every frame, the first while words open and close after the
-/// branch, the second while a line beside the middle is dragged, and this way
-/// that redraws history's commands rather than the whole window.
-@MainActor @Observable final class TitleRowWidth {
-    /// How wide it is, once it's been laid out.
-    var shown: Double?
-    /// How wide the middle of the window is, once it's been laid out.
-    var middle: Double?
-    /// About how much space the toolbar keeps between two items.
-    static let toolbarSpacing = 12.0
-
-    /// The most the left part can take, given how much of the middle's width
-    /// the rest of the row takes, or nil before the window has been laid out.
-    func room(besides taken: Double) -> Double? {
-        middle.map { max(0, $0 - taken) }
-    }
-
-    /// Whether something this wide fits beside it, given how much of the
-    /// middle's width the rest of the row takes. Before the window has been laid
-    /// out, everything fits.
-    func leavesRoom(for width: Double, besides taken: Double) -> Bool {
-        guard let available = room(besides: taken), let shown else { return true }
-        return available - shown >= width + Self.toolbarSpacing
-    }
-}
-
 /// Says how far the pointer is from the leading edge of the window, or nil once
 /// it has left. It's an AppKit tracking area behind the window's views rather
 /// than SwiftUI's hover, which hit-tests the views under the pointer again
@@ -196,15 +168,24 @@ public struct WorkspaceView: View {
     /// panel. It's kept rather than the column's width, which changes on every
     /// frame of a drag and would update the whole window each time.
     @State private var refsPanelFits = true
-    @State private var titleRowShown = TitleRowWidth()
-    /// The most the left part of the title row can take, once the window has
-    /// been laid out. It's kept apart from the middle's width, and changes only
-    /// when that changes what the row shows (`updateTitleRowRoom`).
-    @State private var titleRowRoom: Double?
+    /// Whether the window is in full screen, where the title row keeps no room
+    /// for the traffic lights, since they slide down with the menu bar.
+    @State private var isFullScreen = false
+    /// Where the middle's part of the title row starts, from the window's
+    /// leading edge, which moves as the sidebar shows or hides.
+    @State private var titleRowMinX: CGFloat = 0
     @State private var sidebarLine = SidebarLineHover()
     @State private var showsSettings = false
     /// The sidebar row whose popover for a new worktree is open (decision 82).
     @State private var newWorktreeRow: WorktreeSelection?
+    /// The worktree whose popover for a new worktree is open on its tab, or on
+    /// the button after the tabs for the main worktree (decision 95).
+    @State private var newWorktreeTab: WorktreeSelection?
+    /// Deleting a worktree, and finding a worktree's missing folder, from the
+    /// menu of its tab. The sidebar has its own for its rows' menus.
+    @State private var tabDeletions = WorktreeDeletionModel()
+    @State private var tabRepairs = WorktreeRepairModel()
+    @Environment(\.openWindow) private var openWindow
     /// Which window `openSettings` shows Settings on, which keeps it equal from
     /// one update of the window to the next.
     @State private var settingsWindow = UUID()
@@ -244,6 +225,14 @@ public struct WorkspaceView: View {
             }
         }
         .frame(minWidth: 720, minHeight: 480)
+        // Roga's own traffic lights, in the title row's middle (decision 96).
+        // Over setup too, so that they don't move when it ends.
+        .overlay(alignment: .topLeading) {
+            TitleRowCorner {
+                TrafficLights(isFullScreen: $isFullScreen)
+                    .padding(.leading, TitleBar.trafficLightsLeading)
+            }
+        }
         // On the window rather than the workspace, so that someone stuck in
         // setup, such as without a git that works, can report it too.
         .dialog {
@@ -291,26 +280,26 @@ public struct WorkspaceView: View {
     /// The sidebar and the worktree selected in it.
     private var workspace: some View {
         NavigationSplitView(columnVisibility: $columns) {
-            Sidebar(list: list, monitor: agentMonitor, selection: selection, showsSettings: $showsSettings, locate: locate, newWorktreeRow: $newWorktreeRow, createWorktree: createWorktree)
-                .overlay(alignment: .trailing) {
-                    // A line between the sidebar and the worktree, from the
-                    // top of the window to the bottom.
-                    SidebarLine(hover: sidebarLine)
-                        .ignoresSafeArea()
-                }
-                .onGeometryChange(for: Double.self) { $0.size.width } action: { sidebarLine.sidebarWidth = $0 }
-                .toolbar(removing: .sidebarToggle)
-                .toolbar {
-                    // macOS keeps the sidebar's toolbar items next to the
-                    // traffic lights while the sidebar is hidden.
-                    ToolbarItem {
-                        SidebarToggle(visibility: $columns)
-                    }
-                    .sharedBackgroundVisibility(.hidden)
-                }
-                // It has to come last, or macOS ignores it and opens a new
-                // window with a sidebar 144 points wide.
-                .navigationSplitViewColumnWidth(min: 256, ideal: 312, max: 560)
+            VStack(spacing: 0) {
+                // The sidebar's part of the title row, which the traffic
+                // lights and the sidebar's button sit over.
+                TitleRowDragArea()
+                    .frame(height: TitleBar.height)
+                Sidebar(list: list, monitor: agentMonitor, selection: selection, showsSettings: $showsSettings, locate: locate, newWorktreeRow: $newWorktreeRow, createWorktree: createWorktree)
+            }
+            .ignoresSafeArea(.container, edges: .top)
+            .overlay(alignment: .trailing) {
+                // A line between the sidebar and the worktree, from the
+                // top of the window to the bottom.
+                SidebarLine(hover: sidebarLine)
+                    .ignoresSafeArea()
+            }
+            .onGeometryChange(for: Double.self) { $0.size.width } action: { sidebarLine.sidebarWidth = $0 }
+            // Or macOS adds a button of its own, and a toolbar to hold it.
+            .toolbar(removing: .sidebarToggle)
+            // It has to come last, or macOS ignores it and opens a new
+            // window with a sidebar 144 points wide.
+            .navigationSplitViewColumnWidth(min: 256, ideal: 312, max: 560)
         } detail: {
             SidePanelColumns(
                 isShown: refsPanelVisibility.isShowing,
@@ -319,55 +308,34 @@ public struct WorkspaceView: View {
                 maximumWidth: RefsPanelVisibility.maximumWidth,
                 minimumMainWidth: RefsPanelVisibility.minimumMiddleWidth
             ) {
-                detail
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .onGeometryChange(for: Double.self) { $0.size.width } action: {
-                        titleRowShown.middle = $0
-                        updateTitleRowRoom()
-                    }
-            } side: { width in
-                refsPanel(width: width)
+                VStack(spacing: 0) {
+                    titleRow
+                    detail
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            } side: { _ in
+                refsPanel
             }
-            // A line at the bottom of the title row, from the sidebar to the
-            // edge of the window, like the one in a panel's header. It replaces
-            // macOS's own, which is thinner and sits under the row.
-            .overlay(alignment: .top) {
-                Rectangle()
-                    .fill(Palette.separator)
-                    .frame(height: 1)
-                    .offset(y: -1)
-                    .allowsHitTesting(false)
-            }
+            // The title row and the refs panel's header go up to the top of
+            // the window, where the traffic lights are.
+            .ignoresSafeArea(.container, edges: .top)
             .background(Palette.surface)
             .onGeometryChange(for: Bool.self) { RefsPanelVisibility.fits(column: $0.size.width) } action: { refsPanelFits = $0 }
-            .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
-            .toolbar(removing: .title)
-            .toolbar {
-                ToolbarItem(placement: .navigation) {
-                    titleRow
-                }
-                .sharedBackgroundVisibility(.hidden)
-                ToolbarSpacer(.flexible)
-                if let model = shownModel, case .ready = model.phase {
-                    CheckoutNote(model: model)
-                }
-                branchButtons
-                if let model = shownModel, case .ready = model.phase {
-                    HistoryCommands(model: model, titleRow: titleRowShown, titleRowTaken: titleRowTaken)
-                }
-                // While the panel shows, the button is the last of its row.
-                if !refsPanelVisibility.isShowing {
-                    ToolbarItem {
-                        RefsPanelToggle(visibility: refsPanelVisibility)
-                    }
-                    .sharedBackgroundVisibility(.hidden)
-                }
+        }
+        // The button that hides the sidebar stays beside the traffic lights,
+        // over both columns, whether the sidebar shows or not, so that it
+        // doesn't move when it's clicked and nothing slides under it.
+        .overlay(alignment: .topLeading) {
+            TitleRowCorner {
+                SidebarToggle(visibility: $columns)
+                    .padding(.leading, TitleBar.sidebarButtonLeading(isFullScreen: isFullScreen))
             }
         }
         .background {
             PointerTracker { sidebarLine.pointerMoved(toX: $0) }
                 .ignoresSafeArea()
         }
+        .dialog { tabDeletions.dialog ?? tabRepairs.dialog }
         .navigationTitle(title)
         .onAppear {
             // A new window, or one macOS didn't restore, shows the worktree
@@ -390,9 +358,6 @@ public struct WorkspaceView: View {
         }
         .onChange(of: list.resolve(window?.selection)) { _, resolved in
             if resolved != window?.selection { selection.wrappedValue = resolved }
-        }
-        .onChange(of: titleRowTaken) {
-            updateTitleRowRoom()
         }
         .onChange(of: shown?.0.deletionCount) {
             shownModel?.refsChanged()
@@ -448,15 +413,15 @@ public struct WorkspaceView: View {
     }
 
     /// The refs of the repository whose worktree the window shows.
-    @ViewBuilder private func refsPanel(width: Double) -> some View {
+    @ViewBuilder private var refsPanel: some View {
         if let selected = window?.selection,
            let repository = list.repository(at: selected.repository),
            case .open(let session) = repository.state,
            repository.worktrees.contains(where: { $0.path == selected.worktree }) {
-            RefsPanel(model: model(for: selected, session: session), width: width, visibility: refsPanelVisibility, showWorktree: showWorktree(of: selected, session: session))
+            RefsPanel(model: model(for: selected, session: session), visibility: refsPanelVisibility, showWorktree: showWorktree(of: selected, session: session))
                 .id(selected)
         } else {
-            RefsPanelPlaceholder(width: width, visibility: refsPanelVisibility)
+            RefsPanelPlaceholder(visibility: refsPanelVisibility)
         }
     }
 
@@ -541,9 +506,24 @@ public struct WorkspaceView: View {
                 Button("Try Again") { Task { await list.refresh() } }
             }
         case .open(let session):
-            if repository.worktrees.contains(where: { $0.path == selected.worktree }) {
-                RepositoryView(model: model(for: selected, session: session), showWorktree: showWorktree(of: selected, session: session), lowerPanelSize: $lowerPanelSize)
-                    .id(selected)
+            if let worktree = repository.worktrees.first(where: { $0.path == selected.worktree }) {
+                let model = self.model(for: selected, session: session)
+                let showWorktree = self.showWorktree(of: selected, session: session)
+                // The branch's row stays above history while the panels under
+                // it are maximized, as the title row did before it.
+                VStack(spacing: 0) {
+                    BranchBar(
+                        model: model,
+                        worktree: worktree,
+                        switchBranch: refsPanelVisibility.fits ? {
+                            refsPanelVisibility.isWanted.wrappedValue = true
+                            model.refs.showFilter()
+                        } : nil,
+                        showWorktree: showWorktree
+                    )
+                    RepositoryView(model: model, showWorktree: showWorktree, lowerPanelSize: $lowerPanelSize)
+                }
+                .id(selected)
             } else {
                 // The worktree is gone, and resolving the selection moves the
                 // window to the main worktree.
@@ -567,173 +547,120 @@ public struct WorkspaceView: View {
         return model(for: selected, session: session)
     }
 
-    /// What the window shows, on one line like the title of a panel: the
-    /// repository, then the worktree's branch and how far it is from its upstream.
-    /// When there's no room, the number of commits at the other end of the row
-    /// goes first, then the branch's name truncates, down to a few letters, then
-    /// the repository's name does. The counts stay, and so do Fetch and New Branch.
+    /// The middle's part of the row along the top of the window, which Roga
+    /// draws itself (decision 96). It has the shown repository's worktrees as
+    /// tabs (decision 95), or the repository's name until it's open and git has
+    /// listed them. When there's no room, the tabs get narrower and their names
+    /// fade out at their ends. The tabs keep clear of the traffic lights and
+    /// the sidebar's button, which stay in the window's corner, wherever the
+    /// row is as the sidebar shows or hides. While the refs panel is hidden,
+    /// the row ends with the panel's button, where the panel has it
+    /// (decision 85).
     private var titleRow: some View {
-        HStack(spacing: 6) {
-            if let (repository, worktree) = shown, let worktree, let selected = window?.selection {
-                let model = shownModel
-                WorktreeChip(
+        HStack(spacing: 0) {
+            tabs
+                .padding(.leading, titleRowLeading + 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .clipped()
+            if !refsPanelVisibility.isShowing {
+                RefsPanelToggle(visibility: refsPanelVisibility)
+                    .padding(.leading, 8)
+            }
+        }
+        .padding(.trailing, TitleBar.trailingInset)
+        .frame(height: TitleBar.height)
+        .background {
+            TitleRowDragArea()
+        }
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Palette.separator)
+                .frame(height: 1)
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minX } action: { titleRowMinX = $0 }
+    }
+
+    /// How much of the middle's row, from its leading end, the traffic lights
+    /// and the sidebar's button cover. While the sidebar is hidden, the row
+    /// starts at the window's edge, under both. While it shows, they're over
+    /// the sidebar, once the row has moved out from under them: the split
+    /// view moves the row a frame or two after the sidebar is asked to show.
+    private var titleRowLeading: CGFloat {
+        let corner = TitleBar.cornerWidth(isFullScreen: isFullScreen)
+        if columns == .detailOnly { return corner }
+        return max(0, corner - titleRowMinX)
+    }
+
+    @ViewBuilder private var tabs: some View {
+        Group {
+            if let selected = window?.selection, let repository = shown?.0, !repository.worktrees.isEmpty {
+                WorktreeTabStrip(
                     repository: repository,
-                    worktree: worktree,
-                    model: model,
-                    actions: worktreeMenuActions(shown: worktree, selected: selected, model: model),
+                    shown: selected.worktree,
+                    model: shownModel,
                     monitor: agentMonitor,
-                    list: list
+                    list: list,
+                    actions: tabActions(for: repository),
+                    newWorktreeFrom: $newWorktreeTab
                 )
-                // Ahead of the branch, so that its name only truncates once
-                // the branch's is as short as it goes.
-                .layoutPriority(2)
             } else {
                 Text(title)
                     .font(.system(size: 13, weight: .medium))
                     .fixedSize()
                     .help(title)
-                    // In line with the chip's icon, when there is one.
-                    .padding(.leading, 5)
-            }
-            if let (_, worktree) = shown, let worktree {
-                if let selected = window?.selection, let model = shownModel, !worktree.isBare {
-                    BranchControl(
-                        branch: model.branch,
-                        worktree: worktree,
-                        switchBranch: refsPanelVisibility.fits ? {
-                            refsPanelVisibility.isWanted.wrappedValue = true
-                            model.refs.showFilter()
-                        } : nil,
-                        showWorktree: { folder, commit in
-                            if case .open(let session) = shown?.0.state {
-                                showWorktree(of: selected, session: session)(folder, commit)
-                            }
-                        }
-                    )
-                    .layoutPriority(1)
-                } else {
-                    Text(worktree.title)
-                        .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
-                }
+                    // In line with a tab's icon, when there are tabs.
+                    .padding(.leading, 9)
             }
         }
         .lineLimit(1)
-        // The chip's icon is in line with the titles of the panels below it,
-        // and its hover fill reaches out past that.
-        .padding(.leading, 1)
-        // Inside the frame, which can be wider than what's in it, so that it's
-        // how wide the row really is. The number of commits gets what's left.
-        .onGeometryChange(for: Double.self) { $0.size.width } action: {
-            titleRowShown.shown = $0
-            updateTitleRowRoom()
+    }
+
+    /// What the tabs of a repository's worktrees do, which is what the rows of
+    /// the sidebar do for them.
+    private func tabActions(for repository: ListedRepository) -> WorktreeTabActions {
+        func selected(_ folder: String) -> WorktreeSelection {
+            WorktreeSelection(repository: repository.path, worktree: folder)
         }
-        .frame(maxWidth: titleRowRoom ?? .infinity, alignment: .leading)
+        return WorktreeTabActions(
+            show: { folder in
+                selection.wrappedValue = selected(folder)
+            },
+            openInNewWindow: { folder in
+                openWindow(value: WorkspaceWindow(selection: selected(folder)))
+            },
+            createWorktree: { folder, name in
+                await createWorktree(from: selected(folder), named: name)
+            },
+            locate: { worktree in
+                tabRepairs.locate(worktree, in: repository, list: list) { selection.wrappedValue = $0 }
+            },
+            delete: { worktree in
+                tabDeletions.askToDelete(worktree, in: repository, list: list)
+            },
+            locateRepository: { locate(repository) },
+            removeRepository: { list.remove(repository) }
+        )
     }
 
-    /// Gives the title row the room it has now, when that changes what it shows.
-    /// While the row has room to spare, before and after, its frame doesn't hold
-    /// it in, so a new room changes nothing, and leaving it alone keeps a drag
-    /// beside the middle from updating the whole window on every frame. Once the
-    /// row is near its room or cut short, the room changes the row, and the whole
-    /// toolbar has to update for macOS to measure the row again, or it keeps the
-    /// row's old width and moves the commands at the other end into a menu.
-    private func updateTitleRowRoom() {
-        guard let room = titleRowShown.room(besides: titleRowTaken) else { return }
-        let toSpare = (titleRowShown.shown ?? 0) + Self.titleRowRoomToSpare
-        if let current = titleRowRoom, current >= toSpare, room >= toSpare { return }
-        if room != titleRowRoom { titleRowRoom = room }
-    }
-
-    /// How much more room than it takes the title row has to have before a
-    /// change of room is left alone.
-    private static let titleRowRoomToSpare = 24.0
-
-    /// Fetch and New Branch, at the right end of the title row before history's
-    /// commands, for a worktree with a branch to act on.
-    @ToolbarContentBuilder private var branchButtons: some ToolbarContent {
-        if let (_, worktree) = shown, let worktree, !worktree.isBare,
-           let selected = window?.selection, let model = shownModel {
-            ToolbarItem {
-                HStack(spacing: Self.branchButtonsGap) {
-                    BranchButtons(branch: model.branch, worktree: worktree) { folder, commit in
-                        if case .open(let session) = shown?.0.state {
-                            showWorktree(of: selected, session: session)(folder, commit)
-                        }
-                    }
-                    // A line between them and history's commands, which they
-                    // don't act on, once history has loaded and they show.
-                    if model.phase.isReady {
-                        Rectangle()
-                            .fill(Palette.separator)
-                            .frame(width: 1, height: Self.branchButtonsLineHeight)
-                            .padding(.trailing, Self.branchButtonsLineTrailing)
-                            .accessibilityHidden(true)
-                    }
-                }
-            }
-            .sharedBackgroundVisibility(.hidden)
-        }
-    }
-
-    /// What the menu of the shown repository's worktrees does, which the chip
-    /// with its name opens.
+    /// What the menu bar's worktree commands do for the worktree on screen.
     private func worktreeMenuActions(shown worktree: Worktree, selected: WorktreeSelection, model: RepositoryModel?) -> WorktreeMenu.Actions {
         WorktreeMenu.Actions(
             show: { folder in
                 selection.wrappedValue = WorktreeSelection(repository: selected.repository, worktree: folder)
             },
             newWorktree: model.flatMap { model in
-                model.branch.isBusy || worktree.isBare ? nil : { startNewWorktree(from: selected, model: model) }
+                model.branch.isBusy || worktree.isBare ? nil : { startNewWorktree(from: selected) }
             },
             reveal: reveal,
             openInTerminal: openInTerminal
         )
     }
 
-    /// What the menu bar does with the worktree on screen, as the menu of its
-    /// repository's worktrees does.
+    /// What the menu bar does with the worktree on screen, and the other
+    /// worktrees of its repository, in the order of their tabs.
     private var worktreeCommands: WorktreeCommands? {
         guard let selected = window?.selection, let (repository, worktree) = shown, let worktree else { return nil }
         return WorktreeMenu.commands(of: repository, shown: worktree, actions: worktreeMenuActions(shown: worktree, selected: selected, model: shownModel))
-    }
-
-    /// The space between the branch's buttons and the line after them. A button
-    /// is wider than its icon, and the toolbar puts space of its own after the
-    /// line, so with `branchButtonsLineTrailing` the line has about 14 points
-    /// on each side, between New Branch's icon and the number of commits.
-    private static let branchButtonsGap = 6.0
-    /// The space after the line, besides what the toolbar puts there.
-    private static let branchButtonsLineTrailing = 4.0
-    /// How tall the line after the branch's buttons is, about as tall as their
-    /// icons.
-    private static let branchButtonsLineHeight = 16.0
-    /// How far apart macOS puts two toolbar items of one button each, measured
-    /// on macOS 27: what the refs panel's button takes from the middle of the
-    /// title row while the panel is hidden.
-    private static let refsPanelButtonPitch = 44.0
-
-    /// How much of the middle's width the rest of the title row takes, which
-    /// leaves the most the title can get, because the toolbar moves what doesn't
-    /// fit into a menu, starting with the commands after it. The number of
-    /// commits doesn't count, because it goes first, when it doesn't fit what's
-    /// left.
-    private var titleRowTaken: Double {
-        // History's order button and the space the toolbar keeps around it.
-        var taken = 125.0 - Self.refsPanelButtonPitch
-        // The button for the refs panel, while the panel is hidden. While it
-        // shows, the button is in the panel's own row (decision 85).
-        if !refsPanelVisibility.isShowing { taken += Self.refsPanelButtonPitch }
-        // Fetch and New Branch, the line after them, and the toolbar's space
-        // before them.
-        if let (_, worktree) = shown, let worktree, !worktree.isBare, shownModel != nil {
-            taken += 2 * 28 + 2 + Self.branchButtonsGap + 1 + Self.branchButtonsLineTrailing + TitleRowWidth.toolbarSpacing
-        }
-        // The window's buttons and the button for the sidebar.
-        if columns == .detailOnly { taken += 140 }
-        // The note about the commit-graph file.
-        if shownModel?.historyWasSlowToLoad == true { taken += 180 }
-        return taken
     }
 
     private func open() {
@@ -745,15 +672,11 @@ public struct WorkspaceView: View {
     }
 
     /// What the menu bar's New Worktree… does for the worktree on screen: it opens
-    /// the popover on that worktree's row in the sidebar (decision 82). While the
-    /// sidebar is hidden, there's no row to hang it from, so New Branch opens in
-    /// the title row with In a new worktree ticked.
-    private func startNewWorktree(from selected: WorktreeSelection, model: RepositoryModel) {
-        if columns == .detailOnly {
-            model.branch.startNewWorktree()
-        } else {
-            newWorktreeRow = selected
-        }
+    /// the popover on that worktree's tab, or for the main worktree on the button
+    /// after the tabs (decision 95). The tabs show whether or not the sidebar
+    /// does, so there's always somewhere to hang it from.
+    private func startNewWorktree(from selected: WorktreeSelection) {
+        newWorktreeTab = selected
     }
 
     /// Makes a new branch in a new worktree, from the worktree of the sidebar row
@@ -776,6 +699,7 @@ public struct WorkspaceView: View {
             return (error as? GitError)?.message ?? String(describing: error)
         }
         if newWorktreeRow == row { newWorktreeRow = nil }
+        if newWorktreeTab == row { newWorktreeTab = nil }
         // The window can only show a worktree the sidebar knows about.
         await list.refresh(repositoryAt: row.repository)
         model?.refsChanged()

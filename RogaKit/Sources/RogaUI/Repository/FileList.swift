@@ -199,7 +199,7 @@ private struct FileRowButton<Content: View>: View {
                                 .frame(width: 20, height: 20)
                                 .background {
                                     RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                        .fill(Palette.hover)
+                                        .fill(Palette.buttonHover)
                                 }
                                 .contentShape(Rectangle())
                         }
@@ -223,7 +223,7 @@ private struct FileRowButton<Content: View>: View {
                             }
                             .background {
                                 RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                    .fill(Palette.hover)
+                                    .fill(Palette.buttonHover)
                             }
                             .contentShape(Rectangle())
                         }
