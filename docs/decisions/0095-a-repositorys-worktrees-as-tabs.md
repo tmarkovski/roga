@@ -16,7 +16,7 @@ A worktree is a checkout of its own, with its own files, branch and agent, so it
 
 **Each tab says what the sidebar's row said.** A tab has a mark, its name, and one number:
 
-- **The mark** is an agent waiting for you, then conflicts, in red, then an agent at work or one that finished, as the sidebar's marks are. Otherwise it's a lock for a locked worktree, the folder icon on the repository's tab, and a branch icon on the others.
+- **The mark** is an agent waiting for you, then conflicts, in red, then an agent at work or one that finished, as the sidebar's marks are. Otherwise it's a lock for a locked worktree, the folder icon on the repository's tab, and the worktree icon on the others, the one the sidebar's menus use for a worktree.
 - **The name** is the branch's, with the part up to its last slash in gray, as in `agent/` `fix-login`, so that tabs read by what tells them apart. It fades out at its end when the strip is short of room, as names in the sidebar do (decision 51).
 - **The number** is the most pressing of what's waiting: uncommitted files with conflicts in red, a triangle when git can't list them, uncommitted files in orange, then `↓3`, then `↑2`, both in gray, because clicking a tab moves to it rather than pulling or pushing (decision 19).
 - **The tooltip** has the whole name, the shortcut, and what the menu of worktrees used to say on its second line, ending with the folder.

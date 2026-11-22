@@ -174,7 +174,7 @@ enum WorktreeTabs {
         /// The repository's own folder, with nothing else to say.
         case repository
         /// A linked worktree, with nothing else to say.
-        case branch
+        case worktree
     }
 
     /// The one number after a tab's name.
@@ -210,15 +210,16 @@ enum WorktreeTabs {
 
     /// An agent waiting for you comes first, as on a sidebar row's second line,
     /// then conflicts, then an agent at work or one that finished, then what
-    /// stops the worktree being used. Otherwise it's the folder icon on the
-    /// repository's own tab and the branch icon on the others.
+    /// stops the worktree being used. Otherwise it's the repository's icon on
+    /// its own tab and the worktree icon on the others, as in the sidebar's
+    /// menus.
     static func mark(for facts: WorktreeFacts) -> Mark {
         if let agent = facts.agent, case .waiting = agent.state { return .agent(agent.state) }
         if facts.hasConflicts || facts.unfinished?.hasConflicts == true { return .conflicts }
         if let agent = facts.agent { return .agent(agent.state) }
         if facts.worktree.isPrunable { return .folderMissing }
         if facts.worktree.isLocked { return .locked }
-        return facts.worktree.isMain ? .repository : .branch
+        return facts.worktree.isMain ? .repository : .worktree
     }
 
     /// The most pressing of what a worktree has waiting: conflicts, then files
@@ -261,6 +262,10 @@ enum WorktreeTabs {
 /// mark (decision 58), so that nothing moves as the pointer passes. The button
 /// opens the menu of the worktree's row in the sidebar, which a right-click on
 /// the tab opens too.
+///
+/// A tab is shown as soon as the mouse button goes down on it, as a row in a
+/// list is, rather than when it comes back up, and it has no look of its own
+/// while it's held.
 private struct WorktreeTab: View {
     let facts: WorktreeFacts
     /// What the tab says in place of the branch, as the repository's own tab
@@ -271,6 +276,9 @@ private struct WorktreeTab: View {
     let menu: [RefMenu.Entry]
     let select: () -> Void
     @State private var isHovering = false
+    /// Whether the mouse button is down on the tab, which goes back to false
+    /// when it's let go and when the press is cancelled.
+    @GestureState private var isPressing = false
 
     private static let height: CGFloat = 28
     private static let menuButtonSize: CGFloat = 20
@@ -293,37 +301,41 @@ private struct WorktreeTab: View {
     var body: some View {
         let showsMenu = isHovering && !facts.isDeleting
         let badge = WorktreeTabs.badge(for: facts)
-        Button {
-            if canSelect { select() }
-        } label: {
-            HStack(spacing: 6) {
-                TabMark(mark: WorktreeTabs.mark(for: facts))
-                label
-                    .opacity(worktree.isPrunable ? 0.6 : 1)
-                ZStack(alignment: .trailing) {
-                    Color.clear
-                        .frame(width: Self.menuButtonSize, height: 1)
-                    if let badge {
-                        TabBadge(badge: badge)
-                            .opacity(showsMenu ? 0 : 1)
-                    }
-                }
-                .fixedSize()
-            }
-            .padding(.leading, 9)
-            .padding(.trailing, 4)
-            .frame(height: Self.height)
-            .background {
-                shape.fill(isSelected ? Palette.selection : isHovering && canSelect ? Palette.hover : .clear)
-            }
-            .overlay {
-                if isSelected {
-                    shape.strokeBorder(Self.edge)
+        HStack(spacing: 6) {
+            TabMark(mark: WorktreeTabs.mark(for: facts))
+            label
+                .opacity(worktree.isPrunable ? 0.6 : 1)
+            ZStack(alignment: .trailing) {
+                Color.clear
+                    .frame(width: Self.menuButtonSize, height: 1)
+                if let badge {
+                    TabBadge(badge: badge)
+                        .opacity(showsMenu ? 0 : 1)
                 }
             }
-            .contentShape(shape)
+            .fixedSize()
         }
-        .buttonStyle(.plain)
+        .padding(.leading, 9)
+        .padding(.trailing, 4)
+        .frame(height: Self.height)
+        .background {
+            shape.fill(isSelected ? Palette.selection : isHovering && canSelect ? Palette.hover : .clear)
+        }
+        .overlay {
+            if isSelected {
+                shape.strokeBorder(Self.edge)
+            }
+        }
+        .contentShape(shape)
+        // A drag that needs no distance starts when the button goes down,
+        // where a button's action waits for it to come back up.
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .updating($isPressing) { _, isPressing, _ in isPressing = true }
+        )
+        .onChange(of: isPressing) { _, isPressing in
+            if isPressing && canSelect { select() }
+        }
         .overlay(alignment: .trailing) {
             if showsMenu {
                 TabMenuButton(entries: menu, size: Self.menuButtonSize)
@@ -384,8 +396,8 @@ private struct TabMark: View {
             case .repository:
                 Icon.repository.image
                     .foregroundStyle(.secondary)
-            case .branch:
-                Icon.branch.image
+            case .worktree:
+                Icon.worktree.image
                     .foregroundStyle(.secondary)
             }
         }

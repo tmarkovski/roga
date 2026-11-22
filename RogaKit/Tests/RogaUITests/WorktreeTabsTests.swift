@@ -58,9 +58,9 @@ struct WorktreeTabsTests {
         #expect(WorktreeTabs.mark(for: WorktreeFacts(worktree: fixLogin, agent: agent(.finished))) == .agent(.finished))
     }
 
-    @Test func withNothingToSayItsTheFolderOnTheRepositorysTabAndTheBranchOnTheOthers() {
+    @Test func withNothingToSayItsTheRepositoryOnItsOwnTabAndTheWorktreeOnTheOthers() {
         #expect(WorktreeTabs.mark(for: WorktreeFacts(worktree: main)) == .repository)
-        #expect(WorktreeTabs.mark(for: WorktreeFacts(worktree: fixLogin)) == .branch)
+        #expect(WorktreeTabs.mark(for: WorktreeFacts(worktree: fixLogin)) == .worktree)
         var locked = fixLogin
         locked.isLocked = true
         #expect(WorktreeTabs.mark(for: WorktreeFacts(worktree: locked)) == .locked)
