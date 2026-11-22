@@ -24,7 +24,7 @@ struct BranchBar: View {
     private static let lineGap = 6.0
     /// How tall the line after the branch's buttons is, about as tall as their
     /// icons.
-    private static let lineHeight = 16.0
+    private static let lineHeight = 18.0
 
     var body: some View {
         HStack(spacing: 0) {

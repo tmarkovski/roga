@@ -42,6 +42,7 @@ private struct BranchChip: View {
         } label: {
             HStack(spacing: 5) {
                 Icon.branch.image
+                    .font(.system(size: 15))
                     .foregroundStyle(.secondary)
                 if worktree.branch == nil, let head = worktree.head {
                     Text(head.hex.prefix(8))
@@ -64,7 +65,7 @@ private struct BranchChip: View {
             .accessibilityElement(children: .ignore)
             .padding(.leading, 5)
             .padding(.trailing, 7)
-            .frame(height: 26)
+            .frame(height: 30)
             .background {
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .fill(isHovering ? Palette.buttonHover : .clear)
@@ -321,7 +322,7 @@ private struct BranchCounts: View {
             // along with the zoom, so that the words never run into the house.
             ZStack {
                 if let house = shown.house {
-                    HouseAnimationView(animation: house)
+                    HouseAnimationView(animation: house, height: 21)
                         .id(house)
                         .padding(.leading, 4)
                         // From its leading edge, which is where the room for it
@@ -505,6 +506,7 @@ private struct UnfinishedWorkControl: View {
             HStack(spacing: 4) {
                 if unfinished.hasConflicts {
                     Icon.warning.image
+                        .font(.system(size: 15))
                 }
                 Text(unfinished.title)
                     .monospacedDigit()
@@ -513,7 +515,7 @@ private struct UnfinishedWorkControl: View {
             .accessibilityElement(children: .ignore)
             .foregroundStyle(unfinished.hasConflicts ? AnyShapeStyle(Palette.red) : AnyShapeStyle(.secondary))
             .padding(.horizontal, 6)
-            .frame(minHeight: 28)
+            .frame(minHeight: 32)
             .background {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(isHovering ? Palette.buttonHover : .clear)
@@ -623,6 +625,7 @@ private struct BranchCount: View {
     var body: some View {
         HStack(spacing: 3) {
             icon.image
+                .font(.system(size: 15))
             Text(text)
                 .monospacedDigit()
                 .fontWeight(isOrange ? .semibold : .regular)
@@ -632,7 +635,7 @@ private struct BranchCount: View {
         .accessibilityElement(children: .ignore)
         .foregroundStyle(isOrange ? AnyShapeStyle(Palette.action) : AnyShapeStyle(.secondary))
         .padding(.horizontal, 6)
-        .frame(minWidth: 28, minHeight: 28)
+        .frame(minWidth: 32, minHeight: 32)
         .background {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(isHovering ? Palette.buttonHover : .clear)

@@ -9,13 +9,13 @@ import SwiftUI
 /// in and out instead.
 struct FetchDrop: View {
     /// The button's height, which is the window everything slides through.
-    static let height: CGFloat = 28
+    static let height: CGFloat = 32
     /// How tall the house is, from its chimney to its toes.
-    static let houseHeight: CGFloat = 20
+    static let houseHeight: CGFloat = 23
     /// How far apart the icon, the house and the next icon are. The icon has
     /// all but gone when the house's toes come in, and the house when the next
     /// icon's arrow does.
-    static let spacing: CGFloat = 30
+    static let spacing: CGFloat = 34
 
     let isFetching: Bool
     @Environment(\.accessibilityReduceMotion) private var reducesMotion

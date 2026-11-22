@@ -65,7 +65,8 @@ struct PanelSplitLayout: Equatable {
     /// The shortest each panel gets while both show.
     static let minimumHeight = 100.0
     /// The height of a panel's header, which is all a minimized panel shows.
-    static let headerHeight = 40.0
+    /// It's as tall as the Claude app's rows of tabs and commands.
+    static let headerHeight = 44.0
 }
 
 extension PanelSplitLayout {

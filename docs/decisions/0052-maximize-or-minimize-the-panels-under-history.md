@@ -12,7 +12,7 @@ The commit and diff panels share the middle of the window with history above the
 
 **Maximized, the panels cover history and the refs panel, up to the title row,** and leave the sidebar. The refs panel hides rather than sitting under them, and asking for it, with Show Refs, its button or Switch Branch… from the branch's menu, puts the panels back first. The title row stays as it is, with history's count and Order menu.
 
-**Minimized, they show only their headers,** 40 points tall, so their titles, the files' filter, Find and these buttons stay where they were, and history takes the rest.
+**Minimized, they show only their headers,** 44 points tall, so their titles, the files' filter, Find and these buttons stay where they were, and history takes the rest.
 
 **It's one setting for each window,** like whether the refs panel shows, so it stays from one worktree to the next and comes back when macOS restores the window. The heights someone dragged, for a commit and for uncommitted changes, stay as they were underneath and come back with Restore.
 

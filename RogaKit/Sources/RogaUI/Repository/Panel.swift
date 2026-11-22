@@ -331,7 +331,7 @@ struct PanelLine: View {
 /// A thin icon that gets a rounded gray square while the pointer is over it,
 /// for the commands in panel headers and the sidebar (docs/main-window.md).
 struct IconButtonStyle: ButtonStyle {
-    var size: CGFloat = 28
+    var size: CGFloat = 32
     /// Whether it stays looking pressed, for as long as what it opened shows.
     var isOn = false
 
@@ -441,14 +441,14 @@ struct Chevron: View {
 /// Menus use it as their label, because they don't take a button style.
 struct HoverIcon<Icon: View>: View {
     var isPressed = false
-    var size: CGFloat = 28
+    var size: CGFloat = 32
     @ViewBuilder var icon: Icon
     @State private var isHovering = false
     @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
         icon
-            .font(.system(size: size >= 28 ? 14 : 12.5))
+            .font(.system(size: size >= 28 ? 16 : 12.5))
             .foregroundStyle(isHovering || isPressed ? .primary : .secondary)
             .frame(width: size, height: size)
             .background {
@@ -515,7 +515,7 @@ struct PanelSearchField: View {
             }
         }
         .padding(.leading, 8)
-        .frame(height: 28)
+        .frame(height: 32)
         .background(Palette.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 8, style: .continuous)

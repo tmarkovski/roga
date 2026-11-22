@@ -28,17 +28,17 @@ struct LowerPanelSizeTests {
     }
 
     @Test func minimizedPanelsShowOnlyTheirHeaders() {
-        #expect(layout(.minimized) == PanelSplitLayout(upper: 559, lower: 40))
+        #expect(layout(.minimized) == PanelSplitLayout(upper: 555, lower: 44))
     }
 
     @Test func draggingTheLineDownPastHalfwayToTheHeaderMinimizesAndKeepsTheHeight() {
-        let dragged = PanelSplitLayout.dragged(to: 69, in: 600)
+        let dragged = PanelSplitLayout.dragged(to: 71, in: 600)
         #expect(dragged.size == .minimized)
         #expect(dragged.height == nil)
     }
 
     @Test func draggingTheLineAboveHalfwayIsRegularAtLeastTheShortest() {
-        let dragged = PanelSplitLayout.dragged(to: 70, in: 600)
+        let dragged = PanelSplitLayout.dragged(to: 72, in: 600)
         #expect(dragged.size == .regular)
         #expect(dragged.height == 100)
         #expect(PanelSplitLayout.dragged(to: 300, in: 600).height == 300)

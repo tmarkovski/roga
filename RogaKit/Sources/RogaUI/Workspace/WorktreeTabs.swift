@@ -280,8 +280,8 @@ private struct WorktreeTab: View {
     /// when it's let go and when the press is cancelled.
     @GestureState private var isPressing = false
 
-    private static let height: CGFloat = 28
-    private static let menuButtonSize: CGFloat = 20
+    private static let height: CGFloat = 32
+    private static let menuButtonSize: CGFloat = 24
     /// The edge of the tab the window shows, a little stronger than the line
     /// under the title row.
     private static let edge = Palette.gray(light: 0.80, dark: 0.30)
@@ -375,7 +375,7 @@ private struct WorktreeTab: View {
     }
 }
 
-/// The mark before a tab's name, in a 16-point box.
+/// The mark before a tab's name, in an 18-point box.
 private struct TabMark: View {
     let mark: WorktreeTabs.Mark
 
@@ -383,7 +383,7 @@ private struct TabMark: View {
         Group {
             switch mark {
             case .agent(let state):
-                AgentMark(state: state)
+                AgentMark(state: state, size: 16)
             case .conflicts:
                 Icon.warning.image
                     .foregroundStyle(Palette.red)
@@ -401,8 +401,8 @@ private struct TabMark: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .font(.system(size: 13))
-        .frame(width: 16, height: 16)
+        .font(.system(size: 15))
+        .frame(width: 18, height: 18)
         .accessibilityHidden(true)
     }
 }
