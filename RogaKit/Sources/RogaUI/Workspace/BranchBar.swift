@@ -10,7 +10,7 @@ import SwiftUI
 ///
 /// When the row is short of room, the number of commits goes first, then the
 /// branch's name is cut short. The counts, Fetch and New Branch stay.
-struct BranchRow: View {
+struct BranchBar: View {
     let model: RepositoryModel
     let worktree: Worktree
     /// Goes to the refs panel's filter, or nil when the refs panel doesn't fit.

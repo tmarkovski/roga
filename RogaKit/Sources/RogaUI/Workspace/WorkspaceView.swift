@@ -540,7 +540,7 @@ public struct WorkspaceView: View {
                 // The branch's row stays above history while the panels under
                 // it are maximized, as the title row did before it.
                 VStack(spacing: 0) {
-                    BranchRow(
+                    BranchBar(
                         model: model,
                         worktree: worktree,
                         switchBranch: refsPanelVisibility.fits ? {

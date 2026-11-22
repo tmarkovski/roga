@@ -349,7 +349,7 @@ private struct WorktreeTab: View {
     /// (decision 51).
     private var label: some View {
         let parts = title.map { (folder: "", name: $0) } ?? WorktreeTabs.nameParts(of: worktree)
-        return FadingText(Text(parts.folder).foregroundStyle(.secondary) + Text(parts.name))
+        return FadingText(Text("\(Text(parts.folder).foregroundStyle(.secondary))\(parts.name)"))
             .font(.system(size: 13))
             // A few letters stay, so that a crowded strip still tells tabs apart.
             .frame(minWidth: Self.shortestLabelWidth(parts.folder + parts.name))
