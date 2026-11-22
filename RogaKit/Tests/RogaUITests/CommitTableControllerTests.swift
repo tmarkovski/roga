@@ -6,10 +6,17 @@ import GitCore
 @testable import HistoryUI
 import MenuUI
 
-/// Lets the run loop turn, which sends the report the list is holding until the
-/// frame that shows the selection has been drawn.
-@MainActor func waitForReport() {
-    RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+/// Lets the run loop turn until the list has sent the report it holds back until
+/// the frame that shows the selection has been drawn. It waits for the report
+/// rather than for a set time. `RunLoop.run(until:)` doesn't turn the loop at
+/// all once its date has passed, so on a busy machine, such as a CI runner with
+/// many tests going at once, a thread held up past a short wait never sent the
+/// report. With no report waiting, it returns at once.
+@MainActor func waitForReport(_ controller: CommitTableController) {
+    let deadline = Date().addingTimeInterval(10)
+    while controller.isHoldingReport, Date() < deadline {
+        RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+    }
 }
 
 /// How the commit list reports its selection. Only what the user does is
@@ -39,9 +46,9 @@ struct CommitTableControllerTests {
         let list = List(count: 10)
         // What a click or an arrow key ends up doing.
         list.table.selectRowIndexes(IndexSet(integer: 3), byExtendingSelection: false)
-        waitForReport()
+        waitForReport(list.controller)
         list.table.deselectAll(nil)
-        waitForReport()
+        waitForReport(list.controller)
         #expect(list.reported == [IndexSet(integer: 3), IndexSet()])
     }
 
@@ -49,7 +56,7 @@ struct CommitTableControllerTests {
         let list = List(count: 10)
         list.table.selectRowIndexes(IndexSet(integer: 3), byExtendingSelection: false)
         #expect(list.reported.isEmpty)
-        waitForReport()
+        waitForReport(list.controller)
         #expect(list.reported == [IndexSet(integer: 3)])
     }
 
@@ -59,7 +66,7 @@ struct CommitTableControllerTests {
         for row in 3...6 {
             list.table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
         }
-        waitForReport()
+        waitForReport(list.controller)
         #expect(list.reported == [IndexSet(integer: 6)])
     }
 
@@ -70,7 +77,7 @@ struct CommitTableControllerTests {
         list.table.selectRowIndexes(IndexSet(integer: 3), byExtendingSelection: false)
         list.controller.select(row: 1)
         #expect(list.controller.selectedRow == 3)
-        waitForReport()
+        waitForReport(list.controller)
         #expect(list.reported == [IndexSet(integer: 3)])
         list.controller.select(row: 1)
         #expect(list.controller.selectedRow == 1)
@@ -81,7 +88,7 @@ struct CommitTableControllerTests {
         let list = List(count: 10)
         list.table.selectRowIndexes(IndexSet(integer: 3), byExtendingSelection: false)
         list.controller.reloadData()
-        waitForReport()
+        waitForReport(list.controller)
         #expect(list.reported.isEmpty)
     }
 
@@ -159,7 +166,7 @@ struct CommitTableControllerTests {
         list.controller.select(row: 1)
         list.controller.reloadData()
         list.table.selectRowIndexes(IndexSet(integer: 2), byExtendingSelection: false)
-        waitForReport()
+        waitForReport(list.controller)
         #expect(list.reported == [IndexSet(integer: 2)])
     }
 
@@ -167,9 +174,9 @@ struct CommitTableControllerTests {
         // What Shift-clicking a run of rows and Command-clicking another does.
         let list = List(count: 10)
         list.table.selectRowIndexes(IndexSet(2...4), byExtendingSelection: false)
-        waitForReport()
+        waitForReport(list.controller)
         list.table.selectRowIndexes(IndexSet(integer: 7), byExtendingSelection: true)
-        waitForReport()
+        waitForReport(list.controller)
         #expect(list.reported == [IndexSet(2...4), IndexSet([2, 3, 4, 7])])
         #expect(list.controller.selectedRows == IndexSet([2, 3, 4, 7]))
         #expect(list.controller.selectedRow == nil)
@@ -231,28 +238,28 @@ struct CommitTablePressTests {
         let list = List()
         list.controller.press(list.press(row: 3))
         #expect(list.controller.selectedRow == 3)
-        waitForReport()
+        waitForReport(list.controller)
         #expect(list.reported == [IndexSet(integer: 3)])
     }
 
     @Test func theClickDoesntReportARowItsPressSelected() {
         let list = List()
         list.controller.press(list.press(row: 3))
-        waitForReport()
+        waitForReport(list.controller)
         list.controller.reportClick(onRow: 3, modifiers: [])
-        waitForReport()
+        waitForReport(list.controller)
         #expect(list.reported == [IndexSet(integer: 3)])
     }
 
     @Test func aClickOnTheOnlySelectedRowReportsItAgain() {
         let list = List()
         list.controller.press(list.press(row: 3))
-        waitForReport()
+        waitForReport(list.controller)
         list.controller.reportClick(onRow: 3, modifiers: [])
         // The second click's press leaves the row alone, so its release reports it.
         list.controller.press(list.press(row: 3))
         list.controller.reportClick(onRow: 3, modifiers: [])
-        waitForReport()
+        waitForReport(list.controller)
         #expect(list.reported == [IndexSet(integer: 3), IndexSet(integer: 3)])
     }
 
@@ -261,7 +268,7 @@ struct CommitTablePressTests {
         list.controller.select(rows: IndexSet(2...5))
         list.controller.press(list.press(row: 4))
         #expect(list.controller.selectedRows == IndexSet(integer: 4))
-        waitForReport()
+        waitForReport(list.controller)
         #expect(list.reported == [IndexSet(integer: 4)])
     }
 
@@ -283,7 +290,7 @@ struct CommitTablePressTests {
             list.controller.press(press)
             #expect(list.controller.selectedRow == 1)
         }
-        waitForReport()
+        waitForReport(list.controller)
         #expect(list.reported.isEmpty)
     }
 
