@@ -342,7 +342,7 @@ private struct WorktreeTab: View {
                     .padding(.trailing, 4)
             }
         }
-        .overlay { RefMenuArea(entries: menu) }
+        .overlay { RefMenuArea(entries: menu, isInToolbar: true) }
         .opacity(facts.isDeleting ? 0.5 : 1)
         .onHover { isHovering = $0 }
         .help(help)
