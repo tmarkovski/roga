@@ -10,11 +10,23 @@ import ThemeUI
 enum Palette {
     static let surface = gray(light: 1.0, dark: 0.135)
     static let separator = gray(light: 0.885, dark: 0.225)
-    /// The fill under a row or an icon button while the pointer is over it.
-    /// It darkens whatever is behind it, such as the sidebar's material.
+    /// The fill under a row while the pointer is over it. It darkens whatever
+    /// is behind it, such as the sidebar's material.
     static let hover = Color.primary.opacity(0.075)
     /// The fill under a selected row.
     static let selection = Color.primary.opacity(0.11)
+    /// The fill under a button while the pointer is over it: an icon, a chip,
+    /// or the button at the end of a row. In the light theme it's 10% black,
+    /// darker than a row's, as in the Claude app, so that a button stands out
+    /// on the row it covers. In the dark theme it's the same as a row's.
+    static let buttonHover = shade(light: 0.10, dark: primaryOpacity * 0.075)
+    /// The fill under a button that's pressed or turned on, a step darker than
+    /// `buttonHover`, as `selection` is than `hover`. In the dark theme it's
+    /// the same as `selection`.
+    static let buttonPressed = shade(light: 0.13, dark: primaryOpacity * 0.11)
+    /// How opaque `Color.primary` is in both themes, since it's
+    /// `NSColor.labelColor`: black or white at 85%.
+    private static let primaryOpacity = 0.847
     /// The strongest mark that isn't a color: the main button in a dialog, and a
     /// line that's about to be dragged.
     static let ink = gray(light: 0.102, dark: 0.925)
@@ -57,6 +69,16 @@ enum Palette {
         Color(nsColor: NSColor(name: nil) { appearance in
             let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             return NSColor(white: isDark ? dark : light, alpha: 1)
+        })
+    }
+
+    /// Black at one opacity in the light theme and white at another in the
+    /// dark, so that it darkens or lightens whatever is behind it.
+    static func shade(light: CGFloat, dark: CGFloat) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                ? NSColor(white: 1, alpha: dark)
+                : NSColor(white: 0, alpha: light)
         })
     }
 }
@@ -375,7 +397,7 @@ private struct HoverOutline<Label: View>: View {
         if style.isNext {
             return isPressed ? .white.opacity(0.22) : isHovering ? .white.opacity(0.12) : .clear
         }
-        return isPressed ? Palette.selection : isHovering ? Palette.hover : .clear
+        return isPressed ? Palette.buttonPressed : isHovering ? Palette.buttonHover : .clear
     }
 
     var body: some View {
@@ -434,7 +456,7 @@ struct HoverIcon<Icon: View>: View {
             .frame(width: size, height: size)
             .background {
                 RoundedRectangle(cornerRadius: size >= 28 ? 8 : 7, style: .continuous)
-                    .fill(isPressed ? Palette.selection : isHovering ? Palette.hover : .clear)
+                    .fill(isPressed ? Palette.buttonPressed : isHovering ? Palette.buttonHover : .clear)
             }
             .contentShape(Rectangle())
             .opacity(isEnabled ? 1 : 0.4)

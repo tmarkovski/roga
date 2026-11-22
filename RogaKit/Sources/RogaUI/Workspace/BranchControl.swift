@@ -67,7 +67,7 @@ private struct BranchChip: View {
             .frame(height: 26)
             .background {
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(isHovering ? Palette.hover : .clear)
+                    .fill(isHovering ? Palette.buttonHover : .clear)
             }
             .contentShape(Rectangle())
             .onHover { isHovering = $0 }
@@ -516,7 +516,7 @@ private struct UnfinishedWorkControl: View {
             .frame(minHeight: 28)
             .background {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isHovering ? Palette.hover : .clear)
+                    .fill(isHovering ? Palette.buttonHover : .clear)
             }
             .contentShape(Rectangle())
             .onHover { isHovering = $0 }
@@ -635,7 +635,7 @@ private struct BranchCount: View {
         .frame(minWidth: 28, minHeight: 28)
         .background {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(isHovering ? Palette.hover : .clear)
+                .fill(isHovering ? Palette.buttonHover : .clear)
         }
         .contentShape(Rectangle())
         .onHover { isHovering = $0 && isEnabled }

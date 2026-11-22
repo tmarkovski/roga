@@ -102,10 +102,12 @@ final class HunkButton: NSButton {
     /// What a button on a band is filled with, in the appearance being drawn in,
     /// which a conflict's band's buttons share. It's the panel's own color at rest,
     /// and the gray while the pointer is on it is the text's color over the panel's,
-    /// as much of it as the other buttons' fills have.
+    /// as much of it as the other buttons' fills have, which is more in the light
+    /// theme than in the dark.
     static func fill(isHovering: Bool, isPressing: Bool) -> NSColor {
         let surface = ConflictColors.button
-        let amount: CGFloat = isPressing ? 0.11 : isHovering ? 0.075 : 0
+        let isDark = NSAppearance.currentDrawing().bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let amount: CGFloat = isPressing ? (isDark ? 0.11 : 0.13) : isHovering ? (isDark ? 0.075 : 0.10) : 0
         return amount > 0 ? surface.blended(withFraction: amount, of: .labelColor) ?? surface : surface
     }
 
