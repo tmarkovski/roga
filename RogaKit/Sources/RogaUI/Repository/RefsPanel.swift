@@ -156,9 +156,10 @@ struct RefsPanel: View {
                 .padding(.bottom, 10)
             }
             // A scroll view reaches up under the title row, where the panel's
-            // commands are, and the title row has no background to hide what
-            // scrolls under it. So rows that went past a section's pinned
-            // header showed behind the commands. They stop at the line instead.
+            // commands are, and draws over the panel's header, which comes
+            // before it. So rows that went past a section's pinned header
+            // showed over the header's gray, behind the commands. They stop at
+            // the line instead.
             .clipped()
             .focusable()
             .focused($isListFocused)
@@ -570,9 +571,10 @@ struct RefsPanelPlaceholder: View {
 }
 
 /// The panel's row at the top of the window, beside the title row and as tall
-/// (decision 96). Its commands are at its end, and the button that hides the
-/// panel is its last, in the window's corner, where the title row has it while
-/// the panel is hidden (decision 85).
+/// (decision 96), and in its gray, so that the band along the top runs across
+/// both (decision 95). Its commands are at its end, and the button that hides
+/// the panel is its last, in the window's corner, where the title row has it
+/// while the panel is hidden (decision 85).
 private struct RefsPanelHeader<Commands: View>: View {
     @ViewBuilder var commands: Commands
 
@@ -587,6 +589,8 @@ private struct RefsPanelHeader<Commands: View>: View {
         .background {
             TitleRowDragArea()
         }
+        // Behind the drag area, which has to be on top to take presses.
+        .background(Palette.titleRow)
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(Palette.separator)
