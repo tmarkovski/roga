@@ -53,6 +53,7 @@ struct Sidebar: View {
     @State private var repairs = WorktreeRepairModel()
     @FocusState private var isFocused: Bool
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.accessibilityReduceMotion) private var reducesMotion
     /// A new version of Roga, which shows as a row under Settings.
     @Environment(Updates.self) private var updates: Updates?
 
@@ -168,6 +169,9 @@ struct Sidebar: View {
                         row(item)
                     }
                 }
+                // Only what loading changes, so that expanding a repository
+                // or arranging the list still happens at once.
+                .animation(SidebarMotion.movement(reducesMotion), value: LoadProgress(groups.all))
                 .padding(.horizontal, 8)
                 .padding(.bottom, 10)
             }
@@ -236,6 +240,7 @@ struct Sidebar: View {
                 hasConflicts: repository.conflictedWorktrees.contains(worktree.path),
                 statusFailure: .worktree(repository.statusFailures[worktree.path]),
                 unfinished: repository.unfinishedWork[worktree.path],
+                isLoading: !repository.hasCounted,
                 isDeleting: repository.deletingWorktrees.contains(worktree.path),
                 isSelected: selection == row,
                 isOpen: newWorktreeRow == row,
@@ -538,6 +543,7 @@ struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
     @ViewBuilder var trailing: Trailing
     @ViewBuilder var commands: Commands
     @State private var isHovering = false
+    @Environment(\.accessibilityReduceMotion) private var reducesMotion
 
     /// How tall a row is with one line, and with two.
     static var height: CGFloat { 32 }
@@ -611,8 +617,13 @@ struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
                     // How long ends under the mark.
                     .padding(.trailing, 7)
                     .padding(.top, Self.secondLineTop - Self.height)
+                    .transition(SidebarMotion.words(reducesMotion))
             }
         }
+        // The line fades in, inside the frame below, so that the row still
+        // takes its new height at once (decision 48). It goes at once, since
+        // the row is short again and fading words would hang over the next.
+        .animation(line == nil ? nil : SidebarMotion.arrival(reducesMotion), value: line == nil)
         .padding(.leading, 10)
         .padding(.trailing, 4)
         .frame(height: line == nil ? Self.height : Self.twoLineHeight, alignment: .top)
@@ -767,38 +778,39 @@ private struct RepositoryRow: View {
     let openInNewWindow: () -> Void
     let locate: () -> Void
     let newWorktree: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reducesMotion
 
     var body: some View {
         let agent = agents?.summary
+        let hasChevron = linkedWorktrees > 0 && !standsForWorktrees
         SidebarRow(isSelected: isSelected || isOpen, agent: agent, unfinished: unfinished, action: select) {
             HStack(spacing: 3) {
                 FadingText(title)
                     .font(.system(size: 13))
                     .layoutPriority(1)
-                if linkedWorktrees > 0, !standsForWorktrees {
+                if hasChevron {
                     Button(action: toggle) {
                         Chevron(pointsDown: repository.isExpanded)
                     }
                     .buttonStyle(.icon(size: 18))
                     .help(repository.isExpanded ? "Hide Worktrees" : "Show Worktrees")
+                    .transition(SidebarMotion.words(reducesMotion))
                 }
                 if let detail {
                     FadingText(detail)
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)
                         .padding(.leading, 3)
+                        .transition(SidebarMotion.words(reducesMotion))
                 }
             }
-            .opacity(problem == nil ? 1 : 0.6)
+            // The branch and the chevron come once the repository opens.
+            .animation(SidebarMotion.arrival(reducesMotion), value: detail)
+            .animation(SidebarMotion.arrival(reducesMotion), value: hasChevron)
+            .opacity(problem != nil ? 0.6 : isLoading ? SidebarMotion.loadingOpacity : 1)
+            .animation(SidebarMotion.brightening(reducesMotion), value: isLoading)
         } trailing: {
-            if let problem {
-                Text(problem)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                    .padding(.trailing, 7)
-            } else if ownUncommittedFiles > 0 || ownStatusFailure != nil {
-                UncommittedCount(count: ownUncommittedFiles, hasConflicts: ownHasConflicts, failure: ownStatusFailure)
-            }
+            RowLabel(words: problem, count: ownUncommittedFiles, hasConflicts: ownHasConflicts, failure: ownStatusFailure)
         } commands: {
             RowMenu(entries: menu)
         }
@@ -876,6 +888,12 @@ private struct RepositoryRow: View {
         }
     }
 
+    /// Whether the row is still waiting for its count, which a repository
+    /// that can't be opened never gets.
+    private var isLoading: Bool {
+        problem == nil && !repository.hasCounted
+    }
+
     private var menu: [RefMenu.Entry] {
         SidebarMenus.entries(
             forRepository: main,
@@ -905,6 +923,8 @@ private struct WorktreeRow: View {
     let statusFailure: StatusFailureNote?
     /// What the worktree stopped partway through, if it did.
     let unfinished: UnfinishedWork?
+    /// Whether its repository's files haven't been counted yet.
+    let isLoading: Bool
     let isDeleting: Bool
     let isSelected: Bool
     /// Whether its popover for a new worktree is open.
@@ -916,28 +936,23 @@ private struct WorktreeRow: View {
     let newWorktree: () -> Void
     let locate: () -> Void
     let delete: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reducesMotion
 
     var body: some View {
         let agent = agents?.summary
         SidebarRow(isSelected: isSelected || isOpen, isEnabled: !isDeleting, canSelect: canSelect, agent: agent, unfinished: unfinished, lineIndent: WorktreeConnector.textIndent, action: select) {
             FadingText(worktree.title)
                 .font(.system(size: 13))
-                .opacity(worktree.isPrunable ? 0.6 : 1)
+                .opacity(worktree.isPrunable ? 0.6 : isLoading ? SidebarMotion.loadingOpacity : 1)
+                .animation(SidebarMotion.brightening(reducesMotion), value: isLoading)
                 .padding(.leading, WorktreeConnector.textIndent)
         } trailing: {
-            if isDeleting {
-                Text("Deleting…")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                    .padding(.trailing, 7)
-            } else if worktree.isPrunable {
-                Text("Folder missing")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                    .padding(.trailing, 7)
-            } else if uncommittedFiles > 0 || statusFailure != nil {
-                UncommittedCount(count: uncommittedFiles, hasConflicts: hasConflicts, failure: statusFailure)
-            }
+            RowLabel(
+                words: isDeleting ? "Deleting…" : worktree.isPrunable ? "Folder missing" : nil,
+                count: uncommittedFiles,
+                hasConflicts: hasConflicts,
+                failure: statusFailure
+            )
         } commands: {
             RowMenu(entries: menu)
         }
@@ -999,9 +1014,7 @@ private struct HiddenWorktreesRow: View {
                 .foregroundStyle(.secondary)
                 .padding(.leading, WorktreeConnector.textIndent)
         } trailing: {
-            if uncommittedFiles > 0 || statusFailure != nil {
-                UncommittedCount(count: uncommittedFiles, hasConflicts: hasConflicts, failure: statusFailure)
-            }
+            RowLabel(count: uncommittedFiles, hasConflicts: hasConflicts, failure: statusFailure)
         } commands: {
             EmptyView()
         }
@@ -1062,6 +1075,127 @@ extension FocusedValues {
     @Entry var deleteSelectedWorktree: (() -> Void)?
 }
 
+/// What a row says just before its mark's place: words about the row itself,
+/// such as Missing or Deleting…, or else its count. Whatever comes, as when a
+/// look finishes counting, comes in where it goes rather than appearing at
+/// once, and a count that changes rolls to its new number (decision 99).
+private struct RowLabel: View {
+    var words: String?
+    let count: Int
+    let hasConflicts: Bool
+    let failure: StatusFailureNote?
+    @Environment(\.accessibilityReduceMotion) private var reducesMotion
+
+    /// Everything it shows, which it animates the changes of.
+    private struct Shown: Equatable {
+        var words: String?
+        var count: Int
+        var hasConflicts: Bool
+        var failure: StatusFailureNote?
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            if let words {
+                Text(words)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .padding(.trailing, 7)
+                    .transition(SidebarMotion.label(reducesMotion))
+            } else if count > 0 || failure != nil {
+                UncommittedCount(count: count, hasConflicts: hasConflicts, failure: failure)
+                    .transition(SidebarMotion.label(reducesMotion))
+            }
+        }
+        .animation(SidebarMotion.arrival(reducesMotion), value: Shown(words: words, count: count, hasConflicts: hasConflicts, failure: failure))
+    }
+}
+
+/// How the sidebar takes in what loads after its rows show (decision 99). The
+/// names of the saved repositories show at once, and each row fills in as git
+/// answers: its branch when the repository opens, then its count. A row's
+/// name is faint until its count is in, and then comes up to full strength.
+/// What arrives comes in softly where it goes, out of a slight blur, rather
+/// than appearing at once, so that a list filling in reads as one settling
+/// motion rather than a run of jumps. Someone who asked for less motion gets
+/// fades instead.
+enum SidebarMotion {
+    /// How strong a row's name is while its count isn't in yet.
+    static let loadingOpacity = 0.45
+
+    /// What a count, a branch's name or a second line animates with as it
+    /// comes in.
+    static func arrival(_ reducesMotion: Bool) -> Animation {
+        reducesMotion ? .easeOut(duration: 0.2) : .smooth(duration: 0.4)
+    }
+
+    /// What a faint name animates with as it comes up to full strength, a
+    /// little slower than its count arrives, so that the row settles after it.
+    static func brightening(_ reducesMotion: Bool) -> Animation {
+        .easeOut(duration: reducesMotion ? 0.2 : 0.55)
+    }
+
+    /// What rows that loading inserts or moves animate with, or nil to place
+    /// them at once.
+    static func movement(_ reducesMotion: Bool) -> Animation? {
+        reducesMotion ? nil : .smooth(duration: 0.35)
+    }
+
+    /// A count or a label grows to its size from its right end, which stays
+    /// where it is, as it comes into focus. One that goes only fades, since
+    /// the row is done with it.
+    static func label(_ reducesMotion: Bool) -> AnyTransition {
+        guard !reducesMotion else { return .opacity }
+        return .asymmetric(
+            insertion: .modifier(active: Softened(amount: 1, smallest: 0.6), identity: Softened(amount: 0, smallest: 0.6)),
+            removal: .modifier(active: Softened(amount: 1), identity: Softened(amount: 0))
+        )
+    }
+
+    /// Words, such as a branch's name or a second line, come into focus where
+    /// they are. Growing would move them along the line they're on.
+    static func words(_ reducesMotion: Bool) -> AnyTransition {
+        guard !reducesMotion else { return .opacity }
+        return .modifier(active: Softened(amount: 1), identity: Softened(amount: 0))
+    }
+}
+
+/// Something on its way in or out: faded, blurred, and smaller toward its
+/// right end, by `amount`, from none to all the way.
+private struct Softened: ViewModifier {
+    let amount: Double
+    /// How small it gets at its smallest. 1 doesn't grow it at all.
+    var smallest: Double = 1
+    /// How far its blur spreads at its most, in points.
+    private static let blur: CGFloat = 3
+
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(1 - (1 - smallest) * amount, anchor: .trailing)
+            .blur(radius: Self.blur * amount)
+            .opacity(1 - amount)
+    }
+}
+
+/// The repositories that are still loading: the ones that aren't open yet,
+/// and the ones whose files haven't been counted yet. The list animates what
+/// changes along with these, so that the rows a repository brings when it
+/// opens, such as its worktrees, come in, and rows that move because of what
+/// it found, as when the list is sorted by uncommitted changes, slide to their
+/// places. Removing a repository that has loaded leaves both alone, so it
+/// still happens at once, like anything else someone does to the list.
+private struct LoadProgress: Equatable {
+    var unopened: Set<String> = []
+    var uncounted: Set<String> = []
+
+    init(_ repositories: [ListedRepository]) {
+        for repository in repositories {
+            if repository.session == nil { unopened.insert(repository.path) }
+            if !repository.hasCounted { uncounted.insert(repository.path) }
+        }
+    }
+}
+
 /// How many files a row's worktrees have uncommitted, in orange, or in red with a
 /// triangle when some of them have conflicts, so that a stuck worktree shows
 /// without selecting it (decision 28).
@@ -1074,6 +1208,7 @@ struct UncommittedCount: View {
     let count: Int
     let hasConflicts: Bool
     var failure: StatusFailureNote?
+    @Environment(\.accessibilityReduceMotion) private var reducesMotion
 
     var body: some View {
         if let failure {
@@ -1089,7 +1224,10 @@ struct UncommittedCount: View {
                 Icon.warning.image
             }
             if count > 0 || failure == nil {
+                // A new number rolls in, up or down as the count went, when
+                // what draws the count animates it, as `RowLabel` does.
                 Text(count, format: .number)
+                    .contentTransition(reducesMotion ? .opacity : .numericText(value: Double(count)))
             }
         }
         .font(.system(size: 13))

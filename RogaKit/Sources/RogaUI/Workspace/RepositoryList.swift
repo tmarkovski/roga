@@ -662,6 +662,9 @@ public final class RepositoryList {
         if failures != repository.statusFailures { repository.statusFailures = failures }
         if conflicted != repository.conflictedWorktrees { repository.conflictedWorktrees = conflicted }
         if unfinished != repository.unfinishedWork { repository.unfinishedWork = unfinished }
+        // Along with the counts, so that the row comes up to full strength in
+        // the same moment they come in.
+        if !repository.hasCounted { repository.hasCounted = true }
     }
 
     /// Reads how far each worktree's branch is from its upstream, with one git
@@ -790,6 +793,10 @@ public final class ListedRepository: Identifiable {
     /// What each worktree is stuck partway through, by its folder, for the
     /// worktrees that are.
     fileprivate(set) var unfinishedWork: [String: UnfinishedWork] = [:]
+    /// Whether a look has counted its worktrees' uncommitted files since it
+    /// was listed, as at launch. Until then the sidebar draws its rows faint,
+    /// since their counts aren't in yet (decision 99).
+    fileprivate(set) var hasCounted = false
     /// How far each worktree's branch is from its upstream, by the branch's full
     /// name, for the branches that have one.
     fileprivate(set) var upstreams: [String: UpstreamCounts] = [:]
