@@ -290,7 +290,10 @@ final class RepositoryModel {
         refs.onSubmodules = { [weak self] submodules, isRead in self?.selectedCommit.follow(submodules, isRead: isRead) }
         gitFix.lookAgain = { [weak self] in self?.lookAgain() }
         selectedChanges.showChanges = { [weak self] in self?.selectChangesOnceTheyShow() }
-        composer.currentBranch = { [weak self] in self?.history?.refs.currentBranch }
+        composer.currentBranch = { [weak self] in
+            guard let refs = self?.history?.refs else { return nil }
+            return refs.currentBranch ?? refs.unbornBranch
+        }
         composer.select = { [weak self] commit in self?.selectNewCommit(commit) }
         composer.showChanges = { [weak self] in self?.selectChangesOnceTheyShow() }
         branch.isCheckingOut = { [weak self] in self?.checkout != nil }

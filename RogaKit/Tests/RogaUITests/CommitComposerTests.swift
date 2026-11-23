@@ -217,6 +217,28 @@ struct CommitComposerTests {
         #expect(work.composer.note != nil)
     }
 
+    @Test func aNewRepositorysFirstCommitNamesItsBranch() async throws {
+        let path = try makeTemporaryFolder() + "/empty"
+        try FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
+        try await git("init", "--quiet", "--initial-branch=main", in: path)
+        try write("new\n", to: "new.txt", in: path)
+        let work = try await worktree(at: path)
+        try await open(work)
+        // HEAD names a branch with no commits, which isn't a detached HEAD.
+        #expect(work.composer.chip == CommitComposer.Chip(kind: .firstCommit, lead: "First commit on", subject: "main"))
+        #expect(work.composer.note == nil)
+    }
+
+    @Test func anOrphanBranchsFirstCommitNamesIt() async throws {
+        let work = try await worktree()
+        try await git("switch", "--quiet", "--orphan", "fresh", in: work.path)
+        try write("new\n", to: "new.txt", in: work.path)
+        try await open(work)
+        #expect(work.composer.chip == CommitComposer.Chip(kind: .firstCommit, lead: "First commit on", subject: "fresh"))
+        #expect(work.composer.note == nil)
+        #expect(!work.composer.canAmend)
+    }
+
     @Test func aNarrowRowSaysOnlyTheVerb() {
         typealias Action = CommitComposer.Action
         #expect(Action(title: "Commit 2 Files", isEnabled: true).shortTitle == "Commit")

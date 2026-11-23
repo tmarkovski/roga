@@ -90,11 +90,17 @@ public struct RefList: Sendable, Hashable {
     public var currentBranch: String?
     /// The commit `HEAD` points to, or nil when there's none yet.
     public var head: ObjectID?
+    /// The full name of the branch `HEAD` points to while that branch has no
+    /// commits yet, as in a new repository or after `git switch --orphan`,
+    /// which `currentBranch` leaves out because there's no ref by that name
+    /// yet. Nil once it has a commit, and for a detached `HEAD`.
+    public var unbornBranch: String?
 
-    public init(refs: [Ref] = [], currentBranch: String? = nil, head: ObjectID? = nil) {
+    public init(refs: [Ref] = [], currentBranch: String? = nil, head: ObjectID? = nil, unbornBranch: String? = nil) {
         self.refs = refs
         self.currentBranch = currentBranch
         self.head = head
+        self.unbornBranch = unbornBranch
     }
 
     /// The branch that others are compared with when they have no upstream.

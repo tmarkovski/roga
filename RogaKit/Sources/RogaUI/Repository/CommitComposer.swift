@@ -124,7 +124,9 @@ final class CommitComposer {
     /// worktree again has taken over the agent that was writing here.
     private(set) var generator: MessageGenerator
 
-    /// The current branch's full name, or nil for a detached `HEAD`.
+    /// The full name of the branch the next commit goes on, which is the
+    /// current branch, or before a branch's first commit the one `HEAD`
+    /// names. It's nil for a detached `HEAD`.
     @ObservationIgnored var currentBranch: () -> String? = { nil }
     /// Selects a commit that was just made, when nothing's left to commit.
     @ObservationIgnored var select: (ObjectID) -> Void = { _ in }
