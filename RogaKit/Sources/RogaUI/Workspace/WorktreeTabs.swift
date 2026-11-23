@@ -256,12 +256,12 @@ enum WorktreeTabs {
     }
 }
 
-/// One tab. The tab the window shows is filled and has an edge, and the others
-/// fill under the pointer. A tab keeps a place at its end for its number, which
-/// the … button covers on hover, the way a sidebar row's menu button covers its
-/// mark (decision 58), so that nothing moves as the pointer passes. The button
-/// opens the menu of the worktree's row in the sidebar, which a right-click on
-/// the tab opens too.
+/// One tab. The tab the window shows is filled, has an edge and casts a soft
+/// shadow, as in the Claude app, and the others fill under the pointer. A tab
+/// keeps a place at its end for its number, which the … button covers on
+/// hover, the way a sidebar row's menu button covers its mark (decision 58), so
+/// that nothing moves as the pointer passes. The button opens the menu of the
+/// worktree's row in the sidebar, which a right-click on the tab opens too.
 ///
 /// A tab is shown as soon as the mouse button goes down on it, as a row in a
 /// list is, rather than when it comes back up, and it has no look of its own
@@ -276,6 +276,7 @@ private struct WorktreeTab: View {
     let menu: [RefMenu.Entry]
     let select: () -> Void
     @State private var isHovering = false
+    @Environment(\.colorScheme) private var colorScheme
 
     private static let height: CGFloat = 32
     private static let menuButtonSize: CGFloat = 24
@@ -321,6 +322,13 @@ private struct WorktreeTab: View {
             .padding(.trailing, 4)
             .frame(height: Self.height)
             .background {
+                if isSelected {
+                    // The gray is too faint to cast a shadow of its own, so a
+                    // tab in the title row's color under it casts one, which
+                    // leaves the tab looking as it did.
+                    shape.fill(Palette.surface)
+                        .shadow(color: .black.opacity(colorScheme == .dark ? 0.4 : 0.12), radius: 2, y: 1)
+                }
                 shape.fill(isSelected ? Palette.selection : isHovering && canSelect ? Palette.hover : .clear)
             }
             .overlay {
