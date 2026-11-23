@@ -517,6 +517,8 @@ public struct WorkspaceView: View {
                     BranchBar(
                         model: model,
                         worktree: worktree,
+                        monitor: agentMonitor,
+                        list: list,
                         switchBranch: refsPanelVisibility.fits ? {
                             refsPanelVisibility.isWanted.wrappedValue = true
                             model.refs.showFilter()

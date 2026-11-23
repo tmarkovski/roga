@@ -59,6 +59,10 @@ public final class AgentMonitor {
     /// starts, and only the rows that show a mark read it, so a new line
     /// redraws those rows and leaves the rest of the sidebar alone.
     private var activities: [SessionKey: String] = [:]
+    /// How many subagents each session has running, for the sessions that
+    /// have any. Only the branch row's popover reads it (decision 100), so it's
+    /// kept apart from `marks` for the same reason as `activities`.
+    private var subagents: [SessionKey: Int] = [:]
     /// When someone last looked at each worktree, by its folder as git lists it.
     /// It's kept in memory only: after a relaunch, what finished before is old
     /// news.
@@ -375,6 +379,8 @@ public final class AgentMonitor {
         }
         let activities = state.sessions.compactMapValues(\.activity)
         if activities != self.activities { self.activities = activities }
+        let subagents = state.sessions.compactMapValues { $0.subagents > 0 ? $0.subagents : nil }
+        if subagents != self.subagents { self.subagents = subagents }
     }
 
     // MARK: Processes
@@ -488,6 +494,26 @@ public final class AgentMonitor {
         // sessions have none.
         let activities = shown.contains { $0.phase != .idle } ? activities : [:]
         return AgentSummary(shown.map { (host: $0.host, phase: $0.phase, since: $0.since, activity: activities[$0.key]) })
+    }
+
+    /// The sessions in one worktree that are doing something or have finished,
+    /// for the branch row of the window that shows it (decision 100), in no
+    /// particular order. Unlike a mark, it keeps a finished session after
+    /// someone has looked, since the worktree on screen counts as seen at once:
+    /// what it finished stays until its next turn or until its session ends.
+    ///
+    /// It reads the marks and the lines, as a row with a mark does, so that a
+    /// new line redraws whatever shows it.
+    func worktreeAgents(_ path: String, in list: RepositoryList) -> [WorktreeAgent] {
+        let placed = placedMarks(in: list)[path, default: []].filter { $0.phase != .idle }
+        guard !placed.isEmpty else { return [] }
+        let activities = activities
+        return placed.map { WorktreeAgent(id: $0.key, host: $0.host, phase: $0.phase, since: $0.since, activity: activities[$0.key]) }
+    }
+
+    /// How many subagents a session has running, for the branch row's popover.
+    func subagents(of session: SessionKey) -> Int {
+        subagents[session] ?? 0
     }
 
     /// Someone looked at the worktree, so the sessions that finished in it
@@ -766,12 +792,12 @@ struct AgentSummary: Equatable {
         return (words, minutes > 0 ? Self.shortDuration(minutes: minutes) : nil)
     }
 
-    private static func minutes(from start: Date, to end: Date) -> Int {
+    static func minutes(from start: Date, to end: Date) -> Int {
         max(0, Int(end.timeIntervalSince(start) / 60))
     }
 
     /// "6 min", or "1 hr 5 min" from an hour on.
-    private static func shortDuration(minutes: Int) -> String {
+    static func shortDuration(minutes: Int) -> String {
         guard minutes >= 60 else { return "\(minutes) min" }
         let rest = minutes % 60
         return rest == 0 ? "\(minutes / 60) hr" : "\(minutes / 60) hr \(rest) min"

@@ -8,15 +8,26 @@ import SwiftUI
 /// New Branch, a thin line, and history's number of commits and commands. It's
 /// as tall as a panel's header and lines up with the refs panel's.
 ///
-/// When the row is short of room, the number of commits goes first, then the
-/// branch's name is cut short. The counts, Fetch and New Branch stay.
+/// After the counts, it says what the worktree's agent is doing (decision 100),
+/// except while Roga says what it's doing or just did, whose words come first.
+///
+/// When the row is short of room, the agent's words are cut short first, then
+/// the number of commits goes, then the branch's name is cut short. The counts,
+/// Fetch and New Branch stay. In a narrow column, the number of commits goes as
+/// soon as an agent has something to say.
 struct BranchBar: View {
     let model: RepositoryModel
     let worktree: Worktree
+    let monitor: AgentMonitor
+    let list: RepositoryList
     /// Goes to the refs panel's filter, or nil when the refs panel doesn't fit.
     let switchBranch: (() -> Void)?
     /// Shows one of the repository's worktrees in the window.
     let showWorktree: (String, ObjectID?) -> Void
+    /// Whether the row shows what agents are doing. It follows the sidebar's
+    /// marks, so that turning agents off hides it too.
+    var marks = AgentMarksSetting()
+    @State private var width: CGFloat = 0
 
     /// The space between the branch's buttons and the line after them, and
     /// after the line, so that it has about 14 points on each side between New
@@ -25,8 +36,14 @@ struct BranchBar: View {
     /// How tall the line after the branch's buttons is, about as tall as their
     /// icons.
     private static let lineHeight = 18.0
+    /// How wide the row can be and still have room for the agent's words
+    /// beside history's number of commits. Under it, the number goes while an
+    /// agent has something to say.
+    static let widthForCommitCount: CGFloat = 600
 
     var body: some View {
+        let line = agentLine
+        let showsLine = line != nil && !rogaIsSpeaking
         HStack(spacing: 0) {
             if worktree.isBare {
                 Text(worktree.title)
@@ -38,7 +55,16 @@ struct BranchBar: View {
                 BranchControl(branch: model.branch, worktree: worktree, switchBranch: switchBranch, showWorktree: showWorktree)
                     .layoutPriority(1)
             }
+            if showsLine, let line {
+                BranchAgentLine(line: line, monitor: monitor, model: model)
+                    .padding(.leading, 6)
+                    // Its words are the first to be cut short, and the space
+                    // after them takes what's left.
+                    .layoutPriority(-1)
+                    .transition(.opacity)
+            }
             Spacer(minLength: 12)
+                .layoutPriority(-2)
             HStack(spacing: Self.lineGap) {
                 if model.phase.isReady {
                     CheckoutNote(model: model)
@@ -57,7 +83,7 @@ struct BranchBar: View {
                             .padding(.horizontal, Self.lineGap)
                             .accessibilityHidden(true)
                     }
-                    HistoryCommands(model: model)
+                    HistoryCommands(model: model, showsCommitCount: line == nil || width >= Self.widthForCommitCount)
                 }
             }
         }
@@ -66,11 +92,33 @@ struct BranchBar: View {
         .padding(.trailing, 6)
         .frame(height: PanelSplitLayout.headerHeight)
         .frame(maxWidth: .infinity)
+        .animation(.easeOut(duration: 0.2), value: showsLine)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+        // History's row for uncommitted changes shimmers while an agent works.
+        .onChange(of: line?.isWorking == true, initial: true) { _, isWorking in
+            model.agentIsWorking = isWorking
+        }
         .background(Palette.surface)
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(Palette.separator)
                 .frame(height: 1)
         }
+    }
+
+    /// What the agents in this worktree are doing, or nil when none is
+    /// working, waiting or finished, or agents are turned off.
+    private var agentLine: AgentLine? {
+        guard !worktree.isBare, let monitor = marks.monitor(monitor) else { return nil }
+        return AgentLine(monitor.worktreeAgents(worktree.path, in: list))
+    }
+
+    /// Whether Roga says what git is doing or just did after the counts, as in
+    /// `Committed 9f2c1ab` with Undo, or beside the house while it pulls or
+    /// pushes. A fetch says nothing there.
+    private var rogaIsSpeaking: Bool {
+        let branch = model.branch
+        if let action = branch.action, action != .fetching { return true }
+        return branch.finished != nil
     }
 }

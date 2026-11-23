@@ -500,6 +500,42 @@ struct AgentMonitorTests {
         #expect(monitor.summary(forWorktree: "/git/api", in: list)?.activity == "Editing a.swift")
     }
 
+    /// The worktree on screen counts as seen at once, so its branch row would
+    /// never show what an agent finished if it went by the marks.
+    @Test func theBranchRowKeepsWhatFinishedAfterSomeoneLooks() {
+        let monitor = monitor()
+        monitor.receive(event("SessionStart", "idle", in: "/git/api", at: 0))
+        monitor.receive(event("UserPromptSubmit", "a", in: "/git/api", at: 10))
+        monitor.receive(event("Stop", "a", in: "/git/api", at: 20, activity: "Added the tooltip"))
+        monitor.receive(event("UserPromptSubmit", "b", host: .codex, in: "/git/api-login", at: 30))
+        monitor.markSeen(worktree: "/git/api")
+        #expect(monitor.summary(forWorktree: "/git/api", in: list) == nil)
+        let agents = monitor.worktreeAgents("/git/api", in: list)
+        #expect(agents == [WorktreeAgent(
+            id: SessionKey(host: .claude, id: "a"), host: .claude, phase: .finished(failed: false),
+            since: start.addingTimeInterval(20), activity: "Added the tooltip"
+        )])
+        #expect(monitor.worktreeAgents("/git/api-login", in: list).map(\.host) == [.codex])
+        // Its next turn takes the reply away.
+        monitor.receive(event("UserPromptSubmit", "a", in: "/git/api", at: 40))
+        #expect(monitor.worktreeAgents("/git/api", in: list).first?.phase == .working)
+        #expect(monitor.worktreeAgents("/git/api", in: list).first?.activity == nil)
+        monitor.receive(event("SessionEnd", "a", in: "/git/api", at: 50))
+        #expect(monitor.worktreeAgents("/git/api", in: list).isEmpty)
+    }
+
+    @Test func thePopoverCountsASessionsSubagents() {
+        let monitor = monitor()
+        let key = SessionKey(host: .claude, id: "a")
+        monitor.receive(event("UserPromptSubmit", "a", in: "/git/api", at: 0))
+        #expect(monitor.subagents(of: key) == 0)
+        monitor.receive(event("SubagentStart", "a", in: "/git/api", at: 1))
+        monitor.receive(event("SubagentStart", "a", in: "/git/api", at: 2))
+        #expect(monitor.subagents(of: key) == 2)
+        monitor.receive(event("SubagentStop", "a", in: "/git/api", at: 3))
+        #expect(monitor.subagents(of: key) == 1)
+    }
+
     @Test func aLineSpeaksOnlyForOneSession() {
         #expect(AgentSummary(state: .working, since: start, hosts: [.claude], sessions: 2, activity: "Run the tests").activity == nil)
         let summary = AgentSummary([
