@@ -21,7 +21,7 @@ A worktree is a checkout of its own, with its own files, branch and agent, so it
 - **The number** is the most pressing of what's waiting: uncommitted files with conflicts in red, a triangle when git can't list them, uncommitted files in orange, then `↓3`, then `↑2`, both in gray, because clicking a tab moves to it rather than pulling or pushing (decision 19).
 - **The tooltip** has the whole name, the shortcut, and what the menu of worktrees used to say on its second line, ending with the folder.
 
-The tab the window shows is filled with gray and has an edge, and the others fill under the pointer, as in the Claude app.
+The tab the window shows is white in the light theme and a lighter gray than the row in the dark, has an edge and casts a soft shadow, and the others fill with gray under the pointer, as in the Claude app.
 
 **A tab has no close button.** It keeps a place at its end for its number, and on hover a … button covers the number, as a sidebar row's menu button covers its mark (decision 58). The button opens the menu of the worktree's row in the sidebar, which right-clicking the tab opens too, and the repository's tab opens the repository's menu. A worktree goes away with Delete… in that menu, as it does in the sidebar, rather than by closing its tab. New worktree… in a tab's menu opens the popover on that tab, or on the + button for the repository's tab, and so does the menu bar's New Worktree…, since the tabs show whether or not the sidebar does.
 

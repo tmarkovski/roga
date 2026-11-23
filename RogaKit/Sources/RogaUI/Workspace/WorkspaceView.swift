@@ -562,7 +562,9 @@ public struct WorkspaceView: View {
         HStack(spacing: 0) {
             tabs
                 .padding(.leading, titleRowLeading + 8)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                // As tall as the row, so that cutting off the tabs that don't
+                // fit leaves the shown tab's shadow under it.
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                 .clipped()
             if !refsPanelVisibility.isShowing {
                 RefsPanelToggle(visibility: refsPanelVisibility)
