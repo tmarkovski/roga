@@ -1,4 +1,4 @@
-# 99. Say what the worktree's agent is doing in the branch row
+# 100. Say what the worktree's agent is doing in the branch row
 
 Accepted on 2026-11-23. This adds a line to the branch row under the tabs from [decision 95](0095-a-repositorys-worktrees-as-tabs.md) that says what the agent in the worktree on screen is doing, in the words of [decision 48](0048-a-second-line-under-a-sidebar-row-while-theres-something-to-say.md)'s second line, with a popover that has a section for each session. It also runs [decision 68](0068-mark-an-agents-commands-with-an-orange-line-rather-than-sparkles.md)'s light through the words of history's row for uncommitted changes ([decision 15](0015-uncommitted-changes-as-a-row-in-history.md)) while the agent works.
 
@@ -24,8 +24,8 @@ We chose A+S.
 **The branch row says what the worktree's agent is doing, after the counts.** It's the agent's mark, then 6 points later its words, and how long, as in `◌ Run the test suite · 6 min`. The words are those of the sidebar's second line:
 
 - An agent at work is in gray, as in `Run the test suite · 6 min`, and one that hasn't said anything yet is named, as in `Claude Code is working`.
-- An agent that waits for you is in amber, as in `Needs your OK: git push · 2 min` and `Wants a plan approved · 4 min`.
-- Several sessions in the worktree read `2 agents working · 6 min`, or name the one that waits, as in `Codex needs your OK: git push · 1 min`.
+- An agent that waits for you is in amber, as in `Approval required: git push · 2 min` and `Wants a plan approved · 4 min`.
+- Several sessions in the worktree read `2 agents working · 6 min`. When others are doing something else, the line names the agent it's about, as the worktree menu does, as in `Codex: approval required: git push · 1 min`.
 - How long shows from a minute on, and never for an agent that finished.
 - A finished agent shows the first line of its reply in gray, after a gray check in a circle rather than the blue dot, because the worktree on screen counts as seen at once and its tab never shows the dot. It stays until the agent starts another turn or its session ends. A turn that ended with `StopFailure` reads `Claude Code stopped with an error`, after a red cross in a circle, since `StopFailure` leaves no line.
 - With no session, an idle one, or **Use agents** off ([decision 89](0089-one-switch-for-agents.md)), there's nothing, and the row is as it was.
@@ -36,9 +36,9 @@ We chose A+S.
 
 **The line is a button.** It fills with gray under the pointer, as the row's other buttons do, its tooltip is the mark's from decision 47, and a click opens a popover that hangs from it ([decision 83](0083-open-a-new-refs-popover-where-it-was-asked-for.md)). VoiceOver reads the agent's state and its line, as it does on a sidebar row.
 
-**The popover has a section for each session,** in the order the sidebar ranks them, with a waiting one first. A section has the agent's mark, its name, what it's doing in a word or two, such as working, needs your OK, waiting for you or finished, and how long, then its whole line, up to 120 characters on two lines, then how many subagents are running, if any. At its foot, **Review 3 Files** selects history's row for uncommitted changes, while there are any.
+**The popover has a section for each session,** in the order the sidebar ranks them, with a waiting one first. A section has the agent's mark, its name, what it's doing in a word or two, such as Working, Approval required, Waiting for you or Finished, and how long, then its whole line, up to 120 characters on two lines, then how many subagents are running, if any. At its foot, **Review 3 Files** selects history's row for uncommitted changes, while there are any.
 
-**History's row for uncommitted changes shimmers while the agent works.** A light in Roga's orange runs left to right through the row's gray words ([decision 86](0086-gray-the-words-of-the-uncommitted-row.md)) about every two and a half seconds, as decision 68's light runs along a line while an agent writes. It shows only while an agent in the worktree is working and the row is there, so it says that those files are still being made. It stops while the agent waits for you, once it finishes, under Reduce Motion, and while the window is hidden, as the turning ring stops ([decision 46](0046-turn-the-ring-of-an-agent-at-work.md)). The row keeps its dot and its words.
+**History's row for uncommitted changes shimmers while the agent works.** A light in Roga's orange runs left to right through the row's gray words ([decision 86](0086-gray-the-words-of-the-uncommitted-row.md)) about every two and a half seconds, as decision 68's light runs along a line while an agent writes. It shows only while an agent in the worktree is working and the row is there, so it says that those files are still being made, even while the line speaks for another agent that waits for you. It stops once no agent there is working, as when the agent waits for you or finishes, under Reduce Motion, and while the window is hidden, as the turning ring stops ([decision 46](0046-turn-the-ring-of-an-agent-at-work.md)). The row keeps its dot and its words.
 
 **The branch row reads the line only for the worktree it shows.** Decision 47 keeps the line apart from the marks so that a new line redraws only the rows that show it, and this keeps that: a new line redraws the branch row and the row for uncommitted changes, and nothing else.
 

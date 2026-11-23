@@ -942,7 +942,7 @@ INTROS = [
 EXTRA_NOTES = {
     "nAlPick": {
         "x": 1080, "row": 0, "w": 900,
-        "text": "Decided as decision 99: A, with its popover, and A+S's shimmer on the row for uncommitted changes. A fills room the branch row already leaves empty, costs no height, and keeps saying what the agent is doing whether or not there are uncommitted files, with history scrolled or with the panels maximized, which makes the agents' work hard to miss. C sits closest to the files the agent makes, but only while that row is on screen. A+C's mark on that row was left out, since a busy agent would then turn in three places: its tab, the branch row and history. A+S ties the row to the agent with a light running through its words instead, which says that those files are still being made without a third mark.",
+        "text": "Decided as decision 100: A, with its popover, and A+S's shimmer on the row for uncommitted changes. A fills room the branch row already leaves empty, costs no height, and keeps saying what the agent is doing whether or not there are uncommitted files, with history scrolled or with the panels maximized, which makes the agents' work hard to miss. C sits closest to the files the agent makes, but only while that row is on screen. A+C's mark on that row was left out, since a busy agent would then turn in three places: its tab, the branch row and history. A+S ties the row to the agent with a light running through its words instead, which says that those files are still being made without a third mark.",
     },
     "nAlOpen": {
         "x": 1080, "row": 1, "w": 900,
@@ -960,7 +960,7 @@ NOTES = {
     "Al-AS.dc.html": "A+S is A, plus a light in Roga's orange that runs through the gray words of history's row for uncommitted changes while the agent works, as the light runs around the message box while an agent writes (decision 68). It needs no third mark, and it stops while the agent waits for you, once it finishes, and under Reduce Motion.",
     "Al-States.dc.html": "Where an option has no room, its words are cut at their end and the time stays. While Roga says what just happened, A and A2 give it their place and the tab's mark goes on turning. A finished agent keeps its reply in gray with a check, since the worktree on screen counts as seen at once and its tab never shows the blue dot.",
     "Al-States-Dark.dc.html": "The amber of a waiting agent and the red of conflicts are the sidebar's, so they read the same in the tab, the row and the popover.",
-    "Al-Popover.dc.html": "One section for each session, in the order the sidebar ranks them, with its whole line, which can run to 120 characters, and how many subagents it has running. Show Terminal would bring forward the terminal app the agent runs in, and decision 99 leaves it out. Review Files selects the row for uncommitted changes, which is what you'd do next after an agent finishes.",
+    "Al-Popover.dc.html": "One section for each session, in the order the sidebar ranks them, with its whole line, which can run to 120 characters, and how many subagents it has running. Show Terminal would bring forward the terminal app the agent runs in, and decision 100 leaves it out. Review Files selects the row for uncommitted changes, which is what you'd do next after an agent finishes.",
     "Al-Try.dc.html": "One worktree's story in each option. Pick an option, a width and how history is shown, and press Play, or step with Next. Scrolled and Maximized are where C's line goes away and A's stays.",
 }
 

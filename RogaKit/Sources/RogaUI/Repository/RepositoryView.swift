@@ -154,10 +154,13 @@ struct CheckoutNote: View {
 }
 
 /// History's part of the branch's row: how many commits it shows, and its
-/// commands. The number of commits is the first thing to go when the row is
-/// short of room, before the branch's name is cut short.
+/// commands. The number of commits goes when the row is short of room, after
+/// the agent's words are cut short and before the branch's name is.
 struct HistoryCommands: View {
     @Bindable var model: RepositoryModel
+    /// Whether the number of commits may show, which the branch row turns off
+    /// in a narrow column while an agent has something to say (decision 100).
+    var showsCommitCount = true
 
     var body: some View {
         HStack(spacing: 4) {
@@ -177,11 +180,15 @@ struct HistoryCommands: View {
                 .help(explanation)
                 .padding(.trailing, 4)
             }
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 8) {
-                    commitCount
+            if showsCommitCount {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) {
+                        commitCount
+                        orderMenu
+                    }
                     orderMenu
                 }
+            } else {
                 orderMenu
             }
         }

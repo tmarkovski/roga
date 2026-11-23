@@ -43,7 +43,7 @@ struct AgentMark: View {
                 AgentRing(spins: !reducesMotion)
             case .waiting:
                 Icon.circleAlert.image
-                    .font(.system(size: size * Self.waitingScale / Self.iconWidthPerPoint, weight: .medium))
+                    .font(Self.circleFont(size: size))
                     .foregroundStyle(AgentColors.warn)
             case .finished:
                 Circle()
@@ -53,6 +53,12 @@ struct AgentMark: View {
         }
         .frame(width: size, height: size)
         .accessibilityHidden(true)
+    }
+
+    /// The font for an icon in a circle, such as the waiting mark's, that
+    /// looks as big as the ring in a box of this size.
+    static func circleFont(size: CGFloat) -> Font {
+        .system(size: size * waitingScale / iconWidthPerPoint, weight: .medium)
     }
 }
 

@@ -115,6 +115,9 @@ public struct CommitRowContent: Hashable {
     /// commit, which a pull would bring in. Its text and dot are faded, and its
     /// lines say so for themselves.
     public var isFaded: Bool
+    /// Whether a light runs through the subject, for the row for uncommitted
+    /// changes while an agent makes them (decision 100).
+    public var isShimmering: Bool
 
     public init(
         shortID: String,
@@ -127,7 +130,8 @@ public struct CommitRowContent: Hashable {
         isWorkingTree: Bool = false,
         isWarning: Bool = false,
         isPreviewed: Bool = false,
-        isFaded: Bool = false
+        isFaded: Bool = false,
+        isShimmering: Bool = false
     ) {
         self.shortID = shortID
         self.badges = badges
@@ -140,6 +144,7 @@ public struct CommitRowContent: Hashable {
         self.isWarning = isWarning
         self.isPreviewed = isPreviewed
         self.isFaded = isFaded
+        self.isShimmering = isShimmering
     }
 
     /// Whether the worktree's `HEAD` is on this commit, which a ring around the

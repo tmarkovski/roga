@@ -130,6 +130,7 @@ roga/
 │   │   │   ├── CommitTableController.swift the table, and loading text for the rows in view
 │   │   │   ├── CommitRowContent.swift  what a row shows
 │   │   │   ├── CommitRowView.swift     drawing rows and their selection
+│   │   │   ├── TextShimmerView.swift   the light through the uncommitted row's words while an agent works
 │   │   │   ├── LaneRenderer.swift      drawing the graph in a row
 │   │   │   └── CommitRowAccessibility.swift
 │   │   ├── DiffUI/                     AppKit, TextKit 1

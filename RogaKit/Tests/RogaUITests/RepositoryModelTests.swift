@@ -505,6 +505,24 @@ struct RepositoryModelTests {
         #expect(model.rowContent(1).subject != nil)
     }
 
+    /// While an agent works in the worktree, the row's words shimmer, which
+    /// takes the list drawing the row again.
+    @Test func theRowForChangesShimmersWhileAnAgentWorks() async throws {
+        let (model, repository) = try await modelOfACopy()
+        try write("new\n", to: "new.txt", in: repository)
+        await model.appear()
+        #expect(model.hasWorkingTreeRow)
+        #expect(!model.rowContent(0).isShimmering)
+        let version = model.historyVersion
+        model.agentIsWorking = true
+        #expect(model.historyVersion == version + 1)
+        #expect(model.rowContent(0).isShimmering)
+        model.agentIsWorking = true
+        #expect(model.historyVersion == version + 1)
+        model.agentIsWorking = false
+        #expect(!model.rowContent(0).isShimmering)
+    }
+
     @Test func readsABodyWithItsSubject() async throws {
         let (model, _) = try await modelOfACopy()
         await model.appear()

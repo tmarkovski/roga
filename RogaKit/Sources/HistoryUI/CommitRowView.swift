@@ -97,9 +97,14 @@ final class CommitCellView: NSView {
             if content != oldValue {
                 needsDisplay = true
                 updateToolTips()
+                updateShimmer()
             }
         }
     }
+
+    /// The light through the words of the row for uncommitted changes while
+    /// an agent makes them, which is there only while the row shimmers.
+    private(set) var shimmer: TextShimmerView?
 
     /// The index of the badge the pointer is over, which has a border.
     var hoveredBadge: Int? {
@@ -122,6 +127,32 @@ final class CommitCellView: NSView {
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
         updateToolTips()
+        updateShimmer()
+    }
+
+    /// Lays the light over the subject while the row shimmers, and takes it
+    /// away once it stops.
+    private func updateShimmer() {
+        guard let content, content.isShimmering, let subject = content.subject else {
+            shimmer?.removeFromSuperview()
+            shimmer = nil
+            return
+        }
+        let layout = CommitRowLayout(content: content, size: bounds.size)
+        let style = Style.uncommittedSubject
+        let view = shimmer ?? TextShimmerView()
+        if shimmer == nil {
+            shimmer = view
+            addSubview(view)
+        }
+        view.frame = bounds
+        view.words = layout.subjectMaxX > layout.subjectX
+            ? TextShimmerView.Words(
+                text: subject,
+                font: style.font,
+                frame: textFrame(at: layout.subjectX, width: layout.subjectMaxX - layout.subjectX, style: style)
+            )
+            : nil
     }
 
     /// Where the badges with tooltips are.
@@ -212,10 +243,15 @@ final class CommitCellView: NSView {
     }
 
     private func draw(_ text: String, at x: CGFloat, width: CGFloat, style: Style) {
+        let rect = textFrame(at: x, width: width, style: style)
+        (text as NSString).draw(with: rect, options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], attributes: style.attributes)
+    }
+
+    /// Where a piece of the row's text goes.
+    private func textFrame(at x: CGFloat, width: CGFloat, style: Style) -> NSRect {
         // Rounding down puts every font in the row on one baseline, level with the bottom
         // of a badge's icons. Rounding to nearest put fonts with an odd line height 1 point lower.
-        let rect = NSRect(x: x, y: ((bounds.height - style.lineHeight) / 2).rounded(.down), width: width, height: style.lineHeight)
-        (text as NSString).draw(with: rect, options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], attributes: style.attributes)
+        NSRect(x: x, y: ((bounds.height - style.lineHeight) / 2).rounded(.down), width: width, height: style.lineHeight)
     }
 
     private func drawBadge(_ badge: CommitRowContent.Badge, in rect: NSRect, isHovered: Bool) {
@@ -305,12 +341,14 @@ final class CommitCellView: NSView {
 
     /// The font and color for each kind of text.
     struct Style {
+        let font: NSFont
         let attributes: [NSAttributedString.Key: Any]
         let lineHeight: CGFloat
 
         init(font: NSFont, color: NSColor) {
             let paragraph = NSMutableParagraphStyle()
             paragraph.lineBreakMode = .byTruncatingTail
+            self.font = font
             attributes = [.font: font, .foregroundColor: color, .paragraphStyle: paragraph]
             lineHeight = ceil(font.ascender - font.descender)
         }

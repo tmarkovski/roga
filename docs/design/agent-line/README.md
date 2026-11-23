@@ -16,7 +16,7 @@ After those come every option in fifteen moments, in both appearances, then the 
 
 ## Decided
 
-- **A+S.** Decided on November 23, 2026, as [decision 99](../../decisions/0099-say-what-the-worktrees-agent-is-doing-in-the-branch-row.md), which isn't built yet. A fills room the branch row already leaves empty, costs no height, and keeps saying what the agent is doing whether or not there are uncommitted files, with history scrolled, and with the panels maximized over history, where C's line is out of view. A+C's mark was left out because a working agent would then turn in three places a few points apart, and the shimmer ties the row to the agent without a third mark.
+- **A+S.** Decided on November 23, 2026, as [decision 100](../../decisions/0100-say-what-the-worktrees-agent-is-doing-in-the-branch-row.md). The app's waiting words are decision 72's, `Approval required: git push`, where the boards still say `Needs your OK`. A fills room the branch row already leaves empty, costs no height, and keeps saying what the agent is doing whether or not there are uncommitted files, with history scrolled, and with the panels maximized over history, where C's line is out of view. A+C's mark was left out because a working agent would then turn in three places a few points apart, and the shimmer ties the row to the agent without a third mark.
 - **Show Terminal is left out of the popover**, which the canvas still draws. It would need new code to bring forward the app the agent's process runs in, and it couldn't pick the tab.
 
 ## Still to decide
