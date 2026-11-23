@@ -139,7 +139,7 @@ extension GitProvider.Finding {
     /// the login shell or running any of them.
     nonisolated static func preview(_ survey: GitSurvey) -> Self {
         Self(
-            searchPath: {
+            searchPath: { _ in
                 try? await Task.sleep(for: PreviewMac.lookTime)
                 return (survey.searchPath, true)
             },

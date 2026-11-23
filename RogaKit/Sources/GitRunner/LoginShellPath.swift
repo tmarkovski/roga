@@ -25,12 +25,17 @@ public enum LoginShellPath {
 
     /// Returns the shell's `PATH`, or nil if the shell couldn't be started,
     /// didn't print it, or took longer than `timeout`.
-    public static func read(shell: String = userShell, timeout: Duration = .seconds(5)) async -> String? {
+    ///
+    /// - Parameter priority: The shell's priority, which is utility when
+    ///   nothing waits for it, as at a launch that starts from the `PATH` the
+    ///   shell said last time.
+    public static func read(shell: String = userShell, timeout: Duration = .seconds(5), priority: GitCommand.Priority = .normal) async -> String? {
         let command = "printf '%s%s%s' \(startMarker) \"$PATH\" \(endMarker)"
         guard let process = try? ChildProcess.spawn(
             executable: shell,
             arguments: ["-i", "-l", "-c", command],
-            environment: ProcessInfo.processInfo.environment
+            environment: ProcessInfo.processInfo.environment,
+            priority: priority
         ) else { return nil }
 
         // Stop the shell if it hasn't finished in time. A shell that has

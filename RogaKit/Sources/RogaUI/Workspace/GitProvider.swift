@@ -13,6 +13,10 @@ enum GitPreferences {
         let path = defaults.string(forKey: programKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
         return path?.isEmpty == false ? path : nil
     }
+
+    /// The `PATH` the login shell said the last time Roga read it, which the
+    /// next launch finds git in while the shell starts again (decision 97).
+    static let searchPathKey = "loginShellPath"
 }
 
 /// Finds the git that Roga runs, when Roga launches, and every other git on
@@ -34,8 +38,8 @@ public final class GitProvider {
     /// How the provider finds things, which tests replace, so that none of
     /// them reads the login shell or runs a real git.
     nonisolated struct Finding: Sendable {
-        var searchPath: @Sendable () async -> (searchPath: String, fromLoginShell: Bool) = {
-            await GitInstallation.readSearchPath()
+        var searchPath: @Sendable (_ priority: GitCommand.Priority) async -> (searchPath: String, fromLoginShell: Bool) = {
+            await GitInstallation.readSearchPath(priority: $0)
         }
         var locate: @Sendable (_ configuredPath: String?, _ searchPath: String) async -> Result<GitInstallation, GitInstallationError> = { configuredPath, searchPath in
             do throws(GitInstallationError) {
@@ -74,7 +78,7 @@ public final class GitProvider {
         self.defaults = defaults
         self.finding = finding
         chosenPath = GitPreferences.program(in: defaults)
-        look()
+        look(startingFromSaved: true)
     }
 
     public var git: Git? {
@@ -122,19 +126,56 @@ public final class GitProvider {
         }
     }
 
-    private func look() {
+    /// Reads the login shell's `PATH`, finds git in it, and then every git.
+    ///
+    /// - Parameter startingFromSaved: Whether to find git first in the `PATH`
+    ///   the shell said last time, as Roga does at launch, so that windows
+    ///   don't wait for the shell to start, which can take half a second
+    ///   (decision 97). What the shell says now is used once it says it:
+    ///   when it's the same, git isn't looked for again, and when the shell
+    ///   says nothing, the saved `PATH` is kept rather than the one Roga
+    ///   started with.
+    private func look(startingFromSaved: Bool = false) {
         generation += 1
         let generation = generation
         let chosen = chosenPath
+        let saved = startingFromSaved ? defaults.string(forKey: GitPreferences.searchPathKey).flatMap { $0.isEmpty ? nil : $0 } : nil
         isLooking = true
         Task {
-            let (searchPath, fromLoginShell) = await finding.searchPath()
+            let early: Result<GitInstallation, GitInstallationError>?
+            if let saved {
+                self.searchPath = (saved, true)
+                let found = await finding.locate(chosen, saved)
+                guard self.generation == generation else { return }
+                // A git that can't be used waits for the shell, which may
+                // know of one that can, rather than saying so for a moment.
+                if case .success = found { apply(found) }
+                early = found
+            } else {
+                early = nil
+            }
+            // Nothing waits for the shell when git was found already, so it
+            // doesn't take time from opening the repositories windows show.
+            var (searchPath, fromLoginShell) = await finding.searchPath(early == nil ? .normal : .utility)
             guard self.generation == generation else { return }
+            if fromLoginShell {
+                defaults.set(searchPath, forKey: GitPreferences.searchPathKey)
+            } else if let saved {
+                // What the shell said last time is still a better guess than
+                // the `PATH` Roga started with.
+                (searchPath, fromLoginShell) = (saved, true)
+            }
             self.searchPath = (searchPath, fromLoginShell)
             // Git first, since every window waits for it, and then the rest.
-            var located = await finding.locate(chosen, searchPath)
-            guard self.generation == generation else { return }
-            apply(located)
+            var located: Result<GitInstallation, GitInstallationError>
+            if let early, searchPath == saved {
+                located = early
+                apply(located)
+            } else {
+                located = await finding.locate(chosen, searchPath)
+                guard self.generation == generation else { return }
+                apply(located)
+            }
             var survey = await finding.survey(searchPath)
             survey.readFromLoginShell = fromLoginShell
             guard self.generation == generation else { return }

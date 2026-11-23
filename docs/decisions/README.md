@@ -10,7 +10,7 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | --- | --- | --- |
 | [1](0001-distribute-outside-the-app-store.md) | Distribute outside the Mac App Store | Its download address changed by [34](0034-name-the-app-roga.md) |
 | [2](0002-minimum-macos-26.md) | Require macOS 26 or later | Accepted |
-| [3](0003-use-the-users-git.md) | Use the user's git, with a minimum version | Accepted |
+| [3](0003-use-the-users-git.md) | Use the user's git, with a minimum version | When the login shell is read at launch changed by [97](0097-start-from-last-launchs-path-and-open-the-shown-repository-first.md) |
 | [4](0004-apache-2-license.md) | License yaga under Apache 2.0 | Accepted |
 | [5](0005-read-the-commit-graph-and-run-git.md) | Read history from the commit-graph file and run git for everything else | Accepted |
 | [6](0006-keep-the-commit-graph-up-to-date.md) | Keep the commit-graph file up to date automatically | Accepted |
@@ -21,7 +21,7 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [11](0011-thin-xcode-project-and-a-local-package.md) | Keep the Xcode project thin and the code in a local Swift package | Accepted |
 | [12](0012-history-in-topological-order.md) | Show history in topological order by default | Accepted |
 | [13](0013-repositories-in-a-sidebar.md) | List repositories and their worktrees in a sidebar | Accepted |
-| [14](0014-the-sidebar-keeps-every-added-repository.md) | Keep every added repository in the sidebar, and save the list in Application Support | Sidebar order changed by [16](0016-a-rail-of-organizations-in-the-sidebar.md), and the folder's name by [34](0034-name-the-app-roga.md) |
+| [14](0014-the-sidebar-keeps-every-added-repository.md) | Keep every added repository in the sidebar, and save the list in Application Support | Sidebar order changed by [16](0016-a-rail-of-organizations-in-the-sidebar.md), and the folder's name by [34](0034-name-the-app-roga.md), and the order its repositories open at launch by [97](0097-start-from-last-launchs-path-and-open-the-shown-repository-first.md) |
 | [15](0015-uncommitted-changes-as-a-row-in-history.md) | Show uncommitted changes as a row at the top of history | What the panel holds and how tall it is changed by [30](0030-stage-and-commit-beside-history.md), and the row's words grayed by [86](0086-gray-the-words-of-the-uncommitted-row.md), and the row kept for a worktree git can't list by [92](0092-say-when-git-cant-list-a-worktrees-uncommitted-files.md) |
 | [16](0016-a-rail-of-organizations-in-the-sidebar.md) | Pick repositories by organization with a rail in the sidebar | Folding of worktrees changed by [17](0017-a-line-and-a-row-for-a-repositorys-worktrees.md), and where an owner comes from by [18](0018-every-remote-counts-toward-a-repositorys-organization.md), and rows given a second line while there's something to say by [48](0048-a-second-line-under-a-sidebar-row-while-theres-something-to-say.md), and the rail replaced by groups in the list by [53](0053-organizations-as-groups-in-the-list-and-add-and-settings-at-the-top.md) |
 | [17](0017-a-line-and-a-row-for-a-repositorys-worktrees.md) | Show a repository's worktrees with a line, and collapse them into one row | Accepted |
@@ -104,3 +104,4 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [94](0094-report-an-issue-from-the-help-menu-after-a-dialog.md) | Report an issue from the Help menu, after a dialog says what it opens | Accepted |
 | [95](0095-a-repositorys-worktrees-as-tabs.md) | A repository's worktrees as tabs | Its title row drawn by Roga at 44 points, rather than the toolbar, in [96](0096-draw-the-title-row-at-44-points.md) |
 | [96](0096-draw-the-title-row-at-44-points.md) | Draw the title row ourselves, 44 points tall | Accepted |
+| [97](0097-start-from-last-launchs-path-and-open-the-shown-repository-first.md) | Start from last launch's `PATH`, and open the repository a window shows first | Accepted |

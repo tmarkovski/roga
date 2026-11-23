@@ -75,7 +75,13 @@ public final class RepositoryList {
     /// the active app, the list looks again at what it can't watch: repositories
     /// it couldn't open before, such as one on a disk that wasn't mounted, and
     /// any on a volume that doesn't record changes.
-    func connect(git: Git) async {
+    ///
+    /// The repositories that windows show open first: `showing`, and the one
+    /// selected last. The rest open once those have, or after `headStart`
+    /// if they're slow, as one on a network volume can be, so that the
+    /// history a window shows at launch doesn't wait behind git in every
+    /// other repository (decision 97).
+    func connect(git: Git, showing: Set<String> = [], headStart: Duration = RepositoryList.headStart) async {
         guard self.git == nil else { return }
         self.git = git
         activation = NotificationCenter.default.addObserver(
@@ -88,12 +94,54 @@ public final class RepositoryList {
                 Task { await self.refreshUnwatched() }
             }
         }
+        // Chosen before any opens, since opening one that moved changes its path.
+        let first = showing.union(lastSelection.map { [$0.repository] } ?? [])
+        let early = repositories.filter { first.contains($0.path) }
+        let later = repositories.filter { !first.contains($0.path) }
+        let opening = early.map { repository in Task { await self.open(repository, git: git) } }
+        await Self.waitForAll(opening, atMost: headStart)
         await withTaskGroup { group in
-            for repository in repositories {
+            for (repository, task) in zip(early, opening) {
+                group.addTask {
+                    await task.value
+                    await self.finishLooking(at: repository)
+                }
+            }
+            for repository in later {
                 group.addTask {
                     await self.open(repository, git: git)
                     await self.finishLooking(at: repository)
                 }
+            }
+        }
+    }
+
+    /// How long the repositories that windows show have to open before the
+    /// rest start opening too.
+    static let headStart = Duration.milliseconds(500)
+
+    /// Returns once every task has finished, or once `limit` has passed,
+    /// whichever is first. The tasks go on either way.
+    static func waitForAll(_ tasks: [Task<Void, Never>], atMost limit: Duration) async {
+        guard !tasks.isEmpty else { return }
+        final class Waiting {
+            var continuation: CheckedContinuation<Void, Never>?
+            func finish() {
+                continuation?.resume()
+                continuation = nil
+            }
+        }
+        let waiting = Waiting()
+        await withCheckedContinuation { continuation in
+            waiting.continuation = continuation
+            let timer = Task {
+                try? await Task.sleep(for: limit)
+                waiting.finish()
+            }
+            Task {
+                for task in tasks { await task.value }
+                timer.cancel()
+                waiting.finish()
             }
         }
     }

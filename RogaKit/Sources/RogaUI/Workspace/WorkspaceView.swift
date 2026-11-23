@@ -265,7 +265,9 @@ public struct WorkspaceView: View {
             }
             // The repositories open with one git and keep it, so they wait
             // for setup, where someone may choose another.
-            if !setup.isShowing { await list.connect(git: git) }
+            if !setup.isShowing {
+                await list.connect(git: git, showing: Set([window?.selection?.repository].compactMap(\.self)))
+            }
         }
     }
 

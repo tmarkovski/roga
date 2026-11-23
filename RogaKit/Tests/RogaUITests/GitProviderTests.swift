@@ -24,9 +24,35 @@ struct GitProviderTests {
         var all: [String?] { paths.withLock { $0 } }
     }
 
+    /// Holds the login shell back until a test lets it answer.
+    nonisolated final class Shell: Sendable {
+        private let state = Mutex<(answers: Bool, waiting: [CheckedContinuation<Void, Never>])>((false, []))
+
+        func answer() {
+            let waiting = state.withLock { state in
+                state.answers = true
+                defer { state.waiting = [] }
+                return state.waiting
+            }
+            for continuation in waiting { continuation.resume() }
+        }
+
+        func wait() async {
+            await withCheckedContinuation { continuation in
+                let answers = state.withLock { state in
+                    if !state.answers { state.waiting.append(continuation) }
+                    return state.answers
+                }
+                if answers { continuation.resume() }
+            }
+        }
+    }
+
     let defaults: UserDefaults
     let name: String
     let asked = Asked()
+    /// The `PATH`s the provider looked for git in, in order.
+    let searched = Asked()
 
     init() {
         (defaults, name) = AgentTestSupport.defaults()
@@ -35,13 +61,21 @@ struct GitProviderTests {
     /// A provider whose `PATH` and gits are made up. Locating with no chosen
     /// path finds Apple's, and a chosen one is found when it's one of
     /// `usable`.
-    func provider(survey: GitSurvey = GitProviderTests.survey, finds: Bool = true, usable: [FoundGit] = [apples, homebrew]) -> GitProvider {
-        let asked = asked
+    ///
+    /// The login shell says the survey's `PATH` unless `shell` says otherwise.
+    func provider(
+        survey: GitSurvey = GitProviderTests.survey,
+        finds: Bool = true,
+        usable: [FoundGit] = [apples, homebrew],
+        shell: (@Sendable (_ priority: GitCommand.Priority) async -> (searchPath: String, fromLoginShell: Bool))? = nil
+    ) -> GitProvider {
+        let (asked, searched) = (asked, searched)
         let (apples, old) = (Self.apples, Self.old)
         return GitProvider(defaults: defaults, finding: GitProvider.Finding(
-            searchPath: { (survey.searchPath, true) },
+            searchPath: shell ?? { _ in (survey.searchPath, true) },
             locate: { configured, searchPath in
                 asked.add(configured)
+                searched.add(searchPath)
                 guard let configured else {
                     guard finds, let version = apples.version else {
                         return .failure(.unsupported([.init(executable: old.executable, version: old.version)], developerToolsMissing: false))
@@ -72,6 +106,78 @@ struct GitProviderTests {
         #expect(provider.searchPath?.fromLoginShell == true)
         #expect(provider.chosenPath == nil)
         #expect(asked.all == [nil])
+        // What the shell said, for the next launch to start from.
+        #expect(defaults.string(forKey: GitPreferences.searchPathKey) == Self.searchPath)
+    }
+
+    // MARK: The PATH from the last launch (decision 97)
+
+    @Test func findsGitInLastLaunchsPathWhileTheShellStarts() async {
+        defer { AgentTestSupport.remove(defaults, named: name) }
+        let saved = "/opt/old/bin:/usr/bin"
+        defaults.set(saved, forKey: GitPreferences.searchPathKey)
+        let shell = Shell()
+        let fresh = Self.searchPath
+        let priorities = Mutex<[GitCommand.Priority]>([])
+        let provider = provider(shell: { priority in
+            priorities.withLock { $0.append(priority) }
+            await shell.wait()
+            return (fresh, true)
+        })
+        // Windows can open repositories before the shell has said anything.
+        #expect(await AgentTestSupport.eventually { provider.git != nil })
+        #expect(provider.git?.installation.searchPath == saved)
+        #expect(provider.searchPath?.path == saved)
+        #expect(provider.isLooking)
+        #expect(provider.survey == nil)
+        // Nothing waits for the shell now, so it runs at utility priority.
+        #expect(priorities.withLock { $0 } == [.utility])
+
+        shell.answer()
+        await settled(provider)
+        // The shell said something else, so git was found again in that, which
+        // the next launch starts from.
+        #expect(searched.all == [saved, Self.searchPath])
+        #expect(provider.git?.installation.searchPath == Self.searchPath)
+        #expect(provider.searchPath?.path == Self.searchPath)
+        #expect(defaults.string(forKey: GitPreferences.searchPathKey) == Self.searchPath)
+        #expect(provider.survey == Self.survey)
+    }
+
+    @Test func theSamePathFromTheShellFindsNothingAgain() async {
+        defer { AgentTestSupport.remove(defaults, named: name) }
+        defaults.set(Self.searchPath, forKey: GitPreferences.searchPathKey)
+        let provider = provider()
+        await settled(provider)
+        let log = provider.git?.log
+        #expect(searched.all == [Self.searchPath])
+        #expect(asked.all == [nil])
+        #expect(provider.git?.log === log)
+        #expect(provider.survey == Self.survey)
+    }
+
+    @Test func keepsLastLaunchsPathWhenTheShellSaysNothing() async {
+        defer { AgentTestSupport.remove(defaults, named: name) }
+        defaults.set(Self.searchPath, forKey: GitPreferences.searchPathKey)
+        // The shell didn't answer, so the `PATH` is the one Roga started with.
+        let provider = provider(shell: { _ in ("/usr/bin:/bin:/usr/sbin:/sbin", false) })
+        await settled(provider)
+        #expect(searched.all == [Self.searchPath])
+        #expect(provider.searchPath?.path == Self.searchPath)
+        #expect(provider.searchPath?.fromLoginShell == true)
+        #expect(defaults.string(forKey: GitPreferences.searchPathKey) == Self.searchPath)
+    }
+
+    @Test func lookingAgainWaitsForTheShell() async {
+        defer { AgentTestSupport.remove(defaults, named: name) }
+        defaults.set("/opt/old/bin:/usr/bin", forKey: GitPreferences.searchPathKey)
+        let provider = provider()
+        await settled(provider)
+        provider.lookAgain()
+        await settled(provider)
+        // Look Again is for after something was installed, which the saved
+        // `PATH` may not know about.
+        #expect(searched.all == ["/opt/old/bin:/usr/bin", Self.searchPath, Self.searchPath])
     }
 
     @Test func usesTheGitSomeoneChoseBefore() async {

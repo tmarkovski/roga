@@ -61,10 +61,11 @@ public struct GitInstallation: Sendable, Hashable {
     }
 
     /// The `PATH` Roga searches for git and gives it: the login shell's, or
-    /// the one Roga started with when the shell didn't say.
+    /// the one Roga started with when the shell didn't say. The shell runs at
+    /// `priority`.
     @concurrent
-    public static func readSearchPath() async -> (searchPath: String, fromLoginShell: Bool) {
-        if let fromShell = await LoginShellPath.read() { return (fromShell, true) }
+    public static func readSearchPath(priority: GitCommand.Priority = .normal) async -> (searchPath: String, fromLoginShell: Bool) {
+        if let fromShell = await LoginShellPath.read(priority: priority) { return (fromShell, true) }
         return (ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin", false)
     }
 
