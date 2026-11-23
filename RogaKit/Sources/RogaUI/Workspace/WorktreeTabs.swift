@@ -187,7 +187,9 @@ enum WorktreeTabs {
         case uncommitted(Int)
         /// Commits to pull, in gray, because clicking the tab doesn't pull.
         case behind(Int)
-        /// Commits to push, in gray, because clicking the tab doesn't push.
+        /// Commits to push, in gray, because clicking the tab doesn't push. For a
+        /// branch that has never had an upstream, it's the commits that the
+        /// main branch doesn't have, which haven't gone anywhere yet.
         case ahead(Int)
     }
 
@@ -224,15 +226,21 @@ enum WorktreeTabs {
 
     /// The most pressing of what a worktree has waiting: conflicts, then files
     /// git couldn't list, then uncommitted files, then commits to pull, then
-    /// commits to push. Only one shows, so that tabs stay short. The rest is in
+    /// commits to push. A branch that has never had an upstream counts what it
+    /// would push against the main branch, as the refs panel does, so that a
+    /// worktree whose commits haven't gone anywhere doesn't look like one with
+    /// nothing waiting. Only one shows, so that tabs stay short. The rest is in
     /// the tooltip.
     static func badge(for facts: WorktreeFacts) -> Badge? {
         if facts.hasConflicts, facts.uncommittedFiles > 0 { return .conflicts(facts.uncommittedFiles) }
         if facts.statusFailure != nil { return .cantList }
         if facts.uncommittedFiles > 0 { return .uncommitted(facts.uncommittedFiles) }
-        if let upstream = facts.upstream, !upstream.isGone {
+        if let upstream = facts.upstream {
+            guard !upstream.isGone else { return nil }
             if upstream.behind > 0 { return .behind(upstream.behind) }
             if upstream.ahead > 0 { return .ahead(upstream.ahead) }
+        } else if let main = facts.aheadOfMain, main.ahead > 0 {
+            return .ahead(main.ahead)
         }
         return nil
     }

@@ -14,6 +14,9 @@ struct WorktreeFacts: Equatable {
     var statusFailure: String?
     var unfinished: UnfinishedWork?
     var upstream: UpstreamCounts?
+    /// How far its branch is ahead of the main branch, when the branch has
+    /// never had an upstream.
+    var aheadOfMain: MainCounts?
     var isDeleting = false
     /// What agents are doing in it, as its mark in the sidebar shows.
     var agent: AgentSummary?
@@ -139,8 +142,9 @@ enum WorktreeMenu {
     /// the test suite · 6 min" or "2 agents working · 6 min", in amber while
     /// one waits for you (decisions 41 and 47), whether the worktree is going
     /// away or its folder is missing, what it's stuck partway through, how far
-    /// its branch is from its upstream, whether it's locked, and last, its
-    /// folder, which is the part to cut short.
+    /// its branch is from its upstream, or ahead of the main branch when it has
+    /// never had one, whether it's locked, and last, its folder, which is the
+    /// part to cut short.
     ///
     /// The agent's words and how long are two parts, and only the words may
     /// be cut short, at their end, when an agent's long line leaves the folder
@@ -170,6 +174,8 @@ enum WorktreeMenu {
             } else if let counts = counts(upstream) {
                 details.append(RefMenu.Detail(counts))
             }
+        } else if let main = facts.aheadOfMain {
+            details.append(RefMenu.Detail("↑\(main.ahead.formatted()) ahead of \(main.main)"))
         }
         if worktree.isLocked { details.append(RefMenu.Detail("Locked")) }
         details.append(RefMenu.Detail((worktree.path as NSString).abbreviatingWithTildeInPath))
@@ -221,15 +227,20 @@ enum WorktreeMenu {
                 statusFailure: repository.statusFailures[worktree.path],
                 unfinished: repository.unfinishedWork[worktree.path],
                 upstream: worktree.branch.flatMap { repository.upstreams[$0] },
+                aheadOfMain: worktree.branch.flatMap { repository.aheadOfMain[$0] },
                 isDeleting: repository.deletingWorktrees.contains(worktree.path)
             )
             facts.agent = agents?.summary(forWorktree: worktree.path, in: list)
             if worktree.path == shown, let branch = model?.branch {
                 facts.unfinished = branch.unfinished
                 if let status = branch.status, status.branch == worktree.branch {
-                    facts.upstream = status.upstream != nil || status.upstreamIsGone
+                    let hasUpstream = status.upstream != nil || status.upstreamIsGone
+                    facts.upstream = hasUpstream
                         ? UpstreamCounts(ahead: status.ahead, behind: status.behind, isGone: status.upstreamIsGone)
                         : nil
+                    // The sidebar counts against the main branch only for a
+                    // branch that had no upstream when it last looked.
+                    if hasUpstream { facts.aheadOfMain = nil }
                 }
             }
             return facts

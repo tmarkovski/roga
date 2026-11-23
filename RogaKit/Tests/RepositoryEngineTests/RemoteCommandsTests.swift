@@ -374,13 +374,45 @@ struct RemoteCommandsTests {
         try await runGit("fetch", "--quiet", in: clones.work)
 
         let branches = ["refs/heads/main", "refs/heads/agent", "refs/heads/loose", "refs/heads/orphaned", "refs/heads/missing"]
-        let upstreams = try await clones.session.upstreams(of: branches, in: clones.work)
-        #expect(upstreams == [
+        let counts = try await clones.session.upstreams(of: branches, in: clones.work)
+        #expect(counts.upstreams == [
             "refs/heads/main": UpstreamCounts(ahead: 1, behind: 1),
             "refs/heads/agent": UpstreamCounts(ahead: 0, behind: 1),
             "refs/heads/orphaned": UpstreamCounts(isGone: true),
         ])
-        #expect(try await clones.session.upstreams(of: [], in: clones.work).isEmpty)
+        // loose has nothing that main doesn't.
+        #expect(counts.aheadOfMain.isEmpty)
+        #expect(try await clones.session.upstreams(of: [], in: clones.work) == BranchCounts())
+    }
+
+    @Test func countsWhatABranchThatWasNeverPushedHasThatMainDoesnt() async throws {
+        let clones = try await clones()
+        // main is a commit behind its upstream, which the agent's branch
+        // starts from, and a commit ahead, which it doesn't have.
+        try await pushFromOther(clones)
+        try await runGit("fetch", "--quiet", in: clones.work)
+        try await commit("Not pushed", in: clones.work)
+        try await runGit("switch", "--quiet", "--no-track", "-c", "agent", "origin/main", in: clones.work)
+        try await commit("First", in: clones.work)
+        try await commit("Second", in: clones.work)
+        try await runGit("switch", "--quiet", "main", in: clones.work)
+        try await runGit("branch", "--no-track", "loose", "main", in: clones.work)
+
+        let branches = ["refs/heads/main", "refs/heads/agent", "refs/heads/loose"]
+        let counts = try await clones.session.upstreams(of: branches, in: clones.work)
+        #expect(counts.aheadOfMain == ["refs/heads/agent": MainCounts(main: "main", ahead: 2)])
+        #expect(counts.upstreams.keys.sorted() == ["refs/heads/main"])
+    }
+
+    @Test func withoutAMainBranchNothingIsCountedAgainstIt() async throws {
+        let clones = try await clones()
+        try await runGit("remote", "set-head", "origin", "--delete", in: clones.work)
+        try await runGit("branch", "--move", "main", "trunk", in: clones.work)
+        try await runGit("switch", "--quiet", "--no-track", "-c", "agent", in: clones.work)
+        try await commit("Mine", in: clones.work)
+
+        let counts = try await clones.session.upstreams(of: ["refs/heads/agent"], in: clones.work)
+        #expect(counts == BranchCounts())
     }
 
     // MARK: Pushing
