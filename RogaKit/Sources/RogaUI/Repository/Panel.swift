@@ -10,6 +10,13 @@ import ThemeUI
 enum Palette {
     static let surface = gray(light: 1.0, dark: 0.135)
     static let separator = gray(light: 0.885, dark: 0.225)
+    /// The band along the top of the window, under the worktrees' tabs and the
+    /// refs panel's commands. It's the gray of the Claude app's strip of tabs
+    /// in the light theme, close to the sidebar's, so that the white tab the
+    /// window shows stands out from it and the sidebar and the band frame the
+    /// window's content. In the dark it's as close to the sidebar's gray, which
+    /// is a step lighter than the content there.
+    static let titleRow = gray(light: 0.96, dark: 0.155)
     /// The fill under a row while the pointer is over it. It darkens whatever
     /// is behind it, such as the sidebar's material.
     static let hover = Color.primary.opacity(0.075)
