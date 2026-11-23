@@ -166,16 +166,31 @@ struct HistoryLoaderTests {
 
         let history = try #require(try await loadHistory(try await openSession(repository)).last)
         #expect(history.refs.currentBranch == nil)
+        #expect(history.refs.unbornBranch == nil)
         #expect(history.head == history.graph.position(of: ObjectID(hex: Fixture.Basic.mainHistory[1])!))
     }
 
     @Test func loadsARepositoryWithoutCommits() async throws {
         let repository = try makeTemporaryFolder()
-        try await runGit("init", "--quiet", in: repository)
+        try await runGit("init", "--quiet", "--initial-branch=trunk", in: repository)
         let snapshots = try await loadHistory(try await openSession(repository))
         #expect(snapshots.count == 1)
         #expect(snapshots.first?.rows.isEmpty == true)
         #expect(snapshots.first?.isComplete == true)
         #expect(snapshots.first?.head == nil)
+        // No ref names the branch yet, but HEAD does.
+        #expect(snapshots.first?.refs.currentBranch == nil)
+        #expect(snapshots.first?.refs.unbornBranch == "refs/heads/trunk")
+    }
+
+    @Test func namesAnOrphanBranchBeforeItsFirstCommit() async throws {
+        let repository = try await copyRepository(try await Fixture.repository("basic"))
+        try await runGit("switch", "--quiet", "--orphan", "fresh", in: repository)
+        let refs = try await openSession(repository).refs()
+        #expect(refs.head == nil)
+        #expect(refs.currentBranch == nil)
+        #expect(refs.unbornBranch == "refs/heads/fresh")
+        // The other branches are still listed.
+        #expect(refs.refs.contains { $0.name == "refs/heads/main" })
     }
 }

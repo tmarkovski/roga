@@ -217,6 +217,28 @@ struct CommitComposerTests {
         #expect(work.composer.note != nil)
     }
 
+    @Test func aNewRepositorysFirstCommitNamesItsBranch() async throws {
+        let path = try makeTemporaryFolder() + "/empty"
+        try FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
+        try await git("init", "--quiet", "--initial-branch=main", in: path)
+        try write("new\n", to: "new.txt", in: path)
+        let work = try await worktree(at: path)
+        try await open(work)
+        // HEAD names a branch with no commits, which isn't a detached HEAD.
+        #expect(work.composer.chip == CommitComposer.Chip(kind: .firstCommit, lead: "First commit on", subject: "main"))
+        #expect(work.composer.note == nil)
+    }
+
+    @Test func anOrphanBranchsFirstCommitNamesIt() async throws {
+        let work = try await worktree()
+        try await git("switch", "--quiet", "--orphan", "fresh", in: work.path)
+        try write("new\n", to: "new.txt", in: work.path)
+        try await open(work)
+        #expect(work.composer.chip == CommitComposer.Chip(kind: .firstCommit, lead: "First commit on", subject: "fresh"))
+        #expect(work.composer.note == nil)
+        #expect(!work.composer.canAmend)
+    }
+
     @Test func aNarrowRowSaysOnlyTheVerb() {
         typealias Action = CommitComposer.Action
         #expect(Action(title: "Commit 2 Files", isEnabled: true).shortTitle == "Commit")
@@ -228,6 +250,41 @@ struct CommitComposerTests {
         #expect(Action(title: "Committing…", isEnabled: false).shortTitle == "Committing…")
         #expect(Action(title: "2 Conflicts Left", isEnabled: false).shortTitle == "2 Conflicts Left")
         #expect(Action(title: "Try Again", isEnabled: true).shortTitle == "Try Again")
+    }
+
+    @Test func theChevronOpensWhileItsMenuHasSomethingToChoose() async throws {
+        let work = try await worktree()
+        try write("changed\n", to: "README.md", in: work.path)
+        try await open(work)
+        // With nothing written, Commit can't run, but Amend can.
+        #expect(!work.composer.action.isEnabled)
+        #expect(work.composer.canToggleAmend)
+        #expect(work.composer.canChooseMoreWaysToCommit)
+        work.composer.message = "A message"
+        #expect(work.composer.canChooseMoreWaysToCommit)
+        // While it commits, nothing in the menu can run.
+        work.composer.commit()
+        #expect(work.composer.phase == .committing)
+        #expect(!work.composer.canToggleAmend)
+        #expect(!work.composer.canChooseMoreWaysToCommit)
+        await settled(work)
+    }
+
+    @Test func beforeTheFirstCommitTheChevronWaitsForAMessage() async throws {
+        let path = try makeTemporaryFolder() + "/empty"
+        try FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
+        try await git("init", "--quiet", "--initial-branch=main", in: path)
+        try await git("config", "user.name", "T", in: path)
+        try await git("config", "user.email", "t@example.com", in: path)
+        try write("new\n", to: "new.txt", in: path)
+        let work = try await worktree(at: path)
+        try await open(work)
+        // There's no commit to amend, so with nothing written the menu has
+        // nothing to choose.
+        #expect(!work.composer.canAmend)
+        #expect(!work.composer.canChooseMoreWaysToCommit)
+        work.composer.message = "First"
+        #expect(work.composer.canChooseMoreWaysToCommit)
     }
 
     @Test func commitsMenuSaysItInSentenceCase() {

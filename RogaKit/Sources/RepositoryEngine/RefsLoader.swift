@@ -37,6 +37,18 @@ enum RefsLoader {
         for index in refs.indices {
             if let peeled = shown.peeled[refs[index].name] { refs[index].peeled = peeled }
         }
-        return RefList(refs: refs, currentBranch: listed.currentBranch, head: shown.head)
+        // With neither a current branch nor a commit, HEAD names a branch that
+        // has no commits yet, which only symbolic-ref can name. It exits with
+        // status 1 for a detached HEAD, which needs a commit, so that can't be
+        // the case here, but it's safe either way.
+        var unbornBranch: String?
+        if listed.currentBranch == nil, shown.head == nil {
+            var head = GitCommand("symbolic-ref", "--quiet", "HEAD", in: directory)
+            head.successStatuses = [0, 1]
+            head.priority = priority
+            let name = try await git.text(head)
+            unbornBranch = name.isEmpty ? nil : name
+        }
+        return RefList(refs: refs, currentBranch: listed.currentBranch, head: shown.head, unbornBranch: unbornBranch)
     }
 }

@@ -472,7 +472,7 @@ private struct ChangesMenuItems: View {
         .disabled(changes?.isSelected != true || composer?.action.isEnabled != true || composer?.stoppedWork != nil)
         Toggle("Amend", isOn: Binding { composer?.isAmending == true } set: { composer?.setAmending($0) })
             .keyboardShortcut(RepositoryCommands.amendShortcut)
-            .disabled(changes?.isSelected != true || composer?.canAmend != true || composer?.generator.isWriting == true)
+            .disabled(changes?.isSelected != true || composer?.canToggleAmend != true)
         Divider()
         Button("Undo Commit") {
             composer?.undoLastCommit()
