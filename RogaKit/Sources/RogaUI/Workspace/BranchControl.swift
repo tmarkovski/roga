@@ -65,9 +65,9 @@ private struct BranchChip: View {
             .accessibilityElement(children: .ignore)
             .padding(.leading, 5)
             .padding(.trailing, 7)
-            .frame(height: 30)
+            .frame(height: 32)
             .background {
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(isHovering ? Palette.buttonHover : .clear)
             }
             .contentShape(Rectangle())
