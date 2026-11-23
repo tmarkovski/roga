@@ -79,6 +79,36 @@ public struct UpstreamCounts: Sendable, Hashable {
     }
 }
 
+/// How many commits a branch that has never had an upstream has that neither
+/// the main branch nor the main branch's upstream has, which are commits that
+/// haven't gone anywhere yet.
+public struct MainCounts: Sendable, Hashable {
+    /// The main branch's short name, as in `main`.
+    public var main: String
+    public var ahead: Int
+
+    public init(main: String, ahead: Int) {
+        self.main = main
+        self.ahead = ahead
+    }
+}
+
+/// How far several branches are from where their commits go, for saying it
+/// about many branches at once.
+public struct BranchCounts: Sendable, Hashable {
+    /// By each branch's full name, for the branches that have an upstream or
+    /// had one that's gone.
+    public var upstreams: [String: UpstreamCounts]
+    /// By each branch's full name, for the branches that have never had an
+    /// upstream and have commits that the main branch doesn't.
+    public var aheadOfMain: [String: MainCounts]
+
+    public init(upstreams: [String: UpstreamCounts] = [:], aheadOfMain: [String: MainCounts] = [:]) {
+        self.upstreams = upstreams
+        self.aheadOfMain = aheadOfMain
+    }
+}
+
 /// A way of pulling a worktree's branch.
 public enum Pull: Sendable, Hashable {
     /// For a branch that's only behind.

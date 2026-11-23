@@ -520,15 +520,14 @@ public actor RepositorySession {
         try await BranchStatusLoader.load(git: git, in: worktree)
     }
 
-    /// Says how far each of several branches is from its upstream, with one git
+    /// Says how far each of several branches is from its upstream, or for one
+    /// that has never had an upstream, how far it's ahead of the main branch,
     /// at utility priority, for when nobody waits for the answer.
     ///
     /// - Parameters:
     ///   - branches: Their full names.
     ///   - worktree: Any of the repository's worktrees.
-    /// - Returns: The counts by branch, for the branches that have an upstream
-    ///   or had one that's gone.
-    public nonisolated func upstreams(of branches: [String], in worktree: String) async throws -> [String: UpstreamCounts] {
+    public nonisolated func upstreams(of branches: [String], in worktree: String) async throws -> BranchCounts {
         try await BranchStatusLoader.upstreams(of: branches, git: git, in: worktree)
     }
 

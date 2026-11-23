@@ -106,6 +106,12 @@ struct WorktreeMenuTests {
         #expect(detailText(WorktreeFacts(worktree: fixLogin, upstream: UpstreamCounts(isGone: true))) == "Upstream gone · ~/agents/fix-login")
     }
 
+    @Test func aBranchThatNeverHadAnUpstreamSaysHowFarItsAheadOfMain() {
+        let aheadOfMain = MainCounts(main: "main", ahead: 3)
+        #expect(detailText(WorktreeFacts(worktree: fixLogin, aheadOfMain: aheadOfMain)) == "↑3 ahead of main · ~/agents/fix-login")
+        #expect(detailText(WorktreeFacts(worktree: fixLogin, upstream: UpstreamCounts(ahead: 1), aheadOfMain: aheadOfMain)) == "↑1 · ~/agents/fix-login")
+    }
+
     @Test func whatsStoppedComesFirstInRedWhenThereAreConflicts() throws {
         let conflicted = WorktreeFacts(
             worktree: fixLogin,
@@ -182,6 +188,7 @@ struct WorktreeMenuTests {
             conflictedWorktrees: [fixLogin.path],
             unfinishedWork: [fixLogin.path: UnfinishedWork(work: .merge, conflicts: 1)!],
             upstreams: ["refs/heads/main": UpstreamCounts(behind: 3)],
+            aheadOfMain: ["refs/heads/agent/fix-login": MainCounts(main: "main", ahead: 2)],
             deletingWorktrees: [fixLogin.path]
         )
         let facts = WorktreeMenu.facts(of: repository, shown: main.path, model: nil, agents: nil, in: RepositoryList(listing: [repository]))
@@ -192,6 +199,7 @@ struct WorktreeMenuTests {
                 uncommittedFiles: 3,
                 hasConflicts: true,
                 unfinished: UnfinishedWork(work: .merge, conflicts: 1),
+                aheadOfMain: MainCounts(main: "main", ahead: 2),
                 isDeleting: true
             ),
         ])

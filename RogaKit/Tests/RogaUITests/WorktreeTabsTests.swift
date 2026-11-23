@@ -83,6 +83,15 @@ struct WorktreeTabsTests {
     @Test func aWorktreeWithNothingWaitingOrAGoneUpstreamHasNoNumber() {
         #expect(WorktreeTabs.badge(for: WorktreeFacts(worktree: fixLogin)) == nil)
         #expect(WorktreeTabs.badge(for: WorktreeFacts(worktree: fixLogin, upstream: UpstreamCounts(ahead: 2, isGone: true))) == nil)
+        #expect(WorktreeTabs.badge(for: WorktreeFacts(worktree: fixLogin, upstream: UpstreamCounts(isGone: true), aheadOfMain: MainCounts(main: "main", ahead: 2))) == nil)
+    }
+
+    @Test func aBranchThatNeverHadAnUpstreamCountsWhatMainDoesntHave() {
+        let aheadOfMain = MainCounts(main: "main", ahead: 3)
+        #expect(WorktreeTabs.badge(for: WorktreeFacts(worktree: fixLogin, aheadOfMain: aheadOfMain)) == .ahead(3))
+        #expect(WorktreeTabs.badge(for: WorktreeFacts(worktree: fixLogin, uncommittedFiles: 4, aheadOfMain: aheadOfMain)) == .uncommitted(4))
+        // An upstream says what's waiting, even when the main branch is stale.
+        #expect(WorktreeTabs.badge(for: WorktreeFacts(worktree: fixLogin, upstream: UpstreamCounts(), aheadOfMain: aheadOfMain)) == nil)
     }
 
     // MARK: The tooltip

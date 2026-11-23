@@ -665,13 +665,15 @@ public final class RepositoryList {
     }
 
     /// Reads how far each worktree's branch is from its upstream, with one git
-    /// for all of them.
+    /// for all of them, or for a branch that has never had one, how far it's
+    /// ahead of the main branch.
     private func readUpstreams(of repository: ListedRepository, session: RepositorySession) async {
         let branches = repository.worktrees.compactMap { $0.isPrunable ? nil : $0.branch }
         guard let worktree = repository.worktrees.first(where: { !$0.isPrunable }),
-              let upstreams = try? await session.upstreams(of: branches, in: worktree.path)
+              let counts = try? await session.upstreams(of: branches, in: worktree.path)
         else { return }
-        if upstreams != repository.upstreams { repository.upstreams = upstreams }
+        if counts.upstreams != repository.upstreams { repository.upstreams = counts.upstreams }
+        if counts.aheadOfMain != repository.aheadOfMain { repository.aheadOfMain = counts.aheadOfMain }
     }
 
     /// Opens a session for the repository at its path, or where its bookmark
@@ -793,6 +795,10 @@ public final class ListedRepository: Identifiable {
     /// How far each worktree's branch is from its upstream, by the branch's full
     /// name, for the branches that have one.
     fileprivate(set) var upstreams: [String: UpstreamCounts] = [:]
+    /// How far each worktree's branch is ahead of the main branch, by the
+    /// branch's full name, for the branches that have never had an upstream
+    /// and have commits that the main branch doesn't.
+    fileprivate(set) var aheadOfMain: [String: MainCounts] = [:]
     /// The linked worktrees being deleted, by their folders.
     fileprivate(set) var deletingWorktrees: Set<String> = []
     /// How many deletions have finished, for windows to look at the repository's
@@ -823,7 +829,7 @@ public final class ListedRepository: Identifiable {
     }
 
     /// A repository that isn't in a list, for checking how a sidebar lays out.
-    init(path: String, owners: [String] = [], isExpanded: Bool = false, keptWorktrees: Set<String> = [], state: State = .opening, worktrees: [Worktree] = [], uncommittedFiles: [String: Int] = [:], statusFailures: [String: String] = [:], conflictedWorktrees: Set<String> = [], unfinishedWork: [String: UnfinishedWork] = [:], upstreams: [String: UpstreamCounts] = [:], deletingWorktrees: Set<String> = []) {
+    init(path: String, owners: [String] = [], isExpanded: Bool = false, keptWorktrees: Set<String> = [], state: State = .opening, worktrees: [Worktree] = [], uncommittedFiles: [String: Int] = [:], statusFailures: [String: String] = [:], conflictedWorktrees: Set<String> = [], unfinishedWork: [String: UnfinishedWork] = [:], upstreams: [String: UpstreamCounts] = [:], aheadOfMain: [String: MainCounts] = [:], deletingWorktrees: Set<String> = []) {
         self.path = path
         self.owners = owners
         self.isExpanded = isExpanded
@@ -835,6 +841,7 @@ public final class ListedRepository: Identifiable {
         self.conflictedWorktrees = conflictedWorktrees
         self.unfinishedWork = unfinishedWork
         self.upstreams = upstreams
+        self.aheadOfMain = aheadOfMain
         self.deletingWorktrees = deletingWorktrees
     }
 

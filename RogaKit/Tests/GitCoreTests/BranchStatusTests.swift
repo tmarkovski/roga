@@ -89,4 +89,24 @@ struct BranchStatusTests {
     @Test func findsNothingForABranchWithoutCommits() throws {
         #expect(try BranchStatusParser.parse([], branch: "refs/heads/main") == nil)
     }
+
+    // MARK: Ahead of the main branch
+
+    @Test func asksHowFarEachBranchIsFromEachBase() throws {
+        let main = try #require(ObjectID(hexDigits: Array(String(repeating: "a", count: 40).utf8)))
+        let upstream = try #require(ObjectID(hexDigits: Array(String(repeating: "b", count: 40).utf8)))
+        #expect(AheadOfMainParser.format(comparingWith: [main, upstream]) == "%(refname)%00%(ahead-behind:\(main.hex))%00%(ahead-behind:\(upstream.hex))")
+        #expect(AheadOfMainParser.format(comparingWith: [main]) == "%(refname)%00%(ahead-behind:\(main.hex))")
+    }
+
+    @Test func countsTheFewestCommitsABaseDoesntHave() throws {
+        let output = line("refs/heads/agent", "3 0", "2 1") + line("refs/heads/merged", "0 4", "0 6") + line("refs/heads/loose", "5 0", "5 2")
+        #expect(try AheadOfMainParser.parse(output, bases: 2) == ["refs/heads/agent": 2, "refs/heads/loose": 5])
+        #expect(try AheadOfMainParser.parse(line("refs/heads/agent", "3 0"), bases: 1) == ["refs/heads/agent": 3])
+    }
+
+    @Test func aLineWithTheWrongNumberOfCountsIsAnError() {
+        #expect(throws: ParseError.self) { try AheadOfMainParser.parse(line("refs/heads/agent", "3 0"), bases: 2) }
+        #expect(throws: ParseError.self) { try AheadOfMainParser.parse(line("refs/heads/agent", "three"), bases: 1) }
+    }
 }

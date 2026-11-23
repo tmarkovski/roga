@@ -81,7 +81,7 @@ public enum BranchListParser {
 
     /// Reads two numbers with a space between them, or nothing when the format
     /// didn't ask.
-    private static func counts(aheadBehind text: String, of name: String) throws(ParseError) -> Counts? {
+    static func counts(aheadBehind text: String, of name: String) throws(ParseError) -> Counts? {
         guard !text.isEmpty else { return nil }
         let numbers = text.split(separator: " ").map { Int($0) }
         guard numbers.count == 2, let ahead = numbers[0], let behind = numbers[1] else {

@@ -40,3 +40,37 @@ public enum BranchStatusParser {
         return nil
     }
 }
+
+/// Reads what `git for-each-ref` says about how far branches are ahead of the
+/// main branch and its upstream, for `MainCounts`.
+public enum AheadOfMainParser {
+    /// The format to pass to `git for-each-ref --format`, whose fields are
+    /// separated by NUL bytes: the name, then how far it is from each of
+    /// `bases`. They're object IDs, as in `BranchListParser.format(comparingWith:)`.
+    public static func format(comparingWith bases: [ObjectID]) -> String {
+        (["%(refname)"] + bases.map { "%(ahead-behind:\($0.hex))" }).joined(separator: "%00")
+    }
+
+    /// - Parameter bases: How many bases the format compared with.
+    /// - Returns: By each branch's full name, the fewest commits it has that a
+    ///   base doesn't, for the branches that have any.
+    public static func parse(_ output: [UInt8], bases: Int) throws(ParseError) -> [String: Int] {
+        var ahead: [String: Int] = [:]
+        for line in output.split(separator: UInt8(ascii: "\n")) {
+            let fields = line.split(separator: 0, omittingEmptySubsequences: false)
+            guard fields.count == bases + 1 else {
+                throw ParseError("git for-each-ref printed a line with \(fields.count) fields instead of \(bases + 1).")
+            }
+            let name = String(decoding: fields[0], as: UTF8.self)
+            var fewest: Int?
+            for field in fields.dropFirst() {
+                guard let counts = try BranchListParser.counts(aheadBehind: String(decoding: field, as: UTF8.self), of: name) else {
+                    throw ParseError("git for-each-ref printed nothing for how far \(name) is from the main branch.")
+                }
+                fewest = min(fewest ?? counts.ahead, counts.ahead)
+            }
+            if let fewest, fewest > 0 { ahead[name] = fewest }
+        }
+        return ahead
+    }
+}
