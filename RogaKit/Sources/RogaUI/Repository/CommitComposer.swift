@@ -227,6 +227,13 @@ final class CommitComposer {
         stoppedWork == nil && changes.loaded?.head != nil
     }
 
+    /// Whether Amend can be turned on or off now: there's a commit to amend, and
+    /// no commit is being made and no agent is writing, either of which would
+    /// end with the wrong message in the box.
+    var canToggleAmend: Bool {
+        canAmend && phase != .committing && !generator.isWriting
+    }
+
     /// Whether the box shows text that can't be changed, because it isn't the
     /// message of a commit that's being made.
     var isMessageReadOnly: Bool {
@@ -273,6 +280,14 @@ final class CommitComposer {
     /// can run, so there'd be nothing in it to choose.
     var hasMoreWaysToCommit: Bool {
         stoppedWork == nil
+    }
+
+    /// Whether the chevron can be opened, which it can while its menu has
+    /// something to choose: Commit and Commit and Push while Commit can be
+    /// pressed, and otherwise Amend. Before a repository's first commit, with
+    /// nothing written, nothing in it can run.
+    var canChooseMoreWaysToCommit: Bool {
+        hasMoreWaysToCommit && (action.isEnabled || canToggleAmend)
     }
 
     /// A sentence about something worth knowing before committing.

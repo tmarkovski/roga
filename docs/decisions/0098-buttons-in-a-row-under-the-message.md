@@ -12,7 +12,7 @@ Chat apps put their buttons on a row under the text: tools at the left and the b
 
 **One row of buttons under the text: Generate at the left, and Commit at the right.** The heading and the footer go. Generate says Rewrite once the box has words, as it did, and Undo sits beside it after an agent writes, with the sidebar's dot for what finished. Who wrote the message and how fast, which the line under the box said, is in Undo's tooltip and VoiceOver hint.
 
-**Commit's chevron has the Changes menu's own group, with the same keys:** Commit, Commit and push, and Amend, in the sentence case of a menu in the window. The chevron stays while Commit can't be pressed, since Amend is how an empty box gets a message to change, and it goes while a merge, a revert, a cherry-pick or a rebase is partway, when neither Commit and Push nor Amend can run. The ⌘↩ hint moves into Commit's tooltip and the menu.
+**Commit's chevron has the Changes menu's own group, with the same keys:** Commit, Commit and push, and Amend, in the sentence case of a menu in the window. The chevron stays while Commit can't be pressed, since Amend is how an empty box gets a message to change, and it goes while a merge, a revert, a cherry-pick or a rebase is partway, when neither Commit and Push nor Amend can run. While Commit is gray, the chevron is drawn in ink when its menu has something to choose, the way Generate's words are when they can be pressed, and the pointer over it fills it the way it fills any button. It's gray like Commit's words only when nothing in its menu can run, as while committing, while an agent writes, and before a repository's first commit with nothing written. Without that, a chevron that opened Amend looked as dead as Commit beside it. The ⌘↩ hint moves into Commit's tooltip and the menu.
 
 **A chip at the top of the box says what kind of commit it is, only when it isn't an ordinary one to the current branch:** Amending with the commit, Merging, Reverting, Cherry-picking, Rebasing with the branch, First commit on with the branch, and Detached HEAD. The branch row under the tabs ([decision 95](0095-a-repositorys-worktrees-as-tabs.md)) already names the branch, so an ordinary commit shows nothing. Amending's chip is filled with ink, the way what's chosen is, and its ✕ puts the draft back. The sentence about a force push or a detached `HEAD` goes under the chip.
 
@@ -31,7 +31,7 @@ Chat apps put their buttons on a row under the text: tools at the left and the b
 - An ordinary commit no longer names its branch in the box.
 - The agent that wrote a message, and its model, show only in Undo's tooltip.
 - Commit's chevron menu has the same keyboard shortcuts as the Changes menu, as the branch chip's menu has the branch menu's.
-- `CommitComposer.heading` is gone. `chip` says what the chip shows, or nil, and `Action.shortTitle` and `Action.menuTitle` give Commit's words for a short row and for its menu.
+- `CommitComposer.heading` is gone. `chip` says what the chip shows, or nil, and `Action.shortTitle` and `Action.menuTitle` give Commit's words for a short row and for its menu. `canChooseMoreWaysToCommit` says whether the chevron can be opened, and `canToggleAmend` whether Amend can be turned on or off, which the chevron's menu and the Changes menu share.
 - At 320 points, Generate with Claude fits beside Commit for up to a few hundred staged files. A longer count, or Stage All and Commit, makes it Generate.
 
 ## Alternatives considered

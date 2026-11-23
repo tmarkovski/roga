@@ -230,6 +230,41 @@ struct CommitComposerTests {
         #expect(Action(title: "Try Again", isEnabled: true).shortTitle == "Try Again")
     }
 
+    @Test func theChevronOpensWhileItsMenuHasSomethingToChoose() async throws {
+        let work = try await worktree()
+        try write("changed\n", to: "README.md", in: work.path)
+        try await open(work)
+        // With nothing written, Commit can't run, but Amend can.
+        #expect(!work.composer.action.isEnabled)
+        #expect(work.composer.canToggleAmend)
+        #expect(work.composer.canChooseMoreWaysToCommit)
+        work.composer.message = "A message"
+        #expect(work.composer.canChooseMoreWaysToCommit)
+        // While it commits, nothing in the menu can run.
+        work.composer.commit()
+        #expect(work.composer.phase == .committing)
+        #expect(!work.composer.canToggleAmend)
+        #expect(!work.composer.canChooseMoreWaysToCommit)
+        await settled(work)
+    }
+
+    @Test func beforeTheFirstCommitTheChevronWaitsForAMessage() async throws {
+        let path = try makeTemporaryFolder() + "/empty"
+        try FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
+        try await git("init", "--quiet", "--initial-branch=main", in: path)
+        try await git("config", "user.name", "T", in: path)
+        try await git("config", "user.email", "t@example.com", in: path)
+        try write("new\n", to: "new.txt", in: path)
+        let work = try await worktree(at: path)
+        try await open(work)
+        // There's no commit to amend, so with nothing written the menu has
+        // nothing to choose.
+        #expect(!work.composer.canAmend)
+        #expect(!work.composer.canChooseMoreWaysToCommit)
+        work.composer.message = "First"
+        #expect(work.composer.canChooseMoreWaysToCommit)
+    }
+
     @Test func commitsMenuSaysItInSentenceCase() {
         #expect(CommitComposer.Action(title: "Commit 2 Files", isEnabled: true).menuTitle == "Commit 2 files")
         #expect(CommitComposer.Action(title: "Stage All and Commit", isEnabled: true).menuTitle == "Stage all and commit")

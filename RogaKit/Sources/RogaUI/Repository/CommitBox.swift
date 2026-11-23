@@ -345,11 +345,16 @@ enum RowWords {
 /// a click would run, and cut by a thin line from a chevron with the Changes
 /// menu's own group: Commit, Commit and Push, and Amend (decision 98). The
 /// chevron stays while the button can't be pressed, since Amend is how an
-/// empty box gets a message to change.
+/// empty box gets a message to change. It's gray then only when its menu has
+/// nothing to choose either, and otherwise in ink, the way Generate's words
+/// are while they can be pressed, so that it doesn't look as dead as Commit's
+/// words beside it.
 private struct CommitButton: View {
     @Bindable var composer: CommitComposer
     /// Whether it says only its verb, for a row that's short of room.
     let isShort: Bool
+    /// Whether the pointer is over the chevron.
+    @State private var isHoveringMenu = false
 
     private static let height = 26.0
     private static let cornerRadius = 7.0
@@ -362,7 +367,7 @@ private struct CommitButton: View {
 
     var body: some View {
         let action = composer.action
-        let isBusy = composer.phase == .committing || composer.generator.isWriting
+        let canChoose = composer.canChooseMoreWaysToCommit
         HStack(spacing: 0) {
             Button {
                 composer.commit()
@@ -385,14 +390,18 @@ private struct CommitButton: View {
                 } label: {
                     Icon.dropdown.image
                         .font(.system(size: 11 / 1.128, weight: .medium))
-                        .foregroundStyle(action.isEnabled ? Color.white : (isBusy ? Color.secondary.opacity(0.6) : Color.secondary))
+                        .foregroundStyle(action.isEnabled ? Color.white : (canChoose ? Color.primary : Color.secondary))
                         .padding(.horizontal, 4)
                         .frame(height: Self.height)
+                        // On gray, the pointer over it fills it the way it
+                        // fills any button, which the orange doesn't need.
+                        .background(isHoveringMenu && canChoose && !action.isEnabled ? Palette.buttonHover : Color.clear)
                         .contentShape(Rectangle())
                 }
                 .menuStyle(.button)
                 .menuIndicator(.hidden)
-                .disabled(isBusy)
+                .disabled(!canChoose)
+                .onHover { isHoveringMenu = $0 }
                 .help("Commit and Push, or Amend")
                 .accessibilityLabel("More Ways to Commit")
             }
@@ -436,7 +445,7 @@ struct CommitMenuItems: View {
         Divider()
         Toggle("Amend", isOn: Binding { composer.isAmending } set: { composer.setAmending($0) })
             .keyboardShortcut(RepositoryCommands.amendShortcut)
-            .disabled(!composer.canAmend || composer.generator.isWriting || composer.phase == .committing)
+            .disabled(!composer.canToggleAmend)
     }
 }
 
