@@ -6,14 +6,18 @@ import SwiftUI
 
 /// The message of the next commit, under the worktree's files (decision 30). It's
 /// one text box, with the first line in bold, the way the commit panel will show
-/// it. It fills the fifth of the panel it's given, and grows past that as it
-/// fills.
+/// it, and a row of buttons under the text, the way a chat box has them
+/// (decision 98): Generate at the left, and Commit at the right, whose chevron
+/// has Commit and Push and Amend. The line over it is the box's only edge, since
+/// the panel's sides and bottom already close it in. It fills the fifth of the
+/// panel it's given, and grows past that as it fills.
 ///
-/// Its bottom right corner has the Generate button, which has an agent write the
-/// message from what's staged (decision 41). While the agent writes, the box
-/// waits with gray bars in place of its text, and the line under it counts the
-/// seconds and offers Stop. Then the line says who wrote it and offers Undo, or
-/// says why the agent didn't.
+/// Whatever's running shows where it was started, with Stop in that button's
+/// place. While an agent writes (decision 41), Generate turns into Stop and the
+/// box waits with gray bars in place of its text, and while hooks or signing take
+/// a while, Commit turns into Stop. Whatever's worth knowing about the commit,
+/// such as an amend, a merge, a warning or a failure, shows at the top of the
+/// box with its own fix beside it, so that the row of buttons stays put.
 struct CommitBox: View {
     @Bindable var composer: CommitComposer
     /// Gives the keyboard back to the list of files.
@@ -22,6 +26,8 @@ struct CommitBox: View {
     @State private var textHeight = 0.0
     /// Whether the popover for choosing the agent is open.
     @State private var isChoosingAgent = false
+    /// How wide the row of buttons is, which decides how much their words say.
+    @State private var rowWidth = 0.0
     /// The agents, which every window has, though a view that's tested on its
     /// own may not.
     @Environment(AgentProvider.self) private var agents: AgentProvider?
@@ -30,15 +36,15 @@ struct CommitBox: View {
     @AppStorage(AgentPreferences.showsGenerateButtonKey) private var showsGenerateButton = true
 
     /// Three lines, and then about half of an ordinary window's panel.
-    private static let shortest = 56.0
+    private static let shortest = 48.0
     private static let tallest = 240.0
-    /// How much more room the box leaves under its text for the Generate button.
-    /// The canvas leaves 34 points there, for the button with 6 under it and 4
-    /// over it, where the text otherwise has 7. The box's least and greatest
-    /// heights stay the same, so the text has that much less.
-    private static let generateRoom = GenerateButton<EmptyView>.height + 6 + 4 - 7
     /// How much room the gray bars take while an agent writes.
-    private static let barsHeight = 54.0
+    private static let barsHeight = 48.0
+    /// How tall the row of buttons under the text is.
+    private static let rowHeight = 38.0
+    /// How far the text is from the panel's sides, which lines it up with the
+    /// names of the files above it.
+    private static let textInset = 14.0
 
     private var generator: MessageGenerator { composer.generator }
 
@@ -54,89 +60,24 @@ struct CommitBox: View {
         )
     }
 
-    /// Whether the box leaves room for the Generate button, which it keeps while
-    /// the button gives way to an agent writing, so that the box doesn't jump.
-    private var leavesGenerateRoom: Bool {
-        showsGenerateButton && agents?.defaultAgent != nil
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 6) {
-                heading
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Spacer(minLength: 4)
-                if composer.canAmend {
-                    Toggle("Amend", isOn: Binding { composer.isAmending } set: { composer.setAmending($0) })
-                        .toggleStyle(.checkbox)
-                        .controlSize(.small)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                        .disabled(composer.phase == .committing || generator.isWriting)
-                        .help("Replace the commit HEAD is on (\(RepositoryCommands.amendShortcut.symbols))")
-                }
-            }
-            .font(.system(size: 12))
-            .padding(.horizontal, 14)
-            .frame(height: 32)
-
+            top
             editor
-                .padding(.horizontal, 10)
-
-            generatorStatus
-
-            if let note = composer.note {
-                Text(note)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 12)
-                    .padding(.top, 8)
-            }
-            if composer.isSlow {
-                HStack(spacing: 7) {
-                    ProgressView()
-                        .controlSize(.mini)
-                    Text("Waiting for hooks or signing…")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                    Spacer(minLength: 4)
-                    Button("Stop", action: composer.stop)
-                        .buttonStyle(.plain)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Palette.action)
-                }
-                .padding(.horizontal, 12)
-                .padding(.top, 8)
-            }
-            if case .failed(let output) = composer.phase {
-                CommitFailure(output: output)
-                    .padding(.horizontal, 10)
-                    .padding(.top, 8)
-            }
-
-            HStack(spacing: 8) {
-                Text(RepositoryCommands.commitShortcut.symbols)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 4)
-                if composer.canSkipHooks {
-                    Button("Skip Hooks") { composer.commit(skippingHooks: true) }
-                        .buttonStyle(OutlinedButtonStyle(height: 26, horizontalPadding: 10))
-                        .help("git commit --no-verify")
-                }
-                primaryButton
-            }
-            .padding(.leading, 14)
-            .padding(.trailing, 10)
-            .frame(height: 44)
+            row
         }
         .background(Palette.surface)
         .overlay(alignment: .top) {
             Rectangle()
                 .fill(Palette.separator)
                 .frame(height: 1)
+        }
+        // The light goes along the box's edge while an agent writes in it
+        // (decision 68), which is the line over it.
+        .overlay {
+            if generator.isWriting {
+                AgentOutline(shape: .topLine, showsLine: false, isWorking: true)
+            }
         }
         // A popover whose button has gone, as when the menu started an agent,
         // shouldn't come back with the button.
@@ -145,34 +86,71 @@ struct CommitBox: View {
         }
     }
 
-    /// The line under the box for what an agent is doing or did.
-    @ViewBuilder private var generatorStatus: some View {
+    // MARK: The top of the box
+
+    /// Whether anything shows above the text.
+    private var hasTop: Bool {
+        if composer.chip != nil || composer.note != nil { return true }
+        if case .failed = composer.phase { return true }
         switch generator.phase {
-        case .idle:
-            EmptyView()
-        case .writing(let writing):
-            CommitBoxWriting(writing: writing, stop: generator.stop)
-        case .written(let written):
-            CommitBoxWritten(written: written, undo: generator.undo)
-        case .failed(let failure):
-            CommitBoxGenerateFailure(
-                failure: failure,
-                canTryAgain: generator.readiness == .ready && agents?.generation(with: failure.agent.id) != nil,
-                tryAgain: { generator.generate(with: agents?.generation(with: failure.agent.id)) },
-                openSettings: { openSettings(.page(.agents)) }
-            )
+        case .failed: return true
+        case .written(let written): return written.stagedFilesChanged
+        case .idle, .writing: return false
         }
     }
 
-    private var heading: some View {
-        let parts = composer.heading
-        return Text("\(Text(parts.lead).foregroundStyle(.secondary)) \(Text(parts.subject).fontWeight(.medium))")
+    /// What's worth knowing about the commit, above the text: what kind of
+    /// commit it is, a sentence about it, and why a commit or an agent didn't
+    /// get through, each with its own way on.
+    @ViewBuilder private var top: some View {
+        if hasTop {
+            VStack(alignment: .leading, spacing: 6) {
+                if let chip = composer.chip {
+                    CommitBoxChip(chip: chip, isEnabled: composer.phase != .committing && !generator.isWriting) {
+                        composer.setAmending(false)
+                    }
+                }
+                if let note = composer.note {
+                    Text(note)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 3)
+                }
+                if case .failed(let output) = composer.phase {
+                    CommitFailure(output: output, canSkipHooks: composer.canSkipHooks) {
+                        composer.commit(skippingHooks: true)
+                    }
+                }
+                switch generator.phase {
+                case .failed(let failure):
+                    CommitBoxGenerateFailure(
+                        failure: failure,
+                        canTryAgain: generator.readiness == .ready && agents?.generation(with: failure.agent.id) != nil,
+                        tryAgain: { generator.generate(with: agents?.generation(with: failure.agent.id)) },
+                        openSettings: { openSettings(.page(.agents)) }
+                    )
+                case .written(let written) where written.stagedFilesChanged:
+                    Text("Staged changes were modified during generation.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 3)
+                default:
+                    EmptyView()
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, Self.rowInset)
+            .padding(.top, 8)
+        }
     }
 
+    // MARK: The text
+
     private var editor: some View {
-        let room = leavesGenerateRoom ? Self.generateRoom : 0
         let isWriting = generator.isWriting
-        let fitted = min(max(textHeight, Self.shortest - room), Self.tallest - room)
+        let fitted = min(max(textHeight, Self.shortest), Self.tallest)
         let least = isWriting ? max(fitted, Self.barsHeight) : fitted
         return ZStack(alignment: .topLeading) {
             // The text view stays while an agent writes, so that its undo and the
@@ -214,22 +192,59 @@ struct CommitBox: View {
         // As tall as the text needs, or more when the panel gives the box more
         // room than that (`ChangesSplit`).
         .frame(minHeight: least, idealHeight: least, maxHeight: .infinity)
-        .padding(.horizontal, 9)
-        .padding(.top, 7)
-        .padding(.bottom, 7 + room)
-        .background {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .strokeBorder(Palette.separator)
-        }
-        // The light goes around what the agent is working on (decision 68).
-        .overlay {
-            if isWriting {
-                AgentOutline(shape: .outline(cornerRadius: 8), showsLine: false, isWorking: true)
+        .padding(.horizontal, Self.textInset)
+        .padding(.top, hasTop ? 7 : 10)
+        .padding(.bottom, 2)
+    }
+
+    // MARK: The row of buttons
+
+    /// Generate, or what's running, at the left, and Commit at the right. Their
+    /// words get shorter, a step at a time, when the row is short of room, and
+    /// in the narrowest panels Commit goes onto a line of its own.
+    private var row: some View {
+        let fit = rowFit
+        return Group {
+            if fit.isStacked {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) { leading(fit) }
+                    HStack(spacing: 0) {
+                        Spacer(minLength: 0)
+                        trailing(fit)
+                    }
+                }
+                .padding(.vertical, 6)
+            } else {
+                HStack(spacing: 6) {
+                    leading(fit)
+                    Spacer(minLength: Self.rowGap)
+                    trailing(fit)
+                }
+                .frame(height: Self.rowHeight)
             }
         }
-        .overlay(alignment: .bottomTrailing) {
+        .padding(.horizontal, Self.rowInset)
+        // As wide as the box, whatever its buttons would like, so that the
+        // width measured is the room there is, and too much never widens it.
+        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+        .onGeometryChange(for: Double.self) { $0.size.width } action: { rowWidth = $0 }
+        // The row centers its buttons, 6 points from its bottom, and these 2
+        // make that as far as they are from the panel's sides.
+        .padding(.bottom, 2)
+    }
+
+    @ViewBuilder private func leading(_ fit: RowFit) -> some View {
+        if case .writing(let writing) = generator.phase {
+            CommitBoxStopWriting(writing: writing, stop: generator.stop)
+        } else if composer.isSlow {
+            Text("Waiting for hooks or signing…")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .padding(.leading, 4)
+        } else {
             if case .shown(let agent, let rewrites, let readiness) = generateButton, let agents {
-                GenerateButton(agent: agent, rewrites: rewrites, readiness: readiness, isChoosing: $isChoosingAgent) {
+                GenerateButton(agent: agent, rewrites: rewrites, isCompact: fit.isGenerateCompact, readiness: readiness, isChoosing: $isChoosingAgent) {
                     // A click on it while the popover is open runs what was
                     // just picked there, and closes it.
                     isChoosingAgent = false
@@ -247,60 +262,364 @@ struct CommitBox: View {
                         isChoosingAgent = false
                     }
                 }
-                // 6 points inside the border, as the canvas has it.
-                .padding(7)
+            }
+            if case .written(let written) = generator.phase {
+                CommitBoxUndo(written: written, isIcon: fit.isUndoIcon, undo: generator.undo)
             }
         }
     }
 
-    private var primaryButton: some View {
+    @ViewBuilder private func trailing(_ fit: RowFit) -> some View {
+        if composer.isSlow {
+            CommitBoxStopCommitting(stop: composer.stop)
+        } else {
+            CommitButton(composer: composer, isShort: fit.isCommitShort)
+        }
+    }
+
+    /// How far the row's buttons, and the chip over the text, are from the
+    /// panel's sides, and the buttons from its bottom.
+    private static let rowInset = 8.0
+    /// The least room between the row's two ends.
+    private static let rowGap = 6.0
+
+    /// How much the row's words say: everything, then Generate without the
+    /// agent's name, then Undo as an arrow, then Commit without its count, and
+    /// last Commit on a line of its own.
+    private struct RowFit: Equatable {
+        var isGenerateCompact = false
+        var isUndoIcon = false
+        var isCommitShort = false
+        var isStacked = false
+
+        static let widestFirst = [
+            RowFit(),
+            RowFit(isGenerateCompact: true),
+            RowFit(isGenerateCompact: true, isUndoIcon: true),
+            RowFit(isGenerateCompact: true, isUndoIcon: true, isCommitShort: true),
+            RowFit(isGenerateCompact: true, isUndoIcon: true, isStacked: true),
+            RowFit(isGenerateCompact: true, isUndoIcon: true, isCommitShort: true, isStacked: true),
+        ]
+    }
+
+    /// The widest way of saying the row that fits, or the narrowest when none
+    /// does, which then cuts the words short.
+    private var rowFit: RowFit {
+        let room = rowWidth - 2 * Self.rowInset
+        guard room > 0 else { return RowFit() }
+        return RowFit.widestFirst.first { fits($0, in: room) } ?? RowFit.widestFirst[RowFit.widestFirst.count - 1]
+    }
+
+    /// Whether the row fits in `room`, said that way: both ends side by side
+    /// with the least room between them, or each on its own line when stacked.
+    private func fits(_ fit: RowFit, in room: Double) -> Bool {
         let action = composer.action
-        return Button(action.title) { composer.commit() }
-            .buttonStyle(.plain)
-            .font(.system(size: 12.5, weight: .medium))
-            .foregroundStyle(action.isEnabled ? Color.white : Color.secondary)
-            .lineLimit(1)
-            .padding(.horizontal, 12)
-            .frame(height: 26)
-            .background {
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(action.isEnabled ? Palette.actionFill : Palette.selection)
+        let trailing = composer.isSlow
+            ? CommitBoxStopCommitting.width
+            : CommitButton.width(title: fit.isCommitShort ? action.shortTitle : action.title, hasMenu: composer.hasMoreWaysToCommit)
+        var leading = 0.0
+        if case .writing = generator.phase {
+            leading = CommitBoxStopWriting.width
+        } else if !composer.isSlow {
+            if case .shown(let agent, let rewrites, _) = generateButton {
+                leading += GenerateButton<EmptyView>.width(agent: agent, rewrites: rewrites, isCompact: fit.isGenerateCompact)
             }
-            .contentShape(Rectangle())
-            .disabled(!action.isEnabled)
+            if case .written = generator.phase {
+                leading += 6 + (fit.isUndoIcon ? CommitBoxUndo.iconWidth : CommitBoxUndo.wordWidth)
+            }
+        }
+        return fit.isStacked ? max(leading, trailing) <= room : leading + Self.rowGap + trailing <= room
     }
 }
 
-/// The line under the box while an agent writes: the sidebar's ring, the agent
-/// and the seconds so far, and Stop, which gives the box back as it was.
-private struct CommitBoxWriting: View {
+/// How wide words are in the system font, for deciding what the message box's
+/// row has room for. SwiftUI draws `.system(size:weight:)` in the same font.
+enum RowWords {
+    static func width(_ words: String, size: CGFloat, weight: NSFont.Weight = .medium) -> CGFloat {
+        let font = NSFont.systemFont(ofSize: size, weight: weight)
+        return (words as NSString).size(withAttributes: [.font: font]).width.rounded(.up)
+    }
+}
+
+/// Commit at the right of the box's row, filled with the brand's orange while
+/// a click would run, and cut by a thin line from a chevron with the Changes
+/// menu's own group: Commit, Commit and Push, and Amend (decision 98). The
+/// chevron stays while the button can't be pressed, since Amend is how an
+/// empty box gets a message to change.
+private struct CommitButton: View {
+    @Bindable var composer: CommitComposer
+    /// Whether it says only its verb, for a row that's short of room.
+    let isShort: Bool
+
+    private static let height = 26.0
+    private static let cornerRadius = 7.0
+
+    /// How wide it is with those words: the words and their padding, and the
+    /// thin line and the chevron with its own.
+    static func width(title: String, hasMenu: Bool) -> CGFloat {
+        RowWords.width(title, size: 12) + 18 + (hasMenu ? 1 + 19 : 0)
+    }
+
+    var body: some View {
+        let action = composer.action
+        let isBusy = composer.phase == .committing || composer.generator.isWriting
+        HStack(spacing: 0) {
+            Button {
+                composer.commit()
+            } label: {
+                Text(isShort ? action.shortTitle : action.title)
+                    .lineLimit(1)
+                    .padding(.horizontal, 9)
+                    .frame(maxHeight: .infinity)
+                    .contentShape(Rectangle())
+            }
+            .disabled(!action.isEnabled)
+            .help("\(action.title) (\(RepositoryCommands.commitShortcut.symbols))")
+            .accessibilityLabel(action.title)
+            if composer.hasMoreWaysToCommit {
+                Rectangle()
+                    .fill(action.isEnabled ? Color.white.opacity(0.32) : SettingsColors.line)
+                    .frame(width: 1)
+                Menu {
+                    CommitMenuItems(composer: composer)
+                } label: {
+                    Icon.dropdown.image
+                        .font(.system(size: 11 / 1.128, weight: .medium))
+                        .foregroundStyle(action.isEnabled ? Color.white : (isBusy ? Color.secondary.opacity(0.6) : Color.secondary))
+                        .padding(.horizontal, 4)
+                        .frame(height: Self.height)
+                        .contentShape(Rectangle())
+                }
+                .menuStyle(.button)
+                .menuIndicator(.hidden)
+                .disabled(isBusy)
+                .help("Commit and Push, or Amend")
+                .accessibilityLabel("More Ways to Commit")
+            }
+        }
+        .buttonStyle(CommitButtonPartStyle())
+        .font(.system(size: 12, weight: .medium))
+        .foregroundStyle(action.isEnabled ? Color.white : Color.secondary)
+        .frame(height: Self.height)
+        .background {
+            RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
+                .fill(action.isEnabled ? Palette.actionFill : Palette.selection)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous))
+        .fixedSize()
+    }
+}
+
+/// Either part of Commit, which dims a little while pressed. Its colors already
+/// say when it can't be pressed, so unlike the plain style it doesn't dim then.
+private struct CommitButtonPartStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.75 : 1)
+    }
+}
+
+/// The items behind Commit's chevron, which are the Changes menu's own group for
+/// making the commit, with the same keys, in the sentence case of a menu in the
+/// window.
+struct CommitMenuItems: View {
+    let composer: CommitComposer
+
+    var body: some View {
+        let action = composer.action
+        Button(action.menuTitle) { composer.commit() }
+            .keyboardShortcut(RepositoryCommands.commitShortcut)
+            .disabled(!action.isEnabled)
+        Button("Commit and push") { composer.commitAndPush() }
+            .keyboardShortcut(RepositoryCommands.commitAndPushShortcut)
+            .disabled(!action.isEnabled || composer.stoppedWork != nil)
+        Divider()
+        Toggle("Amend", isOn: Binding { composer.isAmending } set: { composer.setAmending($0) })
+            .keyboardShortcut(RepositoryCommands.amendShortcut)
+            .disabled(!composer.canAmend || composer.generator.isWriting || composer.phase == .committing)
+    }
+}
+
+/// What kind of commit this is, when it isn't an ordinary one to the current
+/// branch, in a chip at the top of the box. Amending's is filled with ink, the
+/// way what's chosen is, and its ✕ puts the draft back.
+private struct CommitBoxChip: View {
+    let chip: CommitComposer.Chip
+    /// Whether its ✕ can be pressed, which it can't while committing or while
+    /// an agent writes.
+    let isEnabled: Bool
+    let stopAmending: () -> Void
+
+    private var isAmend: Bool { chip.kind == .amend }
+
+    var body: some View {
+        HStack(spacing: 5) {
+            icon.image
+                .font(.system(size: 12 / 1.128, weight: .medium))
+                .accessibilityHidden(true)
+            words
+                .lineLimit(1)
+                .truncationMode(.middle)
+            if isAmend {
+                Button(action: stopAmending) {
+                    Icon.x.image
+                        .font(.system(size: 10 / 1.128, weight: .semibold))
+                        .frame(width: 18, height: 18)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .opacity(isEnabled ? 0.8 : 0.4)
+                .disabled(!isEnabled)
+                .help("Stop Amending (\(RepositoryCommands.amendShortcut.symbols))")
+                .accessibilityLabel("Stop Amending")
+            }
+        }
+        .font(.system(size: 12))
+        .foregroundStyle(isAmend ? Palette.onInk : Color.primary)
+        .padding(.leading, 7)
+        .padding(.trailing, isAmend ? 2 : 8)
+        .frame(height: 22)
+        .background {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(isAmend ? Palette.ink : DialogColors.card)
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private var words: Text {
+        chip.subject.isEmpty
+            ? Text(chip.lead)
+            : Text("\(Text(chip.lead)) \(Text(chip.subject).fontWeight(.semibold))")
+    }
+
+    private var icon: Icon {
+        switch chip.kind {
+        case .amend, .firstCommit, .detached: .commit
+        case .merge: .merge
+        case .revert: .revert
+        case .cherryPick: .cherryPick
+        case .rebase: .branch
+        }
+    }
+}
+
+/// What Generate turns into while an agent writes: the sidebar's ring and Stop,
+/// with the agent's line around it lit, and the seconds so far beside it. Stop
+/// gives the box back as it was.
+private struct CommitBoxStopWriting: View {
     let writing: MessageGenerator.Writing
     let stop: () -> Void
 
+    /// About as wide as it is, with a few seconds counted.
+    static let width = 104.0
+
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 7) {
-            AgentMark(state: .working)
-                // Centered on the first line's letters, as it is on a line of its own.
-                .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
-            // In a narrow panel the words go onto a second line rather than
-            // losing the seconds, which are what keeps changing.
-            TimelineView(.periodic(from: writing.since, by: 1)) { context in
-                Text(MessageGenerator.writingWords(writing.agent, since: writing.since, now: context.date))
-                    .monospacedDigit()
-                    .fixedSize(horizontal: false, vertical: true)
+        HStack(spacing: 7) {
+            Button(action: stop) {
+                HStack(spacing: 6) {
+                    AgentMark(state: .working)
+                    Text("Stop")
+                }
+                .padding(.leading, 7)
+                .padding(.trailing, 10)
+                .frame(height: 26)
+                .contentShape(Rectangle())
             }
-            Spacer(minLength: 4)
-            Button("Stop", action: stop)
-                .buttonStyle(.plain)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(Palette.action)
-                .fixedSize()
-                .help("Stop generation and restore the previous message")
+            .buttonStyle(.plain)
+            .background(DialogColors.card, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .overlay {
+                AgentOutline(shape: .outline(cornerRadius: 7), isLit: true)
+            }
+            .help("Stop generation and restore the previous message")
+            .accessibilityLabel("Stop Generating")
+            TimelineView(.periodic(from: writing.since, by: 1)) { context in
+                Text(Self.seconds(since: writing.since, now: context.date))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .help(MessageGenerator.writingWords(writing.agent, since: writing.since, now: context.date))
+                    .accessibilityLabel(MessageGenerator.writingWords(writing.agent, since: writing.since, now: context.date))
+            }
         }
-        .font(.system(size: 12))
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 12)
-        .padding(.top, 8)
+        .font(.system(size: 12, weight: .medium))
+        .fixedSize()
+    }
+
+    /// The seconds so far, from the first whole one, as the line under the box
+    /// used to count them.
+    static func seconds(since: Date, now: Date) -> String {
+        let seconds = Int(now.timeIntervalSince(since))
+        return seconds >= 1 ? "\(seconds) s" : ""
+    }
+}
+
+/// What Commit turns into while hooks or signing take a while: a spinner and
+/// Stop, which stops the commit as it would a hook that's hung.
+private struct CommitBoxStopCommitting: View {
+    let stop: () -> Void
+
+    static let width = 72.0
+
+    var body: some View {
+        Button(action: stop) {
+            HStack(spacing: 6) {
+                ProgressView()
+                    .controlSize(.mini)
+                Text("Stop")
+            }
+            .padding(.leading, 8)
+            .padding(.trailing, 10)
+            .frame(height: 26)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .font(.system(size: 12, weight: .medium))
+        .background(DialogColors.card, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .help("Stop the Commit")
+        .accessibilityLabel("Stop the Commit")
+        .fixedSize()
+    }
+}
+
+/// Undo beside Rewrite, once an agent has written the message: the sidebar's dot
+/// for what finished and the word, or an arrow where the row is short of room.
+/// Its tooltip says who wrote the message and how fast.
+private struct CommitBoxUndo: View {
+    let written: MessageGenerator.Written
+    let isIcon: Bool
+    let undo: () -> Void
+
+    static let iconWidth = 26.0
+    static var wordWidth: Double { 6 + 6 + 5 + RowWords.width("Undo", size: 12) + 6 }
+
+    var body: some View {
+        Button(action: undo) {
+            Group {
+                if isIcon {
+                    Icon.undo2.image
+                        .font(.system(size: 13 / 1.128, weight: .medium))
+                        .frame(width: Self.iconWidth, height: 26)
+                        .overlay(alignment: .topTrailing) {
+                            AgentMark(state: .finished, size: 10)
+                                .padding(1)
+                        }
+                } else {
+                    HStack(spacing: 5) {
+                        AgentMark(state: .finished, size: 12)
+                        Text("Undo")
+                    }
+                    .padding(.horizontal, 6)
+                    .frame(height: 26)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .font(.system(size: 12, weight: .medium))
+        .foregroundStyle(Palette.action)
+        .help("\(MessageGenerator.writtenWords(written)) Restore the previous commit message.")
+        .accessibilityLabel("Undo")
+        .accessibilityHint(MessageGenerator.writtenWords(written))
+        .fixedSize()
     }
 }
 
@@ -318,7 +637,7 @@ private struct CommitBoxBars: View {
                     .padding(.top, 6)
             }
         }
-        .frame(height: 54, alignment: .top)
+        .frame(height: 48, alignment: .top)
         .accessibilityElement()
         .accessibilityLabel("Generating commit message")
     }
@@ -330,36 +649,13 @@ private struct CommitBoxBars: View {
     }
 }
 
-/// The line under the box once an agent has written the message: the sidebar's
-/// dot for what finished, who wrote it and how fast, and Undo, which puts back
-/// what was there.
-private struct CommitBoxWritten: View {
-    let written: MessageGenerator.Written
-    let undo: () -> Void
+/// The fill behind a failure at the top of the box: the red of a failure, faint
+/// enough to read gray words on.
+private let failureFill = Palette.red.opacity(0.09)
 
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            AgentMark(state: .finished)
-                .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
-            Text(MessageGenerator.writtenWords(written))
-                .fixedSize(horizontal: false, vertical: true)
-            Button("Undo", action: undo)
-                .buttonStyle(.plain)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(Palette.action)
-                .help("Restore the previous commit message")
-            Spacer(minLength: 0)
-        }
-        .font(.system(size: 12))
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 12)
-        .padding(.top, 8)
-    }
-}
-
-/// Why an agent didn't write a message, in a red outline like a commit that
-/// didn't go through. The message stays as it was. What the agent printed is
-/// folded away, since the sentence above it usually says enough.
+/// Why an agent didn't write a message, at the top of the box. The message stays
+/// as it was. What the agent printed is folded away, since the sentence above it
+/// usually says enough.
 private struct CommitBoxGenerateFailure: View {
     let failure: MessageGenerator.Failure
     let canTryAgain: Bool
@@ -419,12 +715,7 @@ private struct CommitBoxGenerateFailure: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .strokeBorder(Palette.red)
-        }
-        .padding(.horizontal, 10)
-        .padding(.top, 8)
+        .background(failureFill, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
     }
 
     @ViewBuilder private var actions: some View {
@@ -434,10 +725,13 @@ private struct CommitBoxGenerateFailure: View {
     }
 }
 
-/// What git or a hook printed when a commit didn't go through. A failing hook is
-/// routine, so it says so here rather than in an alert, and the message stays.
+/// What git or a hook printed when a commit didn't go through, at the top of the
+/// box, with Skip Hooks under it when a hook could have been why. A failing hook
+/// is routine, so it says so here rather than in an alert, and the message stays.
 private struct CommitFailure: View {
     let output: String
+    let canSkipHooks: Bool
+    let skipHooks: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -453,14 +747,18 @@ private struct CommitFailure: View {
             }
             .frame(maxHeight: 96)
             .fixedSize(horizontal: false, vertical: true)
+            if canSkipHooks {
+                Button("Skip Hooks", action: skipHooks)
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Palette.action)
+                    .help("git commit --no-verify")
+            }
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .strokeBorder(Palette.red)
-        }
+        .background(failureFill, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
     }
 }
 

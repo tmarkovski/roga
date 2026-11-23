@@ -290,7 +290,7 @@ struct HistoryActionsTests {
         work.model.askToCherryPick(commit: tip)
         await settled(work)
         work.branch.conflict = nil
-        #expect(work.model.composer.heading.lead == "Commit cherry-pick")
+        #expect(work.model.composer.chip?.kind == .cherryPick)
         await work.model.composer.readingMessage?.value
         #expect(work.model.composer.message == "Change it another way")
     }

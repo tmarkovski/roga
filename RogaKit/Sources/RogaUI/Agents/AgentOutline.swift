@@ -48,8 +48,17 @@ final class AgentOutlineView: NSView {
         /// All the way around a rounded rectangle.
         case outline(cornerRadius: CGFloat)
         /// Along the top, from one side to the other and off the end, for something
-        /// that runs edge to edge such as a dialog's command block.
+        /// that runs edge to edge such as a dialog's command block, which is dark
+        /// in both appearances.
         case topEdge
+        /// The same, along the top of something in the window's own appearance,
+        /// such as the line over the message box (decision 98).
+        case topLine
+
+        /// Whether the light goes along the top rather than around.
+        var isAlongTop: Bool {
+            self == .topEdge || self == .topLine
+        }
     }
 
     /// How far the light has to go and how much of its route it takes up, in
@@ -206,7 +215,7 @@ final class AgentOutlineView: NSView {
         self.route = route
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        layer?.masksToBounds = shape == .topEdge
+        layer?.masksToBounds = shape.isAlongTop
         for shape in [line] + lightBands {
             shape.frame = bounds
         }
@@ -236,7 +245,7 @@ final class AgentOutlineView: NSView {
             twice.addPath(outline)
             twice.addPath(outline)
             return (outline, twice)
-        case .topEdge:
+        case .topEdge, .topLine:
             // From past the left side to past the right, so that it comes in
             // and goes out at the edges.
             let reach = trailLength(forTopEdgeOf: bounds.width)
@@ -261,7 +270,7 @@ final class AgentOutlineView: NSView {
             // Slower around something bigger, so that it doesn't race.
             let period = min(max(perimeter / 450, 1.7), 4)
             return Route(trail: trail / (2 * perimeter), distance: 0.5, period: period)
-        case .topEdge:
+        case .topEdge, .topLine:
             let trail = trailLength(forTopEdgeOf: size.width)
             let path = size.width + 2 * trail
             return Route(trail: trail / path, distance: 1 - trail / path, period: 1.7)

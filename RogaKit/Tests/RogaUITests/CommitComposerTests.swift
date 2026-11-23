@@ -198,13 +198,42 @@ struct CommitComposerTests {
         await settled(work)
     }
 
-    @Test func theHeadingSaysWhereItGoes() async throws {
+    @Test func anOrdinaryCommitHasNoChip() async throws {
         let work = try await worktree()
         try write("changed\n", to: "README.md", in: work.path)
         try await open(work)
-        #expect(work.composer.heading.lead == "Commit to")
-        #expect(work.composer.heading.subject == "main")
+        // The branch row at the top of the window names the branch.
+        #expect(work.composer.chip == nil)
         #expect(work.composer.note == nil)
+        #expect(work.composer.hasMoreWaysToCommit)
+    }
+
+    @Test func aDetachedHeadSaysSoInAChip() async throws {
+        let work = try await worktree()
+        try await git("switch", "--quiet", "--detach", in: work.path)
+        try write("changed\n", to: "README.md", in: work.path)
+        try await open(work)
+        #expect(work.composer.chip == CommitComposer.Chip(kind: .detached, lead: "Detached", subject: "HEAD"))
+        #expect(work.composer.note != nil)
+    }
+
+    @Test func aNarrowRowSaysOnlyTheVerb() {
+        typealias Action = CommitComposer.Action
+        #expect(Action(title: "Commit 2 Files", isEnabled: true).shortTitle == "Commit")
+        #expect(Action(title: "Commit 1 File", isEnabled: true).shortTitle == "Commit")
+        #expect(Action(title: "Stage All and Commit", isEnabled: true).shortTitle == "Commit All")
+        #expect(Action(title: "Amend Commit", isEnabled: true).shortTitle == "Amend")
+        #expect(Action(title: "Continue Rebase", isEnabled: true).shortTitle == "Continue")
+        #expect(Action(title: "Commit Merge", isEnabled: true).shortTitle == "Commit")
+        #expect(Action(title: "Committing…", isEnabled: false).shortTitle == "Committing…")
+        #expect(Action(title: "2 Conflicts Left", isEnabled: false).shortTitle == "2 Conflicts Left")
+        #expect(Action(title: "Try Again", isEnabled: true).shortTitle == "Try Again")
+    }
+
+    @Test func commitsMenuSaysItInSentenceCase() {
+        #expect(CommitComposer.Action(title: "Commit 2 Files", isEnabled: true).menuTitle == "Commit 2 files")
+        #expect(CommitComposer.Action(title: "Stage All and Commit", isEnabled: true).menuTitle == "Stage all and commit")
+        #expect(CommitComposer.Action(title: "Commit Cherry-Pick", isEnabled: true).menuTitle == "Commit cherry-pick")
     }
 
     // MARK: Committing
@@ -324,7 +353,8 @@ struct CommitComposerTests {
         work.composer.setAmending(true)
         await work.composer.readingMessage?.value
         #expect(work.composer.message.hasPrefix(subject))
-        #expect(work.composer.heading.lead == "Amend")
+        #expect(work.composer.chip?.kind == .amend)
+        #expect(work.composer.chip?.lead == "Amending")
         #expect(work.composer.action.title == "Amend Commit")
         work.composer.setAmending(false)
         #expect(work.composer.message == "My draft")
@@ -482,6 +512,9 @@ struct CommitComposerTests {
         #expect(!work.composer.message.contains("#"))
         #expect(work.composer.action == .init(title: "1 Conflict Left", isEnabled: false))
         #expect(!work.composer.canAmend)
+        #expect(work.composer.chip?.kind == .merge)
+        // Neither Commit and Push nor Amend can run, so Commit has no chevron.
+        #expect(!work.composer.hasMoreWaysToCommit)
 
         let conflict = try #require(work.changes.loaded?.conflicted.first)
         try write("both\n", to: "README.md", in: work.path)

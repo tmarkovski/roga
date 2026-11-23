@@ -30,6 +30,26 @@ struct CommitDrafts {
     }
 }
 
+extension CommitComposer.Action {
+    /// What the button says when the box's row is short of room: the verb
+    /// without its count, as `Commit` for `Commit 2 Files`.
+    var shortTitle: String {
+        switch title {
+        case "Stage All and Commit": "Commit All"
+        case "Amend Commit": "Amend"
+        case "Continue Rebase": "Continue"
+        case _ where title.hasPrefix("Commit "): "Commit"
+        default: title
+        }
+    }
+
+    /// What its item in Commit's menu says, in the sentence case of a menu
+    /// in the window, as `Commit 2 files`.
+    var menuTitle: String {
+        String(title.prefix(1)) + title.dropFirst().lowercased()
+    }
+}
+
 /// Stage All and Commit staged nothing, because all there was to stage were
 /// submodules that staging would take commits away from (decision 75).
 struct NothingToCommit: Error, CustomStringConvertible {
@@ -53,10 +73,24 @@ final class CommitComposer {
         case failed(String)
     }
 
-    /// The button at the bottom of the box.
+    /// The button at the right of the box's row.
     struct Action: Equatable {
         var title: String
         var isEnabled: Bool
+    }
+
+    /// What the chip at the top of the box says, for a commit that isn't an
+    /// ordinary one to the current branch (decision 98).
+    struct Chip: Equatable {
+        enum Kind: Equatable {
+            case amend, merge, revert, cherryPick, rebase, firstCommit, detached
+        }
+
+        var kind: Kind
+        /// The words before what it's about, as in "Amending".
+        var lead: String
+        /// What it's about, as a commit or a branch, which may be empty.
+        var subject: String
     }
 
     /// The message, which is what the box edits.
@@ -212,23 +246,33 @@ final class CommitComposer {
     /// As long as a subject should be, by git's own habit.
     static let subjectLimit = 72
 
-    /// What the heading above the box says, as a lead-in and what it's about.
-    var heading: (lead: String, subject: String) {
-        if isAmending, let head = changes.loaded?.head { return ("Amend", String(head.hex.prefix(8))) }
+    /// What the chip at the top of the box says, or nil for an ordinary commit
+    /// to the current branch, which the branch row at the top of the window
+    /// already names (decision 98).
+    var chip: Chip? {
+        if isAmending, let head = changes.loaded?.head { return Chip(kind: .amend, lead: "Amending", subject: String(head.hex.prefix(8))) }
         switch stoppedWork {
         case .merge:
-            return ("Commit merge", "")
+            return Chip(kind: .merge, lead: "Merging", subject: "")
         case .revert:
-            return ("Commit revert", "")
+            return Chip(kind: .revert, lead: "Reverting", subject: "")
         case .cherryPick:
-            return ("Commit cherry-pick", "")
+            return Chip(kind: .cherryPick, lead: "Cherry-picking", subject: "")
         case .rebase(let name):
-            return ("Rebasing", name.map(Ref.shortName) ?? "")
+            return Chip(kind: .rebase, lead: "Rebasing", subject: name.map(Ref.shortName) ?? "")
         case nil:
             break
         }
-        guard let name = currentBranch() else { return ("Commit on detached", "HEAD") }
-        return (changes.loaded?.head == nil ? "First commit on" : "Commit to", Ref.shortName(name))
+        guard let name = currentBranch() else { return Chip(kind: .detached, lead: "Detached", subject: "HEAD") }
+        guard changes.loaded?.head != nil else { return Chip(kind: .firstCommit, lead: "First commit on", subject: Ref.shortName(name)) }
+        return nil
+    }
+
+    /// Whether Commit has a chevron, whose menu has Commit and Push and Amend.
+    /// While a merge, a revert, a cherry-pick or a rebase is partway, neither
+    /// can run, so there'd be nothing in it to choose.
+    var hasMoreWaysToCommit: Bool {
+        stoppedWork == nil
     }
 
     /// A sentence about something worth knowing before committing.
