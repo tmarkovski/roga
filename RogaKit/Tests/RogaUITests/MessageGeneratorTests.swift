@@ -495,7 +495,7 @@ struct MessageGeneratorTests {
         #expect(again.composer.isAmending)
         #expect(again.composer.message == "Change the app\n\nThe body says why.")
         try await open(again)
-        #expect(again.composer.heading.lead == "Amend")
+        #expect(again.composer.chip?.kind == .amend)
         agent.answer()
         await running?.value
         #expect(again.composer.message == "Add a second line to the app")
@@ -593,7 +593,7 @@ struct MessageGeneratorTests {
 
         work.composer.worktreeIsPartway(through: nil)
         #expect(!work.composer.isAmending)
-        #expect(work.composer.heading.lead == "Commit to")
+        #expect(work.composer.chip == nil)
         #expect(work.composer.message == "my draft")
     }
 

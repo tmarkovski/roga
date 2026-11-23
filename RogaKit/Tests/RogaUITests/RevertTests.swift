@@ -178,7 +178,7 @@ struct RevertTests {
         #expect(work.model.selectedChanges.isSelected)
         #expect(work.composer.stoppedWork == .revert(commit: changeTheApp))
         #expect(work.composer.message == gitsMessage)
-        #expect(work.composer.heading.lead == "Commit revert")
+        #expect(work.composer.chip?.kind == .revert)
         #expect(work.composer.action == .init(title: "Commit Revert", isEnabled: true))
         #expect(work.branch.unfinished?.title == "Reverting da9ff973 · ready to commit")
         #expect(work.branch.unfinished?.subject == "Change the app")
