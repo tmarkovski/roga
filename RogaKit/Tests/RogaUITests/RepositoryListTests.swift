@@ -183,6 +183,20 @@ struct RepositoryListTests {
     /// A worktree git can't list, here because its index is damaged, has what
     /// git said rather than a count, so that it doesn't pass for one with
     /// nothing to commit. The other worktrees still have theirs.
+    /// The sidebar draws a row faint until its files are counted, so a saved
+    /// repository starts out not counted, and is once it has opened.
+    @Test func saysWhenARepositorysFilesHaveBeenCounted() async throws {
+        let repository = try await copyRepository(try await Fixture.repository("basic"), into: folder)
+        _ = try await makeList().add(folder: repository)
+
+        let reopened = RepositoryList(store: store)
+        let listed = try #require(reopened.repositories.first)
+        #expect(!listed.hasCounted)
+        await reopened.connect(git: try await TestGit.make())
+        #expect(listed.hasCounted)
+        #expect(listed.uncommittedFiles == [repository: 0])
+    }
+
     @Test func keepsWhatGitSaidAboutAWorktreeItCantList() async throws {
         let repository = try await copyRepository(try await Fixture.repository("basic"), into: folder)
         try await runGit("worktree", "add", "--quiet", folder + "/notes", "feature", in: repository)

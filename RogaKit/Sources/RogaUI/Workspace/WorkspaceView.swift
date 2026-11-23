@@ -576,6 +576,8 @@ public struct WorkspaceView: View {
         .background {
             TitleRowDragArea()
         }
+        // Behind the drag area, which has to be on top to take presses.
+        .background(Palette.titleRow)
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(Palette.separator)
