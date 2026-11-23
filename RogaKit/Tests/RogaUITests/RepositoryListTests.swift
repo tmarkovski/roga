@@ -364,6 +364,52 @@ struct RepositoryListTests {
         #expect(listed.uncommittedFiles[repository] == 0)
     }
 
+    @Test func opensTheRepositoriesWindowsShowBeforeTheRest() async throws {
+        let setup = try await makeList()
+        var repositories: [String] = []
+        for index in 0..<4 {
+            let repository = try await copyRepository(try await Fixture.repository("basic"), into: folder + "/\(index)")
+            _ = try await setup.add(folder: repository)
+            repositories.append(repository)
+        }
+        // A window shows the second, and the last one selected is the fourth.
+        setup.lastSelection = WorktreeSelection(repository: repositories[3] + "/.git", worktree: repositories[3])
+
+        let log = CommandLog()
+        let list = RepositoryList(store: store)
+        // A head start long enough that a busy test run doesn't use it up.
+        await list.connect(git: try await TestGit.make(log: log), showing: [repositories[1] + "/.git"], headStart: .seconds(3600))
+        #expect(list.repositories.allSatisfy { $0.session != nil })
+
+        func commands(in repository: String) -> [CommandLog.Entry] {
+            log.entries.filter { $0.directory?.hasPrefix(repository) == true }
+        }
+        func end(_ entry: CommandLog.Entry) -> Date {
+            entry.started.addingTimeInterval(entry.duration.map { Double($0.components.seconds) + Double($0.components.attoseconds) / 1e18 } ?? .infinity)
+        }
+        let listed = try [1, 3].map { index in
+            try #require(commands(in: repositories[index]).first { $0.arguments.contains("worktree") && $0.arguments.contains("list") })
+        }
+        for index in [0, 2] {
+            let started = try #require(commands(in: repositories[index]).first).started
+            #expect(listed.allSatisfy { end($0) <= started })
+        }
+    }
+
+    /// Each wait here would outlast the suite's time limit if it waited for
+    /// the wrong thing, so the test needs no clock of its own, which a busy
+    /// test run would make unreliable.
+    @Test func aSlowRepositoryHoldsTheRestBackOnlyForAMoment() async {
+        // A repository that never answers holds the rest back only until the limit.
+        let slow = Task<Void, Never> { try? await Task.sleep(for: .seconds(3600)) }
+        await RepositoryList.waitForAll([slow, Task {}], atMost: .milliseconds(50))
+        #expect(!slow.isCancelled)
+        slow.cancel()
+        // Repositories that have opened end the wait at once.
+        await RepositoryList.waitForAll([Task {}], atMost: .seconds(3600))
+        await RepositoryList.waitForAll([], atMost: .seconds(3600))
+    }
+
     @Test func becomingActiveLooksOnlyAtWhatItCantWatch() async throws {
         let repository = try await copyRepository(try await Fixture.repository("basic"), into: folder)
         let log = CommandLog()

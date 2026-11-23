@@ -5,3 +5,4 @@ This folder records performance work on Roga: what was slow, what caused it, wha
 | Date | Analysis | Result |
 | --- | --- | --- |
 | 2026-11-03 | [Actions that waited on background work](2026-11-03-actions-waiting-on-background-work.md) | Checking out a branch in Linux went from about 2.8 seconds to 0.4, a checkout in a small repository from about 240 ms to 100, and a remote deletion during a quiet fetch from 3.9 seconds to 1.9. No git process starts on the main thread any more. |
+| 2026-11-23 | [Launch time](2026-11-23-launch-time.md) | History shows about 550 ms after launch instead of 950, with 16 repositories listed, by starting from the last launch's `PATH` and opening the shown repository first. The window's first frame, at about 360 ms, is AppKit and SwiftUI, and Roga's own code at launch is a few milliseconds. |
