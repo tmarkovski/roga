@@ -256,12 +256,13 @@ enum WorktreeTabs {
     }
 }
 
-/// One tab. The tab the window shows is filled, has an edge and casts a soft
-/// shadow, as in the Claude app, and the others fill under the pointer. A tab
-/// keeps a place at its end for its number, which the … button covers on
-/// hover, the way a sidebar row's menu button covers its mark (decision 58), so
-/// that nothing moves as the pointer passes. The button opens the menu of the
-/// worktree's row in the sidebar, which a right-click on the tab opens too.
+/// One tab. The tab the window shows is white in the light theme, has an edge
+/// and casts a soft shadow, as in the Claude app, and the others fill with
+/// gray under the pointer. A tab keeps a place at its end for its number,
+/// which the … button covers on hover, the way a sidebar row's menu button
+/// covers its mark (decision 58), so that nothing moves as the pointer passes.
+/// The button opens the menu of the worktree's row in the sidebar, which a
+/// right-click on the tab opens too.
 ///
 /// A tab is shown as soon as the mouse button goes down on it, as a row in a
 /// list is, rather than when it comes back up, and it has no look of its own
@@ -280,9 +281,15 @@ private struct WorktreeTab: View {
 
     private static let height: CGFloat = 32
     private static let menuButtonSize: CGFloat = 24
-    /// The edge of the tab the window shows, a little stronger than the line
-    /// under the title row.
-    private static let edge = Palette.gray(light: 0.80, dark: 0.30)
+    /// The edge of the tab the window shows, a touch stronger than the line
+    /// under the title row. It's light, as in the Claude app, and the tab's
+    /// shadow does the rest of setting it apart from the row.
+    private static let edge = Palette.gray(light: 0.87, dark: 0.30)
+    /// The fill of the tab the window shows: white in the light theme, as in
+    /// the Claude app, and in the dark a gray a step lighter than the title
+    /// row, as light as a selected row's fill makes it. It's opaque, so that
+    /// it casts its shadow.
+    private static let fill = Palette.gray(light: 1.0, dark: 0.23)
 
     private var worktree: Worktree { facts.worktree }
 
@@ -323,13 +330,13 @@ private struct WorktreeTab: View {
             .frame(height: Self.height)
             .background {
                 if isSelected {
-                    // The gray is too faint to cast a shadow of its own, so a
-                    // tab in the title row's color under it casts one, which
-                    // leaves the tab looking as it did.
-                    shape.fill(Palette.surface)
-                        .shadow(color: .black.opacity(colorScheme == .dark ? 0.4 : 0.12), radius: 2, y: 1)
+                    // The shadow spreads evenly around the tab, as in the
+                    // Claude app, rather than falling below it.
+                    shape.fill(Self.fill)
+                        .shadow(color: .black.opacity(colorScheme == .dark ? 0.4 : 0.12), radius: 2)
+                } else if isHovering && canSelect {
+                    shape.fill(Palette.hover)
                 }
-                shape.fill(isSelected ? Palette.selection : isHovering && canSelect ? Palette.hover : .clear)
             }
             .overlay {
                 if isSelected {
