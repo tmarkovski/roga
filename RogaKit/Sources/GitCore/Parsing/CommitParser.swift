@@ -16,10 +16,12 @@ public enum CommitParser {
         var author: ArraySlice<UInt8> = []
         var committer: ArraySlice<UInt8> = []
         var encoding: String.Encoding?
+        var signatureFormat: CommitIdentity.SigningFormat?
 
         // Headers end at the first empty line. A line that starts with a
         // space continues the header before it, as in a signature, and those
-        // are skipped.
+        // are skipped. A signature's first line says what kind it is, which
+        // is all the rows of history need.
         var position = 0
         while position < contents.count {
             let end = contents[position...].firstIndex(of: newline) ?? contents.count
@@ -42,6 +44,8 @@ public enum CommitParser {
                 committer = value
             case "encoding":
                 encoding = Self.encoding(named: String(decoding: value, as: UTF8.self))
+            case "gpgsig", "gpgsig-sha256":
+                signatureFormat = Self.signatureFormat(value)
             default:
                 break
             }
@@ -55,11 +59,20 @@ public enum CommitParser {
             parents: parents,
             author: signature(author, encoding: encoding),
             committer: signature(committer, encoding: encoding),
-            message: decode(message, encoding: encoding)
+            message: decode(message, encoding: encoding),
+            signatureFormat: signatureFormat
         )
     }
 
     private static let newline = UInt8(ascii: "\n")
+
+    /// What kind of signature starts with this line, as git tells them apart:
+    /// SSH's and OpenPGP's by their armor, and anything else as X.509's.
+    static func signatureFormat(_ firstLine: ArraySlice<UInt8>) -> CommitIdentity.SigningFormat {
+        if firstLine.starts(with: "-----BEGIN SSH SIGNATURE-----".utf8) { return .ssh }
+        if firstLine.starts(with: "-----BEGIN PGP SIGNATURE-----".utf8) { return .openPGP }
+        return .x509
+    }
 
     /// Reads `Name <email> 1767225600 +0100`, the way git splits an ident:
     /// the email is between the first `<` and the `>` after it, and the time

@@ -217,6 +217,15 @@ final class CommitCellView: NSView {
                 draw(text, at: column.x, width: column.width, style: column.style)
             }
         }
+        // A signed commit has a small shield after its short ID, in the
+        // short ID's gray, which says it has a signature, not that it's good
+        // (decision 104). The short ID's column is the first to fit.
+        if content.isSigned, let hash = layout.columns.first, hash.text == content.shortID, let shield = Self.signedMark() {
+            let x = hash.x + CommitRowLayout.width(of: content.shortID, in: Style.shortID) + 4
+            if x + shield.size.width <= hash.x + hash.width {
+                draw(shield, at: x, in: textFrame(at: x, width: shield.size.width, style: Style.shortID))
+            }
+        }
         for (index, frame) in layout.badges.enumerated() {
             drawBadge(content.badges[index], in: frame, isHovered: index == hoveredBadge)
         }
@@ -321,6 +330,19 @@ final class CommitCellView: NSView {
     /// The symbols made so far. Making one takes a few hundred microseconds, far
     /// more than drawing it again, and a row needs each one to lay out and to draw.
     private static var symbols: [SymbolKey: NSImage] = [:]
+    /// The shield after a signed commit's short ID, for each appearance.
+    private static var signedMarks: [Bool: NSImage] = [:]
+
+    /// The shield after a signed commit's short ID, in the short ID's gray.
+    private static func signedMark() -> NSImage? {
+        let isDark = NSAppearance.currentDrawing().bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        if let mark = signedMarks[isDark] { return mark }
+        let configuration = NSImage.SymbolConfiguration(pointSize: 9, weight: .regular)
+            .applying(NSImage.SymbolConfiguration(paletteColors: [.tertiaryLabelColor]))
+        let mark = Icon.shield.nsImage?.withSymbolConfiguration(configuration)
+        signedMarks[isDark] = mark
+        return mark
+    }
 
     private static func symbol(_ icon: Icon, size: CGFloat, weight: NSFont.Weight, for kind: CommitRowContent.Badge.Kind) -> NSImage? {
         let isDark = NSAppearance.currentDrawing().bestMatch(from: [.darkAqua, .aqua]) == .darkAqua

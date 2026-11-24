@@ -41,6 +41,7 @@ roga/
 │   │   │   ├── Worktree.swift          a worktree's folder, HEAD and branch
 │   │   │   ├── CommitInfo.swift        a commit's parents, author, committer and message
 │   │   │   ├── CommitIdentity.swift    who a repository's commits go out as and how they're signed, with where git found each setting, decision 103
+│   │   │   ├── SignatureCheck.swift    what git found when it checked a commit's signature, and reading log --format=%G?, decision 104
 │   │   │   ├── WorktreeChanges.swift   what's uncommitted in a worktree, in groups
 │   │   │   ├── SubmoduleChange.swift   what a submodule's row says beyond its two commits, and what its panel shows, decision 75
 │   │   │   ├── Submodule.swift         one of a worktree's submodules, as the refs panel lists it
@@ -151,7 +152,7 @@ roga/
 │   │   │   ├── Agents/                 finding agents, the marks, and what each worktree's agents are doing
 │   │   │   ├── Workspace/              windows, finding git, the sidebar, the saved list of repositories and the update notice
 │   │   │   ├── Repository/             the repository model, panels, the refs panel, commit details
-│   │   │   ├── Identity/               who commits go out as: the branch row's initials, the message box's line and warnings, and the popover (decision 103)
+│   │   │   ├── Identity/               who commits go out as: the branch row's initials, the message box's line and warnings, and the popover (decision 103), and the commit panel's Signature line (decision 104)
 │   │   │   ├── Dialogs/                the sheet for everything Roga asks or reports, with its command (decision 29)
 │   │   │   ├── House/                  the house's joints, its animations and drawing them (decision 21), and the wordmark
 │   │   │   ├── Commands/               menus and keyboard shortcuts

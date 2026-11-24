@@ -3,6 +3,7 @@ import Foundation
 import GitCore
 import RepositoryEngine
 import Testing
+@testable import HistoryUI
 @testable import RogaUI
 
 /// What the window says about who commits go out as, and what the identity
@@ -206,5 +207,29 @@ struct IdentityTests {
     @Test func saysWhoARowCommitsAs() {
         #expect(IdentityWords.spoken(.someoneElse(identity(email: "sam@oss.example"))) == "Commits as sam@oss.example")
         #expect(IdentityWords.spoken(.problem(.noEmail)) == "No email for commits")
+    }
+
+    // MARK: Signed commits
+
+    @Test func saysWhatCheckingASignatureFound() {
+        let key = "SHA256:abc"
+        #expect(SignatureWords(format: .ssh, check: nil).title == "Checking…")
+        let good = SignatureWords(format: .ssh, check: SignatureCheck(result: .good, signer: "sam@rivera.dev", key: key))
+        #expect(good.title == "Good SSH signature")
+        #expect(good.detail == "sam@rivera.dev · SHA256:abc")
+        #expect(good.tone == .good)
+        let unchecked = SignatureWords(format: .ssh, check: SignatureCheck(result: .notChecked))
+        #expect(unchecked.title == "Signed with SSH, not checked")
+        #expect(unchecked.detail == "git needs gpg.ssh.allowedSignersFile to know whose keys to trust.")
+        #expect(SignatureWords(format: .openPGP, check: SignatureCheck(result: .notChecked)).detail == "git couldn't run gpg to check it.")
+        #expect(SignatureWords(format: .ssh, check: SignatureCheck(result: .untrusted, key: key)).detail == "The allowed signers file doesn't list this key. SHA256:abc")
+        #expect(SignatureWords(format: .openPGP, check: SignatureCheck(result: .missingKey, key: "3AA5")).detail == "OpenPGP key 3AA5")
+        #expect(SignatureWords(format: .openPGP, check: SignatureCheck(result: .bad)).tone == .bad)
+        #expect(SignatureWords(format: .openPGP, check: SignatureCheck(result: .expired)).tone == .warning)
+    }
+
+    @Test func aSignedRowSaysSo() {
+        #expect(CommitRowContent(shortID: "48ba6441", subject: "Add tests", isSigned: true).spokenText == "Add tests, 48ba6441, signed")
+        #expect(CommitRowContent(shortID: "48ba6441", subject: "Add tests").spokenText == "Add tests, 48ba6441")
     }
 }

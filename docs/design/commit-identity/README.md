@@ -20,9 +20,7 @@ Every option warns the same way, at the top of the box where decision 98 puts wh
 
 The sidebar uses A's initials for the exceptions, without the shield, and Settings › Git has the Identity section and the list of repositories that commit as someone else, as the Settings board draws them.
 
-## Still to decide
-
-- **How history marks a signed commit,** and how the commit panel says what checking the signature found, as the History board draws.
+[Decision 104](../../decisions/0104-mark-signed-commits-and-check-only-the-selected-one.md) took the History board's shield, after the short ID rather than before it, and the commit panel's Signature line, which also says when a key isn't trusted or has expired. `shield-check`, `shield-alert` and `shield-question-mark` are in `docs/design/icons/lucide` too.
 
 ## Regenerating the boards
 

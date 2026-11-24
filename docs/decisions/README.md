@@ -109,3 +109,4 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [99](0099-bring-a-sidebar-rows-details-in-as-they-load.md) | Bring a sidebar row's details in as they load | Accepted |
 | [100](0100-say-what-the-worktrees-agent-is-doing-in-the-branch-row.md) | Say what the worktree's agent is doing in the branch row | Accepted |
 | [103](0103-show-who-commits-go-out-as-from-git-config.md) | Show who commits go out as, from git config | Accepted |
+| [104](0104-mark-signed-commits-and-check-only-the-selected-one.md) | Mark signed commits, and check only the selected one | Accepted |

@@ -114,6 +114,22 @@ extension RepositorySession {
         try await CommitIdentityCommands.read(git: git, in: location.commonDirectory)
     }
 
+    /// Checks a commit's signature with gpg or ssh-keygen, as git's config
+    /// says to (decision 104). It takes from a few milliseconds to a second,
+    /// so only the commit the panels show is checked.
+    ///
+    /// - Throws: `GitError` when git can't read the commit.
+    @concurrent
+    public nonisolated func checkSignature(of commit: ObjectID) async throws -> SignatureCheck {
+        let command = GitCommand(SignatureCheckParser.arguments(commit), in: location.commonDirectory)
+        let output = try await git.run(command).output
+        do {
+            return try SignatureCheckParser.parse(output)
+        } catch {
+            throw RepositoryError.unexpectedOutput(command, error.description)
+        }
+    }
+
     /// Changes who the repository's commits go out as, in its own config or
     /// in the user's global config, in order.
     ///
