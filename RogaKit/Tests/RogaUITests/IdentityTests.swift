@@ -7,7 +7,7 @@ import Testing
 @testable import RogaUI
 
 /// What the window says about who commits go out as, and what the identity
-/// popover runs (decision 103).
+/// popover runs (decisions 103 and 105).
 struct IdentityTests {
     typealias Setting = CommitIdentity.Setting
     let globalFiles = GlobalConfigFiles(home: "/Users/sam", environment: [:])
@@ -68,9 +68,9 @@ struct IdentityTests {
         #expect(IdentityTint.color(for: identity(email: nil)) == nil)
     }
 
-    // MARK: The message box
+    // MARK: Exceptions
 
-    @Test func theBoxSaysNothingForTheGlobalIdentity() {
+    @Test func theGlobalIdentityIsntAnException() {
         #expect(IdentityException(identity(), defaultIdentity: identity()) == nil)
         // Signing doesn't make it someone else.
         #expect(IdentityException(identity(signs: true), defaultIdentity: identity()) == nil)
@@ -79,14 +79,41 @@ struct IdentityTests {
         #expect(IdentityException(nil, defaultIdentity: identity()) == nil)
     }
 
-    @Test func theBoxSaysWhoWhenItsSomeoneElse() {
+    @Test func someoneElseIsAnException() {
         let work = identity(email: "sam.rivera@acme.com", emailFrom: included)
         #expect(IdentityException(work, defaultIdentity: identity()) == .someoneElse(work))
     }
 
-    @Test func theBoxWarnsFirst() {
+    @Test func whatWouldGoWrongComesFirst() {
         #expect(IdentityException(identity(email: nil), defaultIdentity: identity()) == .problem(.noEmail))
         #expect(IdentityException(identity(signs: true, format: "ssh"), defaultIdentity: nil) == .problem(.noSigningKey))
+    }
+
+    // MARK: The title row and the message box
+
+    @Test func thePersonIsPlainForTheGlobalIdentity() {
+        #expect(IdentityPerson.Look(IdentityException(identity(signs: true), defaultIdentity: identity())) == .plain)
+        let work = identity(email: "sam.rivera@acme.com", emailFrom: included)
+        #expect(IdentityPerson.Look(.someoneElse(work)) == .tinted(IdentityTint.color(for: work)))
+        #expect(IdentityPerson.Look(.problem(.noSigningKey)) == .warning)
+    }
+
+    @Test func theBoxAlwaysSaysWho() {
+        #expect(CommitBoxIdentity(identity(), defaultIdentity: identity()) == .line(identity(), isSomeoneElse: false))
+        let work = identity(email: "sam.rivera@acme.com", emailFrom: included)
+        #expect(CommitBoxIdentity(work, defaultIdentity: identity()) == .line(work, isSomeoneElse: true))
+        // Before the global identity is read, nothing says it's someone else.
+        #expect(CommitBoxIdentity(work, defaultIdentity: nil) == .line(work, isSomeoneElse: false))
+    }
+
+    @Test func theBoxWarnsInTheLinesPlace() {
+        #expect(CommitBoxIdentity(identity(email: nil), defaultIdentity: identity()) == .warning(.noEmail))
+        #expect(CommitBoxIdentity(identity(signs: true, format: "ssh"), defaultIdentity: identity()) == .warning(.noSigningKey))
+    }
+
+    @Test func theBoxKeepsTheLinesRoomUntilGitAnswers() {
+        #expect(CommitBoxIdentity(nil, defaultIdentity: identity()) == .unread)
+        #expect(CommitBoxIdentity(nil, defaultIdentity: nil) == .unread)
     }
 
     // MARK: The popover

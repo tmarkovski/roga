@@ -832,9 +832,9 @@ private struct RepositoryRow: View {
         } trailing: {
             HStack(spacing: 6) {
                 // Before the count, where the eye looks for what's unusual
-                // about a repository (decision 103).
+                // about a repository (decisions 103 and 105).
                 if case .someoneElse(let someone) = identity {
-                    IdentityBadge(identity: someone, size: 18, showsMark: false)
+                    IdentityPerson(look: .init(identity), size: 18, showsMark: false)
                         .help(IdentityWords(identity: someone).tooltip)
                         .transition(SidebarMotion.label(reducesMotion))
                 }
@@ -918,8 +918,8 @@ private struct RepositoryRow: View {
         }
     }
 
-    /// What the row says about who the repository's commits go out as: the
-    /// initials of someone other than the global identity, or a second line
+    /// What the row says about who the repository's commits go out as: a
+    /// tinted person for someone other than the global identity, or a second line
     /// when a commit would go wrong. A bare repository says nothing, since
     /// nothing is committed in it.
     private var identity: IdentityException? {

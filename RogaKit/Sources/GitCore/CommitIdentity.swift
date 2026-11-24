@@ -105,17 +105,6 @@ public struct CommitIdentity: Sendable, Hashable {
         return nil
     }
 
-    /// Up to two letters for the name, as history's author column shows
-    /// people: the first letter of its first two words, or of the email when
-    /// there's no name.
-    public var initials: String {
-        let words = shownName?.split(whereSeparator: \.isWhitespace) ?? []
-        let letters = words.prefix(2).compactMap(\.first)
-        if !letters.isEmpty { return String(letters).uppercased() }
-        if let first = shownEmail?.first { return String(first).uppercased() }
-        return "?"
-    }
-
     /// Whether commits made with `other` would carry the same name and email.
     /// Emails compare without case, as hosting sites match them.
     public func commitsAsSame(as other: CommitIdentity) -> Bool {

@@ -268,8 +268,8 @@ private struct IdentityExceptionRowView: View {
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
             switch row.exception {
-            case .someoneElse(let identity):
-                IdentityBadge(identity: identity, size: 18, showsMark: false)
+            case .someoneElse:
+                IdentityPerson(look: .init(row.exception), size: 18, showsMark: false)
             case .problem:
                 Icon.warning.image
                     .font(.system(size: 12 / 1.128, weight: .semibold))

@@ -152,7 +152,7 @@ roga/
 │   │   │   ├── Agents/                 finding agents, the marks, and what each worktree's agents are doing
 │   │   │   ├── Workspace/              windows, finding git, the sidebar, the saved list of repositories and the update notice
 │   │   │   ├── Repository/             the repository model, panels, the refs panel, commit details
-│   │   │   ├── Identity/               who commits go out as: the branch row's initials, the message box's line and warnings, and the popover (decision 103), and the commit panel's Signature line (decision 104)
+│   │   │   ├── Identity/               who commits go out as: the title row's person, the message box's line and warnings, and the popover (decisions 103 and 105), and the commit panel's Signature line (decision 104)
 │   │   │   ├── Dialogs/                the sheet for everything Roga asks or reports, with its command (decision 29)
 │   │   │   ├── House/                  the house's joints, its animations and drawing them (decision 21), and the wordmark
 │   │   │   ├── Commands/               menus and keyboard shortcuts

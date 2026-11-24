@@ -4,8 +4,8 @@ import RepositoryEngine
 import SwiftUI
 
 /// What the window says about who a repository's commits go out as
-/// (decision 103): the tooltip on the branch row's initials, where each
-/// setting comes from, and what's wrong.
+/// (decision 103): the tooltip on the title row's person (decision 105), where
+/// each setting comes from, and what's wrong.
 struct IdentityWords {
     let identity: CommitIdentity
     /// Where git keeps the user's global config, to tell a file that it
@@ -105,7 +105,7 @@ struct IdentityWords {
     }
 }
 
-/// The tint that the initials of an identity take, one of the graph's lane
+/// The tint that the person of an identity takes, one of the graph's lane
 /// colors picked by the email, so that a work identity and a personal one
 /// look different wherever they show.
 enum IdentityTint {
