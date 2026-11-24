@@ -125,6 +125,23 @@ public struct RefList: Sendable, Hashable {
         return refs.first { $0.name == target }
     }
 
+    /// The commits that say where the main branch's work is, each once: the
+    /// main branch's own first, then its upstream's and `remoteMainBranch`'s.
+    /// A branch with no upstream is ahead of the main branch by the fewest
+    /// commits it has that one of these doesn't, which leaves out what the
+    /// main branch hasn't pulled yet, for a branch made from the remote, and
+    /// what it hasn't pushed, for a branch made from it. Empty without a main
+    /// branch.
+    public var mainBranchCommits: [ObjectID] {
+        guard let main = mainBranch else { return [] }
+        let upstream = main.upstream.flatMap { name in refs.first { $0.name == name } }
+        var commits: [ObjectID] = []
+        for ref in [main, upstream, remoteMainBranch].compactMap(\.self) where !commits.contains(ref.peeled) {
+            commits.append(ref.peeled)
+        }
+        return commits
+    }
+
     /// A remote's `HEAD`, which names that remote's main branch, preferring
     /// origin's.
     private var remoteHead: Ref? {

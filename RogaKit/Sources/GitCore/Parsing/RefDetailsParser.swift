@@ -9,7 +9,9 @@ public enum BranchListParser {
         public var upstream: String?
         /// How far it is from its upstream, if it has one.
         public var upstreamCounts: Counts?
-        /// How far it is from the commit that the format asked about.
+        /// How far it is from the base that the format asked about: how many
+        /// commits the base has that it doesn't, and the fewest it has that
+        /// either the base or one of the others the format asked about doesn't.
         public var baseCounts: Counts?
     }
 
@@ -25,22 +27,30 @@ public enum BranchListParser {
 
     /// The format to pass to `git for-each-ref --format`. Each branch is a
     /// line, and its fields are separated by NUL bytes: the name, the object,
-    /// the date, the upstream, how far it is from the upstream, and how far it
-    /// is from `base`.
+    /// the date, the upstream, how far it is from the upstream, how far it is
+    /// from `base`, and then from each of `others`.
+    ///
+    /// `others` are where else the base's commits are, such as the main
+    /// branch's upstream, so that what the base hasn't pulled yet doesn't
+    /// count as ahead of it (`RefList.mainBranchCommits`). They're asked about
+    /// only with a base.
     ///
     /// `base` is an object ID rather than a branch's name, because a ref name
     /// can have a parenthesis in it, which would end the field.
-    public static func format(comparingWith base: ObjectID?) -> String {
-        let counts = base.map { "%(ahead-behind:\($0.hex))" } ?? ""
+    public static func format(comparingWith base: ObjectID?, alsoAheadOf others: [ObjectID] = []) -> String {
+        let counts = base.map { ([$0] + others).map { "%(ahead-behind:\($0.hex))" }.joined(separator: "%00") } ?? ""
         return "%(refname)%00%(objectname)%00%(committerdate:unix)%00%(upstream)%00%(upstream:track,nobracket)%00" + counts
     }
 
-    public static func parse(_ output: [UInt8]) throws(ParseError) -> [Entry] {
+    /// - Parameter others: How many others the format asked about besides
+    ///   the base.
+    public static func parse(_ output: [UInt8], others: Int = 0) throws(ParseError) -> [Entry] {
         var entries: [Entry] = []
+        let expected = 6 + others
         for line in output.split(separator: UInt8(ascii: "\n")) {
             let fields = line.split(separator: 0, omittingEmptySubsequences: false)
-            guard fields.count == 6 else {
-                throw ParseError("git for-each-ref printed a line with \(fields.count) fields instead of 6.")
+            guard fields.count == expected else {
+                throw ParseError("git for-each-ref printed a line with \(fields.count) fields instead of \(expected).")
             }
             let name = String(decoding: fields[0], as: UTF8.self)
             guard let tip = ObjectID(hexDigits: fields[1]) else {
@@ -48,13 +58,20 @@ public enum BranchListParser {
             }
             let track = String(decoding: fields[4], as: UTF8.self)
             let hasUpstream = !fields[3].isEmpty && track != "gone"
+            var baseCounts = try counts(aheadBehind: String(decoding: fields[5], as: UTF8.self), of: name)
+            for field in fields.dropFirst(6) {
+                guard let other = try counts(aheadBehind: String(decoding: field, as: UTF8.self), of: name) else {
+                    throw ParseError("git for-each-ref printed nothing for how far \(name) is from where the main branch's commits are.")
+                }
+                if let ahead = baseCounts?.ahead { baseCounts?.ahead = min(ahead, other.ahead) }
+            }
             entries.append(Entry(
                 name: name,
                 tip: tip,
                 date: Int64(String(decoding: fields[2], as: UTF8.self)),
                 upstream: hasUpstream ? String(decoding: fields[3], as: UTF8.self) : nil,
                 upstreamCounts: hasUpstream ? try counts(track: track, of: name) : nil,
-                baseCounts: try counts(aheadBehind: String(decoding: fields[5], as: UTF8.self), of: name)
+                baseCounts: baseCounts
             ))
         }
         return entries
