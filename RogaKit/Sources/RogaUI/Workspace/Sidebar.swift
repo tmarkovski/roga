@@ -535,6 +535,9 @@ struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
     var agent: AgentSummary?
     /// What the row's worktree stopped partway through, if it did.
     var unfinished: UnfinishedWork?
+    /// What would go wrong with a commit because of who it goes out as, for a
+    /// repository's row.
+    var identityProblem: CommitIdentity.Problem?
     /// How far the second line stands from the row's content, to start where
     /// the row's own text does.
     var lineIndent: CGFloat = 0
@@ -560,6 +563,7 @@ struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
         canSelect: Bool = true,
         agent: AgentSummary?,
         unfinished: UnfinishedWork? = nil,
+        identityProblem: CommitIdentity.Problem? = nil,
         lineIndent: CGFloat = 0,
         action: @escaping () -> Void,
         @ViewBuilder content: () -> Content,
@@ -571,6 +575,7 @@ struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
         self.canSelect = canSelect
         self.agent = agent
         self.unfinished = unfinished
+        self.identityProblem = identityProblem
         self.lineIndent = lineIndent
         self.action = action
         self.content = content()
@@ -579,7 +584,7 @@ struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
     }
 
     var body: some View {
-        let line = RowLine(agent: agent, unfinished: unfinished)
+        let line = RowLine(agent: agent, unfinished: unfinished, identity: identityProblem)
         // A row without commands, such as the one for hidden worktrees, keeps
         // its mark on hover.
         let showsCommands = isHovering && isEnabled && Commands.self != EmptyView.self
@@ -642,19 +647,24 @@ struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
 
 /// What a sidebar row's second line is about, when it has one (decision 48).
 /// An agent that waits for you comes first, because it can't go on without
-/// you. Then a merge, rebase or revert that stopped partway, and last an agent
-/// at work or one that finished. A row with none of these has one line.
+/// you. Then a merge, rebase or revert that stopped partway, then an agent at
+/// work or one that finished, and last a commit that would go wrong because of
+/// who it goes out as (decision 103), which stays until the config is fixed. A
+/// row with none of these has one line.
 enum RowLine: Equatable {
     case agent(AgentSummary)
     case unfinished(UnfinishedWork)
+    case identity(CommitIdentity.Problem)
 
-    init?(agent: AgentSummary?, unfinished: UnfinishedWork?) {
+    init?(agent: AgentSummary?, unfinished: UnfinishedWork?, identity: CommitIdentity.Problem? = nil) {
         if let agent, case .waiting = agent.state {
             self = .agent(agent)
         } else if let unfinished {
             self = .unfinished(unfinished)
         } else if let agent {
             self = .agent(agent)
+        } else if let identity {
+            self = .identity(identity)
         } else {
             return nil
         }
@@ -685,6 +695,15 @@ private struct RowLineView: View {
             Self.parts(words: parts.words, end: parts.end)
                 .foregroundStyle(unfinished.hasConflicts ? AnyShapeStyle(Palette.red) : AnyShapeStyle(.secondary))
                 .help(unfinished.help)
+        case .identity(let problem):
+            HStack(spacing: 4) {
+                Icon.warning.image
+                    .font(.system(size: 11 / 1.128, weight: .semibold))
+                FadingText(IdentityWords.rowWords(problem))
+                    .font(.system(size: 13))
+            }
+            .foregroundStyle(AgentColors.warn)
+            .help(IdentityWords.problem(problem).detail)
         }
     }
 
@@ -783,7 +802,8 @@ private struct RepositoryRow: View {
     var body: some View {
         let agent = agents?.summary
         let hasChevron = linkedWorktrees > 0 && !standsForWorktrees
-        SidebarRow(isSelected: isSelected || isOpen, agent: agent, unfinished: unfinished, action: select) {
+        let identity = self.identity
+        SidebarRow(isSelected: isSelected || isOpen, agent: agent, unfinished: unfinished, identityProblem: identity?.problem, action: select) {
             HStack(spacing: 3) {
                 FadingText(title)
                     .font(.system(size: 13))
@@ -810,7 +830,17 @@ private struct RepositoryRow: View {
             .opacity(problem != nil ? 0.6 : isLoading ? SidebarMotion.loadingOpacity : 1)
             .animation(SidebarMotion.brightening(reducesMotion), value: isLoading)
         } trailing: {
-            RowLabel(words: problem, count: ownUncommittedFiles, hasConflicts: ownHasConflicts, failure: ownStatusFailure)
+            HStack(spacing: 6) {
+                // Before the count, where the eye looks for what's unusual
+                // about a repository (decision 103).
+                if case .someoneElse(let someone) = identity {
+                    IdentityBadge(identity: someone, size: 18, showsMark: false)
+                        .help(IdentityWords(identity: someone).tooltip)
+                        .transition(SidebarMotion.label(reducesMotion))
+                }
+                RowLabel(words: problem, count: ownUncommittedFiles, hasConflicts: ownHasConflicts, failure: ownStatusFailure)
+            }
+            .animation(SidebarMotion.arrival(reducesMotion), value: identity?.someoneElse)
         } commands: {
             RowMenu(entries: menu)
         }
@@ -819,7 +849,7 @@ private struct RepositoryRow: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
         .accessibilityValue(
-            [detail, linkedWorktreesDescription, unfinished?.title, agent?.description, uncommittedFilesDescription(ownUncommittedFiles, hasConflicts: ownHasConflicts), ownStatusFailure?.spoken, linkedWorktrees > 0 && !standsForWorktrees ? (repository.isExpanded ? "Expanded" : "Collapsed") : nil, problem]
+            [detail, linkedWorktreesDescription, unfinished?.title, agent?.description, uncommittedFilesDescription(ownUncommittedFiles, hasConflicts: ownHasConflicts), ownStatusFailure?.spoken, identity.map(IdentityWords.spoken), linkedWorktrees > 0 && !standsForWorktrees ? (repository.isExpanded ? "Expanded" : "Collapsed") : nil, problem]
                 .compactMap(\.self)
                 .joined(separator: ", ")
         )
@@ -886,6 +916,15 @@ private struct RepositoryRow: View {
         case .missing: "Missing"
         case .failed: "Can't open"
         }
+    }
+
+    /// What the row says about who the repository's commits go out as: the
+    /// initials of someone other than the global identity, or a second line
+    /// when a commit would go wrong. A bare repository says nothing, since
+    /// nothing is committed in it.
+    private var identity: IdentityException? {
+        guard repository.worktrees.first?.isBare != true else { return nil }
+        return IdentityException(repository.identity, defaultIdentity: list.defaultIdentity)
     }
 
     /// Whether the row is still waiting for its count, which a repository

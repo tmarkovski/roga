@@ -238,6 +238,9 @@ final class RepositoryModel {
         var body: String
         var author: String
         var date: String
+        /// Whether the commit carries a signature, which its row marks by its
+        /// hash (decision 104).
+        var isSigned = false
         /// Whether the commit was missing from the repository. A fetch may bring
         /// it, so it's read again with the next history.
         var isMissing = false
@@ -1494,6 +1497,7 @@ final class RepositoryModel {
             body: text?.body,
             author: text?.author,
             date: text?.date,
+            isSigned: text?.isSigned ?? false,
             lanes: hasWorkingTreeRow
                 ? workingTreeLine?.adding(to: fadedLines.marking(history.lanes.row(row), at: row), at: row)
                 : fadedLines.marking(history.lanes.row(row), at: row),
@@ -1539,7 +1543,7 @@ final class RepositoryModel {
         }
         for (index, commit) in wanted.enumerated() {
             texts[commit.id] = commits[index].map { info in
-                RowText(subject: messages[index].subject, body: messages[index].body, author: info.author.name, date: Self.format(info.author.time, now: now))
+                RowText(subject: messages[index].subject, body: messages[index].body, author: info.author.name, date: Self.format(info.author.time, now: now), isSigned: info.isSigned)
             } ?? RowText(subject: "This commit is missing from the repository.", body: "", author: "", date: "", isMissing: true)
         }
         // The text belongs to the commits whatever history shows now, but these

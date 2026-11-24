@@ -50,6 +50,26 @@ struct CommitParserTests {
         #expect(commit.parents == [ObjectID(hex: parent), ObjectID(hex: otherParent)])
         #expect(commit.author.name == "Ana Kovac")
         #expect(commit.subject == "Merge the feature")
+        #expect(commit.signatureFormat == .openPGP)
+    }
+
+    @Test func readsWhatKindOfSignatureACommitHas() throws {
+        func format(_ header: String) throws -> CommitIdentity.SigningFormat? {
+            try parse("""
+                tree \(tree)
+                author Ana Kovac <ana@example.com> 1767261600 +0000
+                committer Ana Kovac <ana@example.com> 1767261600 +0000
+                \(header)
+
+                Change the app
+
+                """).signatureFormat
+        }
+        #expect(try format("gpgsig -----BEGIN SSH SIGNATURE-----\n U1NIU0lH\n -----END SSH SIGNATURE-----") == .ssh)
+        #expect(try format("gpgsig-sha256 -----BEGIN PGP SIGNATURE-----\n wsBc\n -----END PGP SIGNATURE-----") == .openPGP)
+        #expect(try format("gpgsig -----BEGIN SIGNED MESSAGE-----\n MIAG\n -----END SIGNED MESSAGE-----") == .x509)
+        // A merged tag's signature is the tag's, not the commit's.
+        #expect(try format("mergetag object \(parent)\n type commit\n -----BEGIN PGP SIGNATURE-----\n -----END PGP SIGNATURE-----") == nil)
     }
 
     @Test func joinsTheFirstParagraphLikeGit() throws {
