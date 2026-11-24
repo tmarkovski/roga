@@ -5,7 +5,7 @@ import SwiftUI
 
 // Setup's screens on the made-up Mac in `PreviewMac`, each in a window the
 // size Roga opens with. The previews are live: the buttons go from screen to
-// screen, menus open, and Look Again finds the same gits again. Nothing runs
+// screen, popovers open, and Look Again finds the same gits again. Nothing runs
 // a real git or agent, so Install Hooks does nothing, and what a preview
 // chooses goes to UserDefaults of the previews' own.
 
@@ -22,8 +22,8 @@ import SwiftUI
     SetupPreview(step: .git)
 }
 
-#Preview("Git, menu open") {
-    SetupPreview(step: .git, openMenu: "git")
+#Preview("Git, installations open") {
+    SetupPreview(step: .git, openPicker: "git")
 }
 
 #Preview("Git, none found") {
@@ -34,8 +34,8 @@ import SwiftUI
     SetupPreview(step: .agents)
 }
 
-#Preview("Agents, Claude Code's menu open") {
-    SetupPreview(step: .agents, openMenu: "agent-claude")
+#Preview("Agents, Claude Code's installations open") {
+    SetupPreview(step: .agents, openPicker: "agent-claude")
 }
 
 #Preview("Agents, none found") {
@@ -65,7 +65,7 @@ private struct SetupPreview: View {
     @State private var gitProvider: GitProvider
     @State private var agents: AgentProvider
     @State private var updates: Updates
-    private let openMenu: String?
+    private let openPicker: String?
 
     /// - Parameters:
     ///   - step: The screen to show.
@@ -74,14 +74,15 @@ private struct SetupPreview: View {
     ///     still looking for them.
     ///   - usesAgents: The answer on the Agents screen, or nil before it.
     ///   - hooks: What each agent says about Roga's hooks.
-    ///   - openMenu: The row whose menu is open, as "git" or "agent-claude".
+    ///   - openPicker: The row whose popover is open, as "git" or
+    ///     "agent-claude".
     init(
         step: SetupModel.Step,
         gits: GitSurvey = PreviewMac.gits,
         agents surveys: [AgentKind: AgentSurvey]? = PreviewMac.surveys,
         usesAgents: Bool? = nil,
         hooks: [AgentKind: HookStatus] = [:],
-        openMenu: String? = nil
+        openPicker: String? = nil
     ) {
         let defaults = PreviewMac.defaults()
 
@@ -122,11 +123,11 @@ private struct SetupPreview: View {
         _gitProvider = State(initialValue: gitProvider)
         _agents = State(initialValue: agents)
         _updates = State(initialValue: updates)
-        self.openMenu = openMenu
+        self.openPicker = openPicker
     }
 
     var body: some View {
-        SetupView(setup: setup, openMenu: openMenu)
+        SetupView(setup: setup, openPicker: openPicker)
             .environment(gitProvider)
             .environment(agents)
             .environment(updates)

@@ -288,32 +288,32 @@ struct GitProviderTests {
         #expect(provider.git?.log === log)
     }
 
-    // MARK: The menus
+    // MARK: The pickers
 
-    @Test func gitsMenuChoosesAGitAndGoesBackForTheRecommendedOne() async throws {
+    @Test func gitsPickerChoosesAGitAndGoesBackForTheRecommendedOne() async throws {
         defer { AgentTestSupport.remove(defaults, named: name) }
         let provider = provider()
         // Before Roga has looked, there's nothing to list.
         provider.setStateForTests(survey: .some(nil))
-        #expect(ProgramMenu.git(provider) == nil)
+        #expect(ProgramPicker.git(provider) == nil)
 
         provider.setStateForTests(state: .ready(Git(installation: GitInstallation(executable: "/usr/bin/git", version: GitVersion(major: 2, minor: 54, patch: 0), searchPath: Self.searchPath))), survey: Self.survey)
-        let menu = try #require(ProgramMenu.git(provider))
+        let menu = try #require(ProgramPicker.git(provider))
         #expect(menu.choices.map(\.executable) == [Self.old, Self.apples, Self.homebrew].map(\.executable))
-        #expect(menu.checked == "/usr/bin/git")
+        #expect(menu.picked == "/usr/bin/git")
 
         menu.choose(menu.choices[2])
         #expect(provider.chosenPath == Self.homebrew.executable)
-        #expect(try #require(ProgramMenu.git(provider)).checked == Self.homebrew.executable)
+        #expect(try #require(ProgramPicker.git(provider)).picked == Self.homebrew.executable)
         menu.choose(menu.choices[1])
         #expect(provider.chosenPath == nil)
         await settled(provider)
     }
 
-    @Test func anAgentsMenuChoosesACopy() throws {
+    @Test func anAgentsPickerChoosesACopy() throws {
         defer { AgentTestSupport.remove(defaults, named: name) }
         let agents = AgentTestSupport.provider(support: try AgentTestSupport.folder(), defaults: defaults, codexHome: try AgentTestSupport.folder())
-        #expect(ProgramMenu.agent(.codex, agents: agents, choose: { _ in }) == nil)
+        #expect(ProgramPicker.agent(.codex, agents: agents, choose: { _ in }) == nil)
 
         let homebrew = "/opt/homebrew/bin/codex"
         let app = "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex"
@@ -324,9 +324,9 @@ struct GitProviderTests {
         agents.setStateForTests(lookups: [.codex: survey.lookup], surveys: [.codex: survey])
 
         var chosen: [String?] = []
-        let menu = try #require(ProgramMenu.agent(.codex, agents: agents, choose: { chosen.append($0) }))
-        #expect(menu.label == "Codex installations")
-        #expect(menu.checked == app)
+        let menu = try #require(ProgramPicker.agent(.codex, agents: agents, choose: { chosen.append($0) }))
+        #expect(menu.title == "Codex installation")
+        #expect(menu.picked == app)
         menu.choose(menu.choices[0])
         // The recommended copy is stored as nothing, so Roga keeps choosing.
         menu.choose(menu.choices[1])

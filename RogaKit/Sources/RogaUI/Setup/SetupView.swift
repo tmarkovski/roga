@@ -9,9 +9,9 @@ import SwiftUI
 /// Roga is busy. A screen comes in from the side setup is moving toward.
 struct SetupView: View {
     let setup: SetupModel
-    /// The row whose menu is open when the view appears, for drawing a
-    /// screen with its menu open in a test.
-    var openMenu: String?
+    /// The row whose popover is open when the view appears, for drawing a
+    /// screen with its popover open in a preview.
+    var openPicker: String?
     @Environment(GitProvider.self) private var gitProvider
     @Environment(AgentProvider.self) private var agents
     /// How tall the screen that shows is, once it's laid out, which says
@@ -107,7 +107,7 @@ struct SetupView: View {
                 .ignoresSafeArea()
         }
         .font(.system(size: 13))
-        .programMenus(open: openMenu)
+        .environment(\.openProgramPicker, openPicker)
         .navigationTitle("Roga")
         // Settings… does nothing during setup, which sets the same things,
         // rather than opening another window to show Settings on.

@@ -509,27 +509,3 @@ struct SetupModelTests {
         #expect(SetupWords.chosenHooks(usable: [.codex], status: [.codex: .needsTrust]).detail == "Hook approval required.")
     }
 }
-
-/// Where a row's menu opens.
-@Suite struct ProgramMenuPlacementTests {
-    let menu = CGSize(width: 404, height: 300)
-    let container = CGSize(width: 1120, height: 800)
-
-    @Test func opensUnderItsButtonWithTheirRightEdgesInLine() {
-        let button = CGRect(x: 760, y: 200, width: 96, height: 30)
-        #expect(ProgramMenuPlacement.origin(button: button, menu: menu, in: container) == CGPoint(x: 452, y: 236))
-    }
-
-    @Test func opensOverItsButtonWhenTheresNoRoomUnderIt() {
-        let button = CGRect(x: 760, y: 600, width: 96, height: 30)
-        #expect(ProgramMenuPlacement.origin(button: button, menu: menu, in: container) == CGPoint(x: 452, y: 294))
-        // With no room over it either, under it is where it's expected.
-        let small = CGSize(width: 1120, height: 320)
-        #expect(ProgramMenuPlacement.origin(button: CGRect(x: 760, y: 150, width: 96, height: 30), menu: menu, in: small).y == 186)
-    }
-
-    @Test func staysInsideWhatItsDrawnOver() {
-        let narrow = CGSize(width: 420, height: 800)
-        #expect(ProgramMenuPlacement.origin(button: CGRect(x: 300, y: 100, width: 90, height: 30), menu: menu, in: narrow).x == 8)
-    }
-}

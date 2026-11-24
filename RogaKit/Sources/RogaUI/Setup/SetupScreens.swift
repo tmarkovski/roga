@@ -5,24 +5,24 @@ import GitRunner
 import IconUI
 import SwiftUI
 
-// MARK: Menus
+// MARK: Pickers
 
-extension ProgramMenu {
-    /// Git's menu: every git Roga found. Choosing the one Roga recommends
+extension ProgramPicker {
+    /// Git's picker: every git Roga found. Choosing the one Roga recommends
     /// goes back to finding git itself, so that Roga follows a newer one.
-    static func git(_ provider: GitProvider) -> ProgramMenu? {
+    static func git(_ provider: GitProvider) -> ProgramPicker? {
         guard let survey = provider.survey else { return nil }
         let recommended = survey.recommended?.executable
-        return ProgramMenu(
+        return ProgramPicker(
             id: "git",
-            label: "Git installations",
+            title: "Git installation",
             choices: ProgramChoices.git(
                 survey,
                 chosenPath: provider.chosenPath,
                 current: provider.git?.installation,
                 failure: provider.failure
             ),
-            checked: provider.chosenPath ?? recommended,
+            picked: provider.chosenPath ?? recommended,
             choose: { provider.choose($0.executable == recommended ? nil : $0.executable) },
             chooseAnother: {
                 if let path = ProgramPanel.choose("git", startingAt: provider.git?.installation.executable) {
@@ -32,7 +32,7 @@ extension ProgramMenu {
         )
     }
 
-    /// An agent's menu: every copy Roga found.
+    /// An agent's picker: every copy Roga found.
     ///
     /// - Parameter choose: Makes a path the program Roga runs, or goes back
     ///   to the one Roga finds for nil.
@@ -40,15 +40,15 @@ extension ProgramMenu {
         _ kind: AgentKind,
         agents: AgentProvider,
         choose: @escaping (String?) -> Void
-    ) -> ProgramMenu? {
+    ) -> ProgramPicker? {
         guard let survey = agents.surveys[kind] else { return nil }
         let program = agents.settings[kind]?.program
         let recommended = survey.recommended?.executable
-        return ProgramMenu(
+        return ProgramPicker(
             id: "agent-\(kind.rawValue)",
-            label: "\(kind.name) installations",
+            title: "\(kind.name) installation",
             choices: ProgramChoices.agent(survey, program: program, lookup: agents.lookups[kind]),
-            checked: program ?? recommended,
+            picked: program ?? recommended,
             choose: { choose($0.executable == recommended ? nil : $0.executable) },
             chooseAnother: {
                 if let path = ProgramPanel.choose(kind.executableName, startingAt: agents.installation(kind)?.executable) {
@@ -237,7 +237,7 @@ struct SetupGit: View {
                 ProgramRow(
                     icon: .branch,
                     content: .git(state: gitProvider.state, survey: gitProvider.survey),
-                    menu: .git(gitProvider),
+                    picker: .git(gitProvider),
                     choose: chooseAnother
                 )
             }
@@ -341,7 +341,7 @@ struct SetupAgents: View {
                     ProgramRow(
                         icon: .squareTerminal,
                         content: .agent(kind, lookup: agents.lookups[kind]),
-                        menu: .agent(kind, agents: agents, choose: { setup.chooseProgram(kind, $0) }),
+                        picker: .agent(kind, agents: agents, choose: { setup.chooseProgram(kind, $0) }),
                         choose: { choose(kind) }
                     )
                 }

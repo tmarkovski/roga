@@ -76,7 +76,7 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [66](0066-sentence-case-branch-icons-and-the-value-on-a-row.md) | Sentence case, branch icons and the value on a row | Branch icons replaced by bold names in [77](0077-bold-branch-names-in-menus.md) |
 | [67](0067-add-and-remove-remotes-in-the-refs-panel.md) | Add and remove remotes in the refs panel | Accepted |
 | [68](0068-mark-an-agents-commands-with-an-orange-line-rather-than-sparkles.md) | Mark an agent's commands with an orange line, rather than sparkles | Where the light goes while an agent writes a message changed by [98](0098-buttons-in-a-row-under-the-message.md) |
-| [69](0069-set-roga-up-in-the-whole-window-the-first-time-it-runs.md) | Set Roga up in the whole window, the first time it runs | Interface wording revised by [72](0072-use-standard-interface-terminology.md), and the Agents screen's answer stored as one switch by [89](0089-one-switch-for-agents.md) |
+| [69](0069-set-roga-up-in-the-whole-window-the-first-time-it-runs.md) | Set Roga up in the whole window, the first time it runs | Interface wording revised by [72](0072-use-standard-interface-terminology.md), the Agents screen's answer stored as one switch by [89](0089-one-switch-for-agents.md), and the rows' menus of copies made popovers by [101](0101-choose-a-programs-copy-in-a-popover-like-the-agents.md) |
 | [70](0070-push-a-tag-from-its-menu-or-as-its-made.md) | Push a tag from its menu, or as it's made | Accepted |
 | [71](0071-choose-monokais-or-xcodes-colors.md) | Choose Monokai's or Xcode's colors | A preview of the colors added by [73](0073-choose-the-code-font-and-its-size.md) |
 | [72](0072-use-standard-interface-terminology.md) | Use standard interface terminology | Accepted |
@@ -98,7 +98,7 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [88](0088-messages-dont-narrate-what-roga-did.md) | Messages don't narrate what Roga did | Accepted |
 | [89](0089-one-switch-for-agents.md) | One switch for agents, a default agent, and custom agents | Accepted |
 | [90](0090-fold-advanced-into-git.md) | Fold Advanced into Git | Accepted |
-| [91](0091-one-agent-popover-for-every-agent-button.md) | One agent popover for every agent's button | Accepted |
+| [91](0091-one-agent-popover-for-every-agent-button.md) | One agent popover for every agent's button | Its popover used for programs' copies too, in place of setup's menus, by [101](0101-choose-a-programs-copy-in-a-popover-like-the-agents.md) |
 | [92](0092-say-when-git-cant-list-a-worktrees-uncommitted-files.md) | Say when git can't list a worktree's uncommitted files | Accepted |
 | [93](0093-keep-the-house-going-while-the-title-row-says-pushed-or-pulled.md) | Keep the house going while the title row says Pushed or Pulled | Accepted |
 | [94](0094-report-an-issue-from-the-help-menu-after-a-dialog.md) | Report an issue from the Help menu, after a dialog says what it opens | Accepted |
@@ -108,3 +108,4 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [98](0098-buttons-in-a-row-under-the-message.md) | The message box's buttons in a row under its text | Accepted |
 | [99](0099-bring-a-sidebar-rows-details-in-as-they-load.md) | Bring a sidebar row's details in as they load | Accepted |
 | [100](0100-say-what-the-worktrees-agent-is-doing-in-the-branch-row.md) | Say what the worktree's agent is doing in the branch row | Accepted |
+| [101](0101-choose-a-programs-copy-in-a-popover-like-the-agents.md) | Choose a program's copy in a popover like the agents' | Accepted |

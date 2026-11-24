@@ -59,12 +59,12 @@ struct AgentDetailPage: View {
                 }
             }
         } control: {
-            // The same menu as on the agent's row in setup: every copy Roga
-            // found, and Choose another… for one it didn't. Roga looks at
+            // The same popover as on the agent's row in setup: every copy
+            // Roga found, and Choose Another… for one it didn't. Roga looks at
             // what was chosen as soon as it's stored, and says on this page
             // if it can't use it.
-            if let menu = ProgramMenu.agent(kind, agents: agents, choose: { program = $0 }) {
-                ProgramSelect(title: Self.selectTitle(lookup: agents.lookups[kind], program: program), menu: menu)
+            if let picker = ProgramPicker.agent(kind, agents: agents, choose: { program = $0 }) {
+                ProgramSelect(title: Self.selectTitle(lookup: agents.lookups[kind], program: program), picker: picker)
             } else {
                 Button("Choose…", action: choose)
                     .buttonStyle(.settings())
