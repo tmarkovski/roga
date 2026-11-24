@@ -62,10 +62,12 @@ struct GitProviderTests {
     /// path finds Apple's, and a chosen one is found when it's one of
     /// `usable`.
     ///
-    /// The login shell says the survey's `PATH` unless `shell` says otherwise.
+    /// The login shell says the survey's `PATH` unless `shell` says otherwise,
+    /// and Apple's git isn't found in any `PATH` of `noGitIn`.
     func provider(
         survey: GitSurvey = GitProviderTests.survey,
         finds: Bool = true,
+        noGitIn: Set<String> = [],
         usable: [FoundGit] = [apples, homebrew],
         shell: (@Sendable (_ priority: GitCommand.Priority) async -> (searchPath: String, fromLoginShell: Bool))? = nil
     ) -> GitProvider {
@@ -77,7 +79,7 @@ struct GitProviderTests {
                 asked.add(configured)
                 searched.add(searchPath)
                 guard let configured else {
-                    guard finds, let version = apples.version else {
+                    guard finds, !noGitIn.contains(searchPath), let version = apples.version else {
                         return .failure(.unsupported([.init(executable: old.executable, version: old.version)], developerToolsMissing: false))
                     }
                     return .success(GitInstallation(executable: apples.executable, version: version, searchPath: searchPath))
@@ -142,6 +144,24 @@ struct GitProviderTests {
         #expect(provider.searchPath?.path == Self.searchPath)
         #expect(defaults.string(forKey: GitPreferences.searchPathKey) == Self.searchPath)
         #expect(provider.survey == Self.survey)
+    }
+
+    @Test func waitsForTheShellAtNormalPriorityWhenLastLaunchsPathHasNoGit() async {
+        defer { AgentTestSupport.remove(defaults, named: name) }
+        let saved = "/opt/old/bin"
+        defaults.set(saved, forKey: GitPreferences.searchPathKey)
+        let fresh = Self.searchPath
+        let priorities = Mutex<[GitCommand.Priority]>([])
+        let provider = provider(noGitIn: [saved], shell: { priority in
+            priorities.withLock { $0.append(priority) }
+            return (fresh, true)
+        })
+        await settled(provider)
+        // Windows wait for the shell, since git wasn't found without it.
+        #expect(priorities.withLock { $0 } == [.normal])
+        #expect(searched.all == [saved, Self.searchPath])
+        #expect(provider.git?.installation.searchPath == Self.searchPath)
+        #expect(provider.failure == nil)
     }
 
     @Test func theSamePathFromTheShellFindsNothingAgain() async {
@@ -268,32 +288,32 @@ struct GitProviderTests {
         #expect(provider.git?.log === log)
     }
 
-    // MARK: The menus
+    // MARK: The pickers
 
-    @Test func gitsMenuChoosesAGitAndGoesBackForTheRecommendedOne() async throws {
+    @Test func gitsPickerChoosesAGitAndGoesBackForTheRecommendedOne() async throws {
         defer { AgentTestSupport.remove(defaults, named: name) }
         let provider = provider()
         // Before Roga has looked, there's nothing to list.
         provider.setStateForTests(survey: .some(nil))
-        #expect(ProgramMenu.git(provider) == nil)
+        #expect(ProgramPicker.git(provider) == nil)
 
         provider.setStateForTests(state: .ready(Git(installation: GitInstallation(executable: "/usr/bin/git", version: GitVersion(major: 2, minor: 54, patch: 0), searchPath: Self.searchPath))), survey: Self.survey)
-        let menu = try #require(ProgramMenu.git(provider))
+        let menu = try #require(ProgramPicker.git(provider))
         #expect(menu.choices.map(\.executable) == [Self.old, Self.apples, Self.homebrew].map(\.executable))
-        #expect(menu.checked == "/usr/bin/git")
+        #expect(menu.picked == "/usr/bin/git")
 
         menu.choose(menu.choices[2])
         #expect(provider.chosenPath == Self.homebrew.executable)
-        #expect(try #require(ProgramMenu.git(provider)).checked == Self.homebrew.executable)
+        #expect(try #require(ProgramPicker.git(provider)).picked == Self.homebrew.executable)
         menu.choose(menu.choices[1])
         #expect(provider.chosenPath == nil)
         await settled(provider)
     }
 
-    @Test func anAgentsMenuChoosesACopy() throws {
+    @Test func anAgentsPickerChoosesACopy() throws {
         defer { AgentTestSupport.remove(defaults, named: name) }
         let agents = AgentTestSupport.provider(support: try AgentTestSupport.folder(), defaults: defaults, codexHome: try AgentTestSupport.folder())
-        #expect(ProgramMenu.agent(.codex, agents: agents, choose: { _ in }) == nil)
+        #expect(ProgramPicker.agent(.codex, agents: agents, choose: { _ in }) == nil)
 
         let homebrew = "/opt/homebrew/bin/codex"
         let app = "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex"
@@ -304,9 +324,9 @@ struct GitProviderTests {
         agents.setStateForTests(lookups: [.codex: survey.lookup], surveys: [.codex: survey])
 
         var chosen: [String?] = []
-        let menu = try #require(ProgramMenu.agent(.codex, agents: agents, choose: { chosen.append($0) }))
-        #expect(menu.label == "Codex installations")
-        #expect(menu.checked == app)
+        let menu = try #require(ProgramPicker.agent(.codex, agents: agents, choose: { chosen.append($0) }))
+        #expect(menu.title == "Codex installation")
+        #expect(menu.picked == app)
         menu.choose(menu.choices[0])
         // The recommended copy is stored as nothing, so Roga keeps choosing.
         menu.choose(menu.choices[1])

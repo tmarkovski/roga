@@ -345,7 +345,7 @@ private struct AgentCard: View {
 /// The ring of a choice of one: hollow, or ink with a white middle once it's
 /// the default agent. The popover is a panel rather than a menu, so it marks
 /// its choice as a panel's radio buttons do, where a menu has a check.
-private struct AgentRadio: View {
+struct AgentRadio: View {
     let isOn: Bool
 
     var body: some View {
@@ -359,7 +359,7 @@ private struct AgentRadio: View {
 /// An agent's card. One that can't be picked is already gray, and says why, so
 /// unlike the plain style it isn't dimmed again, which would make the why hard
 /// to read.
-private struct AgentCardStyle: ButtonStyle {
+struct AgentCardStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .opacity(configuration.isPressed ? 0.7 : 1)

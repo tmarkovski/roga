@@ -740,7 +740,7 @@ struct AgentSummary: Equatable {
     ///
     /// With one session whose agent said what it's doing, the line follows
     /// the agent's name, as in "Claude Code: Run the test suite · 6 min",
-    /// "Codex needs your OK: git push · 2 min" or "Claude Code: Wants a plan
+    /// "Codex needs approval: git push · 2 min" or "Claude Code: Wants a plan
     /// approved · 2 min". The name keeps a bare "git push" from reading as
     /// something Roga is doing, next to its own lines such as "Rebasing main"
     /// (decision 47). A finished session's reply stays in the tooltip, since
@@ -758,7 +758,7 @@ struct AgentSummary: Equatable {
         let words: String
         switch (state, activity) {
         case (.working, let activity?): words = "\(agent): \(activity)"
-        case (.waiting(.permission), let activity?): words = "\(agent): approval required: \(activity)"
+        case (.waiting(.permission), let activity?): words = "\(agent) needs approval: \(activity)"
         case (.waiting(.question), let activity?): words = "\(agent): \(activity)"
         case (.working, nil): words = "\(agent) working"
         case (.waiting, nil): words = "\(agent) waiting for you"
@@ -771,7 +771,7 @@ struct AgentSummary: Equatable {
     /// What a sidebar row's second line says (decision 48), in the same two
     /// parts as `menuParts(now:)`. The mark starts that line and already says
     /// an agent is speaking, so with one session the words are the agent's
-    /// own, as in "Run the test suite" and "6 min", "Needs your OK: git push"
+    /// own, as in "Run the test suite" and "6 min", "Approval required: git push"
     /// or "Wants a plan approved". A finished session's are the first line of
     /// its reply. With nothing said, or several sessions, the line names the
     /// agents, as in "Claude Code is working" or "2 agents working".
@@ -783,7 +783,7 @@ struct AgentSummary: Equatable {
         case (.waiting(.permission), let activity?): words = "Approval required: \(activity)"
         case (.finished, let activity?): return (activity, nil)
         case (.working, nil): words = sessions == 1 ? "\(agent) is working" : "\(agent) working"
-        case (.waiting(.permission), nil) where sessions == 1: words = "\(agent): approval required"
+        case (.waiting(.permission), nil) where sessions == 1: words = "\(agent) needs approval"
         case (.waiting(.question), nil) where sessions == 1: words = "\(agent) is waiting for you"
         case (.waiting, nil): words = "\(agent) are waiting for you"
         case (.finished, nil): return ("\(agent) finished", nil)

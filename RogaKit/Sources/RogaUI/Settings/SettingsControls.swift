@@ -571,23 +571,6 @@ struct SettingsChoices<Value: Hashable>: View {
     }
 }
 
-/// The check before what's chosen, where a choice of one is a list of rows in
-/// a menu, such as setup's menus of programs, as the system's menus mark a
-/// choice. Every row keeps the check's column, so their names line up. The
-/// agent popover is a panel rather than a menu, so it has radios instead
-/// (decision 91).
-struct ChoiceCheck: View {
-    let isChecked: Bool
-
-    var body: some View {
-        Icon.check.image
-            .font(.system(size: 12.5, weight: .semibold))
-            .opacity(isChecked ? 1 : 0)
-            .frame(width: 16, height: 18)
-            .accessibilityHidden(true)
-    }
-}
-
 /// The small chevron at the end of a popup or a select.
 struct SettingsChevron: View {
     var body: some View {

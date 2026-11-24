@@ -17,7 +17,24 @@ import SwiftUI
 /// It's a picture: nothing in it takes a click or shows a tooltip, and how
 /// long each agent has been at it stands still, though the working ring turns
 /// as it does in the sidebar.
+///
+/// Setup's Hooks screen shows only the repository and its three worktrees,
+/// without the lines out to what the marks mean, beside the agents, so that
+/// the screen fits above setup's lane (decision 69).
 struct MarksPreview: View {
+    enum Layout {
+        /// The worktrees one over another under their repository, between a
+        /// group's label and two more repositories, with what each mark means
+        /// beside it, as in Settings › Agents.
+        case column
+        /// Just the repository and its three worktrees, `width` wide, as on
+        /// setup's Hooks screen. Each worktree's second line says what its
+        /// agent is doing, which says what its mark means.
+        case glimpse
+    }
+
+    var layout = Layout.column
+
     /// A worktree in the picture, its agent, and what its mark means.
     struct Sample {
         var branch: String
@@ -77,8 +94,26 @@ struct MarksPreview: View {
     /// The sidebar's panel, a shade darker than the page it's on, as the
     /// window's sidebar is beside its panels.
     static let panelColor = Palette.gray(light: 0.937, dark: 0.137)
+    /// How far the glimpse's panel fades in at the top and out at the
+    /// bottom, which only touches the room around its rows.
+    static let glimpseFade: CGFloat = 12
 
     var body: some View {
+        Group {
+            switch layout {
+            case .column: column
+            case .glimpse: glimpse
+            }
+        }
+        .environment(\.sidebarPictureDate, Self.date)
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .ignore)
+        // One picture to VoiceOver, since what's in it is made up.
+        .accessibilityLabel("Worktree status indicators. Ring: working. Amber circle: waiting for approval or a response. Blue dot: finished, unread.")
+        .accessibilityAddTraits(.isImage)
+    }
+
+    private var column: some View {
         VStack(alignment: .leading, spacing: 2) {
             line {
                 GroupLabel(title: "acme", isCollapsed: false, agents: nil) {}
@@ -101,17 +136,28 @@ struct MarksPreview: View {
             }
         }
         .background(alignment: .leading) {
-            panel
+            panel(width: Self.width)
         }
         .mask {
-            fade
+            fade(top: Self.fadeTop, bottom: Self.fadeBottom)
         }
-        .environment(\.sidebarPictureDate, Self.date)
-        .allowsHitTesting(false)
-        .accessibilityElement(children: .ignore)
-        // One picture to VoiceOver, since what's in it is made up.
-        .accessibilityLabel("Worktree status indicators. Ring: working. Amber circle: waiting for approval or a response. Blue dot: finished, unread.")
-        .accessibilityAddTraits(.isImage)
+    }
+
+    /// The repository and its three worktrees on the sidebar's panel, which
+    /// fades in just above the repository and out just under the last one.
+    private var glimpse: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            repositoryRow("api", files: 2, isExpanded: true)
+            ForEach(Self.samples, id: \.branch) { sample in
+                worktreeRow(sample)
+            }
+        }
+        .padding(.horizontal, Self.inset)
+        .padding(.top, 4)
+        .padding(.bottom, 8)
+        .frame(width: Self.width)
+        .background { panel(width: Self.width) }
+        .mask { fade(top: Self.glimpseFade, bottom: Self.glimpseFade) }
     }
 
     /// A row of the sidebar, as wide as the sidebar's rows are, with what its
@@ -155,16 +201,19 @@ struct MarksPreview: View {
 
     /// A linked worktree's row, under its repository with a line to it.
     private func worktreeRow(_ sample: Sample) -> some View {
-        SidebarRow(isSelected: sample.isSelected, agent: sample.summary, lineIndent: WorktreeConnector.textIndent, action: {}) {
+        let indent = WorktreeConnector.textIndent
+        return SidebarRow(isSelected: sample.isSelected, agent: sample.summary, lineIndent: indent, action: {}) {
             FadingText(sample.branch)
                 .font(.system(size: 13))
-                .padding(.leading, WorktreeConnector.textIndent)
+                .padding(.leading, indent)
         } trailing: {
             UncommittedCount(count: sample.files, hasConflicts: false)
         } commands: {
             EmptyView()
         }
-        .overlay { WorktreeConnector(isLast: sample.isLast) }
+        .overlay {
+            WorktreeConnector(isLast: sample.isLast)
+        }
     }
 
     /// A line from the mark, whose middle is 16 points down its row, out to
@@ -191,26 +240,26 @@ struct MarksPreview: View {
 
     /// The sidebar's panel behind the rows, with a hairline down each side,
     /// where the sidebar meets the page around it.
-    private var panel: some View {
+    private func panel(width: CGFloat) -> some View {
         Rectangle()
             .fill(Self.panelColor)
             .overlay {
                 Rectangle()
                     .strokeBorder(Color.primary.opacity(0.07), lineWidth: 1)
             }
-            .frame(width: Self.width)
+            .frame(width: width)
     }
 
     /// Clear at the top and bottom and solid between, so that the rows and
     /// the panel fade out together. The edges of the panel's hairline at the
     /// top and bottom are where it's clear, so they never show.
-    private var fade: some View {
+    private func fade(top: CGFloat, bottom: CGFloat) -> some View {
         VStack(spacing: 0) {
             LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
-                .frame(height: Self.fadeTop)
+                .frame(height: top)
             Color.black
             LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
-                .frame(height: Self.fadeBottom)
+                .frame(height: bottom)
         }
     }
 }
@@ -219,5 +268,11 @@ struct MarksPreview: View {
     MarksPreview()
         .padding(30)
         .frame(width: 640)
+        .background(SettingsColors.surface)
+}
+
+#Preview("Marks glimpse") {
+    MarksPreview(layout: .glimpse)
+        .padding(30)
         .background(SettingsColors.surface)
 }

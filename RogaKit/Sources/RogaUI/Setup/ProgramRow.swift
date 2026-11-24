@@ -12,7 +12,7 @@ enum SetupColors {
     static let line = SettingsColors.line
     static let hairline = SettingsColors.hairline
     static let hover = SettingsColors.hover
-    /// The name, version and path of a copy Roga can't use, in its menu:
+    /// The name, version and path of a copy Roga can't use, on its card:
     /// half as strong as a note, so that the row reads as one that can't be
     /// chosen, and its reason is the easiest thing in it to read.
     static let unavailable = SettingsColors.note.opacity(0.5)
@@ -25,13 +25,13 @@ enum SetupColors {
 
 /// A program Roga runs, as one row: an icon, its name and version, a check
 /// for having been found, its path, and at the right a button that names
-/// where this copy is from and opens a menu of every copy Roga found. Git,
+/// where this copy is from and opens a popover of every copy Roga found. Git,
 /// Claude Code and Codex each get the same row, in setup and in Settings.
 struct ProgramRow: View {
     let icon: Icon
     let content: ProgramRowContent
-    /// The menu the button opens, for a row whose button is one.
-    var menu: ProgramMenu?
+    /// What the button's popover offers, for a row whose button opens one.
+    var picker: ProgramPicker?
     /// What Choose… does, for a program Roga didn't find.
     var choose: () -> Void = {}
 
@@ -112,8 +112,8 @@ struct ProgramRow: View {
         case .none:
             EmptyView()
         case .menu(let title):
-            if let menu {
-                ProgramSelect(title: title, menu: menu)
+            if let picker {
+                ProgramSelect(title: title, picker: picker)
             }
         case .choose:
             Button("Choose…", action: choose)
@@ -154,149 +154,58 @@ struct SetupCard<Content: View>: View {
     }
 }
 
-// MARK: The menu
+// MARK: The popover
 
-/// The menu a program's row opens: every copy Roga found, then Choose
-/// another…. There's no way to leave one agent out, since agents are on or
-/// off together (decision 89).
-struct ProgramMenu {
-    /// Which row's menu it is, so that only one is open.
+/// What a program's row lets someone choose: every copy Roga found, then
+/// Choose Another…. There's no way to leave one agent out, since agents are on
+/// or off together (decision 89).
+struct ProgramPicker {
+    /// Which row's it is, as "git" or "agent-claude".
     var id: String
-    /// What VoiceOver calls it, as in "Every Git Roga found".
-    var label: String
+    /// The popover's heading, which VoiceOver also calls the row's button, as
+    /// in "Git installation".
+    var title: String
     var choices: [ProgramChoice]
-    /// The copy in use, which gets the check.
-    var checked: String?
+    /// The copy in use, whose card is picked.
+    var picked: String?
     var choose: (ProgramChoice) -> Void
     var chooseAnother: () -> Void
 }
 
-/// Which program's menu is open, for everything under one `programMenus()`.
-@MainActor @Observable
-final class ProgramMenus {
-    var open: String?
-
-    func toggle(_ id: String) {
-        open = open == id ? nil : id
-    }
-}
-
-/// Where each row's button is and what its menu holds, which the rows report
-/// up to whatever draws the open one over everything else.
-nonisolated struct ProgramMenuPlaces: PreferenceKey {
-    struct Place {
-        var bounds: Anchor<CGRect>
-        var menu: ProgramMenu
-    }
-
-    static var defaultValue: [String: Place] { [:] }
-
-    static func reduce(value: inout [String: Place], nextValue: () -> [String: Place]) {
-        value.merge(nextValue()) { $1 }
-    }
-}
-
-extension View {
-    /// Draws the open menu of any `ProgramRow` inside, over everything else
-    /// in this view, under the button that opened it, and closes it on a
-    /// click anywhere else. A row's menu is drawn up here because a row sits
-    /// inside a card and a column, and what comes after those would draw over
-    /// a menu the row drew itself.
-    ///
-    /// - Parameter open: The row whose menu is open at first, for drawing
-    ///   one in a test.
-    func programMenus(open: String? = nil) -> some View {
-        modifier(ProgramMenuHost(open: open))
-    }
-}
-
-private struct ProgramMenuHost: ViewModifier {
-    @State private var menus: ProgramMenus
-
-    init(open: String?) {
-        let menus = ProgramMenus()
-        menus.open = open
-        _menus = State(initialValue: menus)
-    }
-
-    /// How tall the open menu is, once it's laid out, to keep it in view.
-    @State private var menuHeight: CGFloat = 0
-
-    func body(content: Content) -> some View {
-        content
-            .environment(menus)
-            .overlayPreferenceValue(ProgramMenuPlaces.self) { places in
-                GeometryReader { proxy in
-                    if let id = menus.open, let place = places[id] {
-                        let origin = ProgramMenuPlacement.origin(
-                            button: proxy[place.bounds],
-                            menu: CGSize(width: ProgramMenuView.width, height: menuHeight),
-                            in: proxy.size
-                        )
-                        ZStack(alignment: .topLeading) {
-                            // Everything outside the menu closes it.
-                            Button {
-                                menus.open = nil
-                            } label: {
-                                Color.clear
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(ProgramMenuRowStyle())
-                            .accessibilityLabel("Close the Menu")
-                            ProgramMenuView(menu: place.menu) { menus.open = nil }
-                                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { menuHeight = $0 }
-                                .offset(x: origin.x, y: origin.y)
-                        }
-                    }
-                }
-            }
-            .onChange(of: menus.open) { menuHeight = 0 }
-    }
-}
-
-/// Where an open menu goes, over whatever `programMenus()` is on.
-nonisolated enum ProgramMenuPlacement {
-    /// The gap between a button and its menu, and between a menu and the
-    /// edge of what it's drawn over.
-    static let gap: CGFloat = 6
-    static let margin: CGFloat = 8
-
-    /// Where the menu's top left goes: under the button, with their right
-    /// edges in line, or over the button when there's no room under it and
-    /// there is over it. It never runs off the left edge.
-    static func origin(button: CGRect, menu: CGSize, in container: CGSize) -> CGPoint {
-        let x = max(margin, min(button.maxX - menu.width, container.width - menu.width - margin))
-        let under = button.maxY + gap
-        let over = button.minY - gap - menu.height
-        let fitsUnder = under + menu.height <= container.height - margin
-        return CGPoint(x: x, y: fitsUnder || over < margin ? under : over)
-    }
+extension EnvironmentValues {
+    /// The row whose popover is open when it appears, as "git", for drawing a
+    /// screen with a popover open in a preview.
+    @Entry var openProgramPicker: String? = nil
 }
 
 /// The button at the right of a program's row, which says where the copy in
-/// use is from and opens the menu.
+/// use is from and opens the popover of every copy, as the chevron beside
+/// Generate opens the agents' (decision 101).
 struct ProgramSelect: View {
     let title: String
-    let menu: ProgramMenu
-    @Environment(ProgramMenus.self) private var menus: ProgramMenus?
+    let picker: ProgramPicker
+    @State private var isOpen = false
+    @Environment(\.openProgramPicker) private var openPicker
 
     var body: some View {
-        let isOpen = menus?.open == menu.id
         Button(title) {
-            menus?.toggle(menu.id)
+            isOpen.toggle()
         }
         .buttonStyle(ProgramSelectStyle(isOpen: isOpen, hasChevrons: true))
-        .anchorPreference(key: ProgramMenuPlaces.self, value: .bounds) {
-            [menu.id: ProgramMenuPlaces.Place(bounds: $0, menu: menu)]
+        .popover(isPresented: $isOpen, arrowEdge: .bottom) {
+            ProgramPopover(picker: picker) { isOpen = false }
         }
-        .accessibilityLabel(menu.label)
+        .onAppear {
+            if openPicker == picker.id { isOpen = true }
+        }
+        .accessibilityLabel(picker.title)
         .accessibilityValue(title)
         .accessibilityAddTraits(isOpen ? .isSelected : [])
     }
 }
 
 /// The canvas's select, with a line around it and chevrons at its end. While
-/// its menu is open, the line is ink with a soft ring outside it.
+/// its popover is open, the line is ink with a soft ring outside it.
 private struct ProgramSelectStyle: ButtonStyle {
     let isOpen: Bool
     let hasChevrons: Bool
@@ -333,129 +242,96 @@ private struct ProgramSelectStyle: ButtonStyle {
     }
 }
 
-/// The open menu: a copy to a row, with where it's from, a tag, its version,
-/// its path and why Roga would or wouldn't run it.
-///
-/// It takes the keyboard while it's open: the arrows move through what can
-/// be chosen, Return chooses, and Escape closes it.
-private struct ProgramMenuView: View {
-    static let width: CGFloat = 404
-
-    let menu: ProgramMenu
+/// Every copy of a program Roga found, laid out as the agents' popover is
+/// (decision 91): a heading, a card for each copy with a radio, where it's
+/// from, a tag, its version, its path and why Roga would or wouldn't run it,
+/// and under the cards a note that the pick is saved and Choose Another…. The
+/// copy in use has the ink edge. A copy Roga can't run is gray, and its card
+/// can't be picked. A pick is used at once, so the popover stays open to show
+/// it, and closes as any popover does.
+struct ProgramPopover: View {
+    let picker: ProgramPicker
     let close: () -> Void
-    /// The item the arrows are on, or nil before a key is pressed.
-    @State private var highlighted: Int?
-    @FocusState private var isFocused: Bool
-    @Environment(\.colorScheme) private var colorScheme
 
-    /// What can be chosen, in order, which is what the arrows move through.
-    private enum Item: Equatable {
-        case choice(String)
-        case another
-    }
-
-    private var items: [Item] {
-        menu.choices.filter(\.canChoose).map { .choice($0.executable) } + [.another]
-    }
+    /// As wide as the agents' popover.
+    static var width: CGFloat { AgentPopover.width }
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
-        VStack(spacing: 0) {
-            ForEach(menu.choices) { choice in
-                ProgramChoiceRow(
-                    choice: choice,
-                    isChecked: choice.executable == menu.checked,
-                    isHighlighted: isHighlighted(.choice(choice.executable))
-                ) {
-                    pick(.choice(choice.executable))
+        VStack(alignment: .leading, spacing: 0) {
+            Text(picker.title)
+                .font(.system(size: 13, weight: .semibold))
+                .padding(EdgeInsets(top: 13, leading: 16, bottom: 8, trailing: 16))
+                .accessibilityAddTraits(.isHeader)
+            VStack(spacing: 6) {
+                ForEach(picker.choices) { choice in
+                    ProgramCard(choice: choice, isPicked: choice.executable == picker.picked) {
+                        picker.choose(choice)
+                    }
                 }
             }
-            Rectangle()
-                .fill(SetupColors.hairline)
-                .frame(height: 1)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
-            ProgramCommandRow(title: "Choose another…", isChecked: false, isHighlighted: isHighlighted(.another)) {
-                pick(.another)
+            .padding(.horizontal, 10)
+            HStack(spacing: 12) {
+                Text("Selection saved automatically.")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(DialogColors.note)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Button("Choose Another…") {
+                    // The panel is modal, and can't open over a popover.
+                    close()
+                    picker.chooseAnother()
+                }
+                .buttonStyle(.settings(small: true))
+                .fixedSize()
             }
+            .padding(EdgeInsets(top: 10, leading: 16, bottom: 12, trailing: 12))
         }
-        .padding(6)
         .frame(width: Self.width)
-        .background(SetupColors.surface, in: shape)
-        .overlay {
-            shape.strokeBorder(colorScheme == .dark ? Color.white.opacity(0.12) : Color.black.opacity(0.14), lineWidth: 0.5)
+        .font(.system(size: 13))
+        // A plain surface over the system's material, like a dialog's.
+        .background {
+            DialogColors.surface
+                .padding(-24)
         }
-        .shadow(color: .black.opacity(colorScheme == .dark ? 0.5 : 0.2), radius: 22, y: 16)
-        .focusable()
-        .focusEffectDisabled()
-        .focused($isFocused)
-        .onKeyPress(.escape) {
-            close()
-            return .handled
+        .background {
+            // Escape closes it, as it does a menu.
+            Button("Close", action: close)
+                .keyboardShortcut(.cancelAction)
+                .opacity(0)
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
         }
-        .onKeyPress(.downArrow) {
-            move(by: 1)
-            return .handled
-        }
-        .onKeyPress(.upArrow) {
-            move(by: -1)
-            return .handled
-        }
-        .onKeyPress(.return) {
-            guard let highlighted, items.indices.contains(highlighted) else { return .ignored }
-            pick(items[highlighted])
-            return .handled
-        }
-        // Once it's on screen, since a view can't take the keyboard in the
-        // update that puts it there.
-        .task { isFocused = true }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(menu.label)
-    }
-
-    private func isHighlighted(_ item: Item) -> Bool {
-        highlighted.map { items.indices.contains($0) && items[$0] == item } ?? false
-    }
-
-    private func move(by step: Int) {
-        let count = items.count
-        guard count > 0 else { return }
-        highlighted = highlighted.map { ($0 + step + count) % count } ?? (step > 0 ? 0 : count - 1)
-    }
-
-    private func pick(_ item: Item) {
-        close()
-        switch item {
-        case .choice(let executable):
-            if let choice = menu.choices.first(where: { $0.executable == executable }) { menu.choose(choice) }
-        case .another:
-            menu.chooseAnother()
-        }
+        .accessibilityLabel(picker.title)
     }
 }
 
-/// A copy of a program in the menu.
-private struct ProgramChoiceRow: View {
+/// One copy in the popover, as a card like an agent's: a radio, where it's
+/// from with its tag and version, its path, and why Roga would or wouldn't
+/// run it. The copy in use has an ink edge twice as thick as the others'
+/// line. One Roga can't run fades its name, version and path, keeps its tag
+/// and its reason readable, and can't be picked.
+private struct ProgramCard: View {
     let choice: ProgramChoice
-    let isChecked: Bool
-    let isHighlighted: Bool
-    let action: () -> Void
+    let isPicked: Bool
+    let pick: () -> Void
     @State private var isHovering = false
 
-    /// The color of the version and the path. A copy Roga can't use fades
-    /// them and its name, and leaves its tag and its reason as they are.
     private var detail: Color {
         choice.canChoose ? SetupColors.note : SetupColors.unavailable
     }
 
     var body: some View {
-        Button(action: action) {
-            HStack(alignment: .top, spacing: 8) {
-                ChoiceCheck(isChecked: isChecked)
+        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        Button(action: pick) {
+            HStack(alignment: .top, spacing: 10) {
+                AgentRadio(isOn: isPicked)
+                    .opacity(choice.canChoose ? 1 : 0.45)
+                    .padding(.top, 2)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 8) {
                         Text(choice.source)
-                            .fontWeight(.medium)
+                            .foregroundStyle(choice.canChoose ? Color.primary : SetupColors.unavailable)
                         if let tag = choice.tag {
                             ProgramTag(tag: tag)
                         }
@@ -470,64 +346,36 @@ private struct ProgramChoiceRow: View {
                     Text(verbatim: choice.path)
                         .font(.system(size: 11.5, design: .monospaced))
                         .foregroundStyle(detail)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
                     Text(choice.why)
                         .font(.system(size: 12))
-                        .foregroundStyle(SetupColors.note)
+                        .foregroundStyle(DialogColors.note)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .foregroundStyle(choice.canChoose ? Color.primary : SetupColors.unavailable)
-            .padding(EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 10))
-            .background(
-                choice.canChoose && (isHovering || isHighlighted) ? SetupColors.hover : .clear,
-                in: RoundedRectangle(cornerRadius: 8, style: .continuous)
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .padding(.vertical, 7)
+            .padding(.leading, 10)
+            .padding(.trailing, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                // As on the agents' cards, the pointer over a card that can be
+                // picked shades it.
+                if isHovering, !isPicked, choice.canChoose {
+                    shape.fill(SettingsColors.hover)
+                }
+            }
+            .overlay {
+                shape.strokeBorder(isPicked ? DialogColors.ink : SettingsColors.line, lineWidth: isPicked ? 2 : 1)
+            }
+            .contentShape(shape)
         }
-        .buttonStyle(ProgramMenuRowStyle())
+        .buttonStyle(AgentCardStyle())
         .disabled(!choice.canChoose)
         .onHover { isHovering = $0 }
         .accessibilityLabel(choice.spoken)
-        .accessibilityAddTraits(isChecked ? .isSelected : [])
-    }
-}
-
-/// A command in the menu, under the copies: Choose another…, or not using
-/// the program. They're in sentence case, as menus in the window are
-/// (decision 66).
-private struct ProgramCommandRow: View {
-    let title: String
-    let isChecked: Bool
-    let isHighlighted: Bool
-    let action: () -> Void
-    @State private var isHovering = false
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 8) {
-                ChoiceCheck(isChecked: isChecked)
-                Text(title)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(EdgeInsets(top: 6, leading: 8, bottom: 6, trailing: 10))
-            .background(isHovering || isHighlighted ? SetupColors.hover : .clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        }
-        .buttonStyle(ProgramMenuRowStyle())
-        .onHover { isHovering = $0 }
-        .accessibilityAddTraits(isChecked ? .isSelected : [])
-    }
-}
-
-/// A row of the menu as a button. A copy Roga can't use fades its own name,
-/// version and path and keeps its reason readable, so the row isn't dimmed
-/// as a whole the way the system dims what's turned off.
-private struct ProgramMenuRowStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .opacity(configuration.isPressed ? 0.75 : 1)
+        .accessibilityAddTraits(isPicked ? .isSelected : [])
     }
 }
 

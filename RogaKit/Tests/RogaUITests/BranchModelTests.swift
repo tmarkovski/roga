@@ -433,11 +433,11 @@ struct BranchModelTests {
         #expect(dialog.terminal == [
             .ran(["pull", "--rebase"]),
             .gap,
-            .comment("Undo the pull runs"),
+            .comment("Undo Pull runs"),
             .command(["rebase", "--abort"]),
         ])
         #expect(CommandBlock.copied(dialog.terminal) == "git rebase --abort")
-        #expect(dialog.buttons.map(\.title) == ["Undo the pull", "Resolve"])
+        #expect(dialog.buttons.map(\.title) == ["Undo Pull", "Resolve"])
         #expect(dialog.buttons.map(\.kind) == [.secondary, .primary])
         dialog.dismiss()
         #expect(model.branch.conflict == nil)
@@ -566,7 +566,7 @@ struct BranchModelTests {
         #expect(dialog.title == "Reset main to \(short)?")
         #expect(dialog.message?.plain == "main moves to \(short). 2 commits aren't on a remote, another branch or a tag, so they would be lost.")
         #expect(dialog.cards.first?.count == 2)
-        #expect(dialog.buttons.map(\.title) == ["Cancel", "Reset anyway", "Keep changes", "Push, then reset"])
+        #expect(dialog.buttons.map(\.title) == ["Cancel", "Reset Anyway", "Keep Changes", "Push, Then Reset"])
         #expect(dialog.buttons[1].kind == .destructive)
         #expect(dialog.buttons[2].kind == .partlyDestructive)
         #expect(dialog.buttons[3].kind == .primary)
@@ -593,7 +593,7 @@ struct BranchModelTests {
         let dialog = try dialogContent(model)
         #expect(dialog.message?.plain.hasSuffix("1 commit isn't on a remote, another branch or a tag, so it would be lost.") == true)
         let short = try await git("rev-parse", "origin/main", in: clones.work).prefix(8)
-        #expect(dialog.note?.plain == "git reflog can still find it for a while. Keep changes leaves everything since \(short) staged.")
+        #expect(dialog.note?.plain == "git reflog can still find it for a while. Keep Changes leaves everything since \(short) staged.")
     }
 
     @Test func resetsAndKeepsTheChangesWhenAsked() async throws {
@@ -735,7 +735,7 @@ struct BranchModelTests {
         await model.checkout?.value
 
         let dialog = try dialogContent(model)
-        #expect(dialog.buttons.map(\.title) == ["Cancel", "Reset anyway"])
+        #expect(dialog.buttons.map(\.title) == ["Cancel", "Reset Anyway"])
         #expect(dialog.note?.plain.contains("git would reject it: origin/main has commits that main doesn't.") == true)
         #expect(dialog.terminal.count == 1)
     }
@@ -746,7 +746,7 @@ struct BranchModelTests {
         let model = try await modelToGoBack(clones, unpushed: 1)
         model.goToRow(try await row("HEAD~1", in: clones, of: model), showWorktree: notInAnotherWorktree)
         await model.checkout?.value
-        #expect(try dialogContent(model).buttons.map(\.title) == ["Cancel", "Reset anyway", "Keep changes"])
+        #expect(try dialogContent(model).buttons.map(\.title) == ["Cancel", "Reset Anyway", "Keep Changes"])
     }
 
     @Test func aRowWithAnotherBranchGoesToThatBranch() async throws {
@@ -792,7 +792,7 @@ struct BranchModelTests {
         let dialog = try dialogContent(model)
         #expect(dialog.title == "Switch to \(target.prefix(8))?")
         #expect(dialog.message?.plain == "HEAD isn't on a branch. 1 commit isn't on a remote, a branch or a tag, so it would be lost.")
-        #expect(dialog.buttons.map(\.title) == ["Cancel", "Switch anyway"])
+        #expect(dialog.buttons.map(\.title) == ["Cancel", "Switch Anyway"])
         #expect(dialog.terminal == [.command(["switch", "--detach", target])])
 
         dialog.buttons[1].action()
@@ -924,14 +924,14 @@ struct BranchModelTests {
         #expect(dialog.title == "Putting your changes back stopped on a conflict")
         #expect(dialog.message?.plain == "After pulling into main, your uncommitted changes were put back, but in 1 file they conflict with what came in. You can resolve them here, or undo the pull.")
         #expect(dialog.cards == [[.name("notes.txt")]])
-        #expect(dialog.buttons.map(\.title) == ["Undo the pull", "Resolve"])
+        #expect(dialog.buttons.map(\.title) == ["Undo Pull", "Resolve"])
         #expect(dialog.buttons.map(\.kind) == [.secondary, .primary])
         #expect(dialog.terminal == [
             .ran(["stash", "push", "--message", "Roga: before pulling main"]),
             .ran(["pull", "--ff-only"]),
             .ran(["stash", "pop", "--index"]),
             .gap,
-            .comment("Undo the pull runs"),
+            .comment("Undo Pull runs"),
             .command(["reset", "--hard", before]),
             .command(["stash", "pop", "--index"]),
         ])

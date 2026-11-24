@@ -142,7 +142,7 @@ enum TerminalLine: Equatable {
     case ran([String])
     /// What git said.
     case output(String)
-    /// A remark, as in `# Undo the pull runs`.
+    /// A remark, as in `# Undo Pull runs`.
     case comment(String)
     /// A small gap between lines.
     case gap

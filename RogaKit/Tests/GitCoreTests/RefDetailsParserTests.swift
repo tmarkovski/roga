@@ -42,8 +42,23 @@ struct RefDetailsParserTests {
 
     @Test func asksForTheCountsOnlyWhenThereIsSomethingToCompareWith() throws {
         let id = try #require(ObjectID(hex: commit))
+        let otherID = try #require(ObjectID(hex: other))
         #expect(BranchListParser.format(comparingWith: id).hasSuffix("%00%(ahead-behind:\(commit))"))
+        #expect(BranchListParser.format(comparingWith: id, alsoAheadOf: [otherID]).hasSuffix("%00%(ahead-behind:\(commit))%00%(ahead-behind:\(other))"))
         #expect(BranchListParser.format(comparingWith: nil).hasSuffix("%00"))
+        #expect(BranchListParser.format(comparingWith: nil, alsoAheadOf: [otherID]).hasSuffix("%(upstream:track,nobracket)%00"))
+    }
+
+    @Test func isAheadByTheFewestAndBehindTheBase() throws {
+        // The base has a commit it hasn't pushed, and its upstream one the base
+        // hasn't pulled. agent was made from the upstream and local from the
+        // base, and each has two commits of its own.
+        let output = line("refs/heads/agent", commit, "1700000000", "", "", "3 1", "2 0")
+            + line("refs/heads/local", commit, "1700000000", "", "", "2 0", "3 1")
+        let entries = try BranchListParser.parse(output, others: 1)
+        #expect(entries.map(\.baseCounts) == [.init(ahead: 2, behind: 1), .init(ahead: 2, behind: 0)])
+        #expect(throws: ParseError.self) { try BranchListParser.parse(line("refs/heads/a", commit, "", "", "", "1 0"), others: 1) }
+        #expect(throws: ParseError.self) { try BranchListParser.parse(line("refs/heads/a", commit, "", "", "", "1 0", ""), others: 1) }
     }
 
     @Test func readsRemoteBranchesAndEveryKindOfTag() throws {

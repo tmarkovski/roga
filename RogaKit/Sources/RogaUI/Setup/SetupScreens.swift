@@ -5,24 +5,24 @@ import GitRunner
 import IconUI
 import SwiftUI
 
-// MARK: Menus
+// MARK: Pickers
 
-extension ProgramMenu {
-    /// Git's menu: every git Roga found. Choosing the one Roga recommends
+extension ProgramPicker {
+    /// Git's picker: every git Roga found. Choosing the one Roga recommends
     /// goes back to finding git itself, so that Roga follows a newer one.
-    static func git(_ provider: GitProvider) -> ProgramMenu? {
+    static func git(_ provider: GitProvider) -> ProgramPicker? {
         guard let survey = provider.survey else { return nil }
         let recommended = survey.recommended?.executable
-        return ProgramMenu(
+        return ProgramPicker(
             id: "git",
-            label: "Git installations",
+            title: "Git installation",
             choices: ProgramChoices.git(
                 survey,
                 chosenPath: provider.chosenPath,
                 current: provider.git?.installation,
                 failure: provider.failure
             ),
-            checked: provider.chosenPath ?? recommended,
+            picked: provider.chosenPath ?? recommended,
             choose: { provider.choose($0.executable == recommended ? nil : $0.executable) },
             chooseAnother: {
                 if let path = ProgramPanel.choose("git", startingAt: provider.git?.installation.executable) {
@@ -32,7 +32,7 @@ extension ProgramMenu {
         )
     }
 
-    /// An agent's menu: every copy Roga found.
+    /// An agent's picker: every copy Roga found.
     ///
     /// - Parameter choose: Makes a path the program Roga runs, or goes back
     ///   to the one Roga finds for nil.
@@ -40,15 +40,15 @@ extension ProgramMenu {
         _ kind: AgentKind,
         agents: AgentProvider,
         choose: @escaping (String?) -> Void
-    ) -> ProgramMenu? {
+    ) -> ProgramPicker? {
         guard let survey = agents.surveys[kind] else { return nil }
         let program = agents.settings[kind]?.program
         let recommended = survey.recommended?.executable
-        return ProgramMenu(
+        return ProgramPicker(
             id: "agent-\(kind.rawValue)",
-            label: "\(kind.name) installations",
+            title: "\(kind.name) installation",
             choices: ProgramChoices.agent(survey, program: program, lookup: agents.lookups[kind]),
-            checked: program ?? recommended,
+            picked: program ?? recommended,
             choose: { choose($0.executable == recommended ? nil : $0.executable) },
             chooseAnother: {
                 if let path = ProgramPanel.choose(kind.executableName, startingAt: agents.installation(kind)?.executable) {
@@ -125,7 +125,7 @@ struct SetupLooking: View {
         let isDone = !gitProvider.isLooking && (gitProvider.git == nil || !agents.isLooking)
         VStack(spacing: SetupLayout.gap) {
             SetupHead(
-                eyebrow: "Your Mac",
+                eyebrow: SetupModel.Step.looking.subject,
                 title: isDone ? "Scan complete" : "Detecting installed tools",
                 sub: "Check your login shell's PATH and installed tool versions. This scan makes no changes."
             )
@@ -232,12 +232,12 @@ struct SetupGit: View {
 
     private var chosen: some View {
         VStack(spacing: SetupLayout.gap) {
-            SetupHead(eyebrow: "Git", title: heading, sub: SetupWords.gitSub)
+            SetupHead(eyebrow: SetupModel.Step.git.subject, title: heading, sub: SetupWords.gitSub)
             SetupCard {
                 ProgramRow(
                     icon: .branch,
                     content: .git(state: gitProvider.state, survey: gitProvider.survey),
-                    menu: .git(gitProvider),
+                    picker: .git(gitProvider),
                     choose: chooseAnother
                 )
             }
@@ -269,7 +269,7 @@ struct SetupGit: View {
         let copies = gitProvider.survey?.copies ?? []
         let words = SetupWords.noGit(found: copies.count, developerToolsMissing: developerToolsMissing)
         return VStack(spacing: SetupLayout.gap) {
-            SetupHead(eyebrow: "Git", title: words.heading, sub: words.sub)
+            SetupHead(eyebrow: SetupModel.Step.git.subject, title: words.heading, sub: words.sub)
             if let say = words.say {
                 SetupSay(button: "Install Command Line Tools", words: say)
             }
@@ -335,13 +335,13 @@ struct SetupAgents: View {
 
     var body: some View {
         VStack(spacing: SetupLayout.gap) {
-            SetupHead(eyebrow: "Agents", title: heading, sub: sub)
+            SetupHead(eyebrow: SetupModel.Step.agents.subject, title: heading, sub: sub)
             SetupCard {
                 ForEach(AgentKind.allCases) { kind in
                     ProgramRow(
                         icon: .squareTerminal,
                         content: .agent(kind, lookup: agents.lookups[kind]),
-                        menu: .agent(kind, agents: agents, choose: { setup.chooseProgram(kind, $0) }),
+                        picker: .agent(kind, agents: agents, choose: { setup.chooseProgram(kind, $0) }),
                         choose: { choose(kind) }
                     )
                 }
@@ -366,7 +366,7 @@ struct SetupAgents: View {
                 SetupActions(back: back) {
                     Button("Don't Use Agents") { setup.dontUseAgents() }
                         .buttonStyle(.setup(.secondary))
-                    Button("Use Agents") { setup.useAgents(found: found) }
+                    Button("Configure Hooks") { setup.useAgents(found: found) }
                         .buttonStyle(.setup(.primary))
                         .keyboardShortcut(.defaultAction)
                 }
@@ -407,10 +407,11 @@ struct SetupAgents: View {
 
 // MARK: Hooks
 
-/// Why hooks, what Install Hooks does, and how: a picture of the sidebar's
-/// marks, a sentence, and a card with each agent's status that ends in the
-/// exact commands (decision 29). After Install, the commands give way to
-/// what happened in each agent.
+/// Why hooks, then what Install Hooks does, side by side: a glimpse of the
+/// sidebar's marks on the left, and on the right a sentence, Show Commands,
+/// which opens the exact commands in a popover (decision 29), and a card with
+/// each agent's status. After Install, the card says what happened in each
+/// agent.
 struct SetupHooks: View {
     let setup: SetupModel
     let found: [AgentKind]
@@ -418,6 +419,7 @@ struct SetupHooks: View {
     /// The agents Install Hooks is running in, so that their commands stay
     /// while it does.
     @State private var installing: [AgentKind] = []
+    @State private var showsCommands = false
     @Environment(\.accessibilityReduceMotion) private var reducesMotion
 
     var body: some View {
@@ -430,54 +432,62 @@ struct SetupHooks: View {
         )
         let commandKinds = commandKinds(phase, usable: usable)
         VStack(spacing: SetupLayout.gap) {
-            SetupHead(eyebrow: "Hooks", title: SetupWords.hooksHeading, sub: SetupWords.hooksSub)
-            MarksPreview()
-                .frame(maxWidth: .infinity)
-            if !commandKinds.isEmpty {
-                SetupSay(
-                    button: "Install Hooks",
-                    words: "installs the roga-hooks plugin in \(SetupWords.and(commandKinds.map(\.name))) using the commands below. Hooks report session activity without changing agent behavior."
-                )
-            } else if usable.contains(where: { agents.hookStatus[$0] == .installed || agents.hookStatus[$0] == .needsTrust }) {
-                SetupSay(words: SetupWords.hooksInstalled)
-            }
-            SetupCard(clips: true) {
-                ForEach(AgentKind.allCases) { kind in
-                    if usable.contains(kind) {
-                        HookStatusRow(
-                            kind: kind,
-                            row: SetupWords.hookRow(kind, status: agents.hookStatus[kind], work: agents.hookWork[kind])
-                        ) {
-                            agents.refreshHookStatus()
+            SetupHead(eyebrow: SetupModel.Step.hooks.subject, title: SetupWords.hooksHeading, sub: SetupWords.hooksSub)
+            HStack(alignment: .top, spacing: SetupLayout.hooksGap) {
+                MarksPreview(layout: .glimpse)
+                VStack(spacing: SetupLayout.gap) {
+                    if !commandKinds.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            SetupSay(
+                                button: "Install Hooks",
+                                words: "installs the roga-hooks plugin in \(SetupWords.and(commandKinds.map(\.name))). Hooks report session activity without changing agent behavior."
+                            )
+                            Button("Show Commands") { showsCommands = true }
+                                .buttonStyle(SetupLinkStyle())
+                                .popover(isPresented: $showsCommands, arrowEdge: .bottom) {
+                                    HooksCommands(lines: commands(for: commandKinds))
+                                }
                         }
-                    } else {
-                        HookStatusRow(
-                            kind: kind,
-                            row: SetupWords.HookRow(status: found.contains(kind) ? "Disabled" : "Not found"),
-                            isDimmed: true
-                        ) {}
+                    } else if usable.contains(where: { agents.hookStatus[$0] == .installed || agents.hookStatus[$0] == .needsTrust }) {
+                        SetupSay(words: SetupWords.hooksInstalled)
+                    }
+                    let rows = AgentKind.allCases.map { kind in
+                        usable.contains(kind)
+                            ? (kind, SetupWords.hookRow(kind, status: agents.hookStatus[kind], work: agents.hookWork[kind]), false)
+                            : (kind, SetupWords.HookRow(status: found.contains(kind) ? "Disabled" : "Not found"), true)
+                    }
+                    let stacks = !rows.allSatisfy { kind, row, isDimmed in
+                        Self.statusFitsBeside(kind.name, row, isDimmed: isDimmed)
+                    }
+                    SetupCard(clips: true) {
+                        ForEach(rows, id: \.0) { kind, row, isDimmed in
+                            HookStatusRow(kind: kind, row: row, isDimmed: isDimmed, stacks: stacks) {
+                                agents.refreshHookStatus()
+                            }
+                        }
+                    }
+                    if agents.helperPath == nil {
+                        Text(SetupWords.noHelper)
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(AgentColors.warn)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    if let error = agents.pluginFilesError {
+                        Text(error)
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(SettingsColors.danger)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
-                if !commandKinds.isEmpty {
-                    CommandBlock(lines: commands(for: commandKinds), isCompact: true, fontSize: SetupLayout.commandFontSize)
-                }
-            }
-            if agents.helperPath == nil {
-                Text(SetupWords.noHelper)
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(AgentColors.warn)
-            }
-            if let error = agents.pluginFilesError {
-                Text(error)
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(SettingsColors.danger)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .textSelection(.enabled)
+                .frame(maxWidth: .infinity)
             }
             SetupActions(back: { setup.back(found: found) }, backIsDisabled: phase == .installing) {
                 switch phase {
                 case .pending(let kinds):
-                    Button("Not Now") { setup.next(found: found) }
+                    Button("Not Now") { setup.skipHooks() }
                         .buttonStyle(.setup(.secondary))
                     Button("Install Hooks") { install(kinds) }
                         .buttonStyle(.setup(.primary))
@@ -511,9 +521,27 @@ struct SetupHooks: View {
         }
     }
 
-    /// The agents whose commands show: the ones Install Hooks would run in,
-    /// or is running in. While Roga is still asking, they're the agents in
-    /// use, so that the card doesn't grow once the answers are in.
+    /// How wide the agents' card is, beside the glimpse of the sidebar.
+    static let cardWidth = SetupLayout.column - MarksPreview.width - SetupLayout.hooksGap
+
+    /// Whether an agent's status fits on its name's line in the card, which
+    /// decides for every row, so that the rows are laid out alike.
+    static func statusFitsBeside(_ name: String, _ row: SetupWords.HookRow, isDimmed: Bool = false) -> Bool {
+        let nameFont = NSFont.systemFont(ofSize: 13.5, weight: isDimmed ? .medium : .semibold)
+        let marked = row.mark == .ok || row.mark == .warn
+        let statusFont = NSFont.systemFont(ofSize: 12.5, weight: marked ? .medium : .regular)
+        func width(_ words: String, _ font: NSFont) -> CGFloat {
+            ceil((words as NSString).size(withAttributes: [.font: font]).width)
+        }
+        let glyph: CGFloat = row.mark == .none ? 0 : 13 + 5
+        let room = cardWidth - HookStatusRow.padding.leading - HookStatusRow.padding.trailing
+        return width(name, nameFont) + HookStatusRow.besideGap + glyph + width(row.status, statusFont) <= room
+    }
+
+    /// The agents whose commands Show Commands shows: the ones Install Hooks
+    /// would run in, or is running in. While Roga is still asking, they're
+    /// the agents in use, so that the sentence doesn't come and go once the
+    /// answers are in.
     private func commandKinds(_ phase: SetupWords.HooksPhase, usable: [AgentKind]) -> [AgentKind] {
         switch phase {
         case .pending(let kinds): return kinds
@@ -542,69 +570,83 @@ struct SetupHooks: View {
     }
 }
 
-/// An agent on the Hooks screen: its name, what its hooks need or did under
-/// it, and their status at the right.
-private struct HookStatusRow: View {
+/// An agent on the Hooks screen: its name with its hooks' status beside it,
+/// or under it when any agent's status doesn't fit beside its name in the
+/// card, which is about half the column wide, then what the hooks need or
+/// did, and Check Again.
+struct HookStatusRow: View {
     let kind: AgentKind
     let row: SetupWords.HookRow
     var isDimmed = false
+    /// Whether the status goes under the name rather than beside it.
+    var stacks = false
     let checkAgain: () -> Void
 
+    static let padding = EdgeInsets(top: 11, leading: 16, bottom: 11, trailing: 14)
+    /// The least room between the name and a status beside it.
+    static let besideGap: CGFloat = 12
+
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(kind.name)
-                        .font(.system(size: 13.5, weight: isDimmed ? .medium : .semibold))
-                        .foregroundStyle(isDimmed ? SetupColors.note : .primary)
-                    if let aside = row.aside {
-                        Text(aside)
-                            .font(.system(size: 12))
-                            .foregroundStyle(SetupColors.note)
-                    }
-                }
-                .frame(minHeight: 19)
-                ForEach(row.notes, id: \.self) { note in
-                    Text(note)
-                        .font(.system(size: 12))
-                        .foregroundStyle(SetupColors.note)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                ForEach(row.problems, id: \.self) { problem in
-                    Text(problem)
-                        .font(.system(size: 12))
-                        .foregroundStyle(SettingsColors.danger)
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 2) {
+            if stacks {
+                name
+                status
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: Self.besideGap) {
+                    name
+                    Spacer(minLength: 0)
+                    status
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            VStack(alignment: .trailing, spacing: 7) {
-                HStack(spacing: 5) {
-                    switch row.mark {
-                    case .none: EmptyView()
-                    case .spinner: SetupGlyph(kind: .spinner, size: 13)
-                    case .ok: SetupGlyph(kind: .ok, size: 13)
-                    case .warn: SetupGlyph(kind: .warn, size: 13)
-                    }
-                    Text(row.status)
-                        .font(.system(size: 12.5, weight: row.mark == .ok || row.mark == .warn ? .medium : .regular))
-                        .foregroundStyle(statusColor)
-                        .lineLimit(1)
-                }
-                .frame(minHeight: 19)
-                if row.checksAgain {
-                    Button("Check Again", action: checkAgain)
-                        .buttonStyle(SetupSmallButtonStyle())
-                        .accessibilityLabel("Check \(kind.name)'s hooks again")
-                }
+            ForEach(row.notes, id: \.self) { note in
+                Text(note)
+                    .font(.system(size: 12))
+                    .foregroundStyle(SetupColors.note)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .fixedSize()
+            ForEach(row.problems, id: \.self) { problem in
+                Text(problem)
+                    .font(.system(size: 12))
+                    .foregroundStyle(SettingsColors.danger)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if row.checksAgain {
+                Button("Check Again", action: checkAgain)
+                    .buttonStyle(SetupSmallButtonStyle())
+                    .accessibilityLabel("Check \(kind.name)'s hooks again")
+                    .padding(.top, 6)
+            }
         }
-        .padding(EdgeInsets(top: 11, leading: 16, bottom: 11, trailing: 14))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(Self.padding)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(kind.name)
         .accessibilityValue(row.spoken)
+    }
+
+    private var name: some View {
+        Text(kind.name)
+            .font(.system(size: 13.5, weight: isDimmed ? .medium : .semibold))
+            .foregroundStyle(isDimmed ? SetupColors.note : .primary)
+            .frame(minHeight: 19)
+    }
+
+    private var status: some View {
+        HStack(spacing: 5) {
+            switch row.mark {
+            case .none: EmptyView()
+            case .spinner: SetupGlyph(kind: .spinner, size: 13)
+            case .ok: SetupGlyph(kind: .ok, size: 13)
+            case .warn: SetupGlyph(kind: .warn, size: 13)
+            }
+            Text(row.status)
+                .font(.system(size: 12.5, weight: row.mark == .ok || row.mark == .warn ? .medium : .regular))
+                .foregroundStyle(statusColor)
+                .lineLimit(1)
+        }
+        .fixedSize()
+        .frame(minHeight: 19)
     }
 
     private var statusColor: Color {
@@ -612,6 +654,44 @@ private struct HookStatusRow: View {
         case .ok: AgentColors.ok
         case .warn: AgentColors.warn
         case .none, .spinner: SetupColors.note
+        }
+    }
+}
+
+/// What Install Hooks runs, in a popover from Show Commands, so that the
+/// commands are a click away without filling the screen (decision 29). Its
+/// commands run along its bottom edge, as the agents' popover has its
+/// command.
+private struct HooksCommands: View {
+    let lines: [TerminalLine]
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("What Install Hooks runs")
+                .font(.system(size: 13, weight: .semibold))
+                .padding(EdgeInsets(top: 13, leading: 16, bottom: 3, trailing: 16))
+                .accessibilityAddTraits(.isHeader)
+            Text("The same commands work in Terminal, if you'd rather run them yourself.")
+                .font(.system(size: 12.5))
+                .foregroundStyle(DialogColors.note)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(EdgeInsets(top: 0, leading: 16, bottom: 12, trailing: 16))
+            CommandBlock(lines: lines, isCompact: true, fontSize: SetupLayout.commandFontSize)
+        }
+        .frame(width: SetupLayout.commandsWidth)
+        // A plain surface over the system's material, like a dialog's.
+        .background {
+            DialogColors.surface
+                .padding(-24)
+        }
+        .background {
+            // Escape closes it, as it does a menu.
+            Button("Close") { dismiss() }
+                .keyboardShortcut(.cancelAction)
+                .opacity(0)
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
         }
     }
 }
@@ -634,7 +714,7 @@ struct SetupReady: View {
     var body: some View {
         let usable = setup.usable(found: found)
         VStack(spacing: SetupLayout.gap) {
-            SetupHead(eyebrow: "Ready", title: "Setup complete", sub: "Review your configuration. You can change these preferences in Settings.")
+            SetupHead(eyebrow: SetupModel.Step.ready.subject, title: "Setup complete", sub: "Review your configuration. You can change these preferences in Settings.")
             section("Configuration") {
                 SetupCard {
                     ChosenRow(

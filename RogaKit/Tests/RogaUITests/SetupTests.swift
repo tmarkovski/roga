@@ -322,6 +322,45 @@ struct SetupModelTests {
         #expect(setup.step == .agents)
     }
 
+    @Test func theLaneGoesAroundStepsAnsweredNo() {
+        defer { AgentTestSupport.remove(defaults, named: name) }
+        let setup = SetupModel(hasRepositories: false, defaults: defaults)
+        let found: [AgentKind] = [.claude, .codex]
+        // Nothing is skipped before it's answered.
+        setup.setStateForTests(step: .agents)
+        #expect(setup.skipped(found: found).isEmpty)
+        // Don't Use Agents goes around Agents and Hooks.
+        setup.dontUseAgents()
+        #expect(setup.skipped(found: found) == [.agents, .hooks])
+        // Going back to Agents puts both back on the way, for the answer to
+        // change.
+        setup.go(to: .agents)
+        #expect(setup.skipped(found: found).isEmpty)
+        // Not Now on Hooks goes around Hooks alone.
+        setup.useAgents(found: found)
+        #expect(setup.step == .hooks)
+        setup.skipHooks()
+        #expect(setup.step == .ready)
+        #expect(setup.skipped(found: found) == [.hooks])
+        // Installing them after all and going on takes the bypass away.
+        setup.back(found: found)
+        #expect(setup.skipped(found: found).isEmpty)
+        setup.next(found: found)
+        #expect(setup.skipped(found: found).isEmpty)
+    }
+
+    @Test func withNoAgentFoundTheLaneGoesAroundAgentsAndHooks() {
+        defer { AgentTestSupport.remove(defaults, named: name) }
+        let setup = SetupModel(hasRepositories: false, defaults: defaults)
+        setup.setStateForTests(step: .agents)
+        setup.continueWithoutAgents()
+        #expect(setup.skipped(found: []) == [.agents, .hooks])
+    }
+
+    @Test func everyStepHasASubjectForTheLane() {
+        #expect(SetupModel.Step.allCases.map(\.subject) == ["Initial commit", "Look around", "Choose git", "Add agents", "Install hooks", "Open Roga"])
+    }
+
     @Test func useAgentsTurnsAgentsOnForAllOfThem() {
         defer { AgentTestSupport.remove(defaults, named: name) }
         let setup = SetupModel(hasRepositories: false, defaults: defaults)
@@ -436,17 +475,30 @@ struct SetupModelTests {
     }
 
     @Test func theHintCountsCopiesOnlyWhenThereAreSeveral() {
-        #expect(SetupWords.copiesHint([(.claude, 3), (.codex, 2)]) == "Found 3 copies of Claude Code and 2 of Codex. Each menu lists them all.")
-        #expect(SetupWords.copiesHint([(.claude, 1), (.codex, 2)]) == "Found 1 copy of Claude Code and 2 of Codex. Each menu lists them all.")
-        #expect(SetupWords.copiesHint([(.codex, 2)]) == "Found 2 copies of Codex. The menu lists them all.")
+        #expect(SetupWords.copiesHint([(.claude, 3), (.codex, 2)]) == "Found 3 copies of Claude Code and 2 of Codex. The button on each row lists them all.")
+        #expect(SetupWords.copiesHint([(.claude, 1), (.codex, 2)]) == "Found 1 copy of Claude Code and 2 of Codex. The button on each row lists them all.")
+        #expect(SetupWords.copiesHint([(.codex, 2)]) == "Found 2 copies of Codex. The button on its row lists them all.")
         #expect(SetupWords.copiesHint([(.claude, 1), (.codex, 1)]) == nil)
         #expect(SetupWords.copiesHint([]) == nil)
+    }
+
+    /// Beside the glimpse of the sidebar, the agents' card is about half the
+    /// column wide. A short status fits beside the agent's name, and the
+    /// longest goes under it, for every row at once.
+    @Test func aHooksRowsStatusGoesUnderTheNameWhenItDoesntFitBeside() {
+        #expect(SetupHooks.cardWidth == 316)
+        for kind in AgentKind.allCases {
+            #expect(SetupHooks.statusFitsBeside(kind.name, SetupWords.hookRow(kind, status: .notInstalled, work: nil)))
+            #expect(SetupHooks.statusFitsBeside(kind.name, SetupWords.hookRow(kind, status: .installed, work: nil)))
+        }
+        let another = SetupWords.hookRow(.claude, status: .anotherCopy(folder: "/x/plugins"), work: nil)
+        #expect(!SetupHooks.statusFitsBeside(AgentKind.claude.name, another))
     }
 
     @Test func aHooksRowSaysWhatTheAgentSaidAndWhatToDo() {
         #expect(SetupWords.hookRow(.claude, status: nil, work: nil) == .init(status: "Checking…", mark: .spinner))
         #expect(SetupWords.hookRow(.claude, status: .notInstalled, work: nil) == .init(status: "Not installed"))
-        #expect(SetupWords.hookRow(.codex, status: .notInstalled, work: nil).aside == "asks you to trust the hooks before it runs them")
+        #expect(SetupWords.hookRow(.codex, status: .notInstalled, work: nil).notes == ["Asks you to trust the hooks before it runs them."])
         #expect(SetupWords.hookRow(.claude, status: .installed, work: nil) == .init(status: "Installed", mark: .ok, notes: ["Active in new sessions."]))
 
         let trust = SetupWords.hookRow(.codex, status: .needsTrust, work: nil)
@@ -510,26 +562,47 @@ struct SetupModelTests {
     }
 }
 
-/// Where a row's menu opens.
-@Suite struct ProgramMenuPlacementTests {
-    let menu = CGSize(width: 404, height: 300)
-    let container = CGSize(width: 1120, height: 800)
+/// Where the lane puts its commits, and where it goes around skipped steps.
+@Suite @MainActor struct SetupLaneTests {
+    let size = SetupLayout.window
 
-    @Test func opensUnderItsButtonWithTheirRightEdgesInLine() {
-        let button = CGRect(x: 760, y: 200, width: 96, height: 30)
-        #expect(ProgramMenuPlacement.origin(button: button, menu: menu, in: container) == CGPoint(x: 452, y: 236))
+    @Test func theCommitsAreWhereTheHouseStandsAndNeverMove() {
+        let first = SetupLane.spot(at: .welcome, in: size)
+        let last = SetupLane.spot(at: .ready, in: size)
+        // As far in from each edge as the floor's run was.
+        #expect(first.origin.x == 64)
+        #expect(size.width - (last.origin.x + last.width) == 64)
+        #expect(first.foot.y == size.height - SetupLane.fromBottom)
+        // Evenly spread, six of them, whatever was skipped.
+        let xs = SetupLane.steps.map { SetupLane.x(of: $0, width: size.width) }
+        let gaps = zip(xs.dropFirst(), xs).map { $0 - $1 }
+        #expect(gaps.count == 5)
+        #expect(gaps.allSatisfy { abs($0 - gaps[0]) < 0.001 })
+        #expect(SetupLane.position(of: .git) == 0.4)
     }
 
-    @Test func opensOverItsButtonWhenTheresNoRoomUnderIt() {
-        let button = CGRect(x: 760, y: 600, width: 96, height: 30)
-        #expect(ProgramMenuPlacement.origin(button: button, menu: menu, in: container) == CGPoint(x: 452, y: 294))
-        // With no room over it either, under it is where it's expected.
-        let small = CGSize(width: 1120, height: 320)
-        #expect(ProgramMenuPlacement.origin(button: CGRect(x: 760, y: 150, width: 96, height: 30), menu: menu, in: small).y == 186)
+    @Test func aBypassJoinsTheCommitsEitherSideOfWhatWasSkipped() {
+        #expect(SetupLane.bypass(around: []) == nil)
+        let agents = SetupLane.bypass(around: [.agents, .hooks])
+        #expect(agents?.from == .git)
+        #expect(agents?.to == .ready)
+        let hooks = SetupLane.bypass(around: [.hooks])
+        #expect(hooks?.from == .agents)
+        #expect(hooks?.to == .ready)
     }
 
-    @Test func staysInsideWhatItsDrawnOver() {
-        let narrow = CGSize(width: 420, height: 800)
-        #expect(ProgramMenuPlacement.origin(button: CGRect(x: 300, y: 100, width: 90, height: 30), menu: menu, in: narrow).x == 8)
+    @Test func theHouseHopsOverWhatWasSkippedAndRunsOtherwise() {
+        func target(_ step: SetupModel.Step, skipped: [SetupModel.Step] = []) -> SetupHouseTarget {
+            SetupHouseTarget(place: .floor(SetupLane.position(of: step)), spot: nil, skipped: skipped.map(SetupLane.position(of:)))
+        }
+        // Don't Use Agents: from Agents to Ready, over Hooks.
+        #expect(target(.ready, skipped: [.agents, .hooks]).hops(from: target(.agents)))
+        // Not Now: off Hooks, which is skipped now.
+        #expect(target(.ready, skipped: [.hooks]).hops(from: target(.hooks)))
+        // Back to Agents, off the bypass it came along.
+        #expect(target(.agents).hops(from: target(.ready, skipped: [.agents, .hooks])))
+        // Going on as usual is a run.
+        #expect(!target(.hooks).hops(from: target(.agents)))
+        #expect(!target(.ready).hops(from: target(.hooks)))
     }
 }

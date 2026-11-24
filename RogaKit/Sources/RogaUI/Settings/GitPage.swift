@@ -47,7 +47,7 @@ struct GitProgramSection: View {
                             ProgramRow(
                                 icon: .branch,
                                 content: .git(state: gitProvider.state, survey: gitProvider.survey),
-                                menu: .git(gitProvider),
+                                picker: .git(gitProvider),
                                 choose: choose
                             )
                         }

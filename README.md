@@ -27,7 +27,7 @@ Other Git clients were built for people clicking through Git. Today you're more 
 - **Asks the agent you already have.** Claude Code or Codex can resolve a merge conflict, write a commit message or work out why Git refused a command. They use the sign-in you already have, so there are no API keys, no AI add-on to pay for, and no limits from Roga.
 - **Stays fast on huge repositories.** Roga reads Git's commit-graph file directly and loads only the rows on screen. Checking out a branch in the Linux kernel [takes about 0.4 seconds](docs/performance/README.md).
 - **Leaves Git in charge.** It runs the Git you already have and keeps no hidden state, so you can drop to the command line at any moment.
-- **Plays your history back.** Roga can replay a branch as a metro map, ending on a poster of what the team got done, and save it as a video or an image. This one is on `main` and coming in the next release.
+- **Plays your history back.** Roga can replay a branch as a metro map, ending on a poster of what the team got done, and save it as a video or an image.
 
 ## Installing
 

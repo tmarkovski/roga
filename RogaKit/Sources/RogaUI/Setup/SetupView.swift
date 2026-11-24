@@ -1,22 +1,21 @@
 import AgentEngine
+import AppKit
 import IconUI
 import SwiftUI
 
 /// Setup, in the whole window: one centered column with a heading, what Roga
 /// found, and the buttons that answer the screen, as the design canvas's
-/// First run boards draw it. Dots at the top say how far along it is, and the
-/// house runs along a floor at the bottom as it goes, and waddles while
-/// Roga is busy. A screen comes in from the side setup is moving toward.
+/// First run boards draw it. A lane of commits along the bottom, one for
+/// each screen, says how far along it is, and the house runs along it as it
+/// goes, hops over the steps that were answered No, and waddles while Roga
+/// is busy. A screen comes in from the side setup is moving toward.
 struct SetupView: View {
     let setup: SetupModel
-    /// The row whose menu is open when the view appears, for drawing a
-    /// screen with its menu open in a test.
-    var openMenu: String?
+    /// The row whose popover is open when the view appears, for drawing a
+    /// screen with its popover open in a preview.
+    var openPicker: String?
     @Environment(GitProvider.self) private var gitProvider
     @Environment(AgentProvider.self) private var agents
-    /// How tall the screen that shows is, once it's laid out, which says
-    /// whether the floor fits under it.
-    @State private var screenHeight: CGFloat = 0
     /// Where Welcome has room for the house, once it's laid out. It's kept
     /// after Welcome goes, which is where the house goes back to.
     @State private var welcomeHouse: SetupHouseSpot?
@@ -28,21 +27,19 @@ struct SetupView: View {
     }
 
     var body: some View {
-        let steps = setup.steps(found: found)
         let isWelcome = setup.step == .welcome
+        let skipped = setup.skipped(found: found)
         GeometryReader { proxy in
             // The window has no title bar over setup (decision 96), so it
-            // keeps room for the title row at its top, and the dots sit in it.
-            let ownRow = SetupLayout.titleRow
-            // The floor is at the bottom of the window. A screen that leaves
-            // no room for it goes without it, and scrolls if it has to, so
-            // the house never stands on a button.
-            let top = ownRow + SetupLayout.top
-            let hasFloor = top + screenHeight + SetupLayout.floorGap + SetupFloor.height <= proxy.size.height
-            let position = Double(steps.firstIndex(of: setup.step) ?? 0) / Double(max(1, steps.count - 1))
+            // keeps room for the title row at its top.
+            let top = SetupLayout.titleRow + SetupLayout.top
             let house = isWelcome
                 ? SetupHouseTarget(place: .welcome, spot: welcomeHouse)
-                : SetupHouseTarget(place: .floor(position), spot: hasFloor ? SetupFloor.spot(at: position, in: proxy.size) : nil)
+                : SetupHouseTarget(
+                    place: .floor(SetupLane.position(of: setup.step)),
+                    spot: SetupLane.spot(at: setup.step, in: proxy.size),
+                    skipped: skipped.map(SetupLane.position(of:))
+                )
             ScrollView(.vertical) {
                 // One over the other, so that a screen on its way out
                 // doesn't push the one coming in down the window.
@@ -55,50 +52,57 @@ struct SetupView: View {
                             .frame(maxWidth: .infinity, minHeight: proxy.size.height - 40)
                             .transition(SetupMotion.fade)
                     } else {
-                        // The other screens start at the top.
-                        VStack(spacing: 0) {
-                            ZStack(alignment: .top) {
-                                screen
-                                    .id(setup.step)
-                                    .transition(SetupMotion.screen(goesBack: setup.goesBack, reducesMotion: reducesMotion))
-                            }
-                            .frame(width: SetupLayout.column)
-                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { screenHeight = $0 }
-                            .frame(maxWidth: .infinity)
-                            .padding(.top, top)
-                            if hasFloor {
-                                Spacer(minLength: SetupLayout.floorGap)
-                                SetupFloor()
-                                    .transition(.opacity)
-                            } else {
-                                Color.clear
-                                    .frame(height: SetupLayout.floorGap)
-                            }
+                        // The other screens start at the top, and scroll
+                        // above the lane when they're too tall for the window.
+                        ZStack(alignment: .top) {
+                            screen
+                                .id(setup.step)
+                                .transition(SetupMotion.screen(goesBack: setup.goesBack, reducesMotion: reducesMotion))
                         }
-                        .frame(minHeight: proxy.size.height, alignment: .top)
-                        .animation(SetupMotion.change(reducesMotion), value: hasFloor)
+                        .frame(width: SetupLayout.column)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, top)
+                        .padding(.bottom, SetupLayout.floorGap)
                         .transition(SetupMotion.fade)
                     }
                 }
                 .animation(SetupMotion.step(reducesMotion), value: setup.step)
-                // The house is over the screens rather than in one, so that
-                // it can go from one to the next.
-                .coordinateSpace(.named(SetupLayout.space))
-                .overlay {
-                    SetupHouseLayer(target: house, isBusy: isBusy)
-                }
             }
             .scrollBounceBehavior(.basedOnSize)
-            .overlay(alignment: .top) {
+            // The lane runs along the bottom of the window, under every
+            // screen after Welcome, and stands in for the dots that used to
+            // say how far along setup is.
+            .safeAreaInset(edge: .bottom, spacing: 0) {
                 ZStack {
                     if !isWelcome {
-                        SetupDots(steps: steps, current: setup.step)
-                            .transition(SetupMotion.fade)
+                        SetupLane(current: setup.step, skipped: skipped, isEnabled: !(setup.step == .hooks && isBusy)) { step in
+                            setup.go(to: step)
+                        }
+                        // A screen that scrolls goes under the lane, so the
+                        // lane has the window's surface, and what's scrolled
+                        // fades out above it rather than being cut off.
+                        .background {
+                            SetupColors.surface
+                                .overlay(alignment: .top) {
+                                    LinearGradient(colors: [SetupColors.surface.opacity(0), SetupColors.surface], startPoint: .top, endPoint: .bottom)
+                                        .frame(height: SetupLayout.floorGap)
+                                        .offset(y: -SetupLayout.floorGap)
+                                        .allowsHitTesting(false)
+                                }
+                        }
+                        .transition(SetupMotion.fade)
                     }
                 }
+                .frame(height: isWelcome ? 0 : SetupLane.height)
                 .animation(SetupMotion.step(reducesMotion), value: isWelcome)
-                .offset(y: ownRow / 2 - 3)
             }
+            // The house is over the screens and the lane rather than in one
+            // of them, so that it can go from one to the next, and from
+            // Welcome's middle down onto the lane.
+            .overlay {
+                SetupHouseLayer(target: house, isBusy: isBusy)
+            }
+            .coordinateSpace(.named(SetupLayout.space))
         }
         .ignoresSafeArea(.container, edges: .top)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -107,7 +111,10 @@ struct SetupView: View {
                 .ignoresSafeArea()
         }
         .font(.system(size: 13))
-        .programMenus(open: openMenu)
+        .environment(\.openProgramPicker, openPicker)
+        // At the size the boards draw it, whatever size the window had last
+        // time, and out of full screen (decision 69).
+        .background { SetupWindowSize() }
         .navigationTitle("Roga")
         // Settings… does nothing during setup, which sets the same things,
         // rather than opening another window to show Settings on.
@@ -141,28 +148,116 @@ struct SetupView: View {
 
 /// The measurements the screens share, from the boards.
 enum SetupLayout {
+    /// How large the window is while setup shows, which is the size the
+    /// window first opens at and the boards are drawn at.
+    static let window = CGSize(width: 1280, height: 800)
     /// How wide the column is.
     static let column: CGFloat = 620
     /// How tall the window's title row is, which setup keeps room for at its
-    /// top, with its dots in the row's middle, beside the traffic lights.
+    /// top, beside the traffic lights.
     static let titleRow: CGFloat = TitleBar.height
     /// The room between the title row and where a screen starts.
     static let top: CGFloat = 20
     /// The space between a screen's parts.
     static let gap: CGFloat = 14
-    /// The least room between a screen's buttons and the floor under them.
+    /// The least room between a screen's buttons and the lane under them.
     static let floorGap: CGFloat = 20
     /// The least width of the button that goes on, so that it's the same
     /// size and in the same place from one screen to the next.
     static let mainButton: CGFloat = 168
-    /// The size of a command in a card, at which each of the commands that
-    /// install the hooks fits on one line of the column.
+    /// The size of a command in a card or a popover, at which each of the
+    /// commands that install the hooks fits on one line of the column.
     static let commandFontSize: CGFloat = 11
+    /// How wide the commands are in the Hooks screen's popover, the column's
+    /// width, so that each command is on one line.
+    static let commandsWidth: CGFloat = column
+    /// The room between the Hooks screen's glimpse of the sidebar and what
+    /// Install Hooks does beside it.
+    static let hooksGap: CGFloat = 24
     /// How tall the house is on Welcome.
     static let welcomeHouse: CGFloat = 168
     /// The name of the coordinates the house is placed in, which are those
     /// of everything that scrolls.
     static let space = "setup"
+}
+
+// MARK: The window
+
+/// Puts setup's window at `SetupLayout.window`, or as much of it as the screen
+/// has, in the middle of the screen and out of full screen, and keeps it that
+/// size while setup shows (decision 69). So setup looks as the boards draw it,
+/// with the floor under the buttons, rather than spread over a window that
+/// was full screen or large the last time Roga ran. Once setup ends, the
+/// window can be resized and go full screen again, from that size.
+private struct SetupWindowSize: NSViewRepresentable {
+    func makeNSView(context: Context) -> SizingView {
+        SizingView()
+    }
+
+    func updateNSView(_ view: SizingView, context: Context) {}
+
+    static func dismantleNSView(_ view: SizingView, coordinator: ()) {
+        view.release()
+    }
+
+    final class SizingView: NSView {
+        /// The window it sized, and what it changed there, to put back.
+        private weak var sized: NSWindow?
+        private var wasResizable = false
+        private var wasFullScreenNone = false
+        private var observers: [NSObjectProtocol] = []
+
+        isolated deinit {
+            observers.forEach(NotificationCenter.default.removeObserver)
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard window !== sized else { return }
+            release()
+            guard let window else { return }
+            sized = window
+            wasResizable = window.styleMask.contains(.resizable)
+            wasFullScreenNone = window.collectionBehavior.contains(.fullScreenNone)
+            let center = NotificationCenter.default
+            observers.append(center.addObserver(forName: NSWindow.didExitFullScreenNotification, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.fit() }
+            })
+            if window.styleMask.contains(.fullScreen) {
+                window.toggleFullScreen(nil)
+            } else {
+                // After this turn of the run loop, when macOS has put back the
+                // frame the window had when Roga last quit.
+                DispatchQueue.main.async { [weak self] in self?.fit() }
+            }
+        }
+
+        /// Sizes and centers the window, and stops it changing size, once
+        /// it's out of full screen.
+        private func fit() {
+            guard let window = sized, !window.styleMask.contains(.fullScreen) else { return }
+            var size = SetupLayout.window
+            if let visible = (window.screen ?? NSScreen.main)?.visibleFrame.size {
+                size.width = min(size.width, visible.width)
+                size.height = min(size.height, visible.height)
+            }
+            window.setFrame(window.frameRect(forContentRect: NSRect(origin: window.frame.origin, size: size)), display: true)
+            window.center()
+            window.styleMask.remove(.resizable)
+            window.collectionBehavior.insert(.fullScreenNone)
+        }
+
+        /// Lets the window change size and go full screen again, as it could
+        /// before setup.
+        func release() {
+            observers.forEach(NotificationCenter.default.removeObserver)
+            observers = []
+            guard let window = sized else { return }
+            sized = nil
+            if wasResizable { window.styleMask.insert(.resizable) }
+            if !wasFullScreenNone { window.collectionBehavior.remove(.fullScreenNone) }
+        }
+    }
 }
 
 // MARK: Motion
@@ -230,62 +325,6 @@ private struct SetupEntrance: ViewModifier {
             .opacity(isIn ? 1 : 0)
             .offset(y: isIn || reducesMotion ? 0 : 14)
             .animation(.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.6).delay(0.1 + Double(order) * 0.07), value: isIn)
-    }
-}
-
-// MARK: Dots and the house
-
-/// A dot for each screen: gray for the ones still to come, darker for the
-/// ones done, and a wide ink one for where setup is.
-private struct SetupDots: View {
-    let steps: [SetupModel.Step]
-    let current: SetupModel.Step
-    @Environment(\.accessibilityReduceMotion) private var reducesMotion
-
-    var body: some View {
-        let index = steps.firstIndex(of: current) ?? 0
-        HStack(spacing: 6) {
-            ForEach(Array(steps.enumerated()), id: \.element) { place, _ in
-                Capsule()
-                    .fill(place == index ? SetupColors.ink : place < index ? SetupColors.note : SetupColors.line)
-                    .frame(width: place == index ? 20 : 6, height: 6)
-            }
-        }
-        .animation(reducesMotion ? nil : .easeOut(duration: 0.3), value: index)
-        .animation(reducesMotion ? nil : .easeOut(duration: 0.3), value: steps.count)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Step \(index + 1) of \(steps.count)")
-    }
-}
-
-/// A thin floor near the bottom of the window, which the house stands on as
-/// far along as setup is. `SetupHouseLayer` draws the house.
-private struct SetupFloor: View {
-    private static let houseHeight: CGFloat = 46
-    /// How far the floor is from the bottom of the window, and how much
-    /// room the house and that take together.
-    private static let fromBottom: CGFloat = 30
-    static let height = houseHeight + fromBottom
-    /// How far from each edge of the window the house's run starts and ends.
-    private static let inset: CGFloat = 64
-
-    /// Where the house stands when it's this far along the floor, from 0 to
-    /// 1, in a window of this size.
-    static func spot(at position: Double, in size: CGSize) -> SetupHouseSpot {
-        var spot = SetupHouseSpot(foot: CGPoint(x: 0, y: size.height - fromBottom), height: houseHeight)
-        let room = max(0, size.width - 2 * inset - spot.width)
-        spot.foot.x = inset + room * position + spot.width / 2
-        return spot
-    }
-
-    var body: some View {
-        Rectangle()
-            .fill(SetupColors.hairline)
-            .frame(height: 1)
-            .frame(height: Self.houseHeight, alignment: .bottom)
-            .padding(.bottom, Self.fromBottom)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
     }
 }
 
@@ -373,26 +412,9 @@ struct SetupButtonStyle: ButtonStyle {
     }
 
     var kind = Kind.secondary
-    @Environment(\.isEnabled) private var isEnabled
-    @Environment(\.accessibilityReduceMotion) private var reducesMotion
 
     func makeBody(configuration: Configuration) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
-        configuration.label
-            .font(.system(size: 13.5, weight: .medium))
-            .lineLimit(1)
-            // Its words in full, whatever room a row of buttons offers it.
-            .fixedSize()
-            .padding(.horizontal, kind == .ghost ? 12 : 18)
-            .frame(minWidth: kind == .primary || kind == .brand ? SetupLayout.mainButton : nil)
-            .frame(height: 36)
-            .foregroundStyle(foreground)
-            .background(background, in: shape)
-            .opacity(!isEnabled ? 0.45 : configuration.isPressed ? 0.8 : 1)
-            .scaleEffect(configuration.isPressed && !reducesMotion ? 0.97 : 1)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
-            .animation(SetupMotion.change(reducesMotion), value: isEnabled)
-            .contentShape(shape)
+        SetupButtonBody(configuration: configuration, kind: kind, foreground: foreground, background: background)
     }
 
     private var foreground: Color {
@@ -414,9 +436,73 @@ struct SetupButtonStyle: ButtonStyle {
     }
 }
 
+/// A setup button as it's drawn, which keeps whether the pointer is over it.
+/// Back, which is words alone, gets the fill every borderless button has
+/// under the pointer, and a stronger one while it's pressed.
+private struct SetupButtonBody: View {
+    let configuration: ButtonStyleConfiguration
+    let kind: SetupButtonStyle.Kind
+    let foreground: Color
+    let background: Color
+    @State private var isHovering = false
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reducesMotion
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        configuration.label
+            .font(.system(size: 13.5, weight: .medium))
+            .lineLimit(1)
+            // Its words in full, whatever room a row of buttons offers it.
+            .fixedSize()
+            .padding(.horizontal, kind == .ghost ? 12 : 18)
+            .frame(minWidth: kind == .primary || kind == .brand ? SetupLayout.mainButton : nil)
+            .frame(height: 36)
+            .foregroundStyle(foreground)
+            .background(fill, in: shape)
+            .opacity(!isEnabled ? 0.45 : configuration.isPressed && kind != .ghost ? 0.8 : 1)
+            .scaleEffect(configuration.isPressed && !reducesMotion ? 0.97 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+            .animation(SetupMotion.change(reducesMotion), value: isEnabled)
+            .contentShape(shape)
+            .onHover { isHovering = $0 }
+    }
+
+    private var fill: Color {
+        guard kind == .ghost else { return background }
+        guard isEnabled else { return .clear }
+        return configuration.isPressed ? Palette.buttonPressed : isHovering ? Palette.buttonHover : .clear
+    }
+}
+
 extension ButtonStyle where Self == SetupButtonStyle {
     static func setup(_ kind: SetupButtonStyle.Kind = .secondary) -> SetupButtonStyle {
         SetupButtonStyle(kind: kind)
+    }
+}
+
+/// A button that reads as a link at the end of a sentence, such as Show
+/// Commands on the Hooks screen: gray, with a faint line under it, and ink
+/// under the pointer.
+struct SetupLinkStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        SetupLinkBody(configuration: configuration)
+    }
+}
+
+private struct SetupLinkBody: View {
+    let configuration: ButtonStyle.Configuration
+    @State private var isHovered = false
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        configuration.label
+            .font(.system(size: 13.5, weight: .medium))
+            .foregroundStyle(isHovered && isEnabled ? Color.primary : SetupColors.note)
+            .underline(true, color: SetupColors.line)
+            .opacity(configuration.isPressed ? 0.7 : 1)
+            .contentShape(Rectangle())
+            .onHover { isHovered = $0 }
     }
 }
 

@@ -79,16 +79,14 @@ enum BranchStatusLoader {
         return counts
     }
 
-    /// How many commits each of `branches` has that neither the main branch nor
-    /// its upstream has, for the ones that have any. Counting against the
-    /// upstream too leaves out what the main branch hasn't pulled yet, for a
-    /// branch made from its upstream, and counting against the main branch
-    /// leaves out what it hasn't pushed, for a branch made from it.
+    /// How many commits each of `branches` has that the main branch doesn't,
+    /// for the ones that have any, counted as `RefList.mainBranchCommits`
+    /// says: the fewest against the main branch, its upstream and the remote
+    /// branch a remote's `HEAD` names.
     private static func aheadOfMain(_ branches: [String], git: Git, in directory: String) async throws -> [String: MainCounts] {
         let refs = try await RefsLoader.load(git: git, in: directory, priority: .utility)
         guard let main = refs.mainBranch else { return [:] }
-        let upstream = main.upstream.flatMap { name in refs.refs.first { $0.name == name } }
-        let bases = [main.peeled] + [upstream?.peeled].compactMap(\.self)
+        let bases = refs.mainBranchCommits
 
         var command = GitCommand(["for-each-ref", "--format=" + AheadOfMainParser.format(comparingWith: bases)] + branches, in: directory)
         command.priority = .utility

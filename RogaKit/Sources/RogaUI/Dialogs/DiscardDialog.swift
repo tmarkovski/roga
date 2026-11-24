@@ -66,7 +66,7 @@ extension SelectedChanges {
             terminal: terminal,
             buttons: [
                 .cancel(cancelDiscard),
-                DialogButton(title: "Discard \(count) files", kind: .destructive, action: confirmingDiscard),
+                DialogButton(title: "Discard \(count) Files", kind: .destructive, action: confirmingDiscard),
             ],
             dismiss: cancelDiscard
         )
@@ -118,7 +118,7 @@ extension SelectedChanges {
             buttons: [
                 .cancel(cancelDiscard),
                 losesSomething
-                    ? DialogButton(title: "Discard everything", kind: .destructive, action: confirmingDiscard)
+                    ? DialogButton(title: "Discard Everything", kind: .destructive, action: confirmingDiscard)
                     : DialogButton(title: "Move to Trash", kind: .primary, action: confirmingDiscard),
             ],
             dismiss: cancelDiscard

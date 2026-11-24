@@ -404,6 +404,22 @@ struct RemoteCommandsTests {
         #expect(counts.upstreams.keys.sorted() == ["refs/heads/main"])
     }
 
+    @Test func countsAgainstTheRemotesMainWhenMainHasNoUpstream() async throws {
+        let clones = try await clones()
+        // main was pushed without -u, so only origin/HEAD says where its
+        // commits are on the remote, and it's a commit behind them.
+        try await runGit("branch", "--unset-upstream", "main", in: clones.work)
+        try await pushFromOther(clones)
+        try await runGit("fetch", "--quiet", in: clones.work)
+        try await runGit("switch", "--quiet", "--no-track", "-c", "agent", "origin/main", in: clones.work)
+        try await commit("First", in: clones.work)
+        try await commit("Second", in: clones.work)
+        try await runGit("switch", "--quiet", "main", in: clones.work)
+
+        let counts = try await clones.session.upstreams(of: ["refs/heads/main", "refs/heads/agent"], in: clones.work)
+        #expect(counts.aheadOfMain == ["refs/heads/agent": MainCounts(main: "main", ahead: 2)])
+    }
+
     @Test func withoutAMainBranchNothingIsCountedAgainstIt() async throws {
         let clones = try await clones()
         try await runGit("remote", "set-head", "origin", "--delete", in: clones.work)

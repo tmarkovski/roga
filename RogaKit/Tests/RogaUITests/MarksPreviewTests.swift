@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 @testable import AgentHooks
@@ -24,5 +25,25 @@ struct MarksPreviewTests {
         let parts = MarksPreview.samples.map { $0.summary.rowParts(now: MarksPreview.date) }
         #expect(parts.map(\.words) == ["Editing LoginView.swift", "Approval required: git push", "Claude Code finished"])
         #expect(parts.map(\.time) == ["2 min", "1 min", nil])
+    }
+
+    /// In the sidebar's width, as both Settings and setup's Hooks screen
+    /// draw it, each worktree has room for its whole second line and how long,
+    /// which is what says what its mark means where there are no lines out
+    /// to the meanings.
+    @Test func everyWorktreesLineFitsWhole() {
+        // The panel's inset either side, the room the line from the
+        // repository takes, then the row's own padding and the room its line
+        // leaves before how long, as SidebarRow lays them out.
+        let room = MarksPreview.width - 2 * MarksPreview.inset - WorktreeConnector.textIndent - 10 - 4 - 7
+        let font = NSFont.systemFont(ofSize: 13)
+        func width(_ words: String) -> CGFloat {
+            (words as NSString).size(withAttributes: [.font: font]).width
+        }
+        for sample in MarksPreview.samples {
+            let parts = sample.summary.rowParts(now: MarksPreview.date)
+            let needed = width(parts.words) + (parts.time.map { 8 + width($0) } ?? 0)
+            #expect(needed <= room, "\(parts.words) needs \(needed) of \(room)")
+        }
     }
 }

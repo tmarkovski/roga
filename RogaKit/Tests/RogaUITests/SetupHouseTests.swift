@@ -27,6 +27,22 @@ import Testing
         #expect(SetupHouseTrip(from: next, to: start).kind == .run)
     }
 
+    @Test func overASkippedStepItHopsUpAndDownAgain() {
+        let far = SetupHouseSpot(foot: CGPoint(x: 915, y: 770), height: 46)
+        let trip = SetupHouseTrip(from: next, to: far, hops: true)
+        #expect(trip.kind == .hop)
+        #expect(trip.moment(at: 0, to: far).spot == next)
+        // Highest halfway, clear of the bypass over the lane.
+        let middle = trip.moment(at: trip.travelTime / 2, to: far).spot
+        #expect(middle.foot.y < 770 - SetupLane.bypassRise)
+        #expect(middle.foot.x > next.foot.x && middle.foot.x < far.foot.x)
+        #expect(trip.moment(at: trip.duration, to: far) == SetupHouseMoment(spot: far, pose: .mark, facing: 1))
+        // Back over it, it turns around first.
+        let back = SetupHouseTrip(from: far, to: next, hops: true)
+        #expect(back.goesBack)
+        #expect(back.moment(at: back.travelTime / 2, to: next).facing == -1)
+    }
+
     @Test(arguments: [0, 1, 2, 3])
     func itStartsWhereItWasAndEndsStandingWhereItIsGoing(_ which: Int) {
         let (from, to) = [(welcome, start), (start, welcome), (start, next), (next, start)][which]

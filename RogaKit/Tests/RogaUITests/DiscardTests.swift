@@ -550,7 +550,7 @@ struct DiscardTests {
             .command(["restore", "--worktree", "--", "src/1.txt", "src/2.txt", "src/3.txt", "src/4.txt", "src/5.txt"]),
             .comment("and 2 more"),
         ])
-        #expect(content.buttons.map(\.title) == ["Cancel", "Discard 7 files"])
+        #expect(content.buttons.map(\.title) == ["Cancel", "Discard 7 Files"])
         #expect(content.buttons.last?.kind == .destructive)
     }
 

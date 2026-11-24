@@ -357,7 +357,6 @@ struct SettingsSheet: View {
         .font(.system(size: 13))
         // The menus of git's row and of an agent's program open over the
         // whole sheet.
-        .programMenus()
         .presentationSizing(.fitted)
         .onChange(of: theme) { _, theme in
             theme.apply()

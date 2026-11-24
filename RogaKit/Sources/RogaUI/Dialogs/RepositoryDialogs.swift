@@ -218,7 +218,7 @@ extension RepositoryModel {
         case .detaching:
             let branch = pending.checkout?.branch
             if let branch { terminal = [.command(["switch", branch])] }
-            buttons.append(DialogButton(title: "Switch anyway", kind: .destructive) { [weak self] in self?.confirmCommitSwitch() })
+            buttons.append(DialogButton(title: "Switch Anyway", kind: .destructive) { [weak self] in self?.confirmCommitSwitch() })
             return DialogContent(
                 id: "commitSwitch",
                 title: "Switch to \(branch ?? short)?",
@@ -234,18 +234,18 @@ extension RepositoryModel {
             let push = branch.status?.push
             // These two skip the push, so they need a line less than the block has room for.
             let room: [TerminalLine] = push == nil ? [] : [.blank]
-            buttons.append(DialogButton(title: "Reset anyway", kind: .destructive, terminal: [.command(commitSwitch.arguments)] + room) { [weak self] in
+            buttons.append(DialogButton(title: "Reset Anyway", kind: .destructive, terminal: [.command(commitSwitch.arguments)] + room) { [weak self] in
                 self?.confirmCommitSwitch()
             })
             if let keeping = commitSwitch.keepingChanges {
-                notes.append("Keep changes leaves everything since \(code: short) staged.")
-                buttons.append(DialogButton(title: "Keep changes", kind: .partlyDestructive, terminal: [.command(keeping.arguments)] + room) { [weak self] in
+                notes.append("Keep Changes leaves everything since \(code: short) staged.")
+                buttons.append(DialogButton(title: "Keep Changes", kind: .partlyDestructive, terminal: [.command(keeping.arguments)] + room) { [weak self] in
                     self?.keepChangesAndConfirmCommitSwitch()
                 })
             }
             if let push {
                 terminal.insert(.command(push.arguments), at: 0)
-                buttons.append(DialogButton(title: "Push, then reset", kind: .primary) { [weak self] in self?.pushThenConfirmCommitSwitch() })
+                buttons.append(DialogButton(title: "Push, Then Reset", kind: .primary) { [weak self] in self?.pushThenConfirmCommitSwitch() })
             } else if let upstream = branch.status?.upstream.map(Ref.shortName) {
                 notes.append("Pushing first isn't offered, because git would reject it: \(code: upstream) has commits that \(code: name) doesn't.")
             }
@@ -286,7 +286,7 @@ extension RepositoryModel {
             sentences.append("\(staged), and git only commits a revert when nothing is, so this adds the reversed changes to \(revert.stagedCount == 1 ? "it" : "them").")
         }
 
-        var notes: [DialogText] = ["Leave it uncommitted stages the reversed changes, with git's message ready to commit."]
+        var notes: [DialogText] = ["Leave Uncommitted stages the reversed changes, with git's message ready to commit."]
         if revert.hasCommitHooks {
             notes.append("git commits a revert without your pre-commit and commit-msg hooks, which run when you commit from the box.")
         }
@@ -304,7 +304,7 @@ extension RepositoryModel {
             buttons: [
                 .cancel(cancel),
                 DialogButton(
-                    title: "Leave it uncommitted",
+                    title: "Leave Uncommitted",
                     kind: revert.canCommit ? .secondary : .primary,
                     pressesWithReturn: takesReturn,
                     terminal: [.command(revert.arguments(.leavingUncommitted))]
@@ -312,7 +312,7 @@ extension RepositoryModel {
                     self?.confirmRevert(.leavingUncommitted)
                 },
                 DialogButton(
-                    title: "Commit the revert",
+                    title: "Commit Revert",
                     kind: revert.canCommit ? .primary : .secondary,
                     isEnabled: revert.canCommit,
                     pressesWithReturn: takesReturn,
@@ -353,6 +353,13 @@ extension CommitSwitch {
 }
 
 extension BranchModel {
+    /// The button that undoes what stopped on a conflict, in a button's title
+    /// case (decision 102), as in Undo Pull or Undo Cherry-Pick, which the
+    /// terminal's comment and the note name too.
+    static func undoTitle(_ noun: String) -> String {
+        "Undo \(noun.capitalized)"
+    }
+
     /// What to ask or say about the branch now, if anything.
     var dialog: RepositoryDialog? {
         dialog(offering: nil)
@@ -421,7 +428,7 @@ extension BranchModel {
         }
         var terminal: [TerminalLine] = []
         if let ran = conflict.ran { terminal += [.ran(ran), .gap] }
-        terminal += [.comment("Undo the \(started) runs")] + undo.map(TerminalLine.command)
+        terminal += [.comment("\(Self.undoTitle(started)) runs")] + undo.map(TerminalLine.command)
         let rows = Self.fileRows(conflict.files)
         let leave = { [weak self] in self?.conflict = nil; return () }
         // Resolving is usually what someone wants after a pull, and loses nothing,
@@ -439,7 +446,7 @@ extension BranchModel {
             terminal: terminal,
             buttons: [
                 // Files that were staged before can't be brought back.
-                DialogButton(title: "Undo the \(started)", kind: conflict.stagedBefore > 0 ? .destructive : .secondary) { [weak self] in
+                DialogButton(title: Self.undoTitle(started), kind: conflict.stagedBefore > 0 ? .destructive : .secondary) { [weak self] in
                     self?.undoConflict()
                 },
                 DialogButton(title: "Resolve", kind: .primary, action: resolve),
@@ -468,11 +475,11 @@ extension BranchModel {
             "You can resolve them here, or undo the \(noun).",
         ]
         let note: DialogText? = .sentences([
-            "Undo the \(noun) goes back to \(code: String(aside.head.hex.prefix(8))) and puts your changes back as they were, with what you'd staged.",
+            "\(Self.undoTitle(noun)) goes back to \(code: String(aside.head.hex.prefix(8))) and puts your changes back as they were, with what you'd staged.",
             "Until you drop it, the stash \(code: aside.message) keeps a copy of them as they were.",
         ])
         let undo = aside.undoArguments(stopped: nil) + [ChangesAside.putBackArguments]
-        let terminal: [TerminalLine] = conflict.ran.map(TerminalLine.ran) + [.gap, .comment("Undo the \(noun) runs")] + undo.map(TerminalLine.command)
+        let terminal: [TerminalLine] = conflict.ran.map(TerminalLine.ran) + [.gap, .comment("\(Self.undoTitle(noun)) runs")] + undo.map(TerminalLine.command)
         let rows = Self.fileRows(conflict.files)
         let leave = { [weak self] in self?.putBackConflict = nil; return () }
         let resolve = { [weak self] in
@@ -489,7 +496,7 @@ extension BranchModel {
             terminal: terminal,
             buttons: [
                 // The stash has everything that was uncommitted, so nothing is lost.
-                DialogButton(title: "Undo the \(noun)", kind: .secondary) { [weak self] in
+                DialogButton(title: Self.undoTitle(noun), kind: .secondary) { [weak self] in
                     self?.undoPutBack()
                 },
                 DialogButton(title: "Resolve", kind: .primary, action: resolve),

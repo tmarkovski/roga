@@ -59,6 +59,25 @@ struct RefDetailsTests {
         #expect(main.comparison == BranchComparison(other: "origin/main", ahead: 1, behind: 1))
     }
 
+    @Test func aBranchFromTheRemoteIsntAheadByWhatMainHasntPulled() async throws {
+        let (_, server) = try await makeRepository()
+        let clone = (server as NSString).deletingLastPathComponent + "/clone"
+        try await TestGit.make().run(GitCommand("clone", "--quiet", server, clone))
+        try await runGit("config", "user.name", "Ana", in: clone)
+        try await runGit("config", "user.email", "ana@example.com", in: clone)
+        // The clone's main has a commit it hasn't pushed, and is missing one
+        // from the server, which the agent's branch starts from.
+        try await commit("Local", in: clone)
+        try await commit("Server", in: server)
+        try await runGit("fetch", "--quiet", in: clone)
+        try await runGit("switch", "--quiet", "--no-track", "--create", "agent", "origin/main", in: clone)
+        for number in 1...2 { try await commit("Agent \(number)", in: clone) }
+
+        let details = try await openSession(clone).refDetails(in: clone)
+        let agent = try #require(details.branches.first { $0.shortName == "agent" })
+        #expect(agent.comparison == BranchComparison(other: "main", ahead: 2, behind: 1))
+    }
+
     @Test func aBranchWhoseUpstreamIsGoneIsComparedWithTheMainBranch() async throws {
         let (_, server) = try await makeRepository()
         try await runGit("branch", "feature", in: server)

@@ -158,8 +158,9 @@ struct RowDiscard {
 }
 
 /// A row's button: it fills with gray while the pointer is over it, and a little
-/// darker while it's selected. The content hears whether the small buttons at the
-/// end of the row are covering it.
+/// darker while it's selected. While the pointer is over it, the small buttons at
+/// the end of the row show, each filling with gray only under the pointer. The
+/// content hears whether they're covering it.
 private struct FileRowButton<Content: View>: View {
     var isSelected = false
     var accessoryIcon: Icon?
@@ -197,37 +198,25 @@ private struct FileRowButton<Content: View>: View {
                                 .font(.system(size: 13))
                                 .foregroundStyle(Palette.red)
                                 .frame(width: 20, height: 20)
-                                .background {
-                                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                        .fill(Palette.buttonHover)
-                                }
-                                .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(RowButtonStyle())
                         .help(discard.title)
                         .accessibilityLabel(discardLabel)
                     }
                     if let performAccessory {
                         Button(action: performAccessory) {
-                            Group {
-                                if let accessoryIcon {
-                                    accessoryIcon.image
-                                        .font(.system(size: 13))
-                                        .frame(width: 20, height: 20)
-                                } else {
-                                    Text(accessoryTitle ?? "")
-                                        .font(.system(size: 12, weight: .medium))
-                                        .padding(.horizontal, 6)
-                                        .frame(height: 20)
-                                }
+                            if let accessoryIcon {
+                                accessoryIcon.image
+                                    .font(.system(size: 13))
+                                    .frame(width: 20, height: 20)
+                            } else {
+                                Text(accessoryTitle ?? "")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .padding(.horizontal, 6)
+                                    .frame(height: 20)
                             }
-                            .background {
-                                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                    .fill(Palette.buttonHover)
-                            }
-                            .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(RowButtonStyle())
                         .help(accessoryHelp ?? accessoryTitle ?? "")
                         .accessibilityLabel(accessoryLabel)
                     }
@@ -237,6 +226,35 @@ private struct FileRowButton<Content: View>: View {
         }
         .padding(.horizontal, 6)
         .onHover { isHovering = $0 }
+    }
+}
+
+/// A small button at the end of a row of files. The row shows it while the
+/// pointer is over the row, as only its icon or word, and it fills with gray
+/// only while the pointer is over the button itself, and darker while it's
+/// pressed, as the sidebar's ⋯ button does.
+private struct RowButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        RowButtonBody(isPressed: configuration.isPressed) {
+            configuration.label
+        }
+    }
+}
+
+private struct RowButtonBody<Label: View>: View {
+    let isPressed: Bool
+    @ViewBuilder var label: Label
+    @State private var isHovering = false
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        label
+            .background {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(isPressed ? Palette.buttonPressed : isHovering ? Palette.buttonHover : .clear)
+            }
+            .contentShape(Rectangle())
+            .onHover { isHovering = $0 && isEnabled }
     }
 }
 

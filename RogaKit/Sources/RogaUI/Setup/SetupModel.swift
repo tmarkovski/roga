@@ -27,6 +27,20 @@ public final class SetupModel {
         static func < (first: Step, second: Step) -> Bool {
             first.rawValue < second.rawValue
         }
+
+        /// The step as a commit on the lane along the bottom of the window,
+        /// which is also the small word over its screen's heading, as in
+        /// Choose git.
+        var subject: String {
+            switch self {
+            case .welcome: "Initial commit"
+            case .looking: "Look around"
+            case .git: "Choose git"
+            case .agents: "Add agents"
+            case .hooks: "Install hooks"
+            case .ready: "Open Roga"
+            }
+        }
     }
 
     /// Whether setup is over, as a Bool. While it's absent, setup shows only
@@ -44,6 +58,8 @@ public final class SetupModel {
     /// Whether to use agents, as answered on the Agents screen, or nil while
     /// nobody has answered, and when Roga found none to ask about.
     private(set) var usesAgents: Bool?
+    /// Whether the answer on Hooks was Not Now, which the lane goes around.
+    private(set) var skipsHooks = false
 
     @ObservationIgnored private let defaults: UserDefaults
 
@@ -82,8 +98,21 @@ public final class SetupModel {
         move(to: .looking)
     }
 
+    /// The steps setup went around, which the lane leaves on a faint stretch
+    /// under a bypass: Agents and Hooks once agents were declined or none
+    /// were found, and Hooks alone after Not Now. A step counts as skipped
+    /// only once setup is past it, so going back to it puts it back on the
+    /// way, for its answer to change.
+    func skipped(found: [AgentKind]) -> Set<Step> {
+        if step > .agents, usable(found: found).isEmpty { return [.agents, .hooks] }
+        if step > .hooks, skipsHooks { return [.hooks] }
+        return []
+    }
+
     /// The next screen, from one whose main button only goes on.
     func next(found: [AgentKind]) {
+        // Continue on Hooks, once they're installed.
+        if step == .hooks { skipsHooks = false }
         let steps = steps(found: found)
         guard let index = steps.firstIndex(of: step), index + 1 < steps.count else { return }
         move(to: steps[index + 1])
@@ -119,7 +148,7 @@ public final class SetupModel {
         }
     }
 
-    /// Use Agents: Settings' Use agents goes on, and Hooks comes next.
+    /// Configure Hooks: Settings' Use agents goes on, and Hooks comes next.
     func useAgents(found: [AgentKind]) {
         usesAgents = true
         defaults.set(true, forKey: AgentPreferences.usesAgentsKey)
@@ -131,6 +160,12 @@ public final class SetupModel {
     func dontUseAgents() {
         usesAgents = false
         defaults.set(false, forKey: AgentPreferences.usesAgentsKey)
+        move(to: .ready)
+    }
+
+    /// Not Now on Hooks: Ready comes next, and the lane goes around Hooks.
+    func skipHooks() {
+        skipsHooks = true
         move(to: .ready)
     }
 

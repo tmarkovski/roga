@@ -16,9 +16,8 @@ enum RefDetailsLoader {
     @concurrent
     static func load(git: Git, in directory: String, worktrees: [Worktree]) async throws -> RefDetails {
         let refs = try await RefsLoader.load(git: git, in: directory)
-        let main = refs.mainBranch
 
-        async let branches = branches(comparingWith: main, git: git, in: directory)
+        async let branches = branches(comparingWithMainOf: refs, git: git, in: directory)
         async let remotesAndTags = remotesAndTags(git: git, in: directory)
         async let addresses = remoteAddresses(git: git, in: directory)
         async let stashes = refs.refs.contains { $0.name == "refs/stash" } ? stashes(git: git, in: directory) : []
@@ -41,10 +40,21 @@ enum RefDetailsLoader {
         )
     }
 
-    private static func branches(comparingWith main: Ref?, git: Git, in directory: String) async throws -> [BranchDetails] {
-        var command = GitCommand("for-each-ref", "--format=" + BranchListParser.format(comparingWith: main?.peeled), Ref.branchPrefix, in: directory)
+    /// Every branch, with how far it is from its upstream, or else from the
+    /// main branch. A branch is behind the main branch by what the main branch
+    /// has that it doesn't, and ahead by the fewest commits it has that the
+    /// main branch, its upstream or the remote's main branch doesn't, as on a
+    /// worktree's tab, so that what the main branch hasn't pulled yet doesn't
+    /// count for a branch made from the remote.
+    private static func branches(comparingWithMainOf refs: RefList, git: Git, in directory: String) async throws -> [BranchDetails] {
+        let main = refs.mainBranch
+        let others = Array(refs.mainBranchCommits.dropFirst())
+        let format = BranchListParser.format(comparingWith: main?.peeled, alsoAheadOf: others)
+        var command = GitCommand("for-each-ref", "--format=" + format, Ref.branchPrefix, in: directory)
         command.environment["GIT_NO_LAZY_FETCH"] = "1"
-        let entries = try await parse(command, git: git, with: BranchListParser.parse)
+        let entries = try await parse(command, git: git) { output throws(ParseError) in
+            try BranchListParser.parse(output, others: others.count)
+        }
         return entries.map { entry in
             var comparison: BranchComparison?
             if let upstream = entry.upstream, let counts = entry.upstreamCounts {
