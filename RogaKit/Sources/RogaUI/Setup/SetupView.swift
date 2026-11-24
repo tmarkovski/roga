@@ -165,9 +165,15 @@ enum SetupLayout {
     /// The least width of the button that goes on, so that it's the same
     /// size and in the same place from one screen to the next.
     static let mainButton: CGFloat = 168
-    /// The size of a command in a card, at which each of the commands that
-    /// install the hooks fits on one line of the column.
+    /// The size of a command in a card or a popover, at which each of the
+    /// commands that install the hooks fits on one line of the column.
     static let commandFontSize: CGFloat = 11
+    /// How wide the commands are in the Hooks screen's popover, the column's
+    /// width, so that each command is on one line.
+    static let commandsWidth: CGFloat = column
+    /// The room between the Hooks screen's glimpse of the sidebar and what
+    /// Install Hooks does beside it.
+    static let hooksGap: CGFloat = 24
     /// How tall the house is on Welcome.
     static let welcomeHouse: CGFloat = 168
     /// The name of the coordinates the house is placed in, which are those
@@ -472,6 +478,31 @@ private struct SetupButtonBody: View {
 extension ButtonStyle where Self == SetupButtonStyle {
     static func setup(_ kind: SetupButtonStyle.Kind = .secondary) -> SetupButtonStyle {
         SetupButtonStyle(kind: kind)
+    }
+}
+
+/// A button that reads as a link at the end of a sentence, such as Show
+/// Commands on the Hooks screen: gray, with a faint line under it, and ink
+/// under the pointer.
+struct SetupLinkStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        SetupLinkBody(configuration: configuration)
+    }
+}
+
+private struct SetupLinkBody: View {
+    let configuration: ButtonStyle.Configuration
+    @State private var isHovered = false
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        configuration.label
+            .font(.system(size: 13.5, weight: .medium))
+            .foregroundStyle(isHovered && isEnabled ? Color.primary : SetupColors.note)
+            .underline(true, color: SetupColors.line)
+            .opacity(configuration.isPressed ? 0.7 : 1)
+            .contentShape(Rectangle())
+            .onHover { isHovered = $0 }
     }
 }
 

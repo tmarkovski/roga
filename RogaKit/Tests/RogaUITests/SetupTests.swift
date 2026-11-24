@@ -482,10 +482,23 @@ struct SetupModelTests {
         #expect(SetupWords.copiesHint([]) == nil)
     }
 
+    /// Beside the glimpse of the sidebar, the agents' card is about half the
+    /// column wide. A short status fits beside the agent's name, and the
+    /// longest goes under it, for every row at once.
+    @Test func aHooksRowsStatusGoesUnderTheNameWhenItDoesntFitBeside() {
+        #expect(SetupHooks.cardWidth == 316)
+        for kind in AgentKind.allCases {
+            #expect(SetupHooks.statusFitsBeside(kind.name, SetupWords.hookRow(kind, status: .notInstalled, work: nil)))
+            #expect(SetupHooks.statusFitsBeside(kind.name, SetupWords.hookRow(kind, status: .installed, work: nil)))
+        }
+        let another = SetupWords.hookRow(.claude, status: .anotherCopy(folder: "/x/plugins"), work: nil)
+        #expect(!SetupHooks.statusFitsBeside(AgentKind.claude.name, another))
+    }
+
     @Test func aHooksRowSaysWhatTheAgentSaidAndWhatToDo() {
         #expect(SetupWords.hookRow(.claude, status: nil, work: nil) == .init(status: "Checking…", mark: .spinner))
         #expect(SetupWords.hookRow(.claude, status: .notInstalled, work: nil) == .init(status: "Not installed"))
-        #expect(SetupWords.hookRow(.codex, status: .notInstalled, work: nil).aside == "asks you to trust the hooks before it runs them")
+        #expect(SetupWords.hookRow(.codex, status: .notInstalled, work: nil).notes == ["Asks you to trust the hooks before it runs them."])
         #expect(SetupWords.hookRow(.claude, status: .installed, work: nil) == .init(status: "Installed", mark: .ok, notes: ["Active in new sessions."]))
 
         let trust = SetupWords.hookRow(.codex, status: .needsTrust, work: nil)

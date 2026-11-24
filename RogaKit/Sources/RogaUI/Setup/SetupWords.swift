@@ -215,8 +215,6 @@ enum SetupWords {
 
         var status: String
         var mark = Mark.none
-        /// Gray words beside the agent's name.
-        var aside: String?
         /// Gray lines under the name.
         var notes: [String] = []
         /// What failed, in the agent's own words, in red.
@@ -227,7 +225,7 @@ enum SetupWords {
 
         /// All of it in words, for VoiceOver.
         var spoken: String {
-            ([status + "."] + [aside].compactMap(\.self) + notes + problems).joined(separator: " ")
+            ([status + "."] + notes + problems).joined(separator: " ")
         }
     }
 
@@ -238,7 +236,7 @@ enum SetupWords {
             row = HookRow(status: "Checking…", mark: .spinner)
         case .notInstalled?:
             row = HookRow(status: "Not installed")
-            if kind == .codex { row.aside = "asks you to trust the hooks before it runs them" }
+            if kind == .codex { row.notes = ["Asks you to trust the hooks before it runs them."] }
         case .installed?:
             let works = switch kind {
             case .claude: "Active in new sessions."

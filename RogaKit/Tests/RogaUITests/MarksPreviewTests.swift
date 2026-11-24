@@ -27,14 +27,15 @@ struct MarksPreviewTests {
         #expect(parts.map(\.time) == ["2 min", "1 min", nil])
     }
 
-    /// Across, as setup's Hooks screen has it, each worktree has room for its
-    /// whole second line and how long, which is why the picture is wider
-    /// than setup's column.
-    @Test func acrossEveryLineFitsWhole() {
-        let each = (MarksPreview.acrossWidth - 2 * MarksPreview.acrossGap) / 3
-        // The panel's inset either side, then the row's own padding and the
-        // room its line leaves before how long, as SidebarRow lays them out.
-        let room = each - 2 * MarksPreview.inset - 10 - 4 - 7
+    /// In the sidebar's width, as both Settings and setup's Hooks screen
+    /// draw it, each worktree has room for its whole second line and how long,
+    /// which is what says what its mark means where there are no lines out
+    /// to the meanings.
+    @Test func everyWorktreesLineFitsWhole() {
+        // The panel's inset either side, the room the line from the
+        // repository takes, then the row's own padding and the room its line
+        // leaves before how long, as SidebarRow lays them out.
+        let room = MarksPreview.width - 2 * MarksPreview.inset - WorktreeConnector.textIndent - 10 - 4 - 7
         let font = NSFont.systemFont(ofSize: 13)
         func width(_ words: String) -> CGFloat {
             (words as NSString).size(withAttributes: [.font: font]).width

@@ -18,17 +18,19 @@ import SwiftUI
 /// long each agent has been at it stands still, though the working ring turns
 /// as it does in the sidebar.
 ///
-/// Setup's Hooks screen lays the three worktrees out across instead, each in
-/// a glimpse of the sidebar of its own with what its mark means under it, so
-/// that the screen fits above setup's lane (decision 69).
+/// Setup's Hooks screen shows only the repository and its three worktrees,
+/// without the lines out to what the marks mean, beside the agents, so that
+/// the screen fits above setup's lane (decision 69).
 struct MarksPreview: View {
     enum Layout {
-        /// The worktrees one over another under their repository, with what
-        /// each mark means beside it, as in Settings › Agents.
+        /// The worktrees one over another under their repository, between a
+        /// group's label and two more repositories, with what each mark means
+        /// beside it, as in Settings › Agents.
         case column
-        /// The worktrees side by side, `acrossWidth` wide, each with what its
-        /// mark means under it.
-        case across
+        /// Just the repository and its three worktrees, `width` wide, as on
+        /// setup's Hooks screen. Each worktree's second line says what its
+        /// agent is doing, which says what its mark means.
+        case glimpse
     }
 
     var layout = Layout.column
@@ -92,18 +94,15 @@ struct MarksPreview: View {
     /// The sidebar's panel, a shade darker than the page it's on, as the
     /// window's sidebar is beside its panels.
     static let panelColor = Palette.gray(light: 0.937, dark: 0.137)
-    /// How wide the picture is across: wider than setup's column, so that
-    /// each worktree's line has room for Approval required: git push and how
-    /// long it's been waiting.
-    static let acrossWidth: CGFloat = 800
-    /// The room between the worktrees across.
-    static let acrossGap: CGFloat = 16
+    /// How far the glimpse's panel fades in at the top and out at the
+    /// bottom, which only touches the room around its rows.
+    static let glimpseFade: CGFloat = 12
 
     var body: some View {
         Group {
             switch layout {
             case .column: column
-            case .across: across
+            case .glimpse: glimpse
             }
         }
         .environment(\.sidebarPictureDate, Self.date)
@@ -144,35 +143,21 @@ struct MarksPreview: View {
         }
     }
 
-    /// The three side by side, each a worktree's row on a piece of the
-    /// sidebar's panel that fades out above and below it, with what its mark
-    /// means centered under it.
-    private var across: some View {
-        let each = (Self.acrossWidth - 2 * Self.acrossGap) / 3
-        return HStack(alignment: .top, spacing: Self.acrossGap) {
+    /// The repository and its three worktrees on the sidebar's panel, which
+    /// fades in just above the repository and out just under the last one.
+    private var glimpse: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            repositoryRow("api", files: 2, isExpanded: true)
             ForEach(Self.samples, id: \.branch) { sample in
-                VStack(spacing: 8) {
-                    worktreeRow(sample, connected: false)
-                        .padding(.horizontal, Self.inset)
-                        .padding(.vertical, 10)
-                        .background { panel(width: each) }
-                        .mask { fade(top: 10, bottom: 10) }
-                    VStack(spacing: 4) {
-                        Text(sample.title)
-                            .fontWeight(.semibold)
-                        Text(sample.meaning)
-                            .font(.system(size: 12.5))
-                            .foregroundStyle(SettingsColors.note)
-                            .multilineTextAlignment(.center)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .font(.system(size: 13))
-                    .padding(.horizontal, 6)
-                }
-                .frame(width: each)
+                worktreeRow(sample)
             }
         }
-        .frame(width: Self.acrossWidth)
+        .padding(.horizontal, Self.inset)
+        .padding(.top, 4)
+        .padding(.bottom, 8)
+        .frame(width: Self.width)
+        .background { panel(width: Self.width) }
+        .mask { fade(top: Self.glimpseFade, bottom: Self.glimpseFade) }
     }
 
     /// A row of the sidebar, as wide as the sidebar's rows are, with what its
@@ -214,10 +199,9 @@ struct MarksPreview: View {
         }
     }
 
-    /// A linked worktree's row, under its repository with a line to it, or
-    /// on its own when the picture is across.
-    private func worktreeRow(_ sample: Sample, connected: Bool = true) -> some View {
-        let indent = connected ? WorktreeConnector.textIndent : 0
+    /// A linked worktree's row, under its repository with a line to it.
+    private func worktreeRow(_ sample: Sample) -> some View {
+        let indent = WorktreeConnector.textIndent
         return SidebarRow(isSelected: sample.isSelected, agent: sample.summary, lineIndent: indent, action: {}) {
             FadingText(sample.branch)
                 .font(.system(size: 13))
@@ -228,7 +212,7 @@ struct MarksPreview: View {
             EmptyView()
         }
         .overlay {
-            if connected { WorktreeConnector(isLast: sample.isLast) }
+            WorktreeConnector(isLast: sample.isLast)
         }
     }
 
@@ -287,8 +271,8 @@ struct MarksPreview: View {
         .background(SettingsColors.surface)
 }
 
-#Preview("Marks across") {
-    MarksPreview(layout: .across)
+#Preview("Marks glimpse") {
+    MarksPreview(layout: .glimpse)
         .padding(30)
         .background(SettingsColors.surface)
 }
