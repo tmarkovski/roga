@@ -366,7 +366,7 @@ struct SetupAgents: View {
                 SetupActions(back: back) {
                     Button("Don't Use Agents") { setup.dontUseAgents() }
                         .buttonStyle(.setup(.secondary))
-                    Button("Use Agents") { setup.useAgents(found: found) }
+                    Button("Configure Hooks") { setup.useAgents(found: found) }
                         .buttonStyle(.setup(.primary))
                         .keyboardShortcut(.defaultAction)
                 }

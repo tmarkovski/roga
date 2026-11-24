@@ -119,7 +119,7 @@ public final class SetupModel {
         }
     }
 
-    /// Use Agents: Settings' Use agents goes on, and Hooks comes next.
+    /// Configure Hooks: Settings' Use agents goes on, and Hooks comes next.
     func useAgents(found: [AgentKind]) {
         usesAgents = true
         defaults.set(true, forKey: AgentPreferences.usesAgentsKey)

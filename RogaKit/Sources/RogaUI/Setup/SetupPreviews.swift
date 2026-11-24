@@ -131,7 +131,7 @@ private struct SetupPreview: View {
             .environment(gitProvider)
             .environment(agents)
             .environment(updates)
-            .frame(width: 1280, height: 800)
+            .frame(width: SetupLayout.window.width, height: SetupLayout.window.height)
     }
 }
 

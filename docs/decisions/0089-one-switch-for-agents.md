@@ -37,7 +37,7 @@ The Agent settings page of the design canvas draws today's pages beside these, a
 
 **What Settings kept before moves over once.** At launch, both agents' Enable off becomes Use agents off. Generate's agent becomes the default while it was on, and with only one switched on, that one is. A default stored since wins. Then the old keys go, with `agentsShowInSidebar`, and each agent's `extraArguments` and `timeLimit`.
 
-**Setup asks one question, as before.** Agents asks "Use Claude Code and Codex in Roga?" and **Don't Use Agents** or **Use Agents** answers it, which stores Use agents. The rows keep their menus of copies, without **Don't use Codex**, since agents are on or off together. A line under them names the default, "Claude Code is the default. You can change this later in Settings › Agents." Hooks follows Use Agents, as before, and Ready says which agents are in use and which is the default. When setup shows with agents turned off, Roga looks for them anyway, so the screen can ask.
+**Setup asks one question, as before.** Agents asks "Use Claude Code and Codex in Roga?" and **Don't Use Agents** or **Configure Hooks** answers it, which stores Use agents. The rows keep their menus of copies, without **Don't use Codex**, since agents are on or off together. A line under them names the default, "Claude Code is the default. You can change this later in Settings › Agents." Hooks follows Configure Hooks, as before, and Ready says which agents are in use and which is the default. When setup shows with agents turned off, Roga looks for them anyway, so the screen can ask.
 
 ## Consequences
 

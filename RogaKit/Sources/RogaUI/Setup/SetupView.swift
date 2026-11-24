@@ -1,4 +1,5 @@
 import AgentEngine
+import AppKit
 import IconUI
 import SwiftUI
 
@@ -108,6 +109,9 @@ struct SetupView: View {
         }
         .font(.system(size: 13))
         .environment(\.openProgramPicker, openPicker)
+        // At the size the boards draw it, whatever size the window had last
+        // time, and out of full screen (decision 69).
+        .background { SetupWindowSize() }
         .navigationTitle("Roga")
         // Settings… does nothing during setup, which sets the same things,
         // rather than opening another window to show Settings on.
@@ -141,6 +145,9 @@ struct SetupView: View {
 
 /// The measurements the screens share, from the boards.
 enum SetupLayout {
+    /// How large the window is while setup shows, which is the size the
+    /// window first opens at and the boards are drawn at.
+    static let window = CGSize(width: 1280, height: 800)
     /// How wide the column is.
     static let column: CGFloat = 620
     /// How tall the window's title row is, which setup keeps room for at its
@@ -163,6 +170,85 @@ enum SetupLayout {
     /// The name of the coordinates the house is placed in, which are those
     /// of everything that scrolls.
     static let space = "setup"
+}
+
+// MARK: The window
+
+/// Puts setup's window at `SetupLayout.window`, or as much of it as the screen
+/// has, in the middle of the screen and out of full screen, and keeps it that
+/// size while setup shows (decision 69). So setup looks as the boards draw it,
+/// with the floor under the buttons, rather than spread over a window that
+/// was full screen or large the last time Roga ran. Once setup ends, the
+/// window can be resized and go full screen again, from that size.
+private struct SetupWindowSize: NSViewRepresentable {
+    func makeNSView(context: Context) -> SizingView {
+        SizingView()
+    }
+
+    func updateNSView(_ view: SizingView, context: Context) {}
+
+    static func dismantleNSView(_ view: SizingView, coordinator: ()) {
+        view.release()
+    }
+
+    final class SizingView: NSView {
+        /// The window it sized, and what it changed there, to put back.
+        private weak var sized: NSWindow?
+        private var wasResizable = false
+        private var wasFullScreenNone = false
+        private var observers: [NSObjectProtocol] = []
+
+        isolated deinit {
+            observers.forEach(NotificationCenter.default.removeObserver)
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard window !== sized else { return }
+            release()
+            guard let window else { return }
+            sized = window
+            wasResizable = window.styleMask.contains(.resizable)
+            wasFullScreenNone = window.collectionBehavior.contains(.fullScreenNone)
+            let center = NotificationCenter.default
+            observers.append(center.addObserver(forName: NSWindow.didExitFullScreenNotification, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.fit() }
+            })
+            if window.styleMask.contains(.fullScreen) {
+                window.toggleFullScreen(nil)
+            } else {
+                // After this turn of the run loop, when macOS has put back the
+                // frame the window had when Roga last quit.
+                DispatchQueue.main.async { [weak self] in self?.fit() }
+            }
+        }
+
+        /// Sizes and centers the window, and stops it changing size, once
+        /// it's out of full screen.
+        private func fit() {
+            guard let window = sized, !window.styleMask.contains(.fullScreen) else { return }
+            var size = SetupLayout.window
+            if let visible = (window.screen ?? NSScreen.main)?.visibleFrame.size {
+                size.width = min(size.width, visible.width)
+                size.height = min(size.height, visible.height)
+            }
+            window.setFrame(window.frameRect(forContentRect: NSRect(origin: window.frame.origin, size: size)), display: true)
+            window.center()
+            window.styleMask.remove(.resizable)
+            window.collectionBehavior.insert(.fullScreenNone)
+        }
+
+        /// Lets the window change size and go full screen again, as it could
+        /// before setup.
+        func release() {
+            observers.forEach(NotificationCenter.default.removeObserver)
+            observers = []
+            guard let window = sized else { return }
+            sized = nil
+            if wasResizable { window.styleMask.insert(.resizable) }
+            if !wasFullScreenNone { window.collectionBehavior.remove(.fullScreenNone) }
+        }
+    }
 }
 
 // MARK: Motion
@@ -373,26 +459,9 @@ struct SetupButtonStyle: ButtonStyle {
     }
 
     var kind = Kind.secondary
-    @Environment(\.isEnabled) private var isEnabled
-    @Environment(\.accessibilityReduceMotion) private var reducesMotion
 
     func makeBody(configuration: Configuration) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
-        configuration.label
-            .font(.system(size: 13.5, weight: .medium))
-            .lineLimit(1)
-            // Its words in full, whatever room a row of buttons offers it.
-            .fixedSize()
-            .padding(.horizontal, kind == .ghost ? 12 : 18)
-            .frame(minWidth: kind == .primary || kind == .brand ? SetupLayout.mainButton : nil)
-            .frame(height: 36)
-            .foregroundStyle(foreground)
-            .background(background, in: shape)
-            .opacity(!isEnabled ? 0.45 : configuration.isPressed ? 0.8 : 1)
-            .scaleEffect(configuration.isPressed && !reducesMotion ? 0.97 : 1)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
-            .animation(SetupMotion.change(reducesMotion), value: isEnabled)
-            .contentShape(shape)
+        SetupButtonBody(configuration: configuration, kind: kind, foreground: foreground, background: background)
     }
 
     private var foreground: Color {
@@ -411,6 +480,45 @@ struct SetupButtonStyle: ButtonStyle {
         case .secondary: SettingsColors.secondaryButton
         case .ghost: .clear
         }
+    }
+}
+
+/// A setup button as it's drawn, which keeps whether the pointer is over it.
+/// Back, which is words alone, gets the fill every borderless button has
+/// under the pointer, and a stronger one while it's pressed.
+private struct SetupButtonBody: View {
+    let configuration: ButtonStyleConfiguration
+    let kind: SetupButtonStyle.Kind
+    let foreground: Color
+    let background: Color
+    @State private var isHovering = false
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reducesMotion
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        configuration.label
+            .font(.system(size: 13.5, weight: .medium))
+            .lineLimit(1)
+            // Its words in full, whatever room a row of buttons offers it.
+            .fixedSize()
+            .padding(.horizontal, kind == .ghost ? 12 : 18)
+            .frame(minWidth: kind == .primary || kind == .brand ? SetupLayout.mainButton : nil)
+            .frame(height: 36)
+            .foregroundStyle(foreground)
+            .background(fill, in: shape)
+            .opacity(!isEnabled ? 0.45 : configuration.isPressed && kind != .ghost ? 0.8 : 1)
+            .scaleEffect(configuration.isPressed && !reducesMotion ? 0.97 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+            .animation(SetupMotion.change(reducesMotion), value: isEnabled)
+            .contentShape(shape)
+            .onHover { isHovering = $0 }
+    }
+
+    private var fill: Color {
+        guard kind == .ghost else { return background }
+        guard isEnabled else { return .clear }
+        return configuration.isPressed ? Palette.buttonPressed : isHovering ? Palette.buttonHover : .clear
     }
 }
 
