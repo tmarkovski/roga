@@ -17,7 +17,22 @@ import SwiftUI
 /// It's a picture: nothing in it takes a click or shows a tooltip, and how
 /// long each agent has been at it stands still, though the working ring turns
 /// as it does in the sidebar.
+///
+/// Setup's Hooks screen lays the three worktrees out across instead, each in
+/// a glimpse of the sidebar of its own with what its mark means under it, so
+/// that the screen fits above setup's lane (decision 69).
 struct MarksPreview: View {
+    enum Layout {
+        /// The worktrees one over another under their repository, with what
+        /// each mark means beside it, as in Settings › Agents.
+        case column
+        /// The worktrees side by side, `acrossWidth` wide, each with what its
+        /// mark means under it.
+        case across
+    }
+
+    var layout = Layout.column
+
     /// A worktree in the picture, its agent, and what its mark means.
     struct Sample {
         var branch: String
@@ -77,8 +92,29 @@ struct MarksPreview: View {
     /// The sidebar's panel, a shade darker than the page it's on, as the
     /// window's sidebar is beside its panels.
     static let panelColor = Palette.gray(light: 0.937, dark: 0.137)
+    /// How wide the picture is across: wider than setup's column, so that
+    /// each worktree's line has room for Approval required: git push and how
+    /// long it's been waiting.
+    static let acrossWidth: CGFloat = 800
+    /// The room between the worktrees across.
+    static let acrossGap: CGFloat = 16
 
     var body: some View {
+        Group {
+            switch layout {
+            case .column: column
+            case .across: across
+            }
+        }
+        .environment(\.sidebarPictureDate, Self.date)
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .ignore)
+        // One picture to VoiceOver, since what's in it is made up.
+        .accessibilityLabel("Worktree status indicators. Ring: working. Amber circle: waiting for approval or a response. Blue dot: finished, unread.")
+        .accessibilityAddTraits(.isImage)
+    }
+
+    private var column: some View {
         VStack(alignment: .leading, spacing: 2) {
             line {
                 GroupLabel(title: "acme", isCollapsed: false, agents: nil) {}
@@ -101,17 +137,42 @@ struct MarksPreview: View {
             }
         }
         .background(alignment: .leading) {
-            panel
+            panel(width: Self.width)
         }
         .mask {
-            fade
+            fade(top: Self.fadeTop, bottom: Self.fadeBottom)
         }
-        .environment(\.sidebarPictureDate, Self.date)
-        .allowsHitTesting(false)
-        .accessibilityElement(children: .ignore)
-        // One picture to VoiceOver, since what's in it is made up.
-        .accessibilityLabel("Worktree status indicators. Ring: working. Amber circle: waiting for approval or a response. Blue dot: finished, unread.")
-        .accessibilityAddTraits(.isImage)
+    }
+
+    /// The three side by side, each a worktree's row on a piece of the
+    /// sidebar's panel that fades out above and below it, with what its mark
+    /// means centered under it.
+    private var across: some View {
+        let each = (Self.acrossWidth - 2 * Self.acrossGap) / 3
+        return HStack(alignment: .top, spacing: Self.acrossGap) {
+            ForEach(Self.samples, id: \.branch) { sample in
+                VStack(spacing: 8) {
+                    worktreeRow(sample, connected: false)
+                        .padding(.horizontal, Self.inset)
+                        .padding(.vertical, 10)
+                        .background { panel(width: each) }
+                        .mask { fade(top: 10, bottom: 10) }
+                    VStack(spacing: 4) {
+                        Text(sample.title)
+                            .fontWeight(.semibold)
+                        Text(sample.meaning)
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(SettingsColors.note)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .font(.system(size: 13))
+                    .padding(.horizontal, 6)
+                }
+                .frame(width: each)
+            }
+        }
+        .frame(width: Self.acrossWidth)
     }
 
     /// A row of the sidebar, as wide as the sidebar's rows are, with what its
@@ -153,18 +214,22 @@ struct MarksPreview: View {
         }
     }
 
-    /// A linked worktree's row, under its repository with a line to it.
-    private func worktreeRow(_ sample: Sample) -> some View {
-        SidebarRow(isSelected: sample.isSelected, agent: sample.summary, lineIndent: WorktreeConnector.textIndent, action: {}) {
+    /// A linked worktree's row, under its repository with a line to it, or
+    /// on its own when the picture is across.
+    private func worktreeRow(_ sample: Sample, connected: Bool = true) -> some View {
+        let indent = connected ? WorktreeConnector.textIndent : 0
+        return SidebarRow(isSelected: sample.isSelected, agent: sample.summary, lineIndent: indent, action: {}) {
             FadingText(sample.branch)
                 .font(.system(size: 13))
-                .padding(.leading, WorktreeConnector.textIndent)
+                .padding(.leading, indent)
         } trailing: {
             UncommittedCount(count: sample.files, hasConflicts: false)
         } commands: {
             EmptyView()
         }
-        .overlay { WorktreeConnector(isLast: sample.isLast) }
+        .overlay {
+            if connected { WorktreeConnector(isLast: sample.isLast) }
+        }
     }
 
     /// A line from the mark, whose middle is 16 points down its row, out to
@@ -191,26 +256,26 @@ struct MarksPreview: View {
 
     /// The sidebar's panel behind the rows, with a hairline down each side,
     /// where the sidebar meets the page around it.
-    private var panel: some View {
+    private func panel(width: CGFloat) -> some View {
         Rectangle()
             .fill(Self.panelColor)
             .overlay {
                 Rectangle()
                     .strokeBorder(Color.primary.opacity(0.07), lineWidth: 1)
             }
-            .frame(width: Self.width)
+            .frame(width: width)
     }
 
     /// Clear at the top and bottom and solid between, so that the rows and
     /// the panel fade out together. The edges of the panel's hairline at the
     /// top and bottom are where it's clear, so they never show.
-    private var fade: some View {
+    private func fade(top: CGFloat, bottom: CGFloat) -> some View {
         VStack(spacing: 0) {
             LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
-                .frame(height: Self.fadeTop)
+                .frame(height: top)
             Color.black
             LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
-                .frame(height: Self.fadeBottom)
+                .frame(height: bottom)
         }
     }
 }
@@ -219,5 +284,11 @@ struct MarksPreview: View {
     MarksPreview()
         .padding(30)
         .frame(width: 640)
+        .background(SettingsColors.surface)
+}
+
+#Preview("Marks across") {
+    MarksPreview(layout: .across)
+        .padding(30)
         .background(SettingsColors.surface)
 }

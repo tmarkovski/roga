@@ -408,7 +408,7 @@ struct SetupAgents: View {
 // MARK: Hooks
 
 /// Why hooks, what Install Hooks does, and how: a picture of the sidebar's
-/// marks, a sentence, and a card with each agent's status that ends in the
+/// marks, three across, a sentence, and a card with each agent's status that ends in the
 /// exact commands (decision 29). After Install, the commands give way to
 /// what happened in each agent.
 struct SetupHooks: View {
@@ -431,8 +431,10 @@ struct SetupHooks: View {
         let commandKinds = commandKinds(phase, usable: usable)
         VStack(spacing: SetupLayout.gap) {
             SetupHead(eyebrow: SetupModel.Step.hooks.subject, title: SetupWords.hooksHeading, sub: SetupWords.hooksSub)
-            MarksPreview()
-                .frame(maxWidth: .infinity)
+            // Across, and wider than the column, so that the screen fits
+            // above the lane with each worktree's line whole.
+            MarksPreview(layout: .across)
+                .frame(width: SetupLayout.column)
             if !commandKinds.isEmpty {
                 SetupSay(
                     button: "Install Hooks",
