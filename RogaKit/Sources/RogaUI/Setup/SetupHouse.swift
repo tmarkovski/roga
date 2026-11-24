@@ -29,11 +29,14 @@ nonisolated struct SetupHouseMoment: Equatable, Sendable {
 
 /// The house on its way from one spot to another. Between Welcome and the
 /// floor it leaps, changing size on the way. Along the floor it runs, and
-/// stops short enough to rock on its feet before it stands still.
+/// stops short enough to rock on its feet before it stands still. Over a step
+/// setup skipped, it hops, up over the lane's bypass and down on the other
+/// side.
 nonisolated struct SetupHouseTrip: Equatable, Sendable {
     enum Kind: Sendable {
         case leap
         case run
+        case hop
     }
 
     let kind: Kind
@@ -52,6 +55,8 @@ nonisolated struct SetupHouseTrip: Equatable, Sendable {
 
     /// How long a leap takes, whatever the distance.
     static let leapTime = 0.46
+    /// How high a hop goes over the lane, which clears the bypass.
+    static let hopHeight: CGFloat = 40
     /// About how long the run's cycle takes here, which is quicker than its
     /// own pace, for a house with somewhere to be.
     static let cadence = 0.27
@@ -71,7 +76,10 @@ nonisolated struct SetupHouseTrip: Equatable, Sendable {
     /// A trip to `to`, which is where the house is going as the window is
     /// now. It can move while the house is on its way, so `moment` asks for
     /// it again.
-    init(from: SetupHouseSpot, facing: Double = 1, to: SetupHouseSpot) {
+    ///
+    /// - Parameter hops: Whether the way along the floor goes over a step
+    ///   setup skipped, which the house hops over rather than runs past.
+    init(from: SetupHouseSpot, facing: Double = 1, to: SetupHouseSpot, hops: Bool = false) {
         self.from = from
         facingFrom = facing
         let distance = abs(to.foot.x - from.foot.x)
@@ -80,6 +88,12 @@ nonisolated struct SetupHouseTrip: Equatable, Sendable {
             goesBack = false
             drops = to.height < from.height
             travelTime = Self.leapTime
+            cycles = 0
+        } else if hops {
+            kind = .hop
+            goesBack = to.foot.x < from.foot.x
+            drops = false
+            travelTime = min(Self.leapTime + distance / 2400, 0.7)
             cycles = 0
         } else {
             kind = .run
@@ -127,6 +141,16 @@ nonisolated struct SetupHouseTrip: Equatable, Sendable {
                     y: Tween.mix(high.foot.y, low.foot.y, fallen * fallen)
                 ),
                 height: Tween.mix(high.height, low.height, Tween.smooth(fallen))
+            )
+        case .hop:
+            // Up and down again in an arch, moving along all the while.
+            let lift = Self.hopHeight * 4 * share * (1 - share)
+            return SetupHouseSpot(
+                foot: CGPoint(
+                    x: Tween.mix(from.foot.x, to.foot.x, Tween.smooth(share)),
+                    y: Tween.mix(from.foot.y, to.foot.y, share) - lift
+                ),
+                height: to.height
             )
         }
     }
@@ -176,6 +200,7 @@ nonisolated struct SetupHouseTrip: Equatable, Sendable {
         switch kind {
         case .run: 13
         case .leap: drops ? -10 : 4
+        case .hop: 9
         }
     }
 
@@ -224,6 +249,18 @@ struct SetupHouseTarget: Equatable {
 
     var place: Place
     var spot: SetupHouseSpot?
+    /// How far along the floor each step setup skipped is, from 0 to 1,
+    /// which the house hops over rather than runs past.
+    var skipped: [Double] = []
+
+    /// Whether the way from `old`'s place to this one goes over, from or to
+    /// a step skipped before or after, so that the house hops. Going back to
+    /// a skipped step hops too, off the bypass it came along.
+    func hops(from old: SetupHouseTarget) -> Bool {
+        guard case .floor(let start) = old.place, case .floor(let end) = place else { return false }
+        let range = min(start, end) - 0.0001 ... max(start, end) + 0.0001
+        return (old.skipped + skipped).contains { range.contains($0) }
+    }
 }
 
 /// The one house setup has. It's drawn over the screens rather than in one of
@@ -283,7 +320,7 @@ struct SetupHouseLayer: View {
                 let now = Date.now
                 let standing = SetupHouseMoment(spot: from, pose: .mark, facing: 1)
                 let current = trip.map { $0.moment(at: now.timeIntervalSince(tripStart), to: from) } ?? standing
-                trip = SetupHouseTrip(from: current.spot, facing: current.facing, to: to)
+                trip = SetupHouseTrip(from: current.spot, facing: current.facing, to: to, hops: new.hops(from: old))
                 tripStart = now
             }
             .onChange(of: isBusy) {

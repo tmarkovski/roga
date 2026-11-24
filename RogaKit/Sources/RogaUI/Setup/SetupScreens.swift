@@ -125,7 +125,7 @@ struct SetupLooking: View {
         let isDone = !gitProvider.isLooking && (gitProvider.git == nil || !agents.isLooking)
         VStack(spacing: SetupLayout.gap) {
             SetupHead(
-                eyebrow: "Your Mac",
+                eyebrow: SetupModel.Step.looking.subject,
                 title: isDone ? "Scan complete" : "Detecting installed tools",
                 sub: "Check your login shell's PATH and installed tool versions. This scan makes no changes."
             )
@@ -232,7 +232,7 @@ struct SetupGit: View {
 
     private var chosen: some View {
         VStack(spacing: SetupLayout.gap) {
-            SetupHead(eyebrow: "Git", title: heading, sub: SetupWords.gitSub)
+            SetupHead(eyebrow: SetupModel.Step.git.subject, title: heading, sub: SetupWords.gitSub)
             SetupCard {
                 ProgramRow(
                     icon: .branch,
@@ -269,7 +269,7 @@ struct SetupGit: View {
         let copies = gitProvider.survey?.copies ?? []
         let words = SetupWords.noGit(found: copies.count, developerToolsMissing: developerToolsMissing)
         return VStack(spacing: SetupLayout.gap) {
-            SetupHead(eyebrow: "Git", title: words.heading, sub: words.sub)
+            SetupHead(eyebrow: SetupModel.Step.git.subject, title: words.heading, sub: words.sub)
             if let say = words.say {
                 SetupSay(button: "Install Command Line Tools", words: say)
             }
@@ -335,7 +335,7 @@ struct SetupAgents: View {
 
     var body: some View {
         VStack(spacing: SetupLayout.gap) {
-            SetupHead(eyebrow: "Agents", title: heading, sub: sub)
+            SetupHead(eyebrow: SetupModel.Step.agents.subject, title: heading, sub: sub)
             SetupCard {
                 ForEach(AgentKind.allCases) { kind in
                     ProgramRow(
@@ -430,7 +430,7 @@ struct SetupHooks: View {
         )
         let commandKinds = commandKinds(phase, usable: usable)
         VStack(spacing: SetupLayout.gap) {
-            SetupHead(eyebrow: "Hooks", title: SetupWords.hooksHeading, sub: SetupWords.hooksSub)
+            SetupHead(eyebrow: SetupModel.Step.hooks.subject, title: SetupWords.hooksHeading, sub: SetupWords.hooksSub)
             MarksPreview()
                 .frame(maxWidth: .infinity)
             if !commandKinds.isEmpty {
@@ -477,7 +477,7 @@ struct SetupHooks: View {
             SetupActions(back: { setup.back(found: found) }, backIsDisabled: phase == .installing) {
                 switch phase {
                 case .pending(let kinds):
-                    Button("Not Now") { setup.next(found: found) }
+                    Button("Not Now") { setup.skipHooks() }
                         .buttonStyle(.setup(.secondary))
                     Button("Install Hooks") { install(kinds) }
                         .buttonStyle(.setup(.primary))
@@ -634,7 +634,7 @@ struct SetupReady: View {
     var body: some View {
         let usable = setup.usable(found: found)
         VStack(spacing: SetupLayout.gap) {
-            SetupHead(eyebrow: "Ready", title: "Setup complete", sub: "Review your configuration. You can change these preferences in Settings.")
+            SetupHead(eyebrow: SetupModel.Step.ready.subject, title: "Setup complete", sub: "Review your configuration. You can change these preferences in Settings.")
             section("Configuration") {
                 SetupCard {
                     ChosenRow(

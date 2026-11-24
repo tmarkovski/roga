@@ -30,10 +30,10 @@ uv run docs/design/setup-lane/boards.py --out <folder> --canvas <folder>/project
 
 It writes the `Sn-*.dc.html` boards into `<folder>/project/` and replaces the Setup lane page's boards and notes in that `canvas.json`, leaving every other page alone.
 
-## Still to decide
+## Built
 
-- **A or B.** The boards recommend A.
-- **Whether the lane takes Monokai's first lane color, as drawn, or follows the theme chosen in Settings**, as history's lanes do.
-- **What happens on a screen too tall for the floor.** Today the floor drops out and the screen scrolls. With the window at a fixed size (decision 69) that's rarer, but the Hooks screen with Codex inside the ChatGPT app still runs long.
+A was built on November 24, 2026, with a bypass for skipped steps, as [decision 69](../../decisions/0069-set-roga-up-in-the-whole-window-the-first-time-it-runs.md) now says, in [`SetupLane.swift`](../../../RogaKit/Sources/RogaUI/Setup/SetupLane.swift). Where the app differs from the boards:
 
-Nothing here is built.
+- **The lane is pinned along the bottom of the window,** under every screen after Welcome, and a screen too tall for the window scrolls above it and fades out where it meets it. The boards draw the lane where the floor was, which dropped out on a screen with no room for it, and with the dots gone that would have left the Hooks screen with nothing to say how far along setup is.
+- **The lane takes history's first lane color from the theme chosen in Settings,** as history does, rather than Monokai's always.
+- **A step answered No is skipped, not taken off the lane.** Don't Use Agents, and finding no agents, skip Add agents and Install hooks, and Not Now on Hooks skips Install hooks. A bypass goes around them and the house hops over them, as the Steps answered No boards draw it.

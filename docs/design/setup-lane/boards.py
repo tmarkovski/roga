@@ -218,23 +218,54 @@ def today_floor(at: int, steps: list[tuple[str, str, str]], height: int) -> str:
     return f'<div class="floor" style="top:{y}px"></div>' + house(x, y)
 
 
-def lane(at: int, steps: list[tuple[str, str, str]], height: int, *, option: str = "A", hover: int | None = None) -> str:
+ARC_RISE = 22                 # how far above the lane a bypass runs
+ARC_TURN = 40                 # how far along the lane a bypass takes to rise
+
+
+def bypass_path(xa: float, xb: float, y: float) -> str:
+    """A bypass from one commit to another, as history draws a branch: it
+    leaves the first commit sideways, rises to a lane of its own above, runs
+    along it, and comes down into the second."""
+    top = y - ARC_RISE
+    return (f"M{xa:.1f},{y} C{xa + ARC_TURN:.1f},{y} {xa + ARC_TURN:.1f},{top} {xa + 2 * ARC_TURN:.1f},{top} "
+            f"L{xb - 2 * ARC_TURN:.1f},{top} C{xb - ARC_TURN:.1f},{top} {xb - ARC_TURN:.1f},{y} {xb:.1f},{y}")
+
+
+def lane(at: int, steps: list[tuple[str, str, str]], height: int, *, option: str = "A", hover: int | None = None,
+         bypass: tuple[int, int] | None = None, leaping: bool = False) -> str:
     """The floor as a lane: a commit for each screen, the house standing on the
     one setup is at, which is HEAD. Done commits are solid, later ones hollow,
-    and the line past HEAD is faint."""
+    and the line past HEAD is faint. A step that was answered No is skipped: a
+    bypass runs above it from the commit before it to the next one taken, and
+    the skipped commits stay on a faint stretch of the lane, hollow."""
     count = len(steps)
     y = height - LANE_FROM_BOTTOM
     xs = [commit_x(i, count) for i in range(count)]
+    skipped = set(range(bypass[0] + 1, bypass[1])) if bypass else set()
     svg = [f'<svg class="lane" width="{WIN_W}" height="{height}" viewBox="0 0 {WIN_W} {height}">']
-    svg.append(f'<line x1="{xs[0]:.1f}" y1="{y}" x2="{xs[at]:.1f}" y2="{y}" stroke="var(--lane)" stroke-width="2" stroke-linecap="round"/>')
-    if at < count - 1:
-        svg.append(f'<line x1="{xs[at]:.1f}" y1="{y}" x2="{xs[-1]:.1f}" y2="{y}" stroke="var(--lane)" stroke-opacity=".3" stroke-width="2" stroke-dasharray="1 6" stroke-linecap="round"/>')
+
+    def segment(a: int, b: int, faint: bool) -> None:
+        if b <= a:
+            return
+        style = 'stroke-opacity=".3" stroke-dasharray="1 6"' if faint else ""
+        svg.append(f'<line x1="{xs[a]:.1f}" y1="{y}" x2="{xs[b]:.1f}" y2="{y}" stroke="var(--lane)" {style} stroke-width="2" stroke-linecap="round"/>')
+
+    if bypass:
+        a, b = bypass
+        segment(0, min(a, at), False)
+        segment(a, b, True)
+        svg.append(f'<path d="{bypass_path(xs[a], xs[b], y)}" fill="none" stroke="var(--lane)" stroke-width="2" stroke-linecap="round"/>')
+        segment(b, at, False)
+    else:
+        segment(0, at, False)
+    segment(at, count - 1, True)
     for i, x in enumerate(xs):
-        if i < at:
-            r = 5.5 if hover == i else 4
-            if hover == i:
-                svg.append(f'<circle cx="{x:.1f}" cy="{y}" r="11" fill="var(--hover)"/>')
-            svg.append(f'<circle cx="{x:.1f}" cy="{y}" r="{r}" fill="var(--lane)"/>')
+        if hover == i:
+            svg.append(f'<circle cx="{x:.1f}" cy="{y}" r="11" fill="var(--hover)"/>')
+        if i in skipped:
+            svg.append(f'<circle cx="{x:.1f}" cy="{y}" r="3.5" fill="var(--surface)" stroke="var(--lane)" stroke-opacity=".45" stroke-width="1.5"/>')
+        elif i < at:
+            svg.append(f'<circle cx="{x:.1f}" cy="{y}" r="{5.5 if hover == i else 4}" fill="var(--lane)"/>')
         elif i == at:
             svg.append(f'<circle cx="{x:.1f}" cy="{y}" r="8" fill="none" stroke="var(--head)" stroke-width="2"/>')
             svg.append(f'<circle cx="{x:.1f}" cy="{y}" r="4" fill="var(--lane)"/>')
@@ -245,7 +276,7 @@ def lane(at: int, steps: list[tuple[str, str, str]], height: int, *, option: str
     for i, (_, _, subject) in enumerate(steps):
         x = xs[i]
         if option == "A":
-            cls = "now" if i == at else "hov" if hover == i else "done" if i < at else ""
+            cls = "now" if i == at else "hov" if hover == i else "" if i in skipped else "done" if i < at else ""
             parts.append(f'<div class="subj {cls}" style="left:{x:.1f}px;top:{y + 14}px">{esc(subject)}</div>')
         elif i == at:
             parts.append(f'<div class="badge" style="left:{x:.1f}px;top:{y + 13}px">{esc(subject)}</div>')
@@ -256,7 +287,12 @@ def lane(at: int, steps: list[tuple[str, str, str]], height: int, *, option: str
             f'<svg class="ptr" style="left:{x + 3:.1f}px;top:{y - 1}px" viewBox="0 0 14 20"><path d="M1 1v15l4-4 3 7 3-1-3-7h5z" '
             'fill="#000" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/></svg>'
         )
-    parts.append(house(xs[at], y))
+    if leaping and bypass:
+        # Halfway through the leap: over the skipped commits, above the bypass.
+        mid = (xs[bypass[0] + 1] + xs[bypass[1]]) / 2
+        parts.append(house(mid, y - ARC_RISE - 18))
+    else:
+        parts.append(house(xs[at], y))
     return "".join(parts)
 
 
@@ -298,8 +334,6 @@ def board_steps() -> Board:
     names = ["Look around", "Choose git", "Add agents", "Install hooks", "Open Roga"]
     for at in range(1, len(STEPS)):
         rows.append([(f"On {esc(STEPS[at][1])} <i>· HEAD is {esc(names[at - 1])}</i>", strip(lane(at, STEPS, STRIP_H)), WIN_W, STRIP_H)])
-    no_agents = [s for s in STEPS if s[0] != "hooks"]
-    rows.append([("Ready, without agents <i>· Hooks drops out, so its commit does too</i>", strip(lane(len(no_agents) - 1, no_agents, STRIP_H)), WIN_W, STRIP_H)])
     return rows_board("Sn-Steps.dc.html", "A at every step", rows)
 
 
@@ -309,28 +343,46 @@ def board_hover() -> Board:
     ])
 
 
+AGENTS, HOOKS, READY = 3, 4, 5
+
+
+def board_skips() -> Board:
+    return rows_board("Sn-Skips.dc.html", "Steps answered No", [
+        [("Don't Use Agents, or no agents found <i>· the house skips Add agents and Install hooks</i>",
+          strip(lane(READY, STEPS, STRIP_H, bypass=(GIT, READY))), WIN_W, STRIP_H)],
+        [("Not Now on Hooks <i>· the house skips Install hooks</i>",
+          strip(lane(READY, STEPS, STRIP_H, bypass=(AGENTS, READY))), WIN_W, STRIP_H)],
+        [("The moment after Don't Use Agents <i>· the house leaps from Add agents over the bypass</i>",
+          strip(lane(READY, STEPS, STRIP_H, bypass=(GIT, READY), leaping=True)), WIN_W, STRIP_H)],
+        [("The pointer on a skipped commit <i>· a click goes back to Add agents, and the bypass goes</i>",
+          strip(lane(READY, STEPS, STRIP_H, bypass=(GIT, READY), hover=AGENTS)), WIN_W, STRIP_H)],
+    ])
+
+
 def board_dark() -> Board:
     draw = window(git_screen("Choose git") + lane(GIT, STEPS, WIN_H, option="A"))
     return board("Sn-Dark.dc.html", "A in the dark", [("A <i>· the lane in Monokai's dark pink, HEAD's ring in its green</i>", draw, WIN_W, WIN_H)], theme="th-d")
 
 
 def all_boards() -> list[list[Board]]:
-    return [[board_today()], [board_options()], [board_steps(), board_hover()], [board_dark()]]
+    return [[board_today()], [board_options()], [board_steps(), board_hover()], [board_skips()], [board_dark()]]
 
 
-TITLES = ["Setup's floor today", "The floor as a lane", "A at every step", "A in the dark"]
+TITLES = ["Setup's floor today", "The floor as a lane", "A at every step", "Steps answered No", "A in the dark"]
 
 INTROS = [
     "Dots at the top of the window say how far along setup is, and the house runs along a hairline floor at the bottom. The two say the same thing twice, far apart, and neither says what the steps are.",
     "The floor becomes one lane of a commit graph, in history's style: a commit for each screen, from Welcome's Initial commit to Ready's Open Roga, with the house standing on the commit setup is at, which is HEAD. The screen's small title above its heading is the commit's subject, so the words already exist and stay in step with the screens. The dots at the top go. Done commits are solid, HEAD has history's green ring, and later commits are hollow, past a faint line. A click on a done commit goes back to it, as Back does.",
-    "A on each screen, and with no agents, when Hooks drops out of setup and its commit goes from the lane. The lane sits 14 points higher than today's floor, to leave room for the subjects under it.",
+    "A on each screen. The lane sits 14 points higher than today's floor, to leave room for the subjects under it, and it always has all six commits, so nothing moves along it when a step is answered.",
+    "A step answered No is skipped rather than taken off the lane, the way a branch goes around commits in history: a bypass leaves the commit before it, runs on a lane of its own above, and comes down into the next commit setup takes. The skipped commits stay where they were, hollow on a faint stretch of the lane, so the six commits never move and the house's run never changes length. Don't Use Agents, and finding no agents, skip Add agents and Install hooks. Not Now on Hooks skips Install hooks. Either way the house leaps over what it skips, with the bypass drawing in under it, and fades there with Reduce Motion.",
     "The same window in the dark appearance. The lane takes Monokai's dark-mode pink and HEAD's ring its green, as history's first lane and the current branch do.",
 ]
 
 NOTES = {
     "Sn-Today.dc.html": "On main, on the Git screen, the second of five dots. Welcome isn't on the floor, so the house's run starts at Looking.",
     "Sn-Options.dc.html": "I'd build A. It says what's coming and what's done in words, at a glance, and it's the only place setup lists its steps. B is quieter and looks more like history, where only branches get names, but a row of bare dots says no more than today's dots at the top. In both, each commit is a button that VoiceOver reads by its subject, and the house runs back along the lane, or fades there with Reduce Motion.",
-    "Sn-Steps.dc.html": "Initial commit is done from the start, since Welcome comes before the floor: the house leaps down onto Look around, and a click on Initial commit sends it back up to Welcome. Install hooks is there only while agents are in use, so answering Don't Use Agents takes it off the lane, and the house's run to Open Roga gets longer.",
+    "Sn-Steps.dc.html": "Initial commit is done from the start, since Welcome comes before the floor: the house leaps down onto Look around, and a click on Initial commit sends it back up to Welcome.",
+    "Sn-Skips.dc.html": "A skipped commit was still a screen someone saw, so it's a button like any commit that's done, and its tooltip says where it goes. Going back to it takes the bypass away, so the answer can change. VoiceOver reads it as Add agents, skipped. It's not quite git, where a line that joins two commits has commits of its own, but a bypass reads at once, and the house jumping over the steps it skipped is the point.",
     "Sn-Hover.dc.html": "A done commit under the pointer grows and gets the fill a button has under the pointer, its subject is underlined, and its tooltip says where it goes. HEAD and the commits after it aren't buttons, so nothing jumps ahead of a step that hasn't been answered.",
     "Sn-Dark.dc.html": "The subjects use the screens' note gray for what's done, ink for HEAD, and the faintest gray for what's to come.",
 }

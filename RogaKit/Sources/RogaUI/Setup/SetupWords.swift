@@ -194,7 +194,7 @@ enum SetupWords {
                 ? "\(count.copies) \(count.copies == 1 ? "copy" : "copies") of \(count.kind.name)"
                 : "\(count.copies) of \(count.kind.name)"
         }
-        return "Found \(and(words)). \(counts.count > 1 ? "Each menu lists them all" : "The menu lists them all")."
+        return "Found \(and(words)). \(counts.count > 1 ? "The button on each row lists them all" : "The button on its row lists them all")."
     }
 
     // MARK: Hooks
