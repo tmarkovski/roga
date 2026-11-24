@@ -60,6 +60,33 @@ struct RepositoryListIdentityTests {
         _ = list
     }
 
+    @Test func changesTheGlobalIdentityAndReadsEveryRepositoryAgain() async throws {
+        let globalFile = folder + "/gitconfig"
+        try "[user]\n\tname = Sam Rivera\n\temail = sam@rivera.dev\n".write(toFile: globalFile, atomically: true, encoding: .utf8)
+        var environment = TestGit.isolatedEnvironment
+        environment["GIT_CONFIG_GLOBAL"] = globalFile
+        let git = Git(installation: try await TestGit.installation(), environment: environment)
+        let repository = try await copyRepository(try await Fixture.repository("basic"), into: folder)
+        let list = RepositoryList(store: store)
+        await list.connect(git: git)
+        _ = try await list.add(folder: repository)
+        let listed = try #require(list.repositories.first)
+        #expect(await AgentTestSupport.eventually(within: .seconds(20)) { listed.identity != nil && list.defaultIdentity != nil })
+        #expect(list.identityExceptions.isEmpty)
+
+        try await list.changeGlobalIdentity([.set(.email, "sam@new.example", in: .everyRepository)])
+        #expect(list.defaultIdentity?.shownEmail == "sam@new.example")
+        #expect(listed.identity?.shownEmail == "sam@new.example")
+        #expect(try String(contentsOfFile: globalFile, encoding: .utf8).contains("sam@new.example"))
+        #expect(list.identityExceptions.isEmpty)
+
+        // A repository that sets its own is an exception until Use Global.
+        try await list.changeIdentity([.set(.email, "sam@oss.example", in: .repository)], of: listed)
+        #expect(list.identityExceptions.map(\.repository.path) == [listed.path])
+        try await list.changeIdentity([.unset(.email, in: .repository)], of: listed)
+        #expect(list.identityExceptions.isEmpty)
+    }
+
     @Test func saysWhatGitRefused() async throws {
         let (list, listed, _) = try await listed()
         #expect(await AgentTestSupport.eventually(within: .seconds(20)) { listed.identity != nil })

@@ -66,10 +66,12 @@ public final class RepositoryList {
 
     /// A list of repositories that it neither opens nor reads from a file, for
     /// checking what depends on which worktrees are listed. What it saves goes
-    /// to a temporary file.
-    init(listing repositories: [ListedRepository]) {
+    /// to a temporary file. `defaultIdentity` stands for the global identity
+    /// that a connected list would read.
+    init(listing repositories: [ListedRepository], defaultIdentity: CommitIdentity? = nil) {
         store = RepositoryStore(file: FileManager.default.temporaryDirectory.appending(path: "roga-list-\(UUID().uuidString).json"))
         self.repositories = repositories
+        self.defaultIdentity = defaultIdentity
     }
 
     var isConnected: Bool { git != nil }
@@ -569,6 +571,36 @@ public final class RepositoryList {
             await readIdentity(of: repository, session: session)
         }
         if let failure { throw failure }
+    }
+
+    /// Changes the global identity, as Settings › Git does, then reads every
+    /// repository's identity again.
+    ///
+    /// - Throws: `GitError` when git refuses, which says why. What git wrote
+    ///   before that is read anyway.
+    func changeGlobalIdentity(_ changes: [CommitIdentityCommands.Change]) async throws {
+        guard let git else { throw RepositoryListError.gitNotFound }
+        let failure: (any Error)?
+        do {
+            try await CommitIdentityCommands.writeGlobal(changes, git: git)
+            failure = nil
+        } catch {
+            failure = error
+        }
+        await readIdentitiesAgain()
+        if let failure { throw failure }
+    }
+
+    /// The repositories whose commits go out as someone other than the global
+    /// identity, or whose commits would go wrong, for Settings › Git. A bare
+    /// repository commits nothing, so it isn't one.
+    var identityExceptions: [(repository: ListedRepository, exception: IdentityException)] {
+        repositories.compactMap { repository in
+            guard repository.worktrees.first?.isBare != true,
+                  let exception = IdentityException(repository.identity, defaultIdentity: defaultIdentity)
+            else { return nil }
+            return (repository, exception)
+        }
     }
 
     // MARK: Changes on disk

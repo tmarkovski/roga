@@ -76,6 +76,24 @@ struct IdentityWords {
         }
     }
 
+    /// What a repository's second line in the sidebar says when a commit
+    /// would go wrong.
+    static func rowWords(_ problem: CommitIdentity.Problem) -> String {
+        switch problem {
+        case .noEmail: "No email for commits"
+        case .noSigningKey: "Signing needs a key"
+        }
+    }
+
+    /// What VoiceOver reads on a repository's row, when the row says
+    /// anything about who its commits go out as.
+    static func spoken(_ exception: IdentityException) -> String {
+        switch exception {
+        case .problem(let problem): rowWords(problem)
+        case .someoneElse(let identity): "Commits as \(identity.shownEmail ?? identity.shownName ?? "someone else")"
+        }
+    }
+
     /// What the box says at its top when a commit would go wrong.
     static func problem(_ problem: CommitIdentity.Problem) -> (title: String, detail: String) {
         switch problem {

@@ -95,8 +95,8 @@ struct CommitBox: View {
     // MARK: The top of the box
 
     /// What the top of the box says about who the commit goes out as.
-    private var identity: CommitBoxIdentity? {
-        CommitBoxIdentity(repository?.identity, defaultIdentity: list?.defaultIdentity)
+    private var identity: IdentityException? {
+        IdentityException(repository?.identity, defaultIdentity: list?.defaultIdentity)
     }
 
     /// Whether anything shows above the text.

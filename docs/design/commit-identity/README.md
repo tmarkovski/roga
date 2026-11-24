@@ -18,11 +18,11 @@ Every option warns the same way, at the top of the box where decision 98 puts wh
 
 [Decision 103](../../decisions/0103-show-who-commits-go-out-as-from-git-config.md) took A in the branch row, and B's line in the box only while the identity isn't the global one, which is C's rule. An unsigned identity gets no mark on the initials, and the box's line says Not signed. At the box's default 320 points, the line drops the words Signed and Not signed before it cuts the email, which the boards don't draw. `shield` and `shield-off` are in `docs/design/icons/lucide` now, and the boards still draw them by hand.
 
+The sidebar uses A's initials for the exceptions, without the shield, and Settings › Git has the Identity section and the list of repositories that commit as someone else, as the Settings board draws them.
+
 ## Still to decide
 
-- **How the sidebar marks the exceptions:** A's initials, B's domain, or C's email on an organization's label.
 - **How history marks a signed commit,** and how the commit panel says what checking the signature found, as the History board draws.
-- **The Identity section of Settings › Git,** with the list of repositories that commit as someone else.
 
 ## Regenerating the boards
 

@@ -1,6 +1,6 @@
 # 103. Show who commits go out as, from git config
 
-Accepted on 2026-11-24. This puts the commit identity in the branch row from [decision 95](0095-a-repositorys-worktrees-as-tabs.md) and at the top of the message box from [decision 98](0098-buttons-in-a-row-under-the-message.md), and adds a popover that changes it with `git config` and shows the command, as [decision 29](0029-dialogs-that-say-what-happens-and-show-the-command.md) asks of dialogs. It reads the identity with the sidebar's look from [decision 99](0099-bring-a-sidebar-rows-details-in-as-they-load.md). Issue [115](https://github.com/tmarkovski/roga/issues/115) describes the whole feature, and this record covers the part that's built.
+Accepted on 2026-11-24. This puts the commit identity in the branch row from [decision 95](0095-a-repositorys-worktrees-as-tabs.md) and at the top of the message box from [decision 98](0098-buttons-in-a-row-under-the-message.md), and adds a popover that changes it with `git config` and shows the command, as [decision 29](0029-dialogs-that-say-what-happens-and-show-the-command.md) asks of dialogs. It marks the repositories that commit as someone else in the sidebar, beside the count from [decision 58](0058-the-mark-under-the-menus-button-and-the-count-before-it.md) and on the second line from [decision 48](0048-a-second-line-under-a-sidebar-row-while-theres-something-to-say.md), and adds the global identity to Settings › Git. It reads the identity with the sidebar's look from [decision 99](0099-bring-a-sidebar-rows-details-in-as-they-load.md). Issue [115](https://github.com/tmarkovski/roga/issues/115) describes the whole feature.
 
 ## Context
 
@@ -15,6 +15,8 @@ The Commit identity page of the design canvas drew the branch row and the messag
 - **C** shows nothing while the identity is the global one and nothing is wrong.
 
 We chose A in the branch row, and B's line in the box only while the identity isn't the global one, which is C's rule.
+
+For the sidebar, the page drew three ways to mark a repository that commits as someone else: A's initials at the right of the row, B's email domain after the name, and C's email on an organization's label when every repository under it shares one. We chose A's initials, so that the same mark means the same thing in the branch row and the sidebar.
 
 ## Decision
 
@@ -46,6 +48,16 @@ It takes about 10 milliseconds, nearly all of it starting git, so nothing is cac
 - **The block along its bottom** shows exactly what Save runs, one command per changed setting.
 - **When saving to every repository wouldn't change this one,** because the repository, its worktree or a file included for it sets the value, the popover says so above its buttons. Save still works, since it changes the other repositories.
 
+**The sidebar marks only the exceptions.** Most repositories commit as the global identity, so a name or an email on every row would repeat one thing and crowd the counts and the agents' marks.
+
+- **Someone else:** a repository whose name or email differs from the global identity has its initials in an 18-point circle, in the email's tint, just before its count. The tooltip is the branch row's. The circle has no shield, since a selected or hovered row's fill would show around the shield's circle, and the branch row says how commits are signed.
+- **A commit that would go wrong:** the row gets a second line in amber, after a triangle: `No email for commits` or `Signing needs a key`. It comes after everything else a second line says, an agent that waits, stopped work or an agent at work, since it stays until the config is fixed.
+- **A bare repository** gets neither, since nothing is committed in it. VoiceOver reads the row's identity, as in `Commits as sam@oss.example`.
+
+**Settings › Git has the global identity.** An Identity section follows Installation, with Name, Email and Sign commits, and the format and the key while signing is on, as the popover has them. Each row says its key and where its value comes from, as in `user.email · from ~/.gitconfig`. A change runs `git config --global` at once: a field's when Return is pressed or the field is left, and the switch's or the format's as it changes, and an emptied field is unset. Every repository's identity is read again after it.
+
+Under it, **Repositories that commit as someone else** lists each repository whose identity is an exception, with its email and where that comes from. Repositories that a file outside them gives the same identity, such as every repository in `~/work/`, share a row, since they change together. A repository's own name or email has Use Global, which runs `git config --local --unset`, and a repository whose commits would go wrong has Set…, which opens the identity popover. With no exceptions, it says that every repository in the sidebar commits as the global identity.
+
 ## Consequences
 
 - Who an agent's commits and yours go out as is in view before either of you commits, and a repository with an exception says so in the box, where a commit is about to happen.
@@ -53,7 +65,8 @@ It takes about 10 milliseconds, nearly all of it starting git, so nothing is cac
 - Roga doesn't write `includeIf` rules. Giving a folder of repositories an identity still means editing `~/.gitconfig`.
 - Roga reads the identity in the git directory, which git treats as the main worktree. A linked worktree's own `config.worktree`, with `extensions.worktreeConfig`, and `includeIf "onbranch:"` for a linked worktree's branch aren't read for that worktree. The popover shows a worktree's own value as such but doesn't change it.
 - A file that starts to count only after its include changes, such as one created where an existing `includeIf` points, is read again only once something Roga watches changes.
-- Not built yet, and still in issue 115: the sidebar's mark for a repository that commits as someone else, the Identity section of Settings › Git, and history's mark for signed commits, with the check of the selected commit's signature.
+- A sidebar row with initials gives its name 24 fewer points before it fades, and the initials don't line up in a column, since they sit just before a count that comes and goes.
+- Settings writes the global config with no Save, as its other settings change at once. A field that's left half typed is written as it stands.
 
 ## Alternatives considered
 
@@ -62,3 +75,5 @@ It takes about 10 milliseconds, nearly all of it starting git, so nothing is cac
 - **A in the box too, before Commit.** At the box's default 320 points it costs Generate the agent's name, which is the first thing decision 98's row gives up when it's short of room.
 - **Telling someone else apart by where the values came from.** An identity kept in a file that `~/.gitconfig` includes for every repository would then look like an exception in every repository.
 - **Profiles that Roga keeps.** They'd be state that can disagree with git, for what `includeIf` already does.
+- **The email's domain after a sidebar row's name.** It reads without a hover, but it takes the place of the branch, which the row already cuts short in a narrow sidebar.
+- **The email on an organization's label.** It says it once for a whole folder of work repositories, but only when every repository under the label shares it, and the sidebar can list repositories without groups.

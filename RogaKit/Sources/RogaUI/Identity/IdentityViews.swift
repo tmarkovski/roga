@@ -9,23 +9,28 @@ import SwiftUI
 /// with no email is gray.
 struct IdentityBadge: View {
     let identity: CommitIdentity
+    /// How wide the circle is: 22 points in the branch row, and 18 in the
+    /// sidebar, where it sits beside a count.
+    var size: CGFloat = 22
+    /// Whether it has the shield or the triangle. The sidebar's doesn't,
+    /// since a selected or hovered row's fill would show around the mark's
+    /// circle, and the second line already says what would go wrong.
+    var showsMark = true
     /// What's behind the badge, which the mark's circle cuts out of it.
     var background = Palette.surface
-
-    static let size: CGFloat = 22
 
     var body: some View {
         let tint = IdentityTint.color(for: identity)
         Text(identity.initials)
-            .font(.system(size: 9.5, weight: .semibold))
+            .font(.system(size: size * 9.5 / 22, weight: .semibold))
             .kerning(0.2)
             .foregroundStyle(tint.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.secondary))
-            .frame(width: Self.size, height: Self.size)
+            .frame(width: size, height: size)
             .background {
                 Circle().fill(tint.map { $0.opacity(0.16) } ?? DialogColors.card)
             }
             .overlay(alignment: .bottomTrailing) {
-                if let mark {
+                if showsMark, let mark {
                     mark.icon.image
                         .font(.system(size: 9 / 1.128, weight: .bold))
                         .foregroundStyle(mark.color)
@@ -73,15 +78,16 @@ struct IdentityButton: View {
     }
 }
 
-/// What the top of the message box says about who the commit goes out as
-/// (decision 103): what would go wrong, or the name and the email while
-/// they're someone other than the global identity. With the global identity
-/// and nothing wrong, it says nothing, since the branch row's initials do.
-enum CommitBoxIdentity: Equatable {
+/// What's worth saying about who a repository's commits go out as
+/// (decision 103): what would go wrong, or that it's someone other than the
+/// global identity. The top of the message box says it, and so does the
+/// repository's row in the sidebar. With the global identity and nothing
+/// wrong, neither says anything, since the branch row's initials do.
+enum IdentityException: Equatable {
     case problem(CommitIdentity.Problem)
     case someoneElse(CommitIdentity)
 
-    /// What the box says, or nil when it says nothing.
+    /// What there is to say, or nil when there's nothing.
     init?(_ identity: CommitIdentity?, defaultIdentity: CommitIdentity?) {
         guard let identity else { return nil }
         if let problem = identity.problem {
@@ -92,6 +98,14 @@ enum CommitBoxIdentity: Equatable {
         // differs from it.
         guard let defaultIdentity, !identity.commitsAsSame(as: defaultIdentity) else { return nil }
         self = .someoneElse(identity)
+    }
+
+    var problem: CommitIdentity.Problem? {
+        if case .problem(let problem) = self { problem } else { nil }
+    }
+
+    var someoneElse: CommitIdentity? {
+        if case .someoneElse(let identity) = self { identity } else { nil }
     }
 }
 

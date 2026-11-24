@@ -1,3 +1,4 @@
+import AgentHooks
 import Foundation
 import GitCore
 import RepositoryEngine
@@ -69,22 +70,22 @@ struct IdentityTests {
     // MARK: The message box
 
     @Test func theBoxSaysNothingForTheGlobalIdentity() {
-        #expect(CommitBoxIdentity(identity(), defaultIdentity: identity()) == nil)
+        #expect(IdentityException(identity(), defaultIdentity: identity()) == nil)
         // Signing doesn't make it someone else.
-        #expect(CommitBoxIdentity(identity(signs: true), defaultIdentity: identity()) == nil)
+        #expect(IdentityException(identity(signs: true), defaultIdentity: identity()) == nil)
         // Nor does anything, before the global identity is read.
-        #expect(CommitBoxIdentity(identity(email: "sam@acme.com"), defaultIdentity: nil) == nil)
-        #expect(CommitBoxIdentity(nil, defaultIdentity: identity()) == nil)
+        #expect(IdentityException(identity(email: "sam@acme.com"), defaultIdentity: nil) == nil)
+        #expect(IdentityException(nil, defaultIdentity: identity()) == nil)
     }
 
     @Test func theBoxSaysWhoWhenItsSomeoneElse() {
         let work = identity(email: "sam.rivera@acme.com", emailFrom: included)
-        #expect(CommitBoxIdentity(work, defaultIdentity: identity()) == .someoneElse(work))
+        #expect(IdentityException(work, defaultIdentity: identity()) == .someoneElse(work))
     }
 
     @Test func theBoxWarnsFirst() {
-        #expect(CommitBoxIdentity(identity(email: nil), defaultIdentity: identity()) == .problem(.noEmail))
-        #expect(CommitBoxIdentity(identity(signs: true, format: "ssh"), defaultIdentity: nil) == .problem(.noSigningKey))
+        #expect(IdentityException(identity(email: nil), defaultIdentity: identity()) == .problem(.noEmail))
+        #expect(IdentityException(identity(signs: true, format: "ssh"), defaultIdentity: nil) == .problem(.noSigningKey))
     }
 
     // MARK: The popover
@@ -161,5 +162,49 @@ struct IdentityTests {
         work.place = .everyRepository
         work.email = "sam@acme.com"
         #expect(work.shadowNote == "~/.gitconfig-work sets the email for this repository, so saving it for every repository won't change it here.")
+    }
+
+    // MARK: The sidebar and Settings
+
+    @Test func theSidebarsSecondLineSaysWhatsWrongLast() throws {
+        let working = AgentSummary(state: .working, since: .now, hosts: [.claude], sessions: 1)
+        let waiting = AgentSummary(state: .waiting(.permission), since: .now, hosts: [.claude], sessions: 1)
+        let conflicts = try #require(UnfinishedWork(work: nil, conflicts: 2))
+        #expect(RowLine(agent: nil, unfinished: nil, identity: .noEmail) == .identity(.noEmail))
+        #expect(RowLine(agent: working, unfinished: nil, identity: .noEmail) == .agent(working))
+        #expect(RowLine(agent: nil, unfinished: conflicts, identity: .noEmail) == .unfinished(conflicts))
+        #expect(RowLine(agent: waiting, unfinished: conflicts, identity: .noSigningKey) == .agent(waiting))
+        #expect(RowLine(agent: nil, unfinished: nil) == nil)
+    }
+
+    @Test func settingsListsRepositoriesThatAFileGivesOneIdentityTogether() {
+        let work = identity(email: "sam.rivera@acme.com", emailFrom: included)
+        let own = identity(email: "sam@oss.example", emailFrom: local)
+        let api = ListedRepository(path: "/git/api/.git", identity: work)
+        let billing = ListedRepository(path: "/git/billing/.git", identity: work)
+        let tools = ListedRepository(path: "/git/tools/.git", identity: own)
+        let legacy = ListedRepository(path: "/git/legacy/.git", identity: identity(email: nil))
+        let roga = ListedRepository(path: "/git/roga/.git", identity: identity())
+        let list = RepositoryList(listing: [api, tools, billing, legacy, roga], defaultIdentity: identity())
+
+        let rows = IdentityExceptionRow.rows(list.identityExceptions)
+        #expect(rows.map(\.names) == ["api and billing", "tools", "legacy"])
+        #expect(rows.map(\.canUseGlobal) == [false, true, false])
+        #expect(rows[2].exception == .problem(.noEmail))
+    }
+
+    @Test func aBareRepositoryIsntAnException() {
+        let bare = ListedRepository(
+            path: "/git/mirror.git",
+            worktrees: [Worktree(path: "/git/mirror.git", head: nil, branch: nil, isBare: true)],
+            identity: identity(email: nil)
+        )
+        let list = RepositoryList(listing: [bare], defaultIdentity: identity())
+        #expect(list.identityExceptions.isEmpty)
+    }
+
+    @Test func saysWhoARowCommitsAs() {
+        #expect(IdentityWords.spoken(.someoneElse(identity(email: "sam@oss.example"))) == "Commits as sam@oss.example")
+        #expect(IdentityWords.spoken(.problem(.noEmail)) == "No email for commits")
     }
 }

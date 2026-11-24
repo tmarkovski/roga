@@ -82,6 +82,14 @@ public enum CommitIdentityCommands {
         try await read(git: git, in: "/")
     }
 
+    /// Writes changes to the user's global config, outside any repository,
+    /// as Settings does. Each change's place should be `.everyRepository`.
+    ///
+    /// - Throws: `GitError` when git refuses, which says why.
+    public static func writeGlobal(_ changes: [Change], git: Git) async throws {
+        try await write(changes, git: git, directory: "/")
+    }
+
     /// Writes each change, in order, stopping at the first one git refuses.
     /// A change that unsets what isn't set does nothing, rather than failing.
     ///
