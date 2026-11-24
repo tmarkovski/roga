@@ -136,7 +136,7 @@ struct HistoryActionsTests {
         #expect(!conflict.startedByPull)
         let dialog = try message(work)
         #expect(dialog.title == "The merge stopped on a conflict")
-        #expect(dialog.buttons.map(\.title) == ["Undo the merge", "Resolve"])
+        #expect(dialog.buttons.map(\.title) == ["Undo Merge", "Resolve"])
 
         work.branch.undoConflict()
         await settled(work)

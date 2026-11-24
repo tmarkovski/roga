@@ -41,7 +41,7 @@ import Testing
         let lines: [TerminalLine] = [
             .ran(["pull", "--rebase"]),
             .gap,
-            .comment("Undo the pull runs"),
+            .comment("Undo Pull runs"),
             .command(["rebase", "--abort"]),
         ]
         #expect(CommandBlock.copied(lines) == "git rebase --abort")
