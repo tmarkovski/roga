@@ -25,7 +25,7 @@ We chose A+S.
 
 - An agent at work is in gray, as in `Run the test suite · 6 min`, and one that hasn't said anything yet is named, as in `Claude Code is working`.
 - An agent that waits for you is in amber, as in `Approval required: git push · 2 min` and `Wants a plan approved · 4 min`.
-- Several sessions in the worktree read `2 agents working · 6 min`. When others are doing something else, the line names the agent it's about, as the worktree menu does, as in `Codex: approval required: git push · 1 min`.
+- Several sessions in the worktree read `2 agents working · 6 min`. When others are doing something else, the line names the agent it's about, as the worktree menu does, as in `Codex needs approval: git push · 1 min`.
 - How long shows from a minute on, and never for an agent that finished.
 - A finished agent shows the first line of its reply in gray, after a gray check in a circle rather than the blue dot, because the worktree on screen counts as seen at once and its tab never shows the dot. It stays until the agent starts another turn or its session ends. A turn that ended with `StopFailure` reads `Claude Code stopped with an error`, after a red cross in a circle, since `StopFailure` leaves no line.
 - With no session, an idle one, or **Use agents** off ([decision 89](0089-one-switch-for-agents.md)), there's nothing, and the row is as it was.

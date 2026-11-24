@@ -27,9 +27,9 @@ The design canvas's Second line page drew four ways to show it, with the same ma
 
 A waiting agent goes before a rebase that stopped because the rebase will still be there afterward, and the count in red with its triangle still says there are conflicts.
 
-**An agent's line starts with its mark,** 5 points before its words, and that mark is no longer before the count. Since the mark already says an agent is speaking, one session's line is its own words without its name: `Run the test suite · 6 min`, `Needs your OK: git push · 2 min`, `Wants a plan approved · 2 min`, or the first line of a finished agent's reply. Decision 47 named the agent in the worktree menu so that a bare "git push" couldn't read as something Roga is doing. Here the mark does that.
+**An agent's line starts with its mark,** 5 points before its words, and that mark is no longer before the count. Since the mark already says an agent is speaking, one session's line is its own words without its name: `Run the test suite · 6 min`, `Approval required: git push · 2 min`, `Wants a plan approved · 2 min`, or the first line of a finished agent's reply. Decision 47 named the agent in the worktree menu so that a bare "git push" couldn't read as something Roga is doing. Here the mark does that.
 
-- Before an agent has said anything, or when several sessions share a worktree, the line names them: `Claude Code is working`, `Codex needs your OK`, `2 agents working · 6 min`, `2 agents are waiting for you` or `3 agents finished`.
+- Before an agent has said anything, or when several sessions share a worktree, the line names them: `Claude Code is working`, `Codex needs approval`, `2 agents working · 6 min`, `2 agents are waiting for you` or `3 agents finished`.
 - It's amber while the agent waits, and gray otherwise. How long shows from a minute on, as in the tooltip, and never for an agent that finished. The words are cut short at their end, and how long stays whole.
 - The line's tooltip is the mark's, which names the agent and has the whole line.
 - While the line is about stopped work, an agent at work or one that finished keeps its mark before the count, as before.

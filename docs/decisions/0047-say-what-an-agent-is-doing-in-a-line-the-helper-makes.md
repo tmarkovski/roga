@@ -45,7 +45,7 @@ Claude's description of a command, a subagent's description and the reply's firs
 | | Tooltip | Worktree menu |
 | --- | --- | --- |
 | Working | Claude Code is working: Run the test suite, for 6 minutes | Claude Code: Run the test suite · 6 min |
-| Waiting to be allowed | Codex is waiting for you to allow: git push, for 2 minutes | Codex needs your OK: git push · 2 min |
+| Waiting to be allowed | Codex is waiting for you to allow: git push, for 2 minutes | Codex needs approval: git push · 2 min |
 | Waiting for an answer | Claude Code is waiting for you: Wants a plan approved, for 2 minutes | Claude Code: Wants a plan approved · 2 min |
 | Finished | Claude Code finished: Added the activity line to the tooltip | Claude Code finished |
 

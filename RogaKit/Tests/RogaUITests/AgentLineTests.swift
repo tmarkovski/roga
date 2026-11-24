@@ -60,7 +60,7 @@ struct AgentLineTests {
             agent("b", .waiting(.permission), host: .codex, at: 120, "git push"),
             agent("c", .finished(failed: false), "Added the tooltip"),
         ]))
-        #expect(line.parts(now: minutes(3)) == ("Codex: approval required: git push", "1 min"))
+        #expect(line.parts(now: minutes(3)) == ("Codex needs approval: git push", "1 min"))
         #expect(line.isWaiting)
         // Claude Code is still making files.
         #expect(line.isWorking)

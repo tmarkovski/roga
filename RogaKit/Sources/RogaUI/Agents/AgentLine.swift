@@ -100,8 +100,8 @@ struct AgentLine: Equatable {
     /// how long stays whole: the sidebar's second line, as in "Run the test
     /// suite" and "6 min", "Approval required: git push" or "2 agents
     /// working". When other sessions in the worktree are doing something else,
-    /// it names the agent it's about, as the worktree menu does, as in "Codex:
-    /// approval required: git push".
+    /// it names the agent it's about, as the worktree menu does, as in "Codex
+    /// needs approval: git push".
     func parts(now: Date) -> (words: String, time: String?) {
         if hasFailed { return ("\(agentName) stopped with an error", nil) }
         if agents.count > summary.sessions { return summary.menuParts(now: now) }
