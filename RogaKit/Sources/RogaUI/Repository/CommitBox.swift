@@ -17,7 +17,9 @@ import SwiftUI
 /// box waits with gray bars in place of its text, and while hooks or signing take
 /// a while, Commit turns into Stop. Whatever's worth knowing about the commit,
 /// such as an amend, a merge, a warning or a failure, shows at the top of the
-/// box with its own fix beside it, so that the row of buttons stays put.
+/// box with its own fix beside it, so that the row of buttons stays put. So does
+/// who the commit goes out as, while that's someone other than the global
+/// identity or a commit would go wrong (decision 103).
 struct CommitBox: View {
     @Bindable var composer: CommitComposer
     /// Gives the keyboard back to the list of files.
@@ -33,6 +35,10 @@ struct CommitBox: View {
     @Environment(AgentProvider.self) private var agents: AgentProvider?
     @Environment(\.openSettings) private var openSettings
     @Environment(\.accessibilityReduceMotion) private var reducesMotion
+    /// The repository and the list, for who the commit goes out as
+    /// (decision 103), which a view that's tested on its own may not have.
+    @Environment(ListedRepository.self) private var repository: ListedRepository?
+    @Environment(RepositoryList.self) private var list: RepositoryList?
     @AppStorage(AgentPreferences.showsGenerateButtonKey) private var showsGenerateButton = true
 
     /// Three lines, and then about half of an ordinary window's panel.
@@ -88,9 +94,14 @@ struct CommitBox: View {
 
     // MARK: The top of the box
 
+    /// What the top of the box says about who the commit goes out as.
+    private var identity: CommitBoxIdentity? {
+        CommitBoxIdentity(repository?.identity, defaultIdentity: list?.defaultIdentity)
+    }
+
     /// Whether anything shows above the text.
     private var hasTop: Bool {
-        if composer.chip != nil || composer.note != nil { return true }
+        if composer.chip != nil || composer.note != nil || identity != nil { return true }
         if case .failed = composer.phase { return true }
         switch generator.phase {
         case .failed: return true
@@ -116,6 +127,14 @@ struct CommitBox: View {
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.horizontal, 3)
+                }
+                if let identity, let repository, let list {
+                    switch identity {
+                    case .problem(let problem):
+                        CommitBoxIdentityWarning(problem: problem, repository: repository, list: list)
+                    case .someoneElse(let someone):
+                        CommitBoxIdentityLine(identity: someone, repository: repository, list: list)
+                    }
                 }
                 if case .failed(let output) = composer.phase {
                     CommitFailure(output: output, canSkipHooks: composer.canSkipHooks) {

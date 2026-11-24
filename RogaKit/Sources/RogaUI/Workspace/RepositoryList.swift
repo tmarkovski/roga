@@ -33,9 +33,16 @@ public final class RepositoryList {
     }
     /// The git that sessions run, once Roga has found it.
     private(set) var git: Git?
+    /// Who a repository's commits go out as when it sets nothing of its own,
+    /// from the user's global config, or nil until Roga has read it
+    /// (decision 103).
+    private(set) var defaultIdentity: CommitIdentity?
 
     @ObservationIgnored private let store: RepositoryStore
     @ObservationIgnored private var activation: (any NSObjectProtocol)?
+    /// The config files outside repositories that identities came from, which
+    /// no session watches.
+    @ObservationIgnored private var identityFiles = IdentityFiles()
     /// How many repositories it's looking at.
     @ObservationIgnored private var looksRunning = 0
     /// The repositories waiting for their turn to be looked at, oldest first.
@@ -92,8 +99,10 @@ public final class RepositoryList {
             MainActor.assumeIsolated {
                 guard let self else { return }
                 Task { await self.refreshUnwatched() }
+                Task { await self.readIdentitiesAgainIfConfigChanged() }
             }
         }
+        Task { await readDefaultIdentity() }
         // Chosen before any opens, since opening one that moved changes its path.
         let first = showing.union(lastSelection.map { [$0.repository] } ?? [])
         let early = repositories.filter { first.contains($0.path) }
@@ -502,6 +511,66 @@ public final class RepositoryList {
         }
     }
 
+    // MARK: Who commits go out as
+
+    /// Reads who a repository's commits go out as (decision 103). It keeps
+    /// what it knew when git can't say.
+    private func readIdentity(of repository: ListedRepository, session: RepositorySession) async {
+        guard let identity = try? await session.identity() else { return }
+        identityFiles.remember(identity)
+        if identity != repository.identity { repository.identity = identity }
+    }
+
+    /// Reads who a repository's commits go out as when it sets nothing of its
+    /// own, which says whether a repository's identity is its own.
+    private func readDefaultIdentity() async {
+        guard let git, let identity = try? await CommitIdentityCommands.readDefault(git: git) else { return }
+        identityFiles.remember(identity)
+        if identity != defaultIdentity { defaultIdentity = identity }
+    }
+
+    /// Reads every repository's identity again, one repository at a time,
+    /// since each takes only one quick `git config`.
+    private func readIdentitiesAgain() async {
+        identityFiles.noteDates()
+        await readDefaultIdentity()
+        for repository in repositories {
+            if let session = repository.session { await readIdentity(of: repository, session: session) }
+        }
+    }
+
+    /// Reads every repository's identity again when Roga becomes active, if a
+    /// config file outside the repositories that they came from has changed,
+    /// such as `~/.gitconfig` or a file it includes. A session watches only
+    /// its own repository's config.
+    private func readIdentitiesAgainIfConfigChanged() async {
+        guard identityFiles.haveChanged() else { return }
+        await readIdentitiesAgain()
+    }
+
+    /// Changes who a repository's commits go out as, then reads it again, and
+    /// every repository's when a change went to the global config, rather
+    /// than wait for the session's watcher or for Roga to become active.
+    ///
+    /// - Throws: `GitError` when git refuses, which says why. What git wrote
+    ///   before that is read anyway.
+    func changeIdentity(_ changes: [CommitIdentityCommands.Change], of repository: ListedRepository) async throws {
+        guard let session = repository.session else { throw RepositoryListError.notOpen }
+        let failure: (any Error)?
+        do {
+            try await session.changeIdentity(changes)
+            failure = nil
+        } catch {
+            failure = error
+        }
+        if changes.contains(where: { $0.place == .everyRepository }) {
+            await readIdentitiesAgain()
+        } else {
+            await readIdentity(of: repository, session: session)
+        }
+        if let failure { throw failure }
+    }
+
     // MARK: Changes on disk
 
     /// Hears what changes on disk in a repository from its session, which
@@ -524,10 +593,15 @@ public final class RepositoryList {
     /// and when refs moved, how far each branch is from its upstream. Each row
     /// also has its worktree's branch and commit, which `git worktree list`
     /// reads, so refs moving lists the worktrees again too.
+    ///
+    /// A change to the repository's config reads who its commits go out as at
+    /// once, rather than with the look, which waits after a long one: the
+    /// config seldom changes, and the read is one quick `git config`.
     private func hear(_ changes: RepositoryChanges, in repository: ListedRepository, session: RepositorySession, git: Git) async {
         let refsMoved = changes.refs || !changes.heads.isEmpty
         if refsMoved { repository.refsChange = changes.number }
         for worktree in changes.files { repository.fileChanges[worktree] = changes.number }
+        if changes.config { await readIdentity(of: repository, session: session) }
         let request = LookRequest(owners: changes.config, counts: changes.files, upstreams: refsMoved || changes.worktreeList, asNewAs: changes.number)
         if refsMoved || changes.worktreeList {
             await refresh(repository, git: git, for: request)
@@ -541,6 +615,8 @@ public final class RepositoryList {
     struct LookRequest: Equatable {
         /// Whether to read who owns the repository, from its remotes.
         var owners = false
+        /// Whether to read who its commits go out as, from its config.
+        var identity = false
         /// The worktrees whose uncommitted files to count, by their folders, or
         /// nil for every worktree.
         var counts: Set<String>? = []
@@ -552,7 +628,7 @@ public final class RepositoryList {
         var asNewAs: Int?
 
         /// A look at everything, afresh, as when the repository opens.
-        static let everything = LookRequest(owners: true, counts: nil, upstreams: true)
+        static let everything = LookRequest(owners: true, identity: true, counts: nil, upstreams: true)
 
         /// Whether it's only because of changes on disk. Those wait a moment after
         /// the look before them, so that a build or a long rebase can't keep git
@@ -564,7 +640,7 @@ public final class RepositoryList {
             if let mine = self.counts, let theirs = other.counts { counts = mine.union(theirs) }
             var asNewAs: Int?
             if let mine = self.asNewAs, let theirs = other.asNewAs { asNewAs = max(mine, theirs) }
-            return LookRequest(owners: owners || other.owners, counts: counts, upstreams: upstreams || other.upstreams, asNewAs: asNewAs)
+            return LookRequest(owners: owners || other.owners, identity: identity || other.identity, counts: counts, upstreams: upstreams || other.upstreams, asNewAs: asNewAs)
         }
     }
 
@@ -589,6 +665,7 @@ public final class RepositoryList {
                 await takeTurnToLook()
                 let started = ContinuousClock.now
                 if request.owners { await updateOwners(of: repository, session: session) }
+                if request.identity { await readIdentity(of: repository, session: session) }
                 await countUncommittedFiles(in: repository, session: session, only: request.counts, asNewAs: request.asNewAs)
                 if request.upstreams { await readUpstreams(of: repository, session: session) }
                 finishTurnToLook()
@@ -782,6 +859,9 @@ public final class ListedRepository: Identifiable {
     /// Who owns the repository, from its remotes' URLs, with `origin`'s owner
     /// first.
     fileprivate(set) var owners: [String]
+    /// Who the repository's commits go out as, from its config, or nil until a
+    /// look has read it (decision 103). Every worktree shares it.
+    fileprivate(set) var identity: CommitIdentity?
     fileprivate(set) var state = State.opening
     /// The main worktree first, then the linked ones.
     fileprivate(set) var worktrees: [Worktree] = []
@@ -836,8 +916,9 @@ public final class ListedRepository: Identifiable {
     }
 
     /// A repository that isn't in a list, for checking how a sidebar lays out.
-    init(path: String, owners: [String] = [], isExpanded: Bool = false, keptWorktrees: Set<String> = [], state: State = .opening, worktrees: [Worktree] = [], uncommittedFiles: [String: Int] = [:], statusFailures: [String: String] = [:], conflictedWorktrees: Set<String> = [], unfinishedWork: [String: UnfinishedWork] = [:], upstreams: [String: UpstreamCounts] = [:], aheadOfMain: [String: MainCounts] = [:], deletingWorktrees: Set<String> = []) {
+    init(path: String, owners: [String] = [], isExpanded: Bool = false, keptWorktrees: Set<String> = [], state: State = .opening, worktrees: [Worktree] = [], uncommittedFiles: [String: Int] = [:], statusFailures: [String: String] = [:], conflictedWorktrees: Set<String> = [], unfinishedWork: [String: UnfinishedWork] = [:], upstreams: [String: UpstreamCounts] = [:], aheadOfMain: [String: MainCounts] = [:], deletingWorktrees: Set<String> = [], identity: CommitIdentity? = nil) {
         self.path = path
+        self.identity = identity
         self.owners = owners
         self.isExpanded = isExpanded
         self.keptWorktrees = keptWorktrees

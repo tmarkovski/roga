@@ -115,6 +115,8 @@ public enum Icon: String, CaseIterable, Sendable {
     case search = "search"
     case server = "server"
     case settings = "settings"
+    case shield = "shield"
+    case shieldOff = "shield-off"
     case slidersHorizontal = "sliders-horizontal"
     case split = "split"
     case squareMinus = "square-minus"

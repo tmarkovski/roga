@@ -527,6 +527,9 @@ public struct WorkspaceView: View {
                     )
                     RepositoryView(model: model, showWorktree: showWorktree, lowerPanelSize: $lowerPanelSize)
                 }
+                // For who the worktree's commits go out as, in the branch row
+                // and the message box (decision 103).
+                .environment(repository)
                 .id(selected)
             } else {
                 // The worktree is gone, and resolving the selection moves the

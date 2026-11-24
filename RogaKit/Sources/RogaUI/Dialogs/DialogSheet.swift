@@ -246,7 +246,9 @@ private struct DialogSwitchRow: View {
     }
 }
 
-private struct DialogActionButton: View {
+/// One of the buttons along the bottom of a dialog, or of a popover that's
+/// drawn like one, such as the identity popover's Cancel and Save.
+struct DialogActionButton: View {
     let button: DialogButton
     @State private var isHovering = false
 

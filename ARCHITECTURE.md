@@ -40,6 +40,7 @@ roga/
 │   │   │   ├── Refs.swift              refs, and what HEAD points to
 │   │   │   ├── Worktree.swift          a worktree's folder, HEAD and branch
 │   │   │   ├── CommitInfo.swift        a commit's parents, author, committer and message
+│   │   │   ├── CommitIdentity.swift    who a repository's commits go out as and how they're signed, with where git found each setting, decision 103
 │   │   │   ├── WorktreeChanges.swift   what's uncommitted in a worktree, in groups
 │   │   │   ├── SubmoduleChange.swift   what a submodule's row says beyond its two commits, and what its panel shows, decision 75
 │   │   │   ├── Submodule.swift         one of a worktree's submodules, as the refs panel lists it
@@ -54,6 +55,7 @@ roga/
 │   │   │       ├── WorktreeListParser.swift worktree list --porcelain -z
 │   │   │       ├── StatusParser.swift      status --porcelain=v2 -z, with what it says of a submodule's checkout, and --numstat -z
 │   │   │       ├── RawDiffParser.swift     diff-tree --raw --numstat -z
+│   │   │       ├── CommitIdentityParser.swift config --show-scope --show-origin -z, for who commits go out as
 │   │   │       └── PatchParser.swift       the hunks that diff-tree -p prints
 │   │   ├── GitRunner/
 │   │   │   ├── Git.swift               running a command, which every git command goes through
@@ -93,6 +95,7 @@ roga/
 │   │   │   ├── Stashes.swift           stashing, and putting back, deleting and branching from a stash, decision 81
 │   │   │   ├── StagedChanges.swift     what's staged, cut down to what an agent can read quickly
 │   │   │   ├── SubmoduleLoader.swift   listing a worktree's submodules, reading a checkout for its rows and its panel, and updating it, decision 75
+│   │   │   ├── CommitIdentityCommands.swift reading who commits go out as, in a repository and outside any, and changing it with git config, decision 103
 │   │   │   ├── RepositoryWatcher.swift one FSEvents stream, numbered batches, decision 49
 │   │   │   ├── FolderWatcher.swift     the FSEvents stream itself
 │   │   │   ├── RepositoryChanges.swift what a batch of changed paths affects
@@ -148,6 +151,7 @@ roga/
 │   │   │   ├── Agents/                 finding agents, the marks, and what each worktree's agents are doing
 │   │   │   ├── Workspace/              windows, finding git, the sidebar, the saved list of repositories and the update notice
 │   │   │   ├── Repository/             the repository model, panels, the refs panel, commit details
+│   │   │   ├── Identity/               who commits go out as: the branch row's initials, the message box's line and warnings, and the popover (decision 103)
 │   │   │   ├── Dialogs/                the sheet for everything Roga asks or reports, with its command (decision 29)
 │   │   │   ├── House/                  the house's joints, its animations and drawing them (decision 21), and the wordmark
 │   │   │   ├── Commands/               menus and keyboard shortcuts
