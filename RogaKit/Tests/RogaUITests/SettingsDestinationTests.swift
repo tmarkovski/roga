@@ -36,7 +36,7 @@ struct SettingsDestinationTests {
         // Git has Advanced's one group after Fetching, and commit messages
         // last.
         let git = SettingsGroup.shown().filter { $0.page == .git }
-        #expect(git == [.installation, .fetching, .largeRepositories, .generate])
+        #expect(git == [.installation, .identity, .identityExceptions, .fetching, .largeRepositories, .generate])
         #expect(SettingsGroup.largeRepositories.items == [.keepsCommitGraphCurrent])
     }
 

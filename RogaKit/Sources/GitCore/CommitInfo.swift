@@ -27,6 +27,10 @@ public struct CommitInfo: Sendable, Hashable {
     /// The whole message, converted to UTF-8 when the commit says it uses
     /// another encoding.
     public var message: String
+    /// How the commit is signed, from the start of its `gpgsig` header, or nil
+    /// when it has no signature. Whether the signature is good takes a run of
+    /// gpg or ssh-keygen, which only the selected commit gets (decision 104).
+    public var signatureFormat: CommitIdentity.SigningFormat?
 
     public init(
         id: ObjectID,
@@ -34,7 +38,8 @@ public struct CommitInfo: Sendable, Hashable {
         parents: [ObjectID],
         author: Signature,
         committer: Signature,
-        message: String
+        message: String,
+        signatureFormat: CommitIdentity.SigningFormat? = nil
     ) {
         self.id = id
         self.tree = tree
@@ -42,7 +47,11 @@ public struct CommitInfo: Sendable, Hashable {
         self.author = author
         self.committer = committer
         self.message = message
+        self.signatureFormat = signatureFormat
     }
+
+    /// Whether the commit carries a signature, good or not.
+    public var isSigned: Bool { signatureFormat != nil }
 
     /// The first paragraph of the message on one line, the way
     /// `git log --format=%s` shows it: blank lines at the start are skipped,

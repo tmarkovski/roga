@@ -62,6 +62,8 @@ enum SettingsGroup: CaseIterable {
     case motion
     case lists
     case installation
+    case identity
+    case identityExceptions
     case fetching
     case largeRepositories
     case generate
@@ -76,6 +78,8 @@ enum SettingsGroup: CaseIterable {
         case .motion: "Motion"
         case .lists: "Lists"
         case .installation: "Installation"
+        case .identity: "Identity"
+        case .identityExceptions: "Repositories that commit as someone else"
         case .fetching: "Fetching"
         case .largeRepositories: "Large repositories"
         case .generate: "Commit messages"
@@ -88,7 +92,7 @@ enum SettingsGroup: CaseIterable {
         switch self {
         case .openIn, .updates: .general
         case .interface, .motion, .lists: .appearance
-        case .installation, .fetching, .largeRepositories, .generate: .git
+        case .installation, .identity, .identityExceptions, .fetching, .largeRepositories, .generate: .git
         case .agents, .agentStatus: .agents
         }
     }
@@ -98,6 +102,10 @@ enum SettingsGroup: CaseIterable {
         switch self {
         case .installation:
             "Requires Git \(SetupWords.minimumGit) or later."
+        case .identity:
+            "These are in ~/.gitconfig, which every repository uses unless it sets its own. Changing one runs git config --global."
+        case .identityExceptions:
+            "The repositories in the sidebar whose name or email isn't the global one, and the ones whose commits would go wrong."
         case .agents:
             "Generate, Resolve and Fix run the default agent with its tools off, and send what they need to its provider."
         default:
@@ -108,7 +116,7 @@ enum SettingsGroup: CaseIterable {
     /// The description as its page draws it, with names that are typed, such
     /// as PATH, in the code font, as the canvas sets them.
     var styledDescription: AttributedString? {
-        description.map { AttributedString.settingsWords($0, typedNames: ["PATH"]) }
+        description.map { AttributedString.settingsWords($0, typedNames: ["PATH", "~/.gitconfig", "git config --global"]) }
     }
 
     var items: [SettingsItem] {
@@ -155,6 +163,12 @@ enum SettingsItem: CaseIterable {
     case refsSort
     case foldsDescriptions
     case gitProgram
+    case identityName
+    case identityEmail
+    case signsCommits
+    case signingFormat
+    case signingKey
+    case identityRepositories
     case fetchesByItself
     case showsGenerateButton
     case matchesStyle
@@ -174,6 +188,8 @@ enum SettingsItem: CaseIterable {
         case .animationSpeed: .motion
         case .fileLayout, .refsSort, .foldsDescriptions: .lists
         case .gitProgram: .installation
+        case .identityName, .identityEmail, .signsCommits, .signingFormat, .signingKey: .identity
+        case .identityRepositories: .identityExceptions
         case .fetchesByItself: .fetching
         case .showsGenerateButton, .matchesStyle, .instructions: .generate
         case .usesAgents, .agentList, .defaultAgent: .agents
@@ -195,6 +211,12 @@ enum SettingsItem: CaseIterable {
         case .refsSort: "Branch sorting"
         case .foldsDescriptions: "Fold commit descriptions"
         case .gitProgram: "Git"
+        case .identityName: "Name"
+        case .identityEmail: "Email"
+        case .signsCommits: "Sign commits"
+        case .signingFormat: "Format"
+        case .signingKey: "Key"
+        case .identityRepositories: "Repositories that commit as someone else"
         case .fetchesByItself: "Fetch when Roga becomes active"
         case .showsGenerateButton: "Show Generate button"
         case .matchesStyle: "Match repository commit style"
@@ -230,7 +252,8 @@ enum SettingsItem: CaseIterable {
         case .keepsCommitGraphCurrent:
             "Runs git commit-graph write in the background, without changing Git configuration."
         case .terminal, .theme, .codeFont, .fileLayout, .refsSort, .foldsDescriptions, .gitProgram, .showsGenerateButton,
-             .instructions, .agentList, .defaultAgent, .hooks, .marksLegend:
+             .instructions, .agentList, .defaultAgent, .hooks, .marksLegend, .identityName, .identityEmail, .signsCommits,
+             .signingFormat, .signingKey, .identityRepositories:
             ""
         }
     }
@@ -249,6 +272,12 @@ enum SettingsItem: CaseIterable {
         case .foldsDescriptions: ["Collapse", "Expand", "Subject", "Body"]
         case .showsGenerateButton: ["Generate", "⌥⌘L", "message editor"]
         case .gitProgram: ["Rescan", "Choose another", "executable", "program", "version", "PATH", "Xcode", "Command Line Tools", "Homebrew"]
+        case .identityName: ["user.name", "Identity", "author", "committer"]
+        case .identityEmail: ["user.email", "Identity", "author", "committer"]
+        case .signsCommits: ["commit.gpgsign", "signing", "signature", "GPG", "SSH"]
+        case .signingFormat: ["gpg.format", "OpenPGP", "SSH", "X.509", "signing"]
+        case .signingKey: ["user.signingkey", "signing key", "GPG", "SSH"]
+        case .identityRepositories: ["Identity", "includeIf", "Use Global", "user.email"]
         case .instructions: ["Restore Defaults", "prompt", "commit message"]
         case .usesAgents: ["Claude Code", "Codex", "Generate", "Resolve", "Fix", "Turn off", "sidebar"]
         case .agentList: ["Rescan", "executable", "program", "PATH", "model", "effort", "Run Test", "Add Custom Agent", "command", "Ollama", "local model"]
@@ -469,6 +498,10 @@ struct SettingsSheet: View {
             GeneralSection(group: group, items: items, namesPage: namesPage)
         case .installation:
             GitProgramSection(items: items, namesPage: namesPage)
+        case .identity:
+            IdentitySection(items: items, namesPage: namesPage)
+        case .identityExceptions:
+            IdentityExceptionsSection(namesPage: namesPage)
         case .generate:
             CommitSection(items: items, namesPage: namesPage)
         case .agents:
@@ -601,7 +634,8 @@ struct SettingsSheet: View {
                 Toggle(item.title, isOn: $keepsCommitGraphCurrent)
                     .toggleStyle(.settings)
             case .terminal, .checksForUpdates, .downloadsUpdates, .gitProgram, .showsGenerateButton, .matchesStyle, .instructions,
-                 .usesAgents, .agentList, .defaultAgent, .hooks, .marksLegend, .codeFont:
+                 .usesAgents, .agentList, .defaultAgent, .hooks, .marksLegend, .codeFont, .identityName, .identityEmail,
+                 .signsCommits, .signingFormat, .signingKey, .identityRepositories:
                 // The General, Git and Agents pages draw their own, and the
                 // code font's row has two controls.
                 EmptyView()

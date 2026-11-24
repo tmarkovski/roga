@@ -100,6 +100,9 @@ public struct CommitRowContent: Hashable {
     public var body: String?
     public var author: String?
     public var date: String?
+    /// Whether the commit carries a signature, good or not, which a small
+    /// shield after the short ID says (decision 104).
+    public var isSigned: Bool
     /// The graph's lines in this row.
     public var lanes: LaneLayout.Row?
     /// Whether the row stands for a worktree's uncommitted changes rather than
@@ -126,6 +129,7 @@ public struct CommitRowContent: Hashable {
         body: String? = nil,
         author: String? = nil,
         date: String? = nil,
+        isSigned: Bool = false,
         lanes: LaneLayout.Row? = nil,
         isWorkingTree: Bool = false,
         isWarning: Bool = false,
@@ -139,6 +143,7 @@ public struct CommitRowContent: Hashable {
         self.body = body
         self.author = author
         self.date = date
+        self.isSigned = isSigned
         self.lanes = lanes
         self.isWorkingTree = isWorkingTree
         self.isWarning = isWarning
@@ -181,6 +186,7 @@ public struct CommitRowContent: Hashable {
         if let author { parts.append(author) }
         if let date { parts.append(date) }
         if !shortID.isEmpty { parts.append(shortID) }
+        if isSigned { parts.append("signed") }
         if let body, !body.isEmpty { parts.append(body) }
         return parts.joined(separator: ", ")
     }
