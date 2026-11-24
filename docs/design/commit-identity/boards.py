@@ -9,7 +9,13 @@ git config, and whether they're signed (issue 115). Today's window, three
 options (A, B and C) for the branch row and the message box, every option
 moment by moment in both appearances, the popover that changes the identity
 with `git config`, a board to try it, the sidebar and Settings › Git, and how
-history and the commit panel show signed commits.
+history and the commit panel show signed commits. After decision 103 was
+built, the page starts with G, which puts a person icon at the end of the
+tabs row, for the repository and every worktree and agent in it, keeps the
+box's line all the time with the same icon, and marks the sidebar's
+exceptions with it. D, which showed the line with initials and nothing in
+the header, and where else the initials could go, the end of the tabs row
+(E) or beside the number of commits (F), come after it.
 
     uv run docs/design/commit-identity/boards.py --out /path/to/root --canvas /path/to/root/project/canvas.json
 
@@ -172,6 +178,14 @@ body{margin:0}
 .idl .e{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .idl b{font-weight:500;color:var(--tx)}
 .idl .r{margin-left:auto;display:flex;align-items:center;gap:4px;flex:none;padding-left:8px}
+.idl.q b{color:inherit}
+.av .ic{width:13px;height:13px;stroke-width:2}
+.av.sm .ic{width:11px;height:11px;stroke-width:2.2}
+.av.x{background:var(--warnb);color:var(--warn)}
+.trow .av .bg{background:var(--title)}
+.hue-p{color:var(--idp);display:flex}.hue-w{color:var(--idw);display:flex}.hue-o{color:var(--ido);display:flex}
+.piece{border:0;border-radius:10px;box-shadow:0 0 0 .5px rgba(0,0,0,.14);-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 56px);mask-image:linear-gradient(90deg,transparent 0,#000 56px)}
+.panes{display:flex;gap:24px;align-items:flex-start}
 .wn{border-radius:7px;background:var(--warnb);padding:6px 8px 7px;font-size:12px;overflow:hidden;flex:none}
 .wn b{display:flex;align-items:center;gap:5px;height:16px;line-height:16px;color:var(--warn);font-weight:600}
 .wn p{margin:4px 0 0;line-height:16px;color:var(--tx2)}
@@ -355,6 +369,7 @@ CHECK = _ic(P_CHECK, "ic xs")
 COPY = _ic(P_COPY, "ic t")
 FILTER = _ic(P_FILTER)
 USER = _ic(lucide("user"), "ic t")
+USER16 = _ic(lucide("user"))
 SETTINGS = _ic(lucide("settings"))
 FOLDER_PLUS = _ic(lucide("folder-plus"))
 SHIELD = _ic(P_SHIELD, "ic t")
@@ -474,17 +489,26 @@ MESSAGE = ["Reset the retry count after a sign-in", "", "The count only went up,
 # ---------------------------------------------------------------- the identity, wherever it shows
 
 
-def avatar(i: Ident, cls: str = "") -> str:
+def avatar(i: Ident, cls: str = "", *, gray: bool = False, marks: bool = True) -> str:
     """The initials in a circle tinted by the email, with a shield when
-    commits are signed and a triangle when committing would go wrong."""
-    if i.problem:
+    commits are signed and a triangle when committing would go wrong. D and
+    the places after it draw the global identity's circle in gray."""
+    if not marks:
+        mark = ""
+    elif i.problem:
         mark = badge(P_TRI, warn=True)
     elif i.signed:
         mark = badge(P_SHIELD)
     else:
         mark = ""
     extra = f" {cls}" if cls else ""
-    return f'<span class="av {i.hue}{extra}" aria-hidden="true">{esc(i.initials)}{mark}</span>'
+    hue = "n" if gray else i.hue
+    return f'<span class="av {hue}{extra}" aria-hidden="true">{esc(i.initials)}{mark}</span>'
+
+
+def quiet(i: Ident) -> bool:
+    """Whether D draws the identity in gray: the global one, nothing wrong."""
+    return not i.own and not i.problem
 
 
 def sign_icon(i: Ident) -> str:
@@ -497,7 +521,7 @@ def sign_icon(i: Ident) -> str:
 
 def row_identity(i: Ident | None, option: str, *, hover: bool = False) -> str:
     """What the branch row shows before Fetch."""
-    if i is None or option == "today":
+    if i is None or option not in ("A", "B", "C"):
         return ""
     hov = " hov" if hover else ""
     label = f'aria-label="Commit identity: {esc(i.tip.splitlines()[0])}"'
@@ -522,6 +546,82 @@ def box_line(i: Ident, *, hover: bool = False) -> str:
     return f'<button class="idl{hov}" type="button">{USER}<span class="e">{whose}</span>{right}</button>'
 
 
+# How wide "Sam Rivera <email>" is on the line, at 12 points.
+WHO_WIDTH = {"sam@rivera.dev": 173, "sam.rivera@acme.com": 211, "sam@oss.example": 187}
+
+
+def box_line_d(i: Ident, *, hover: bool = False, width: int = PANEL) -> str:
+    """D's line, always at the top of the box: the initials, the name and the
+    email, then whether commits are signed. It's gray with a gray circle for
+    the global identity, and anyone else gets the email's tint and the name
+    in ink. The words for signing go before the email is cut, as built."""
+    hov = " hov" if hover else ""
+    q = " q" if quiet(i) else ""
+    who = f"{i.name} <{i.email}>"
+    words = "Signed" if i.signed else "Not signed"
+    # The room for the name and the email: the box's 8-point insets, the
+    # line's 6, the circle and the gaps on either side of the words, and the
+    # shield with its words, as drawn. Each width was measured in a browser.
+    room = width - 16 - 12 - 18 - 12 - (64 if i.signed else 87)
+    shows_words = WHO_WIDTH.get(i.email, len(who) * 6.7) <= room
+    icon = SHIELD if i.signed else SH_OFF
+    right = f'<span class="r{"" if i.signed else " off"}">{icon}{words if shows_words else ""}</span>'
+    whose = f'<b>{esc(i.name)}</b> &lt;{esc(i.email)}&gt;'
+    circle = avatar(i, "sm", gray=quiet(i), marks=False)
+    return f'<button class="idl{q}{hov}" type="button">{circle}<span class="e">{whose}</span>{right}</button>'
+
+
+def header_mark(i: Ident | None, option: str) -> str:
+    """E's initials at the end of the tabs row, or F's beside the number of
+    commits: for the exceptions only, or always with a "+"."""
+    if i is None or option[:1] not in ("E", "F"):
+        return ""
+    always = option.endswith("+")
+    if not always and quiet(i):
+        return ""
+    return f'<span class="ib" aria-label="Commit identity">{avatar(i, gray=quiet(i))}</span>'
+
+
+def person(i: Ident, cls: str = "") -> str:
+    """G's person in a circle tinted by the email, for anyone but the global
+    identity, or in amber with a triangle when committing would go wrong."""
+    extra = f" {cls}" if cls else ""
+    if i.problem:
+        return f'<span class="av x{extra}" aria-hidden="true">{USER}{badge(P_TRI, warn=True)}</span>'
+    return f'<span class="av {i.hue}{extra}" aria-hidden="true">{USER}</span>'
+
+
+def tabs_mark(i: Ident | None, *, hover: bool = False) -> str:
+    """G's button at the end of the tabs row: a plain person icon for the
+    global identity, like the row's other icon buttons, and the tinted
+    circle for anyone else. Nothing until git config has answered."""
+    if i is None:
+        return ""
+    hov = " hov" if hover else ""
+    inner = USER16 if quiet(i) else person(i)
+    label = f'aria-label="Commit identity: {esc(i.tip.splitlines()[0])}"'
+    return f'<button class="ib{hov}" type="button" {label}>{inner}</button>'
+
+
+def box_line_g(i: Ident, *, hover: bool = False, width: int = PANEL) -> str:
+    """G's line, always at the top of the box: the person icon as built, the
+    name and the email, then whether commits are signed. It's gray for the
+    global identity, and anyone else gets the icon in the email's tint and
+    the name in ink."""
+    hov = " hov" if hover else ""
+    q = " q" if quiet(i) else ""
+    who = f"{i.name} <{i.email}>"
+    words = "Signed" if i.signed else "Not signed"
+    # As box_line_d, with the 13-point icon in place of the 18-point circle.
+    room = width - 16 - 12 - 13 - 12 - (64 if i.signed else 87)
+    shows_words = WHO_WIDTH.get(i.email, len(who) * 6.7) <= room
+    icon = SHIELD if i.signed else SH_OFF
+    right = f'<span class="r{"" if i.signed else " off"}">{icon}{words if shows_words else ""}</span>'
+    whose = f'<b>{esc(i.name)}</b> &lt;{esc(i.email)}&gt;'
+    lead = USER if quiet(i) else f'<span class="hue-{i.hue}">{USER}</span>'
+    return f'<button class="idl{q}{hov}" type="button">{lead}<span class="e">{whose}</span>{right}</button>'
+
+
 def warning(i: Ident) -> tuple[str, int]:
     """The notice at the top of the box, where decision 98 puts what's wrong."""
     if i.problem == "noemail":
@@ -544,14 +644,20 @@ def tab(icon_html: str, folder: str, name: str, badge_text: str = "", badge_cls:
             f'<span class="bd {badge_cls}">{esc(badge_text)}</span></span>')
 
 
-def title_row() -> str:
+def title_row(i: Ident | None = None, option: str = "", *, hover: bool = False, repo: str = "roga") -> str:
     tabs = [
-        tab(REPO, "", "roga"),
+        tab(REPO, "", repo),
         '<i class="tsep"></i>',
         tab(WORKTREE, "agent/", "fix-login", "3", "org", on=True),
         tab(WORKTREE, "agent/", "add-tests", "4", "org"),
         f'<span class="tplus">{PLUS}</span>',
     ]
+    if option == "G" and i is not None:
+        tabs += ['<span class="sp"></span>', tabs_mark(i, hover=hover)]
+    if option.startswith("E"):
+        mark = header_mark(i, option)
+        if mark:
+            tabs += ['<span class="sp"></span>', mark]
     return f'<div class="trow">{"".join(tabs)}</div>'
 
 
@@ -563,9 +669,10 @@ def branch_row(i: Ident | None, option: str, *, tip: str = "", menu: str = "", h
             f'<span class="nm">agent/fix-login</span>{CHEV}</button>{menu}</span>')
     cls = "brow alone" if alone else "brow"
     style = f' style="width:{WIDE}px"' if alone else ""
+    by_count = header_mark(i, option) if option.startswith("F") else ""
     return (f'<div class="{cls}"{style}>{chip}<span class="cnt">{PUSH}2</span><span class="sp"></span>'
             f'<span class="rg">{ident_html}<span class="ib">{FETCH}</span><span class="ib">{NEWBRANCH}</span>'
-            f'<i class="vs"></i><span class="nc">128 commits</span><span class="ib">{ORDER}</span></span></div>')
+            f'<i class="vs"></i>{by_count}<span class="nc">128 commits</span><span class="ib">{ORDER}</span></span></div>')
 
 
 def history(rows: int = 6, *, marks: bool = False, selected: int = -1, tip: str = "") -> str:
@@ -585,9 +692,9 @@ def history(rows: int = 6, *, marks: bool = False, selected: int = -1, tip: str 
 
 
 def middle(i: Ident | None, option: str, height: int = MID_H, *, tip: str = "", menu: str = "", hover: bool = False,
-           chip_hover: bool = False, overlay: str = "") -> str:
+           chip_hover: bool = False, overlay: str = "", repo: str = "roga") -> str:
     return (f'<div class="mid" style="width:{WIDE}px;height:{height}px">'
-            f'{branch_overlay_wrap(title_row() + branch_row(i, option, tip=tip, menu=menu, hover=hover, chip_hover=chip_hover) + history())}'
+            f'{branch_overlay_wrap(title_row(i, option, hover=hover and option == "G", repo=repo) + branch_row(i, option, tip=tip, menu=menu, hover=hover, chip_hover=chip_hover) + history())}'
             f'{overlay}</div>')
 
 
@@ -629,8 +736,16 @@ def commit_box(i: Ident | None, option: str, *, lines: list[str] | None = None, 
     if i is not None and option != "today":
         if i.problem:
             tops.append(warning(i))
+        elif option == "G":
+            tops.append((box_line_g(i, hover=hover == "line", width=width), 22))
+        elif option[:1] in ("D", "E", "F"):
+            tops.append((box_line_d(i, hover=hover == "line", width=width), 22))
         elif option == "B" or (option == "C" and i.own):
             tops.append((box_line(i, hover=hover == "line"), 22))
+    elif option[:1] in ("D", "E", "F", "G"):
+        # Until git config answers, the box keeps the line's room, so the
+        # message doesn't move down when the line arrives.
+        tops.append(('<div style="height:22px"></div>', 22))
     top_html = ""
     top_h = 0
     if tops:
@@ -1181,7 +1296,7 @@ SIDEBAR_GROUPS: list[tuple[str, list[SRow]]] = [
 ]
 
 
-def sidebar(variant: str, *, tip: str = "", tip_row: str = "") -> tuple[str, int]:
+def sidebar(variant: str, *, tip: str = "", tip_row: str = "", selected: str = "") -> tuple[str, int]:
     """Today's sidebar, grouped by organization, marking only the repositories
     whose identity isn't the global one, or would go wrong."""
     out = ['<div class="tl"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div>',
@@ -1202,7 +1317,8 @@ def sidebar(variant: str, *, tip: str = "", tip_row: str = "") -> tuple[str, int
             i = r.ident
             different = i.own and not (variant == "C" and group_ident)
             two = bool(i.problem)
-            cls = "sr" + (" two" if two else "") + (" on" if r.on else "")
+            on = r.name == selected if selected else r.on
+            cls = "sr" + (" two" if two else "") + (" on" if on else "")
             detail = f'<span class="dt">{esc(r.detail)}</span>' if r.detail else ""
             if variant == "B" and different:
                 detail += f'<span class="dt">{esc(i.domain)}</span>'
@@ -1212,9 +1328,10 @@ def sidebar(variant: str, *, tip: str = "", tip_row: str = "") -> tuple[str, int
             elif i.problem == "nokey":
                 second = f'<span class="l2 warn">{TRI}<span>Signing needs a key</span></span>'
             trail = ""
-            if variant in ("A", "C") and different:
+            if variant in ("A", "C", "G") and different:
                 extra = tip if r.name == tip_row else ""
-                trail += f'<span class="rel">{avatar(i, "sm")}{extra}</span>'
+                mark = person(i, "sm") if variant == "G" else avatar(i, "sm")
+                trail += f'<span class="rel">{mark}{extra}</span>'
             if r.count:
                 trail += f'<span class="ct">{r.count}</span>'
             trail += '<span class="mkp"></span>'
@@ -1326,11 +1443,161 @@ def board_history() -> Board:
                  page("Signed commits in history and the commit panel", body, w, h))
 
 
+# ---------------------------------------------------------------- after building it
+
+
+def rows_board(file: str, title: str, rows: list[list[str]], *, w: int, stage_h: int) -> Board:
+    h = 34 + len(rows) * (36 + 12 + stage_h) + (len(rows) - 1) * 36 + 40
+    body = (f'<div class="board th-l" style="width:{w}px;height:{h}px">'
+            + "".join(f'<div class="cells">{"".join(r)}</div>' for r in rows) + "</div>")
+    return Board(file, title, w, h, page(title, body, w, h))
+
+
+def board_d() -> Board:
+    """D: the line at the top of the box all the time, and nothing in the
+    branch row."""
+    _, h = commit_box(GLOBAL, "D")
+    line_top = PANEL_H - h + 8
+    hover = tip_box(GLOBAL.tip, 14, line_top + 28) + pointer(150, line_top + 9)
+    rows = [
+        [cell("D · Nothing in the branch row", "it's the branch's row again", middle(GLOBAL, "D")),
+         cell("D · The global identity, in gray", "always there, 27 points of its own", panel(GLOBAL, "D"))],
+        [cell("D · From ~/work/", "the email's tint, and the name in ink", panel(WORK, "D")),
+         cell("D · The repository's own", "and not signed", panel(OWN, "D")),
+         cell("D · The pointer over the line", "a click opens the popover under it", panel(GLOBAL, "D", hover="line", overlay=hover, ruler=False))],
+    ]
+    w = 80 + 3 * (PANEL + 78) + 2 * 48
+    return rows_board("Id-D.dc.html", "D · The box always says who", rows, w=w, stage_h=PANEL_H)
+
+
+def board_where() -> Board:
+    """Where the initials could go, besides the box's line: nowhere, the end
+    of the tabs row, or beside the number of commits."""
+    rows = [
+        [cell("D · Nowhere in the header", "the box's line is the only place", middle(WORK, "D")),
+         cell("E · The end of the tabs row", "for the repository and all its worktrees", middle(WORK, "E")),
+         cell("F · Beside the number of commits", "with history's count and its commands", middle(WORK, "F"))],
+        [cell("D · The global identity", "nothing, as for most repositories", middle(GLOBAL, "D")),
+         cell("E · If it always showed", "a gray circle for the global identity", middle(GLOBAL, "E+")),
+         cell("F · If it always showed", "", middle(GLOBAL, "F+"))],
+    ]
+    w = 80 + 3 * WIDE + 2 * 48
+    return rows_board("Id-Where.dc.html", "Where the initials could go", rows, w=w, stage_h=MID_H)
+
+
+def stacked_board(file: str, title: str, rows: list[tuple[list[str], int]], *, w: int) -> Board:
+    """Rows of cells, each row with a height of its own."""
+    h = 34 + sum(36 + 12 + rh for _, rh in rows) + (len(rows) - 1) * 36 + 40
+    body = (f'<div class="board th-l" style="width:{w}px;height:{h}px">'
+            + "".join(f'<div class="cells">{"".join(r)}</div>' for r, _ in rows) + "</div>")
+    return Board(file, title, w, h, page(title, body, w, h))
+
+
+def board_g() -> Board:
+    """G: a person icon at the end of the tabs row, the box's line all the
+    time with the same icon, and nothing in the branch row."""
+    rows = [
+        [cell("G · The global identity", "a plain person icon at the end of the tabs row", middle(GLOBAL, "G")),
+         cell("G · The box's line, always", "in gray, 27 points of its own", panel(GLOBAL, "G"))],
+        [cell("G · From ~/work/", "a circle in the email's tint", middle(WORK, "G")),
+         cell("G · The same, in the box", "the icon in the tint, the name in ink", panel(WORK, "G"))],
+        [cell("G · Signing on, with no key", "amber, with a triangle", middle(NO_KEY, "G")),
+         cell("G · The box warns", "in the line's place, as now", panel(NO_KEY, "G"))],
+    ]
+    return two_rows_board("Id-G.dc.html", "G · Who, at the end of the tabs row and in the box", rows, stage_h=PANEL_H)
+
+
+# The popover under G's icon, as tall as it's drawn (476 points measured).
+G_POP_H = 484
+
+
+def board_g_change() -> Board:
+    """G where the box isn't: the tooltip, a clean worktree, the popover
+    opened from the tabs row, and the sidebar. It draws api-gateway, which
+    the sidebar has under acme with the work email."""
+    i = WORK
+    repo = "api-gateway"
+    # The icon's middle: the row's 8-point inset and half the 32-point button.
+    icon_x = WIDE - 8 - 16
+    hover = tip_box(i.tip, 8, 40, right=True) + pointer(icon_x - 2, 20)
+    pointed = middle(i, "G", hover=True, overlay=hover, repo=repo)
+    clean = (f'<div class="panes">'
+             f'<div class="mid" style="width:{WIDE}px;height:{MID_H}px">'
+             f'{branch_overlay_wrap(title_row(i, "G", repo=repo) + branch_row(i, "G") + history(selected=1))}</div>'
+             f'{commit_details(SIG_STATES[2][2], email=i.email)}</div>')
+    pop = popover(repo=repo, fields=[name_field(i), Field("Email", i.email, origin_short("include"))],
+                  sign=True, key=Field("Key", i.key, origin_short("include"), mono=True),
+                  note=f"Commits, merges and rebases in every worktree of {repo} go out as this, an agent's too.",
+                  save=False, comment="Nothing to change yet", arrow=icon_x - (WIDE - 344) - 6,
+                  style=f"position:absolute;z-index:8;left:{WIDE - 344}px;top:42px")
+    opened = (f'<div class="mid" style="width:{WIDE}px;height:{MID_H}px">'
+              f'{branch_overlay_wrap(title_row(i, "G", hover=True, repo=repo) + branch_row(i, "G") + history())}{pop}</div>')
+    side, side_h = sidebar("G", selected=repo)
+    pop_h = 42 + G_POP_H
+    rows = [
+        ([cell("G · The pointer over it", "the tooltip decision 103 gave the initials", pointed),
+          cell("G · A clean worktree", "no box, and the tabs row still says who", clean)], MID_H),
+        ([cell("G · A click opens the popover", "under the icon, for the repository and its agents",
+               f'<div class="stage" style="width:{WIDE}px;height:{pop_h}px">{opened}</div>'),
+          cell("G · The sidebar", "the same tinted person for the exceptions",
+               f'<div class="stage" style="width:312px;height:{side_h}px">{side}</div>')], max(pop_h, side_h)),
+    ]
+    w = 80 + WIDE + 48 + WIDE + 24 + PANEL
+    return stacked_board("Id-G-Change.dc.html", "G · Seeing and changing it without a commit", rows, w=w)
+
+
+PIECE_W = 260
+
+
+def tabs_piece(i: Ident | None) -> str:
+    """The end of the tabs row, faded on the left where it's cut."""
+    return (f'<div class="trow piece" style="width:{PIECE_W}px">{tab(WORKTREE, "agent/", "add-tests", "4", "org")}'
+            f'<span class="tplus">{PLUS}</span><span class="sp"></span>{tabs_mark(i)}</div>')
+
+
+def board_g_states() -> Board:
+    """G in every moment, in both appearances: the end of the tabs row and
+    the box at the panel's default 320."""
+    label_w = 230
+    heights = [commit_box(i, "G", lines=[], alone=True)[1] for _, _, i in MOMENTS]
+    grid_h = 24 + 20 + sum(heights) + 20 * (len(heights) - 1)
+    pane_h = 34 + grid_h + 40
+
+    def pane(theme: str, suffix: str, labels: bool) -> tuple[str, int]:
+        cells = []
+        if labels:
+            cells.append('<span class="cap" style="height:auto"></span>')
+        for caption in ("The end of the tabs row", "The box, 320 points"):
+            cells.append(f'<span class="cap" style="height:auto;font-weight:600">{esc(caption + suffix)}</span>')
+        for label, sub, i in MOMENTS:
+            if labels:
+                cells.append(f'<div class="cap" style="height:auto;padding-top:10px">{esc(label)}'
+                             f'<i style="display:block;margin-top:2px">{esc(sub)}</i></div>')
+            cells.append(tabs_piece(i))
+            box, _ = commit_box(i, "G", lines=[], alone=True)
+            cells.append(f'<div style="width:{PANEL}px">{box}</div>')
+        cols = (f"{label_w}px " if labels else "") + f"{PIECE_W}px {PANEL}px"
+        w = 80 + (label_w + 32 if labels else 0) + PIECE_W + 32 + PANEL
+        return (f'<div class="board {theme}" style="display:block;width:{w}px;height:{pane_h}px">'
+                f'<div style="display:grid;grid-template-columns:{cols};column-gap:32px;row-gap:20px;align-items:start">'
+                f'{"".join(cells)}</div></div>'), w
+
+    light, lw = pane("th-l", "", True)
+    dark, dw = pane("th-d", ", dark", False)
+    w = lw + 24 + dw
+    body = f'<div class="panes" style="width:{w}px;height:{pane_h}px">{light}{dark}</div>'
+    title = "G, moment by moment"
+    return Board("Id-G-States.dc.html", title, w, pane_h, page(title, body, w, pane_h))
+
+
 # ---------------------------------------------------------------- the page
 
 
 def all_boards() -> list[list[Board]]:
     return [
+        [board_g(), board_g_change()],
+        [board_g_states()],
+        [board_d(), board_where()],
         [board_today(), board_a(), board_b(), board_c()],
         [board_states(False)],
         [board_states(True)],
@@ -1341,6 +1608,9 @@ def all_boards() -> list[list[Board]]:
 
 
 TITLES = [
+    "G: who, at the end of the tabs row and in the box",
+    "G, moment by moment",
+    "Before G: D, and where the initials could go",
     "Where the identity could show",
     "Every option, moment by moment",
     "The same, dark",
@@ -1350,6 +1620,19 @@ TITLES = [
 ]
 
 INTROS = [
+    "Commits aren't the only thing that use the identity. A merge that isn't a fast-forward makes a commit, a rebase or a "
+    "cherry-pick makes you the committer of every commit it moves, and a revert, or a pull that merges or rebases, does the same. "
+    "Agents run git in their worktrees with the same config, so what they commit and merge goes out as the same person, usually "
+    "while nobody is looking at the commit box, which shows only while a worktree has uncommitted files. So G puts a person icon "
+    "at the end of the tabs row, which holds every worktree of the repository, the identity's scope. It keeps the box's line all "
+    "the time with the person icon it has now, takes the initials out of the branch row, and marks the sidebar's exceptions with "
+    "the same icon. The initials are gone everywhere, since a name rarely changes, and the email, which does, gives the tint.",
+    "Each moment from decision 103's boards, with the end of the tabs row beside the box, in both appearances at the panel's "
+    "default 320 points. The tabs row is cut on the left.",
+    "Once decision 103 was built, the initials in the branch row looked out of place, since the row is about the branch and the "
+    "identity belongs to the whole repository. D showed the box's line all the time, with the initials at its start, and nothing "
+    "in the header. The second board compared D with the initials at the end of the tabs row (E) and beside history's number of "
+    "commits (F). G takes E's place, always shown and with a person icon, and keeps D's line.",
     "Roga doesn't say which name and email a commit will carry, or whether it will be signed, until the commit is made (issue 115). "
     "Each board draws the middle column of the default window, 680 points wide, next to the commit panel at its default 320. "
     "Sam Rivera's ~/.gitconfig commits as sam@rivera.dev and signs with an SSH key, and ~/.gitconfig-work, which it includes for ~/work/, "
@@ -1370,6 +1653,11 @@ INTROS = [
 ]
 
 NOTES = {
+    "Id-D.dc.html": "The line is always at the top of the box, so the place to see who a commit goes out as, and to change it, is where the commit is made, much as GitHub Desktop puts the author's picture beside the summary. It costs 27 points of the text's height in every repository, where decision 103 spent them only on the exceptions. The circle loses its shield, since the end of the line says Signed or Not signed, and a click opens the same popover under the line.",
+    "Id-G.dc.html": "The person icon at the end of the tabs row is gray for the global identity, like the row's other icon buttons, and sits in a circle tinted by the email for anyone else, as in the sidebar. It turns amber with a triangle when a commit would go wrong, which matters most for agents, whose commits would stop at signing while nobody watches the box. It has no shield, since the tooltip and the box's line say how commits are signed. The box's line keeps the person icon it has now, gray for the global identity, and in the email's tint with the name in ink for anyone else. The branch row has nothing.",
+    "Id-G-Change.dc.html": "The tabs row is there whatever the panels show, so the identity can be seen and changed in a clean worktree, before a merge or a rebase, or while an agent works. A click opens the same popover under the icon, and its note says that merges, rebases and agents use the identity too. Making a branch or a worktree doesn't use it, and a push goes out as the account the SSH key or the credential helper belongs to, which this doesn't show. The sidebar marks the same exceptions with the same tinted person, in place of the initials.",
+    "Id-G-States.dc.html": "Before git config has answered, the end of the tabs row is empty and the box keeps the line's room, so nothing moves when they arrive. The warnings take the line's place in the box, and the icon in the tabs row turns amber. At 320 points the work email is long enough that the words Signed and Not signed go first, and the shield stays.",
+    "Id-Where.dc.html": "E is the better place in the header. The tabs row belongs to the repository, which is the identity's scope, and the end of a top row is where apps put the person who's signed in. That's also its risk, since Roga has no account, and it takes room the tabs need when there are many worktrees. F sits with history's count and its commands, so the initials would read as a filter for whose commits history shows, and they'd go first when the row is short of room. With the line in the box always there, D draws nothing in the header. If the header should still say something, E for the exceptions only would match the sidebar.",
     "Id-Today.dc.html": "On main. Nothing in the window says who a commit goes out as. The commit panel's author line shows it once the commit exists, and git commit says nothing when it makes an email up from the login and the Mac's name.",
     "Id-A.dc.html": "A draws the identity as initials in a circle, before Fetch in the branch row and before Commit in the box, the way history's author column already shows people. The tint comes from the email, so a work identity and a personal one look different, and a small shield on the circle says commits are signed. It costs no height, but the initials alone don't say which email it is until the tooltip does, and at 320 points they cost Generate the agent's name, which is the first step decision 98's row already takes when it's short of room.",
     "Id-B.dc.html": "B writes the email before Fetch, and puts a line at the top of the box with the name, the email and whether commits are signed. It's the clearest, but the line costs 27 points of the height decision 98 gave back, and the branch row's email is the first thing cut when the row is short of room.",
