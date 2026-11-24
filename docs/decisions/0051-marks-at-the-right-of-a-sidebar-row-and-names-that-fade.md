@@ -25,7 +25,7 @@ We put the mark before the count rather than after it. After it, the count and t
 ## Consequences
 
 - The marks no longer start a second line, so the words on every second line start in the same place, under the row's own text.
-- At the sidebar's default width, `Needs your OK: git push` and `2 min` now fit whole in a worktree's row, which decision 48 cut to `git…`.
+- At the sidebar's default width, `Approval required: git push` and `2 min` now fit whole in a worktree's row, which decision 48 cut to `git…`.
 - A row with an agent gives the branch's name 24 points less than one without. A count with the triangle for conflicts, or with three digits, is wider than 24 points, so its row's mark sits that much further left.
 - Two branches that differ only at their end, such as `release/2.3.1` and `release/2.3.2` in a narrow refs panel, look alike until the panel is wider or the pointer rests on one, where cutting in the middle would have shown both ends.
 - A row is 4 points taller while it has a second line, so a list with many agents at work shows a little less.
