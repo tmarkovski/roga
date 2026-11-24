@@ -62,10 +62,12 @@ struct GitProviderTests {
     /// path finds Apple's, and a chosen one is found when it's one of
     /// `usable`.
     ///
-    /// The login shell says the survey's `PATH` unless `shell` says otherwise.
+    /// The login shell says the survey's `PATH` unless `shell` says otherwise,
+    /// and Apple's git isn't found in any `PATH` of `noGitIn`.
     func provider(
         survey: GitSurvey = GitProviderTests.survey,
         finds: Bool = true,
+        noGitIn: Set<String> = [],
         usable: [FoundGit] = [apples, homebrew],
         shell: (@Sendable (_ priority: GitCommand.Priority) async -> (searchPath: String, fromLoginShell: Bool))? = nil
     ) -> GitProvider {
@@ -77,7 +79,7 @@ struct GitProviderTests {
                 asked.add(configured)
                 searched.add(searchPath)
                 guard let configured else {
-                    guard finds, let version = apples.version else {
+                    guard finds, !noGitIn.contains(searchPath), let version = apples.version else {
                         return .failure(.unsupported([.init(executable: old.executable, version: old.version)], developerToolsMissing: false))
                     }
                     return .success(GitInstallation(executable: apples.executable, version: version, searchPath: searchPath))
@@ -142,6 +144,24 @@ struct GitProviderTests {
         #expect(provider.searchPath?.path == Self.searchPath)
         #expect(defaults.string(forKey: GitPreferences.searchPathKey) == Self.searchPath)
         #expect(provider.survey == Self.survey)
+    }
+
+    @Test func waitsForTheShellAtNormalPriorityWhenLastLaunchsPathHasNoGit() async {
+        defer { AgentTestSupport.remove(defaults, named: name) }
+        let saved = "/opt/old/bin"
+        defaults.set(saved, forKey: GitPreferences.searchPathKey)
+        let fresh = Self.searchPath
+        let priorities = Mutex<[GitCommand.Priority]>([])
+        let provider = provider(noGitIn: [saved], shell: { priority in
+            priorities.withLock { $0.append(priority) }
+            return (fresh, true)
+        })
+        await settled(provider)
+        // Windows wait for the shell, since git wasn't found without it.
+        #expect(priorities.withLock { $0 } == [.normal])
+        #expect(searched.all == [saved, Self.searchPath])
+        #expect(provider.git?.installation.searchPath == Self.searchPath)
+        #expect(provider.failure == nil)
     }
 
     @Test func theSamePathFromTheShellFindsNothingAgain() async {

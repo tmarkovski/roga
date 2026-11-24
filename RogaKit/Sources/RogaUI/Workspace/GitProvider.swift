@@ -156,7 +156,10 @@ public final class GitProvider {
             }
             // Nothing waits for the shell when git was found already, so it
             // doesn't take time from opening the repositories windows show.
-            var (searchPath, fromLoginShell) = await finding.searchPath(early == nil ? .normal : .utility)
+            // When the saved `PATH` has no git Roga can use, windows wait for
+            // the shell, as they do on the first launch.
+            let foundEarly = if case .success? = early { true } else { false }
+            var (searchPath, fromLoginShell) = await finding.searchPath(foundEarly ? .utility : .normal)
             guard self.generation == generation else { return }
             if fromLoginShell {
                 defaults.set(searchPath, forKey: GitPreferences.searchPathKey)
