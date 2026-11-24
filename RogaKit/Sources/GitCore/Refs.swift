@@ -109,12 +109,26 @@ public struct RefList: Sendable, Hashable {
     /// it's a local `main` or `master`.
     public var mainBranch: Ref? {
         func ref(_ name: String) -> Ref? { refs.first { $0.name == name } }
-        let remoteHeads = refs.filter { $0.kind == .remoteBranch && $0.symbolicTarget != nil && $0.name.hasSuffix("/HEAD") }
-        let remoteHead = remoteHeads.first { $0.name == Ref.remoteBranchPrefix + "origin/HEAD" } ?? remoteHeads.first
         if let remoteHead, let target = remoteHead.symbolicTarget {
             let folder = remoteHead.name.dropLast("HEAD".count)
             return ref(Ref.branchPrefix + target.dropFirst(folder.count)) ?? ref(target)
         }
         return ref(Ref.branchPrefix + "main") ?? ref(Ref.branchPrefix + "master")
+    }
+
+    /// The remote branch that a remote's `HEAD` names, preferring origin's,
+    /// as in `refs/remotes/origin/main`. It's where the main branch's commits
+    /// are on the remote even when the local branch has no upstream set, as
+    /// after `git push origin main` without `-u`.
+    public var remoteMainBranch: Ref? {
+        guard let target = remoteHead?.symbolicTarget else { return nil }
+        return refs.first { $0.name == target }
+    }
+
+    /// A remote's `HEAD`, which names that remote's main branch, preferring
+    /// origin's.
+    private var remoteHead: Ref? {
+        let remoteHeads = refs.filter { $0.kind == .remoteBranch && $0.symbolicTarget != nil && $0.name.hasSuffix("/HEAD") }
+        return remoteHeads.first { $0.name == Ref.remoteBranchPrefix + "origin/HEAD" } ?? remoteHeads.first
     }
 }
