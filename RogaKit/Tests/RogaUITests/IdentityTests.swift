@@ -136,6 +136,23 @@ struct IdentityTests {
         #expect(CommitBoxIdentity(nil, defaultIdentity: nil) == .unread)
     }
 
+    // MARK: The Key field
+
+    @Test func theKeyFieldKnowsTheKeyItNames() {
+        let file = SigningKey(value: "~/.ssh/id_ed25519.pub", title: "~/.ssh/id_ed25519.pub", details: ["ED25519", "sam@rivera.dev"], fingerprint: "SHA256:abc", emails: ["sam@rivera.dev"])
+        let fingerprint = "9A8B7C6D5E4F30211A2B3C4D4B5A69784F1E2D3C"
+        let openPGP = SigningKey(value: fingerprint, title: "Sam Rivera <sam@rivera.dev>", details: ["ED25519", "4B5A69784F1E2D3C"], fingerprint: fingerprint, emails: ["sam@rivera.dev"])
+        let keys = [file, openPGP]
+        #expect(SigningKeyField.key(named: "~/.ssh/id_ed25519.pub", in: keys) == file)
+        // The same file without `~`.
+        #expect(SigningKeyField.key(named: NSHomeDirectory() + "/.ssh/id_ed25519.pub", in: keys) == file)
+        // A long key ID is the end of the fingerprint, in any case.
+        #expect(SigningKeyField.key(named: "4b5a69784f1e2d3c", in: keys) == openPGP)
+        #expect(SigningKeyField.key(named: "0x4B5A69784F1E2D3C", in: keys) == openPGP)
+        #expect(SigningKeyField.key(named: "1E2D3C", in: keys) == nil)
+        #expect(SigningKeyField.key(named: "  ", in: keys) == nil)
+    }
+
     // MARK: The popover
 
     @Test func savesNothingUntilSomethingChanges() {

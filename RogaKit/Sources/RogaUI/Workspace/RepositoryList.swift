@@ -591,6 +591,16 @@ public final class RepositoryList {
         if let failure { throw failure }
     }
 
+    /// The keys on this Mac that can sign commits in a format, with the
+    /// programs a repository's config says git signs with, or the global
+    /// config's without a repository (decision 106). Nil when git isn't
+    /// there to ask.
+    func signingKeys(_ format: CommitIdentity.SigningFormat, for repository: ListedRepository?) async -> SigningKeys.Listing? {
+        if let session = repository?.session { return await session.signingKeys(format) }
+        guard let git else { return nil }
+        return await SigningKeys.list(format, git: git, programs: Programs(sharingWith: git), in: "/")
+    }
+
     /// The repositories whose commits go out as someone other than the global
     /// identity, or whose commits would go wrong, for Settings › Git. A bare
     /// repository commits nothing, so it isn't one.

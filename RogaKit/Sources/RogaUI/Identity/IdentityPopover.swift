@@ -194,6 +194,8 @@ struct IdentityPopover: View {
     @State private var editor: IdentityEditor?
     @State private var isSaving = false
     @State private var failure: String?
+    /// The keys on this Mac for each format the Key field has shown.
+    @State private var keyListings: [CommitIdentity.SigningFormat: SigningKeys.Listing] = [:]
 
     static let width: CGFloat = 340
     private static let inset: CGFloat = 16
@@ -250,7 +252,18 @@ struct IdentityPopover: View {
                     if editor.signs {
                         SettingsSegments(selection: $editor.format, options: CommitIdentity.SigningFormat.allCases.map { ($0, $0.title) })
                             .accessibilityLabel("Format")
-                        field(.signingKey, "Key", text: $editor.key, placeholder: keyPlaceholder(editor.format), isMonospaced: true, editor: editor)
+                        VStack(alignment: .leading, spacing: 5) {
+                            label(.signingKey, "Key", editor: editor)
+                            SigningKeyField(
+                                text: $editor.key,
+                                format: editor.format,
+                                listing: keyListings[editor.format],
+                                email: editor.email,
+                                hasDefaultKeyCommand: editor.identity.hasDefaultKeyCommand,
+                                width: Self.width - 2 * Self.inset
+                            )
+                            .onSubmit { if !editor.changes.isEmpty { save(editor.changes) } }
+                        }
                     }
                 }
                 VStack(alignment: .leading, spacing: 6) {
@@ -288,6 +301,13 @@ struct IdentityPopover: View {
         .frame(width: Self.width)
         .font(.system(size: 13))
         .background(DialogColors.surface)
+        // The keys are listed only while the Key field shows, once for each
+        // format, since gpg can take a moment the first time.
+        .task(id: editor.signs ? editor.format : nil) {
+            guard editor.signs, editor.format != .x509, keyListings[editor.format] == nil else { return }
+            let format = editor.format
+            if let listing = await list.signingKeys(format, for: repository) { keyListings[format] = listing }
+        }
     }
 
     /// A field's label, where its value comes from, and Use Global when the
@@ -327,14 +347,6 @@ struct IdentityPopover: View {
             SettingsTextField(text: text, placeholder: placeholder, width: Self.width - 2 * Self.inset, isMonospaced: isMonospaced)
                 .accessibilityLabel(title)
                 .onSubmit { if !editor.changes.isEmpty { save(editor.changes) } }
-        }
-    }
-
-    private func keyPlaceholder(_ format: CommitIdentity.SigningFormat) -> String {
-        switch format {
-        case .ssh: "~/.ssh/id_ed25519.pub"
-        case .openPGP: "Key ID, or empty to use the email's"
-        case .x509: "Certificate ID, or empty to use the email's"
         }
     }
 

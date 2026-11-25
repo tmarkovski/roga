@@ -85,6 +85,8 @@ public struct CommitIdentity: Sendable, Hashable {
     public var shownEmail: String? { email?.text }
     /// The key that signs, when one is set.
     public var key: String? { signingKey?.text }
+    /// Whether `gpg.ssh.defaultKeyCommand` picks an SSH key when none is set.
+    public var hasDefaultKeyCommand: Bool { defaultKeyCommand?.text != nil }
 
     /// Whether commits are signed, as git reads `commit.gpgsign`.
     public var signs: Bool {
@@ -101,7 +103,7 @@ public struct CommitIdentity: Sendable, Hashable {
     /// What would go wrong with a commit made now, or nil when nothing would.
     public var problem: Problem? {
         if shownEmail == nil { return .noEmail }
-        if signs, format == .ssh, key == nil, defaultKeyCommand?.text == nil { return .noSigningKey }
+        if signs, format == .ssh, key == nil, !hasDefaultKeyCommand { return .noSigningKey }
         return nil
     }
 

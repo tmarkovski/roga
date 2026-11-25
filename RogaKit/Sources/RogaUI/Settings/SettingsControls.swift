@@ -588,13 +588,17 @@ struct SettingsTextField: View {
     var placeholder = ""
     var width: CGFloat = 240
     var isMonospaced = false
+    /// Room kept at the field's end for a button drawn over it, such as the
+    /// Key field's menu of keys.
+    var trailingRoom: CGFloat = 0
 
     var body: some View {
         TextField("", text: $text, prompt: Text(placeholder).foregroundStyle(SettingsColors.note))
             .textFieldStyle(.plain)
             .font(isMonospaced ? .system(size: 12, design: .monospaced) : .system(size: 13))
             .autocorrectionDisabled()
-            .padding(.horizontal, 11)
+            .padding(.leading, 11)
+            .padding(.trailing, 11 + trailingRoom)
             .frame(width: width, height: 32)
             .background(SettingsColors.surface, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
             .overlay {

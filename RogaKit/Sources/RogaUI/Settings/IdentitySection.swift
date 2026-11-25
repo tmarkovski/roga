@@ -25,6 +25,8 @@ struct IdentitySection: View {
     /// leaves alone.
     @FocusState private var focus: CommitIdentityCommands.Key?
     @State private var failure: String?
+    /// The keys on this Mac for each format the Key row has shown.
+    @State private var keyListings: [CommitIdentity.SigningFormat: SigningKeys.Listing] = [:]
 
     private typealias Key = CommitIdentityCommands.Key
     private let globalFiles = GlobalConfigFiles()
@@ -54,6 +56,13 @@ struct IdentitySection: View {
         }
         .onAppear { load(keeping: nil) }
         .onChange(of: list.defaultIdentity) { load(keeping: focus) }
+        // The keys are listed only while the Key row shows, once for each
+        // format (decision 106).
+        .task(id: identity.signs ? identity.format : nil) {
+            let format = identity.format
+            guard identity.signs, format != .x509, keyListings[format] == nil else { return }
+            if let listing = await list.signingKeys(format, for: nil) { keyListings[format] = listing }
+        }
         // Leaving a field saves it, as Return does.
         .onChange(of: focus) { left, _ in
             if let left { save(left) }
@@ -89,7 +98,18 @@ struct IdentitySection: View {
                 }, options: CommitIdentity.SigningFormat.allCases.map { ($0, $0.title) })
             }
         case .signingKey:
-            fieldRow(item, key: .signingKey, text: $key, placeholder: identity.format == .ssh ? "~/.ssh/id_ed25519.pub" : "Key ID, or empty to use the email's", isMonospaced: true)
+            settingRow(item, key: .signingKey) {
+                SigningKeyField(
+                    text: $key,
+                    format: identity.format,
+                    listing: keyListings[identity.format],
+                    email: identity.shownEmail,
+                    hasDefaultKeyCommand: identity.hasDefaultKeyCommand,
+                    width: 240,
+                    focus: $focus
+                ) { _ in save(.signingKey) }
+                .onSubmit { save(.signingKey) }
+            }
         default:
             EmptyView()
         }
