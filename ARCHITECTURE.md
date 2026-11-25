@@ -59,7 +59,7 @@ roga/
 │   │   │       ├── StatusParser.swift      status --porcelain=v2 -z, with what it says of a submodule's checkout, and --numstat -z
 │   │   │       ├── RawDiffParser.swift     diff-tree --raw --numstat -z
 │   │   │       ├── CommitIdentityParser.swift config --show-scope --show-origin -z, for who commits go out as
-│   │   │       ├── SigningKeyParsers.swift .pub files and ssh-add -L, IdentityAgent in ~/.ssh/config, gpg --list-secret-keys --with-colons (decision 106), and a commit's SSH signature and the allowed signers file (decision 107)
+│   │   │       ├── SigningKeyParsers.swift .pub files and ssh-add -L, IdentityAgent in ~/.ssh/config, gpg --list-secret-keys --with-colons (decision 106), a commit's SSH signature and the allowed signers file (decision 107), and which key made a commit's SSH or OpenPGP signature, without checking it (decision 109)
 │   │   │       ├── SigningToolParsers.swift gh auth status, gpg --status-fd's KEY_CREATED, and the versions of gpg, ssh and gh, decision 108
 │   │   │       └── PatchParser.swift       the hunks that diff-tree -p prints
 │   │   ├── GitRunner/

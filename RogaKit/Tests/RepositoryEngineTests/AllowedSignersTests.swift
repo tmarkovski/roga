@@ -74,6 +74,9 @@ struct AllowedSignersTests {
         let check = try await signed.session.checkSignature(of: signed.commit)
         #expect(check.result == .good)
         #expect(check.signer == "t@example.com")
+        // The key read from the signature before checking is the one git
+        // names after, so the commit panel's line doesn't change (decision 109).
+        #expect(await signed.session.signatureKey(of: signed.commit) == check.key)
         // Once the file lists it, there's nothing left to offer.
         #expect(await makeOffer(signed) == nil)
     }

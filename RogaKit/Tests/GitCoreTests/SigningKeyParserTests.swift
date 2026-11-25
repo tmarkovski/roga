@@ -90,6 +90,46 @@ struct SigningKeyParserTests {
         #expect(SSHSignatureParser.publicKey(inSignature: "-----BEGIN SSH SIGNATURE-----\nU1NIU0lH\n-----END SSH SIGNATURE-----") == nil)
     }
 
+    // MARK: Which key signed, before it's checked (decision 109)
+
+    /// A signature gpg 2.5 made with an Ed25519 key whose fingerprint is
+    /// 720096CD67EE2F537B73D7E068586E81E4F27998.
+    static let openPGPSignature = """
+    -----BEGIN PGP SIGNATURE-----
+
+    iJEEABYKADkWIQRyAJbNZ+4vU3tz1+BoWG6B5PJ5mAUCawcGtBsUgAAAAAAEAA5t
+    YW51MiwyLjUrMS4xMiwwLDMACgkQaFhugeTyeZi8LwD8DqCJic5a6Y++UDUk4Qcp
+    hcd1Xu/KQ8OlhyPwqTKf2LQBAL8OEzyKBLnsk6Cl6ajaE5JOPjxV5fg7u7kuLrAC
+    LEAN
+    =b9UO
+    -----END PGP SIGNATURE-----
+    """
+
+    @Test func readsWhichOpenPGPKeySignedAsGitWouldNameIt() {
+        // The key ID that %GK prints: the fingerprint's last 16 digits.
+        #expect(OpenPGPSignatureParser.keyID(inSignature: Self.openPGPSignature) == "68586E81E4F27998")
+        // In a commit's header, whose lines after the first start with a
+        // space, as the armor's blank line does.
+        let header = Self.openPGPSignature.split(separator: "\n", omittingEmptySubsequences: false).joined(separator: "\n ")
+        let commit = "tree 4b825dc642cb6eb9a060e54bf8d69288fbee4904\ncommitter T <t@example.com> 1764000000 +0000\ngpgsig \(header)\n\nSigned"
+        #expect(CommitSignatureParser.key(inCommit: commit) == "68586E81E4F27998")
+        #expect(CommitSignatureParser.key(inCommit: "tree 4b82\n\nUnsigned") == nil)
+        #expect(OpenPGPSignatureParser.keyID(inSignature: "-----BEGIN PGP SIGNATURE-----\nAAAA\n-----END PGP SIGNATURE-----") == nil)
+    }
+
+    @Test func readsTheKeyIDFromTheIssuersFingerprintAlone() {
+        // A version 4 signature whose only subpacket is the issuer's
+        // fingerprint, 33, for a version 4 key, whose ID ends it.
+        let fingerprint = (0..<20).map { UInt8($0) }
+        let body: [UInt8] = [4, 0x00, 22, 10, 0, 23, 22, 33, 4] + fingerprint + [0, 0]
+        #expect(OpenPGPSignatureParser.keyID(inSignatureBody: body[...]) == fingerprint.suffix(8)[...])
+        // A version 6 key's ID starts its 32-byte fingerprint, and version 6
+        // signatures count their subpackets with four bytes.
+        let long = (100..<132).map { UInt8($0) }
+        let v6: [UInt8] = [6, 0x00, 27, 10, 0, 0, 0, 35, 34, 33, 6] + long + [0, 0, 0, 0]
+        #expect(OpenPGPSignatureParser.keyID(inSignatureBody: v6[...]) == long.prefix(8)[...])
+    }
+
     // MARK: OpenPGP
 
     /// A key that signs, then one that has expired, one that was revoked, one

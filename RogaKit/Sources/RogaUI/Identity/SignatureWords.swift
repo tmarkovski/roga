@@ -3,51 +3,98 @@ import IconUI
 import RepositoryEngine
 import SwiftUI
 
-/// The commit panel's line under the author for a signed commit, which
-/// checks the signature in the background as the commit shows (decision 104).
-/// It waits a moment first, so that moving through history with the arrow
+extension UserDefaults {
+    /// Whether the commit panel checks a signed commit's signature as the
+    /// commit shows (decision 109).
+    static let checksSignaturesKey = "checksSignatures"
+
+    /// Whether the commit panel checks a signed commit's signature as the
+    /// commit shows, which it does unless the user turned that off.
+    var checksSignatures: Bool {
+        object(forKey: Self.checksSignaturesKey) as? Bool ?? true
+    }
+}
+
+/// The commit panel's line under the author for a signed commit (decisions
+/// 104 and 109). It says at once how the commit is signed and which key
+/// made the signature, which Roga reads from the commit itself, and then
+/// checks the signature in the background, which changes only the mark and
+/// the words on its first line, so that nothing under it moves.
+///
+/// The check waits a moment, so that moving through history with the arrow
 /// keys doesn't run gpg or ssh-keygen for every commit on the way, and a
-/// check that's still running stops when another commit shows. When git
-/// couldn't vouch for an SSH signature made with one of this Mac's keys, it
-/// offers to trust the key (decision 107).
+/// check that's still running stops when another commit shows. With
+/// checking turned off in Settings, Check does it for this commit. When git
+/// couldn't vouch for an SSH signature made with one of this Mac's keys, the
+/// key's line ends with Trust This Key… (decision 107).
 struct SignatureLine: View {
     let commit: ObjectID
     let format: CommitIdentity.SigningFormat
-    /// The committer's email, which trusting the key is for.
+    /// The committer's email, which trusting the key is for, and which a
+    /// good signature's signer is compared with.
     let email: String
     let session: RepositorySession
+    @AppStorage(UserDefaults.checksSignaturesKey) private var checksByItself = true
+    /// The key read from the signature, and for which commit.
+    @State private var key: (commit: ObjectID, key: String?)?
     /// What the check found, and for which commit, so that a line that's
     /// reused for the next commit doesn't show the last one's.
     @State private var found: Found?
     /// How many times a key has been trusted here, so that the commit is
     /// checked again after each.
     @State private var trusts = 0
+    /// The commit Check was clicked for, while checking is off.
+    @State private var requested: ObjectID?
 
     struct Found: Equatable {
         var commit: ObjectID
-        var words: SignatureWords
+        var check: SignatureCheck?
+        var failure: String?
         var offer: AllowedSigners.Offer?
     }
 
-    /// What starts a check: another commit, or a key just trusted.
+    /// What starts a check: another commit, a key just trusted, Check, or
+    /// checking turned on.
     private struct Check: Hashable {
         var commit: ObjectID
         var trusts: Int
+        var isWanted: Bool
     }
 
     /// How long a commit shows before its signature is checked.
     static let pause = Duration.milliseconds(150)
 
+    /// How git's answer comes in: the first line's mark and words fade from
+    /// Signed with… to what git found. Showing another commit doesn't fade,
+    /// so that moving through history stays quick.
+    static let answer = Animation.easeInOut(duration: 0.25)
+
     var body: some View {
         let shown = found?.commit == commit ? found : nil
-        SignatureLineContent(words: shown?.words ?? SignatureWords(format: format, check: nil)) {
+        let readKey = key?.commit == commit ? key?.key : nil
+        let words = shown?.failure.map { SignatureWords.failed($0) }
+            ?? SignatureWords(format: format, check: shown?.check, email: email, offer: shown?.offer)
+        let isWanted = checksByItself || requested == commit
+        SignatureLineContent(
+            words: words,
+            key: readKey ?? shown?.check?.key,
+            check: isWanted || shown != nil ? nil : { requested = commit }
+        ) {
             if let offer = shown?.offer {
                 TrustKeyButton(offer: offer, session: session) { trusts += 1 }
+                    .transition(.opacity)
             }
         }
-        .task(id: Check(commit: commit, trusts: trusts)) {
-            // A check after trusting a key needn't wait.
-            if trusts == 0 || found?.commit != commit {
+        // Reading the key costs one git cat-file and no gpg, so it doesn't wait.
+        .task(id: commit) {
+            let read = await session.signatureKey(of: commit)
+            guard !Task.isCancelled else { return }
+            key = (commit, read)
+        }
+        .task(id: Check(commit: commit, trusts: trusts, isWanted: isWanted)) {
+            guard isWanted else { return }
+            // A check after trusting a key, or after Check, needn't wait.
+            if trusts == 0 || found?.commit != commit, requested != commit {
                 guard (try? await Task.sleep(for: Self.pause)) != nil else { return }
             }
             let check: SignatureCheck
@@ -55,17 +102,17 @@ struct SignatureLine: View {
                 check = try await session.checkSignature(of: commit)
             } catch {
                 guard !Task.isCancelled else { return }
-                found = Found(commit: commit, words: .failed(String(describing: error)))
+                withAnimation(Self.answer) { found = Found(commit: commit, failure: String(describing: error)) }
                 return
             }
             guard !Task.isCancelled else { return }
-            found = Found(commit: commit, words: SignatureWords(format: format, check: check))
+            withAnimation(Self.answer) { found = Found(commit: commit, check: check) }
             // Only an SSH signature waits on the allowed signers file.
             guard format == .ssh, [.notChecked, .untrusted].contains(check.result),
                   let offer = await session.allowedSignersOffer(for: commit, email: email),
                   !Task.isCancelled
             else { return }
-            found = Found(commit: commit, words: SignatureWords(format: format, check: check, offer: offer), offer: offer)
+            withAnimation(Self.answer) { found = Found(commit: commit, check: check, offer: offer) }
         }
     }
 }
@@ -82,7 +129,7 @@ private struct TrustKeyButton: View {
     var body: some View {
         Button("Trust This Key…") { isConfirming = true }
             .buttonStyle(.contextual)
-            .padding(.top, 2)
+            .fixedSize()
             .help("Add \(offer.localKey.title) to \(offer.shownFile) for \(offer.email)")
             .popover(isPresented: $isConfirming, arrowEdge: .bottom) {
                 TrustKeyPopover(offer: offer, session: session) { didTrust in
@@ -163,35 +210,58 @@ struct TrustKeyPopover: View {
 }
 
 /// What the Signature line shows after its label, which the commit panel
-/// puts in the column with the other labels: a mark and the words, with the
-/// gray detail under them, and anything that follows, such as Trust This
-/// Key….
+/// puts in the column with the other labels (decision 109): a mark and a
+/// few words on one line, then the key on a line of its own, which ends
+/// with anything that follows, such as Trust This Key…. Both lines are
+/// always there, so that what the check finds changes only the first
+/// line's mark, color and words. Why, and who signed, are in the tooltip.
 struct SignatureLineContent<Accessory: View>: View {
     let words: SignatureWords
+    /// The key that made the signature, or nil while it's read, and for
+    /// X.509 until the check names it.
+    let key: String?
+    /// What Check does, while checking is off and this commit hasn't been
+    /// checked, or nil.
+    var check: (() -> Void)?
     @ViewBuilder var accessory: Accessory
 
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
             HStack(alignment: .firstTextBaseline, spacing: 4) {
-                if let icon = words.icon {
-                    icon.image
+                // One mark fades out as the next fades in, in the same place.
+                ZStack {
+                    words.icon.image
                         .font(.system(size: 12 / 1.128, weight: .medium))
-                } else {
-                    ProgressView()
-                        .controlSize(.mini)
+                        .id(words.icon)
+                        .transition(.opacity)
                 }
                 Text(words.title)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .contentTransition(.opacity)
                     .textSelection(.enabled)
+                if let check {
+                    Spacer(minLength: 8)
+                    Button("Check", action: check)
+                        .buttonStyle(.contextual)
+                        .fixedSize()
+                        .help("Check this commit's signature with gpg or ssh-keygen")
+                }
             }
             .foregroundStyle(words.color)
-            if let detail = words.detail {
-                Text(detail)
+            .help(words.help ?? words.title)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                // A space keeps the line's height while there's no key yet.
+                Text(key ?? " ")
+                    .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
                     .textSelection(.enabled)
+                    .help(key ?? "")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                accessory
             }
-            accessory
         }
         .font(.system(size: 12))
         .accessibilityElement(children: .contain)
@@ -199,17 +269,17 @@ struct SignatureLineContent<Accessory: View>: View {
 }
 
 extension SignatureLineContent where Accessory == EmptyView {
-    init(words: SignatureWords) {
-        self.init(words: words) { EmptyView() }
+    init(words: SignatureWords, key: String?) {
+        self.init(words: words, key: key) { EmptyView() }
     }
 }
 
 /// What the commit panel's Signature line says about a signed commit
-/// (decision 104): a mark and a few words, then a gray line with who signed
-/// it and with what key, or why git couldn't tell.
+/// (decisions 104 and 109): a mark and a few words that fit on one line,
+/// and the longer why, and who signed, for its tooltip.
 struct SignatureWords: Equatable {
     enum Tone: Equatable {
-        /// Checking, or nothing to worry about either way.
+        /// Not checked yet, or nothing to worry about either way.
         case plain
         case good
         /// Good once, but not now: an expired key.
@@ -218,65 +288,67 @@ struct SignatureWords: Equatable {
         case bad
     }
 
-    var icon: Icon?
+    var icon: Icon
     var title: String
-    var detail: String?
+    /// Why, or who signed, under the pointer.
+    var help: String?
     var tone: Tone
 
     /// - Parameters:
     ///   - format: How the commit is signed, from its header.
-    ///   - check: What git found, or nil while it checks.
+    ///   - check: What git found, or nil before it has checked.
+    ///   - email: The committer's email. A good signature from someone
+    ///     else says who, since the Committer line doesn't.
     ///   - offer: Trusting the key that signed it, when it's one of this
-    ///     Mac's, which the detail then names (decision 107).
-    init(format: CommitIdentity.SigningFormat, check: SignatureCheck?, offer: AllowedSigners.Offer? = nil) {
-        self.init(checked: format, check: check)
-        guard let offer, let check else { return }
-        let key = "\(offer.localKey.title), one of this Mac's keys"
-        switch check.result {
-        case .notChecked: detail = "\(Self.whyNotChecked(format)) It was signed with \(key)."
-        case .untrusted: detail = "The allowed signers file doesn't list \(key)."
-        default: break
-        }
-    }
-
-    private init(checked format: CommitIdentity.SigningFormat, check: SignatureCheck?) {
+    ///     Mac's, which the tooltip then names (decision 107).
+    init(format: CommitIdentity.SigningFormat, check: SignatureCheck?, email: String = "", offer: AllowedSigners.Offer? = nil) {
         guard let check else {
-            self.init(icon: nil, title: "Checking…", detail: nil, tone: .plain)
+            self.init(icon: .shield, title: "Signed with \(format.title)", help: nil, tone: .plain)
             return
         }
-        let who = [check.signer, check.key].compactMap(\.self).joined(separator: " · ")
-        let whoOrNil = who.isEmpty ? nil : who
+        let who = check.signer.map { "Signed by \($0)." }
         switch check.result {
         case .good:
-            self.init(icon: .shieldCheck, title: "Good \(format.title) signature", detail: whoOrNil, tone: .good)
+            if let signer = check.signer, !email.isEmpty, !signer.localizedCaseInsensitiveContains(email) {
+                self.init(icon: .shieldCheck, title: "Good signature from \(Self.name(signer))", help: who, tone: .good)
+            } else {
+                self.init(icon: .shieldCheck, title: "Good \(format.title) signature", help: who, tone: .good)
+            }
         case .untrusted:
-            let detail = format == .ssh
-                ? ["The allowed signers file doesn't list this key.", check.key].compactMap(\.self).joined(separator: " ")
-                : whoOrNil
-            self.init(icon: .shieldQuestionMark, title: "Good signature, from a key this Mac doesn't trust", detail: detail, tone: .plain)
+            let why = format == .ssh
+                ? "The allowed signers file doesn't list \(offer.map { "\($0.localKey.title), one of this Mac's keys" } ?? "this key")."
+                : "gpg doesn't trust this key enough to say whose it is."
+            self.init(icon: .shieldQuestionMark, title: "Good signature, key not trusted", help: [why, who].compactMap(\.self).joined(separator: " "), tone: .plain)
         case .expired:
-            self.init(icon: .shieldAlert, title: "Good signature, from a key that has expired", detail: whoOrNil, tone: .warning)
+            self.init(icon: .shieldAlert, title: "Good signature, expired key", help: who, tone: .warning)
         case .revoked:
-            self.init(icon: .shieldAlert, title: "Signed with a key that has been revoked", detail: whoOrNil, tone: .bad)
+            self.init(icon: .shieldAlert, title: "Signed with a revoked key", help: who, tone: .bad)
         case .bad:
-            self.init(icon: .shieldAlert, title: "The signature doesn't match this commit", detail: "It was made for other contents, or with another key than it names.", tone: .bad)
+            self.init(icon: .shieldAlert, title: "Bad signature", help: "The signature doesn't match this commit. It was made for other contents, or with another key than it names.", tone: .bad)
         case .missingKey:
-            self.init(icon: .shieldQuestionMark, title: "Signed with a key this Mac doesn't have", detail: check.key.map { "\(format.title) key \($0)" }, tone: .plain)
+            self.init(icon: .shieldQuestionMark, title: "Signed with a key not on this Mac", help: "git can't check it without the \(format.title) key.", tone: .plain)
         case .notChecked:
-            self.init(icon: .shieldQuestionMark, title: "Signed with \(format.title), not checked", detail: Self.whyNotChecked(format), tone: .plain)
+            let signedWith = offer.map { " It was signed with \($0.localKey.title), one of this Mac's keys." } ?? ""
+            self.init(icon: .shieldQuestionMark, title: "Signed with \(format.title), not checked", help: Self.whyNotChecked(format) + signedWith, tone: .plain)
         }
     }
 
-    init(icon: Icon?, title: String, detail: String?, tone: Tone) {
+    init(icon: Icon, title: String, help: String?, tone: Tone) {
         self.icon = icon
         self.title = title
-        self.detail = detail
+        self.help = help
         self.tone = tone
     }
 
     /// What the line says when git couldn't be run to check.
     static func failed(_ message: String) -> SignatureWords {
-        SignatureWords(icon: .shieldQuestionMark, title: "Couldn't check the signature", detail: message, tone: .plain)
+        SignatureWords(icon: .shieldQuestionMark, title: "Couldn't check the signature", help: message, tone: .plain)
+    }
+
+    /// A signer's name, without the email that gpg puts after it.
+    static func name(_ signer: String) -> String {
+        guard let open = signer.range(of: " <") else { return signer }
+        return String(signer[..<open.lowerBound])
     }
 
     private static func whyNotChecked(_ format: CommitIdentity.SigningFormat) -> String {

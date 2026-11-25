@@ -3,6 +3,7 @@ import AppKit
 import Foundation
 import GitCore
 import GitRunner
+import IconUI
 import RepositoryEngine
 import Testing
 import ThemeUI
@@ -279,19 +280,42 @@ struct IdentityTests {
 
     @Test func saysWhatCheckingASignatureFound() {
         let key = "SHA256:abc"
-        #expect(SignatureWords(format: .ssh, check: nil).title == "Checking…")
-        let good = SignatureWords(format: .ssh, check: SignatureCheck(result: .good, signer: "sam@rivera.dev", key: key))
+        // Before git has checked, the line says how it's signed, with the
+        // plain shield and no spinner (decision 109).
+        let before = SignatureWords(format: .openPGP, check: nil)
+        #expect(before.title == "Signed with OpenPGP")
+        #expect(before.icon == .shield)
+        #expect(before.tone == .plain)
+        let good = SignatureWords(format: .ssh, check: SignatureCheck(result: .good, signer: "sam@rivera.dev", key: key), email: "sam@rivera.dev")
         #expect(good.title == "Good SSH signature")
-        #expect(good.detail == "sam@rivera.dev · SHA256:abc")
+        #expect(good.help == "Signed by sam@rivera.dev.")
         #expect(good.tone == .good)
+        // Someone other than the committer is named, since the Committer
+        // line doesn't say who signed.
+        let other = SignatureWords(format: .openPGP, check: SignatureCheck(result: .good, signer: "Alex Kim <alex@example.com>", key: "3AA5"), email: "sam@rivera.dev")
+        #expect(other.title == "Good signature from Alex Kim")
         let unchecked = SignatureWords(format: .ssh, check: SignatureCheck(result: .notChecked))
         #expect(unchecked.title == "Signed with SSH, not checked")
-        #expect(unchecked.detail == "git needs gpg.ssh.allowedSignersFile to know whose keys to trust.")
-        #expect(SignatureWords(format: .openPGP, check: SignatureCheck(result: .notChecked)).detail == "git couldn't run gpg to check it.")
-        #expect(SignatureWords(format: .ssh, check: SignatureCheck(result: .untrusted, key: key)).detail == "The allowed signers file doesn't list this key. SHA256:abc")
-        #expect(SignatureWords(format: .openPGP, check: SignatureCheck(result: .missingKey, key: "3AA5")).detail == "OpenPGP key 3AA5")
+        #expect(unchecked.help == "git needs gpg.ssh.allowedSignersFile to know whose keys to trust.")
+        #expect(SignatureWords(format: .openPGP, check: SignatureCheck(result: .notChecked)).help == "git couldn't run gpg to check it.")
+        #expect(SignatureWords(format: .ssh, check: SignatureCheck(result: .untrusted, key: key)).help == "The allowed signers file doesn't list this key.")
+        #expect(SignatureWords(format: .openPGP, check: SignatureCheck(result: .missingKey, key: "3AA5")).title == "Signed with a key not on this Mac")
         #expect(SignatureWords(format: .openPGP, check: SignatureCheck(result: .bad)).tone == .bad)
         #expect(SignatureWords(format: .openPGP, check: SignatureCheck(result: .expired)).tone == .warning)
+    }
+
+    @Test func eachTitleFitsOnTheSignaturesLine() {
+        // The panel's value column is about 220 points at its default
+        // width, which holds about 34 characters of 12-point text.
+        let results: [SignatureCheck.Result] = [.good, .untrusted, .expired, .revoked, .bad, .missingKey, .notChecked]
+        for format in [CommitIdentity.SigningFormat.ssh, .openPGP, .x509] {
+            #expect(SignatureWords(format: format, check: nil).title.count <= 34)
+            for result in results {
+                let title = SignatureWords(format: format, check: SignatureCheck(result: result)).title
+                #expect(title.count <= 34, "\(title)")
+            }
+        }
+        #expect(UserDefaults(suiteName: "checksSignatures-\(UUID())")?.checksSignatures == true)
     }
 
     func trustOffer(setsFile: Bool) throws -> AllowedSigners.Offer {
@@ -305,9 +329,9 @@ struct IdentityTests {
 
     @Test func namesThisMacsKeyWhenItOffersToTrustIt() throws {
         let offer = try trustOffer(setsFile: true)
-        #expect(SignatureWords(format: .ssh, check: SignatureCheck(result: .notChecked), offer: offer).detail
+        #expect(SignatureWords(format: .ssh, check: SignatureCheck(result: .notChecked), offer: offer).help
             == "git needs gpg.ssh.allowedSignersFile to know whose keys to trust. It was signed with ~/.ssh/id_ed25519.pub, one of this Mac's keys.")
-        #expect(SignatureWords(format: .ssh, check: SignatureCheck(result: .untrusted, key: offer.key.fingerprint), offer: offer).detail
+        #expect(SignatureWords(format: .ssh, check: SignatureCheck(result: .untrusted, key: offer.key.fingerprint), offer: offer).help
             == "The allowed signers file doesn't list ~/.ssh/id_ed25519.pub, one of this Mac's keys.")
     }
 

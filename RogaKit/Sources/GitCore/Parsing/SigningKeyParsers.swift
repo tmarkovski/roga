@@ -136,6 +136,184 @@ public enum SSHSignatureParser {
     }
 }
 
+/// Reads which key made an OpenPGP signature, from the signature itself,
+/// so that the commit panel can name the key before gpg checks it (decision
+/// 109). It reads the signature packet's issuer, which RFC 9580 lays out.
+public enum OpenPGPSignatureParser {
+    /// The key ID that git's `%GK` prints once gpg has checked the
+    /// signature: the 16 hex digits of the key that made it, from the
+    /// issuer subpacket, or else from the issuer's fingerprint.
+    public static func keyID(inSignature armored: String) -> String? {
+        guard armored.contains("-----BEGIN PGP SIGNATURE-----"),
+              let bytes = dearmored(armored),
+              let body = signaturePacket(in: bytes)
+        else { return nil }
+        return keyID(inSignatureBody: body).map(hex)
+    }
+
+    /// The bytes between the armor's lines, without its headers, such as
+    /// `Version:`, and its checksum, which starts with `=`.
+    static func dearmored(_ armored: String) -> [UInt8]? {
+        let lines = armored.split(whereSeparator: \.isNewline)
+        guard let begin = lines.firstIndex(where: { $0.hasPrefix("-----BEGIN") }),
+              let end = lines.lastIndex(where: { $0.hasPrefix("-----END") }), begin < end
+        else { return nil }
+        let base64 = lines[(begin + 1)..<end]
+            .filter { !$0.isEmpty && !$0.hasPrefix("=") && !$0.contains(":") }
+            .joined()
+        return Data(base64Encoded: base64).map { [UInt8]($0) }
+    }
+
+    /// The body of the first packet when it's a signature, whose tag is 2,
+    /// with either the old or the new packet header.
+    static func signaturePacket(in bytes: [UInt8]) -> ArraySlice<UInt8>? {
+        guard let first = bytes.first, first & 0x80 != 0 else { return nil }
+        let tag: UInt8
+        var start = 0
+        var length: Int?
+        if first & 0x40 != 0 {
+            tag = first & 0x3F
+            guard bytes.count > 1 else { return nil }
+            let octet = Int(bytes[1])
+            switch octet {
+            case ..<192:
+                (start, length) = (2, octet)
+            case 192..<224:
+                guard bytes.count > 2 else { return nil }
+                (start, length) = (3, ((octet - 192) << 8) + Int(bytes[2]) + 192)
+            case 255:
+                guard bytes.count > 5 else { return nil }
+                (start, length) = (6, bytes[2..<6].reduce(0) { $0 << 8 | Int($1) })
+            default:
+                // A partial length: the rest is enough to find the issuer.
+                start = 2
+            }
+        } else {
+            tag = (first >> 2) & 0x0F
+            switch first & 0x03 {
+            case 0:
+                guard bytes.count > 1 else { return nil }
+                (start, length) = (2, Int(bytes[1]))
+            case 1:
+                guard bytes.count > 2 else { return nil }
+                (start, length) = (3, Int(bytes[1]) << 8 | Int(bytes[2]))
+            case 2:
+                guard bytes.count > 4 else { return nil }
+                (start, length) = (5, bytes[1..<5].reduce(0) { $0 << 8 | Int($1) })
+            default:
+                start = 1
+            }
+        }
+        guard tag == 2, start < bytes.count else { return nil }
+        let end = length.map { min(start + $0, bytes.count) } ?? bytes.count
+        return bytes[start..<end]
+    }
+
+    /// The issuer's key ID in a signature packet's body. A version 3
+    /// signature has it in a field of its own, and later versions in a
+    /// subpacket: the issuer, 16, or the issuer's fingerprint, 33.
+    static func keyID(inSignatureBody body: ArraySlice<UInt8>) -> ArraySlice<UInt8>? {
+        var reader = Reader(bytes: body)
+        guard let version = reader.byte() else { return nil }
+        switch version {
+        case 3:
+            // The length of what's hashed, which is 5, the type and the time.
+            guard reader.take(6) != nil else { return nil }
+            return reader.take(8)
+        case 4, 5, 6:
+            // The type, the public key's algorithm and the hash's.
+            guard reader.take(3) != nil else { return nil }
+            let lengthSize = version == 4 ? 2 : 4
+            var subpackets: [ArraySlice<UInt8>] = []
+            for _ in 0..<2 {
+                guard let count = reader.number(lengthSize), let area = reader.take(count) else { break }
+                subpackets.append(area)
+            }
+            var fingerprint: ArraySlice<UInt8>?
+            for area in subpackets {
+                for (type, value) in self.subpackets(in: area) {
+                    if type == 16, value.count == 8 { return value }
+                    if type == 33, fingerprint == nil, let keyVersion = value.first {
+                        // A version 4 key's ID ends its fingerprint, and a
+                        // later key's starts it.
+                        let digits = value.dropFirst()
+                        fingerprint = keyVersion == 4 ? digits.suffix(8) : digits.prefix(8)
+                    }
+                }
+            }
+            return fingerprint.flatMap { $0.count == 8 ? $0 : nil }
+        default:
+            return nil
+        }
+    }
+
+    /// Each subpacket's type, without the bit that marks it critical, and
+    /// its value.
+    static func subpackets(in area: ArraySlice<UInt8>) -> [(type: UInt8, value: ArraySlice<UInt8>)] {
+        var found: [(UInt8, ArraySlice<UInt8>)] = []
+        var reader = Reader(bytes: area)
+        while let octet = reader.byte().map(Int.init) {
+            let length: Int
+            switch octet {
+            case ..<192: length = octet
+            case 192..<255:
+                guard let next = reader.byte() else { return found }
+                length = ((octet - 192) << 8) + Int(next) + 192
+            default:
+                guard let number = reader.number(4) else { return found }
+                length = number
+            }
+            guard length >= 1, let type = reader.byte(), let value = reader.take(length - 1) else { return found }
+            found.append((type & 0x7F, value))
+        }
+        return found
+    }
+
+    private static func hex(_ bytes: ArraySlice<UInt8>) -> String {
+        bytes.map { String(format: "%02X", $0) }.joined()
+    }
+
+    /// Reads big-endian numbers and runs of bytes.
+    private struct Reader {
+        let bytes: ArraySlice<UInt8>
+        var offset: Int
+
+        init(bytes: ArraySlice<UInt8>) {
+            self.bytes = bytes
+            offset = bytes.startIndex
+        }
+
+        mutating func byte() -> UInt8? {
+            take(1)?.first
+        }
+
+        mutating func take(_ count: Int) -> ArraySlice<UInt8>? {
+            guard count >= 0, offset + count <= bytes.endIndex else { return nil }
+            defer { offset += count }
+            return bytes[offset..<offset + count]
+        }
+
+        mutating func number(_ size: Int) -> Int? {
+            take(size).map { $0.reduce(0) { $0 << 8 | Int($1) } }
+        }
+    }
+}
+
+/// Which key made a commit's signature, read from the commit's own
+/// `gpgsig` header without checking it (decision 109).
+public enum CommitSignatureParser {
+    /// The key as git's `%GK` names it once the signature is checked: an
+    /// SSH key's `SHA256:` fingerprint, or an OpenPGP key's ID. An X.509
+    /// signature's certificate isn't read.
+    ///
+    /// - Parameter text: What `git cat-file commit` printed.
+    public static func key(inCommit text: String) -> String? {
+        guard let signature = SSHSignatureParser.signature(inCommit: text) else { return nil }
+        if let key = SSHSignatureParser.publicKey(inSignature: signature) { return key.fingerprint }
+        return OpenPGPSignatureParser.keyID(inSignature: signature)
+    }
+}
+
 /// The file `gpg.ssh.allowedSignersFile` names, which says whose SSH keys git
 /// trusts when it checks a signature (issue 119). Each line has the emails
 /// the key signs for, optional options such as `namespaces="git"`, then the

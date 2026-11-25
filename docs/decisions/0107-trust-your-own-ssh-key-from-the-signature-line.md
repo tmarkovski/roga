@@ -1,6 +1,6 @@
 # 107. Trust your own SSH key from the Signature line
 
-Accepted on 2026-11-25. This adds Trust This Key… to the commit panel's Signature line from [decision 104](0104-mark-signed-commits-and-check-only-the-selected-one.md), for an SSH signature made with one of the keys [decision 106](0106-offer-the-signing-keys-this-mac-has.md) lists. It's [issue 119](https://github.com/tmarkovski/roga/issues/119), the part of issue 117 that decision 106 left out.
+Accepted on 2026-11-25. This adds Trust This Key… to the commit panel's Signature line from [decision 104](0104-mark-signed-commits-and-check-only-the-selected-one.md), for an SSH signature made with one of the keys [decision 106](0106-offer-the-signing-keys-this-mac-has.md) lists. It's [issue 119](https://github.com/tmarkovski/roga/issues/119), the part of issue 117 that decision 106 left out. [Decision 109](0109-keep-the-signature-line-in-place-and-let-checking-be-turned-off.md) moves which of this Mac's keys made the signature into the line's tooltip, and Trust This Key… to the end of the key's line.
 
 ## Context
 
