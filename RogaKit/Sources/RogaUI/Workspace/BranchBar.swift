@@ -6,8 +6,9 @@ import SwiftUI
 /// title row held before the tabs took that row: the branch's chip with its
 /// counts, which pull and push (decision 19), then at the right end Fetch and
 /// New Branch, a thin line, and history's number of commits and commands. It's
-/// as tall as a panel's header and lines up with the refs panel's. Before Fetch
-/// are the initials of who the worktree's commits go out as (decision 103).
+/// as tall as a panel's header and lines up with the refs panel's. Who the
+/// commits go out as isn't here, since it's the whole repository's, and the
+/// title row has it (decision 105).
 ///
 /// After the counts, it says what the worktree's agent is doing (decision 100),
 /// except while Roga says what it's doing or just did, whose words come first.
@@ -28,8 +29,6 @@ struct BranchBar: View {
     /// Whether the row shows what agents are doing. It follows the sidebar's
     /// marks, so that turning agents off hides it too.
     var marks = AgentMarksSetting()
-    /// The repository the window shows, whose identity goes before Fetch.
-    @Environment(ListedRepository.self) private var repository: ListedRepository?
     @State private var width: CGFloat = 0
 
     /// The space between the branch's buttons and the line after them, and
@@ -74,15 +73,7 @@ struct BranchBar: View {
                         .padding(.trailing, 6)
                 }
                 if !worktree.isBare {
-                    // Before Fetch, so that it's as far from the counts as
-                    // the row allows (decision 103).
-                    HStack(spacing: 2) {
-                        if let repository {
-                            IdentityButton(repository: repository, list: list)
-                        }
-                        BranchButtons(branch: model.branch, worktree: worktree, showWorktree: showWorktree)
-                    }
-                    .animation(.easeOut(duration: 0.2), value: repository?.identity == nil)
+                    BranchButtons(branch: model.branch, worktree: worktree, showWorktree: showWorktree)
                 }
                 // A line between them and history's commands, which they don't
                 // act on, once history has loaded and they show.

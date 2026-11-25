@@ -64,6 +64,7 @@ enum SettingsGroup: CaseIterable {
     case installation
     case identity
     case identityExceptions
+    case signedCommits
     case fetching
     case largeRepositories
     case generate
@@ -80,6 +81,7 @@ enum SettingsGroup: CaseIterable {
         case .installation: "Installation"
         case .identity: "Identity"
         case .identityExceptions: "Repositories that commit as someone else"
+        case .signedCommits: "Signed commits"
         case .fetching: "Fetching"
         case .largeRepositories: "Large repositories"
         case .generate: "Commit messages"
@@ -92,7 +94,7 @@ enum SettingsGroup: CaseIterable {
         switch self {
         case .openIn, .updates: .general
         case .interface, .motion, .lists: .appearance
-        case .installation, .identity, .identityExceptions, .fetching, .largeRepositories, .generate: .git
+        case .installation, .identity, .identityExceptions, .signedCommits, .fetching, .largeRepositories, .generate: .git
         case .agents, .agentStatus: .agents
         }
     }
@@ -169,6 +171,7 @@ enum SettingsItem: CaseIterable {
     case signingFormat
     case signingKey
     case identityRepositories
+    case checksSignatures
     case fetchesByItself
     case showsGenerateButton
     case matchesStyle
@@ -190,6 +193,7 @@ enum SettingsItem: CaseIterable {
         case .gitProgram: .installation
         case .identityName, .identityEmail, .signsCommits, .signingFormat, .signingKey: .identity
         case .identityRepositories: .identityExceptions
+        case .checksSignatures: .signedCommits
         case .fetchesByItself: .fetching
         case .showsGenerateButton, .matchesStyle, .instructions: .generate
         case .usesAgents, .agentList, .defaultAgent: .agents
@@ -217,6 +221,7 @@ enum SettingsItem: CaseIterable {
         case .signingFormat: "Format"
         case .signingKey: "Key"
         case .identityRepositories: "Repositories that commit as someone else"
+        case .checksSignatures: "Check signatures when a commit is selected"
         case .fetchesByItself: "Fetch when Roga becomes active"
         case .showsGenerateButton: "Show Generate button"
         case .matchesStyle: "Match repository commit style"
@@ -243,6 +248,8 @@ enum SettingsItem: CaseIterable {
             "For the graph, branches, diffs and commands."
         case .animationSpeed:
             "House animation speed during Git operations."
+        case .checksSignatures:
+            "Runs gpg or ssh-keygen for the commit the panel shows. When it's off, Check does it for one commit."
         case .fetchesByItself:
             "At most once a minute. Only remote-tracking branches are updated."
         case .matchesStyle:
@@ -278,6 +285,7 @@ enum SettingsItem: CaseIterable {
         case .signingFormat: ["gpg.format", "OpenPGP", "SSH", "X.509", "signing"]
         case .signingKey: ["user.signingkey", "signing key", "GPG", "SSH"]
         case .identityRepositories: ["Identity", "includeIf", "Use Global", "user.email"]
+        case .checksSignatures: ["signature", "verify", "GPG", "SSH", "ssh-keygen", "gpgsm", "Signature line", "commit panel"]
         case .instructions: ["Restore Defaults", "prompt", "commit message"]
         case .usesAgents: ["Claude Code", "Codex", "Generate", "Resolve", "Fix", "Turn off", "sidebar"]
         case .agentList: ["Rescan", "executable", "program", "PATH", "model", "effort", "Run Test", "Add Custom Agent", "command", "Ollama", "local model"]
@@ -324,6 +332,7 @@ struct SettingsSheet: View {
     @AppStorage(CommitPanelSettings.collapsesBody) private var collapsesBody = false
     @AppStorage(UserDefaults.fetchesByItselfKey) private var fetchesByItself = true
     @AppStorage(UserDefaults.keepsCommitGraphCurrentKey) private var keepsCommitGraphCurrent = true
+    @AppStorage(UserDefaults.checksSignaturesKey) private var checksSignatures = true
 
     /// The canvas's size, which leaves room for the pages still to come.
     static let size = CGSize(width: 880, height: 613)
@@ -508,7 +517,7 @@ struct SettingsSheet: View {
             AgentListSection(items: items, namesPage: namesPage, show: show)
         case .agentStatus:
             AgentStatusSection(items: items, namesPage: namesPage)
-        case .interface, .motion, .lists, .fetching, .largeRepositories:
+        case .interface, .motion, .lists, .signedCommits, .fetching, .largeRepositories:
             SettingsSection(title: group.title) {
                 if namesPage {
                     Text(group.page.title)
@@ -632,6 +641,9 @@ struct SettingsSheet: View {
                     .toggleStyle(.settings)
             case .keepsCommitGraphCurrent:
                 Toggle(item.title, isOn: $keepsCommitGraphCurrent)
+                    .toggleStyle(.settings)
+            case .checksSignatures:
+                Toggle(item.title, isOn: $checksSignatures)
                     .toggleStyle(.settings)
             case .terminal, .checksForUpdates, .downloadsUpdates, .gitProgram, .showsGenerateButton, .matchesStyle, .instructions,
                  .usesAgents, .agentList, .defaultAgent, .hooks, .marksLegend, .codeFont, .identityName, .identityEmail,

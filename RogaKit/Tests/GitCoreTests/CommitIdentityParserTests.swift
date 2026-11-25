@@ -22,7 +22,6 @@ struct CommitIdentityParserTests {
         #expect(identity.format == .ssh)
         #expect(identity.key == "~/.ssh/id_ed25519.pub")
         #expect(identity.problem == nil)
-        #expect(identity.initials == "SR")
     }
 
     @Test func aLaterSettingCounts() throws {
@@ -53,7 +52,6 @@ struct CommitIdentityParserTests {
         let identity = try CommitIdentityParser.parse([])
         #expect(identity == CommitIdentity())
         #expect(identity.problem == .noEmail)
-        #expect(identity.initials == "?")
     }
 
     @Test func refusesWhatItCantRead() {
@@ -104,15 +102,5 @@ struct CommitIdentityTests {
         #expect(identity(email: "Sam@Rivera.dev").commitsAsSame(as: identity()))
         #expect(!identity(email: "sam@acme.com").commitsAsSame(as: identity()))
         #expect(identity(signs: "true").commitsAsSame(as: identity()))
-    }
-
-    @Test func makesInitials() {
-        var one = identity()
-        one.name = CommitIdentity.Setting("sam", origin: ConfigOrigin(scope: .global))
-        #expect(one.initials == "S")
-        one.name = CommitIdentity.Setting("Ana María de la Cruz", origin: ConfigOrigin(scope: .global))
-        #expect(one.initials == "AM")
-        one.name = nil
-        #expect(one.initials == "S")
     }
 }

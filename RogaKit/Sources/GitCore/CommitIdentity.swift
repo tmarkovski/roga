@@ -85,6 +85,8 @@ public struct CommitIdentity: Sendable, Hashable {
     public var shownEmail: String? { email?.text }
     /// The key that signs, when one is set.
     public var key: String? { signingKey?.text }
+    /// Whether `gpg.ssh.defaultKeyCommand` picks an SSH key when none is set.
+    public var hasDefaultKeyCommand: Bool { defaultKeyCommand?.text != nil }
 
     /// Whether commits are signed, as git reads `commit.gpgsign`.
     public var signs: Bool {
@@ -101,19 +103,8 @@ public struct CommitIdentity: Sendable, Hashable {
     /// What would go wrong with a commit made now, or nil when nothing would.
     public var problem: Problem? {
         if shownEmail == nil { return .noEmail }
-        if signs, format == .ssh, key == nil, defaultKeyCommand?.text == nil { return .noSigningKey }
+        if signs, format == .ssh, key == nil, !hasDefaultKeyCommand { return .noSigningKey }
         return nil
-    }
-
-    /// Up to two letters for the name, as history's author column shows
-    /// people: the first letter of its first two words, or of the email when
-    /// there's no name.
-    public var initials: String {
-        let words = shownName?.split(whereSeparator: \.isWhitespace) ?? []
-        let letters = words.prefix(2).compactMap(\.first)
-        if !letters.isEmpty { return String(letters).uppercased() }
-        if let first = shownEmail?.first { return String(first).uppercased() }
-        return "?"
     }
 
     /// Whether commits made with `other` would carry the same name and email.

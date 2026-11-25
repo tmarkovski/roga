@@ -527,8 +527,8 @@ public struct WorkspaceView: View {
                     )
                     RepositoryView(model: model, showWorktree: showWorktree, lowerPanelSize: $lowerPanelSize)
                 }
-                // For who the worktree's commits go out as, in the branch row
-                // and the message box (decision 103).
+                // For who the worktree's commits go out as, in the message box
+                // (decision 105).
                 .environment(repository)
                 .id(selected)
             } else {
@@ -560,9 +560,10 @@ public struct WorkspaceView: View {
     /// listed them. When there's no room, the tabs get narrower and their names
     /// fade out at their ends. The tabs keep clear of the traffic lights and
     /// the sidebar's button, which stay in the window's corner, wherever the
-    /// row is as the sidebar shows or hides. While the refs panel is hidden,
-    /// the row ends with the panel's button, where the panel has it
-    /// (decision 85).
+    /// row is as the sidebar shows or hides. After the tabs comes who the
+    /// repository's commits go out as, for every worktree and agent in it
+    /// (decision 105). While the refs panel is hidden, the row ends with the
+    /// panel's button, where the panel has it (decision 85).
     private var titleRow: some View {
         HStack(spacing: 0) {
             tabs
@@ -571,6 +572,10 @@ public struct WorkspaceView: View {
                 // fit leaves the shown tab's shadow under it.
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                 .clipped()
+            if let repository = shown?.0 {
+                IdentityButton(repository: repository, list: list)
+                    .padding(.leading, 8)
+            }
             if !refsPanelVisibility.isShowing {
                 RefsPanelToggle(visibility: refsPanelVisibility)
                     .padding(.leading, 8)
@@ -578,6 +583,7 @@ public struct WorkspaceView: View {
         }
         .padding(.trailing, TitleBar.trailingInset)
         .frame(height: TitleBar.height)
+        .animation(.easeOut(duration: 0.2), value: shown?.0.identity == nil)
         .background {
             TitleRowDragArea()
         }

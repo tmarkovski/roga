@@ -42,6 +42,8 @@ roga/
 │   │   │   ├── CommitInfo.swift        a commit's parents, author, committer and message
 │   │   │   ├── CommitIdentity.swift    who a repository's commits go out as and how they're signed, with where git found each setting, decision 103
 │   │   │   ├── SignatureCheck.swift    what git found when it checked a commit's signature, and reading log --format=%G?, decision 104
+│   │   │   ├── SigningKey.swift        a key on this Mac that can sign commits, which the Key field offers, decision 106
+│   │   │   ├── KeyHost.swift           GitHub or GitLab, from a remote's host, and the page for adding a key there, decision 108
 │   │   │   ├── WorktreeChanges.swift   what's uncommitted in a worktree, in groups
 │   │   │   ├── SubmoduleChange.swift   what a submodule's row says beyond its two commits, and what its panel shows, decision 75
 │   │   │   ├── Submodule.swift         one of a worktree's submodules, as the refs panel lists it
@@ -57,6 +59,8 @@ roga/
 │   │   │       ├── StatusParser.swift      status --porcelain=v2 -z, with what it says of a submodule's checkout, and --numstat -z
 │   │   │       ├── RawDiffParser.swift     diff-tree --raw --numstat -z
 │   │   │       ├── CommitIdentityParser.swift config --show-scope --show-origin -z, for who commits go out as
+│   │   │       ├── SigningKeyParsers.swift .pub files and ssh-add -L, IdentityAgent in ~/.ssh/config, gpg --list-secret-keys --with-colons (decision 106), a commit's SSH signature and the allowed signers file (decision 107), and which key made a commit's SSH or OpenPGP signature, without checking it (decision 109)
+│   │   │       ├── SigningToolParsers.swift gh auth status, gpg --status-fd's KEY_CREATED, and the versions of gpg, ssh and gh, decision 108
 │   │   │       └── PatchParser.swift       the hunks that diff-tree -p prints
 │   │   ├── GitRunner/
 │   │   │   ├── Git.swift               running a command, which every git command goes through
@@ -97,6 +101,11 @@ roga/
 │   │   │   ├── StagedChanges.swift     what's staged, cut down to what an agent can read quickly
 │   │   │   ├── SubmoduleLoader.swift   listing a worktree's submodules, reading a checkout for its rows and its panel, and updating it, decision 75
 │   │   │   ├── CommitIdentityCommands.swift reading who commits go out as, in a repository and outside any, and changing it with git config, decision 103
+│   │   │   ├── SigningKeys.swift       listing the SSH and OpenPGP keys git can sign with, with ssh-add and gpg, decision 106
+│   │   │   ├── AllowedSigners.swift    trusting your own SSH key for checking signatures, in gpg.ssh.allowedSignersFile, decision 107
+│   │   │   ├── SigningPrograms.swift   whether the program git signs with for each format is on this Mac, decision 108
+│   │   │   ├── NewSigningKey.swift     making an Ed25519 SSH or OpenPGP key without a passphrase, and trusting a new SSH key, decision 108
+│   │   │   ├── KeyHosting.swift        where a new key's public half can go, and adding it with gh, decision 108
 │   │   │   ├── RepositoryWatcher.swift one FSEvents stream, numbered batches, decision 49
 │   │   │   ├── FolderWatcher.swift     the FSEvents stream itself
 │   │   │   ├── RepositoryChanges.swift what a batch of changed paths affects
@@ -152,7 +161,7 @@ roga/
 │   │   │   ├── Agents/                 finding agents, the marks, and what each worktree's agents are doing
 │   │   │   ├── Workspace/              windows, finding git, the sidebar, the saved list of repositories and the update notice
 │   │   │   ├── Repository/             the repository model, panels, the refs panel, commit details
-│   │   │   ├── Identity/               who commits go out as: the branch row's initials, the message box's line and warnings, and the popover (decision 103), and the commit panel's Signature line (decision 104)
+│   │   │   ├── Identity/               who commits go out as: the title row's person, the message box's line and warnings, and the popover (decisions 103 and 105), its Key field's keys as cards (decision 106) with New SSH Key… and New OpenPGP Key… and the faded formats (decision 108), and the commit panel's Signature line (decision 104) with Trust This Key… (decision 107)
 │   │   │   ├── Dialogs/                the sheet for everything Roga asks or reports, with its command (decision 29)
 │   │   │   ├── House/                  the house's joints, its animations and drawing them (decision 21), and the wordmark
 │   │   │   ├── Commands/               menus and keyboard shortcuts

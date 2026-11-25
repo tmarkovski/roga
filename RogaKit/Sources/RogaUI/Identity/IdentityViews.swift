@@ -3,56 +3,138 @@ import IconUI
 import RepositoryEngine
 import SwiftUI
 
-/// An identity's initials in a circle tinted by its email, the way history's
-/// author column shows people, with a small shield when commits are signed
-/// and a triangle when a commit would go wrong (decision 103). An identity
-/// with no email is gray.
-struct IdentityBadge: View {
-    let identity: CommitIdentity
-    /// How wide the circle is: 22 points in the branch row, and 18 in the
-    /// sidebar, where it sits beside a count.
-    var size: CGFloat = 22
-    /// Whether it has the shield or the triangle. The sidebar's doesn't,
-    /// since a selected or hovered row's fill would show around the mark's
-    /// circle, and the second line already says what would go wrong.
-    var showsMark = true
-    /// What's behind the badge, which the mark's circle cuts out of it.
-    var background = Palette.surface
+/// Who a repository's commits go out as, drawn as a person (decision 105).
+/// The global identity is a person in gray, like the icon buttons around it,
+/// anyone else's is in the email's tint, and an identity whose next commit
+/// would go wrong is amber. None of them has a circle, whose faint fill would
+/// turn muddy on a hovered button's or a selected row's gray. In the title
+/// row, a small shield at the person's lower right says commits are signed,
+/// and a triangle there says a commit would go wrong.
+struct IdentityPerson: View {
+    enum Look: Equatable {
+        /// The global identity, with nothing wrong.
+        case plain
+        /// Someone other than the global identity, in the email's tint, or
+        /// gray without one.
+        case tinted(Color?)
+        /// A commit would go wrong.
+        case warning
+
+        init(_ exception: IdentityException?) {
+            switch exception {
+            case nil: self = .plain
+            case .someoneElse(let someone): self = .tinted(IdentityTint.color(for: someone))
+            case .problem: self = .warning
+            }
+        }
+    }
+
+    /// What sits at the person's lower right.
+    enum Mark: Equatable {
+        /// Commits are signed.
+        case shield
+        /// A commit would go wrong, which matters more than how it'd be
+        /// signed.
+        case warning
+
+        init?(_ look: Look, signs: Bool) {
+            switch look {
+            case .warning: self = .warning
+            case .plain, .tinted:
+                guard signs else { return nil }
+                self = .shield
+            }
+        }
+    }
+
+    /// Where the person is drawn.
+    enum Style {
+        /// In the title row's button, as large as the row's other icons, with
+        /// the mark.
+        case button
+        /// Beside a repository's count in the sidebar or its name in
+        /// Settings › Git's list, as large as the message box's line draws
+        /// it. It has no mark, since a second line says what would go wrong,
+        /// and a shield on every repository that signs would say one thing
+        /// many times over.
+        case inline
+    }
+
+    let look: Look
+    /// Whether commits are signed, which puts the shield on the person.
+    var signs = false
+    var style = Style.button
+
+    private static let markSize: CGFloat = 14
+    private static let markOffset = CGSize(width: 5, height: 4)
+
+    /// How wide the person is.
+    private var size: CGFloat { style == .button ? 22 : 18 }
 
     var body: some View {
-        let tint = IdentityTint.color(for: identity)
-        Text(identity.initials)
-            .font(.system(size: size * 9.5 / 22, weight: .semibold))
-            .kerning(0.2)
-            .foregroundStyle(tint.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.secondary))
+        let mark = style == .button ? Mark(look, signs: signs) : nil
+        person
             .frame(width: size, height: size)
-            .background {
-                Circle().fill(tint.map { $0.opacity(0.16) } ?? DialogColors.card)
+            // The mark's circle is cut out of the person rather than filled
+            // with the row's color, so that the button's gray shows through
+            // it under the pointer.
+            .mask {
+                Rectangle()
+                    .overlay(alignment: .bottomTrailing) {
+                        if mark != nil {
+                            Circle()
+                                .frame(width: Self.markSize, height: Self.markSize)
+                                .offset(Self.markOffset)
+                                .blendMode(.destinationOut)
+                        }
+                    }
+                    .compositingGroup()
             }
             .overlay(alignment: .bottomTrailing) {
-                if showsMark, let mark {
-                    mark.icon.image
+                if let mark {
+                    markIcon(mark)
                         .font(.system(size: 9 / 1.128, weight: .bold))
-                        .foregroundStyle(mark.color)
-                        .frame(width: 14, height: 14)
-                        .background(Circle().fill(background))
-                        .offset(x: 5, y: 4)
+                        .frame(width: Self.markSize, height: Self.markSize)
+                        .offset(Self.markOffset)
                 }
             }
             .accessibilityHidden(true)
     }
 
-    private var mark: (icon: Icon, color: Color)? {
-        if identity.problem != nil { return (.warning, AgentColors.warn) }
-        if identity.signs { return (.shield, .primary) }
-        return nil
+    /// The mark in the person's color.
+    private func markIcon(_ mark: Mark) -> some View {
+        inked((mark == .warning ? Icon.warning : Icon.shield).image)
+    }
+
+    @ViewBuilder private var person: some View {
+        switch style {
+        case .button:
+            // The icon button's own size.
+            inked(Icon.user.image)
+        case .inline:
+            inked(Icon.user.image.font(.system(size: 13 / 1.128, weight: .semibold)))
+        }
+    }
+
+    /// In the person's color. The global identity's takes the button's gray,
+    /// which turns to ink under the pointer.
+    @ViewBuilder private func inked(_ image: some View) -> some View {
+        switch look {
+        case .plain: image
+        case .tinted(let tint): image.foregroundStyle(tint.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.secondary))
+        case .warning: image.foregroundStyle(AgentColors.warn)
+        }
     }
 }
 
-/// Who the worktree's commits go out as, as initials before Fetch in the
-/// branch row (decision 103). Its tooltip has the name and the email, where
-/// they come from and how commits are signed, and a click opens the identity
-/// popover. Nothing shows until git config has answered.
+/// Who the repository's commits go out as, at the end of the title row, for
+/// the repository and every worktree and agent in it (decision 105). Commits,
+/// merges, rebases, cherry-picks and reverts all go out as it, so it shows
+/// whatever the panels show, with the shield while commits are signed, since
+/// a rebase or a cherry-pick signs each commit again. Its tooltip has the
+/// name and the email, where they come from and how commits are signed, and a
+/// click opens the identity popover. Nothing shows until git config has
+/// answered.
 struct IdentityButton: View {
     let repository: ListedRepository
     let list: RepositoryList
@@ -64,7 +146,8 @@ struct IdentityButton: View {
             Button {
                 isEditing = true
             } label: {
-                IdentityBadge(identity: identity)
+                IdentityPerson(look: .init(IdentityException(identity, defaultIdentity: list.defaultIdentity)),
+                               signs: identity.signs)
             }
             .buttonStyle(.icon(isOn: isEditing))
             .help(words.tooltip)
@@ -80,9 +163,9 @@ struct IdentityButton: View {
 
 /// What's worth saying about who a repository's commits go out as
 /// (decision 103): what would go wrong, or that it's someone other than the
-/// global identity. The top of the message box says it, and so does the
-/// repository's row in the sidebar. With the global identity and nothing
-/// wrong, neither says anything, since the branch row's initials do.
+/// global identity. The repository's row in the sidebar says it, and so does
+/// Settings › Git's list, while the title row and the message box draw it
+/// differently from the global identity (decision 105).
 enum IdentityException: Equatable {
     case problem(CommitIdentity.Problem)
     case someoneElse(CommitIdentity)
@@ -109,17 +192,47 @@ enum IdentityException: Equatable {
     }
 }
 
+/// What the top of the message box says about who the commit goes out as
+/// (decision 105). It always says who, and warns instead when the commit
+/// would go wrong.
+enum CommitBoxIdentity: Equatable {
+    /// git config hasn't answered yet, so the box keeps the line's room, and
+    /// the message doesn't move down when the line arrives.
+    case unread
+    /// The line, which stands out when it's someone other than the global
+    /// identity.
+    case line(CommitIdentity, isSomeoneElse: Bool)
+    case warning(CommitIdentity.Problem)
+
+    init(_ identity: CommitIdentity?, defaultIdentity: CommitIdentity?) {
+        guard let identity else {
+            self = .unread
+            return
+        }
+        switch IdentityException(identity, defaultIdentity: defaultIdentity) {
+        case .problem(let problem): self = .warning(problem)
+        case .someoneElse: self = .line(identity, isSomeoneElse: true)
+        case nil: self = .line(identity, isSomeoneElse: false)
+        }
+    }
+}
+
 /// The line at the top of the message box with the name and the email the
-/// commit goes out as, and whether it will be signed, while that's someone
-/// other than the global identity, as for a repository in `~/work/` that a
-/// file included for it gives a work email. A click opens the identity
+/// commit goes out as, and whether it will be signed (decision 105). It's
+/// gray for the global identity. For anyone else, as for a repository in
+/// `~/work/` that a file included for it gives a work email, the person
+/// takes the email's tint and the name is in ink. A click opens the identity
 /// popover.
 struct CommitBoxIdentityLine: View {
     let identity: CommitIdentity
+    let isSomeoneElse: Bool
     let repository: ListedRepository
     let list: RepositoryList
     @State private var isEditing = false
     @State private var isHovering = false
+
+    /// How tall the line is, which the box keeps until git config answers.
+    static let height: CGFloat = 22
 
     var body: some View {
         let words = IdentityWords(identity: identity)
@@ -135,7 +248,7 @@ struct CommitBoxIdentityLine: View {
             .font(.system(size: 12))
             .foregroundStyle(.secondary)
             .padding(.horizontal, 6)
-            .frame(height: 22)
+            .frame(height: Self.height)
             .background {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(isHovering || isEditing ? Palette.buttonHover : .clear)
@@ -156,6 +269,7 @@ struct CommitBoxIdentityLine: View {
         HStack(spacing: 6) {
             Icon.user.image
                 .font(.system(size: 12 / 1.128, weight: .medium))
+                .foregroundStyle(tint)
             who
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -171,15 +285,22 @@ struct CommitBoxIdentityLine: View {
         }
     }
 
-    /// The name in ink, then the email in the line's gray. It's built as an
-    /// attributed string, since a localized string would take the email in
-    /// angle brackets for a link.
+    /// The person's color: the email's tint for someone other than the global
+    /// identity, as in the title row, and otherwise the line's gray.
+    private var tint: AnyShapeStyle {
+        guard isSomeoneElse, let tint = IdentityTint.color(for: identity) else { return AnyShapeStyle(.secondary) }
+        return AnyShapeStyle(tint)
+    }
+
+    /// The name, in ink for someone other than the global identity, then the
+    /// email in the line's gray. It's built as an attributed string, since a
+    /// localized string would take the email in angle brackets for a link.
     private var who: Text {
         var words = AttributedString()
         if let name = identity.shownName {
             var styled = AttributedString(name + " ")
             styled.font = .system(size: 12, weight: .medium)
-            styled.foregroundColor = .primary
+            if isSomeoneElse { styled.foregroundColor = .primary }
             words += styled
         }
         if let email = identity.shownEmail {
@@ -228,9 +349,7 @@ struct CommitBoxIdentityWarning: View {
                         .help(BranchModel.command(Self.stopSigning.arguments))
                 }
             }
-            .buttonStyle(.plain)
-            .font(.system(size: 12, weight: .medium))
-            .foregroundStyle(Palette.action)
+            .buttonStyle(.contextual)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)

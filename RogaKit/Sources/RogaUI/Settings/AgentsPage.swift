@@ -67,8 +67,8 @@ struct RescanButton: View {
 }
 
 /// The agents: Claude Code and Codex, whether or not Roga found them, then
-/// the custom ones, each going to its own page, and Add Custom Agent… at the
-/// end. The default agent comes after them. Search shows it too, with Use
+/// the custom ones, each going to its own page, and Add Custom Agent… under
+/// them in the accent. The default agent comes after them. Search shows it too, with Use
 /// agents among what it found.
 struct AgentListSection: View {
     var items = SettingsGroup.agents.items
@@ -94,16 +94,22 @@ struct AgentListSection: View {
             if agents.usesAgents {
                 if items.contains(.agentList) {
                     SettingsBlock {
-                        SettingsList {
-                            ForEach(AgentKind.allCases) { kind in
-                                AgentRow(kind: kind, show: show)
+                        // Add Custom Agent… is under the list at its right
+                        // edge, in the accent, as New SSH Key… is under the
+                        // Key field (decision 108).
+                        VStack(alignment: .trailing, spacing: 8) {
+                            SettingsList {
+                                ForEach(AgentKind.allCases) { kind in
+                                    AgentRow(kind: kind, show: show)
+                                }
+                                ForEach(agents.customAgents) { custom in
+                                    CustomAgentRow(custom: custom, show: show)
+                                }
                             }
-                            ForEach(agents.customAgents) { custom in
-                                CustomAgentRow(custom: custom, show: show)
-                            }
-                            AddCustomAgentRow {
-                                isAdding = true
-                            }
+                            Button("Add Custom Agent…") { isAdding = true }
+                                .buttonStyle(.contextual)
+                                .fixedSize()
+                                .help("Add an agent that Roga runs with a command")
                         }
                     }
                 }
@@ -212,29 +218,6 @@ private struct CustomTag: View {
             .padding(.vertical, 1)
             .background(SettingsColors.card, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
             .accessibilityHidden(true)
-    }
-}
-
-/// The last row of the agents' list, which adds a custom agent.
-private struct AddCustomAgentRow: View {
-    let action: () -> Void
-    @State private var isHovering = false
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 8) {
-                Icon.plus.image
-                    .font(.system(size: 13))
-                    .foregroundStyle(SettingsColors.note)
-                Text("Add Custom Agent…")
-            }
-            .padding(.horizontal, 14)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-            .background(isHovering ? SettingsColors.hover : .clear)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { isHovering = $0 }
     }
 }
 

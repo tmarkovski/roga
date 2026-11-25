@@ -22,6 +22,22 @@ The sidebar uses A's initials for the exceptions, without the shield, and Settin
 
 [Decision 104](../../decisions/0104-mark-signed-commits-and-check-only-the-selected-one.md) took the History board's shield, after the short ID rather than before it, and the commit panel's Signature line, which also says when a key isn't trusted or has expired. `shield-check`, `shield-alert` and `shield-question-mark` are in `docs/design/icons/lucide` too.
 
+[Decision 105](../../decisions/0105-show-who-commits-go-out-as-at-the-end-of-the-title-row.md) took G, described below: the person at the end of the tabs row, the box's line all the time, and the tinted person in place of the initials in the sidebar and Settings.
+
+## After building it
+
+Once decision 103 was built, the initials in the branch row looked out of place, since the row is about the branch and the identity belongs to the whole repository. Commits also aren't the only thing that use the identity. A merge that isn't a fast-forward, a rebase, a cherry-pick, a revert and a pull that merges or rebases all write it into history, and agents run git in their worktrees with the same config. The commit box shows only while a worktree has uncommitted files, so it can't be the only place that says who. The page now starts with **G**:
+
+- **G** puts a person icon at the end of the tabs row, which holds every worktree of the repository. It's a plain gray icon for the global identity, the same icon in the email's tint for anyone else, and amber with a triangle when a commit would go wrong. A small shield at its lower right says commits are signed, and a click opens the identity popover. The box keeps its line all the time with the person icon it has now, gray for the global identity and in the email's tint with the name in ink for anyone else, and the branch row has nothing. The initials are gone everywhere, since a name rarely changes and the email gives the tint.
+- **Seeing and changing it without a commit** draws the tooltip, a clean worktree with no box, the popover opened from the tabs row, and the sidebar, which marks its exceptions with the same person in the email's tint. The first version drew someone else's person in a tinted circle, whose faint fill turned muddy on a hovered button's or a selected row's gray.
+- **G, moment by moment** draws the end of the tabs row and the box in the seven moments, in both appearances at 320 points. Before git config has answered, the tabs row shows nothing and the box keeps the line's room empty.
+
+After G come the two boards that led to it. **D** showed the box's line all the time, with the initials at its start, and nothing in the header. **Where the initials could go** compared D with **E**, at the end of the tabs row, and **F**, beside history's number of commits.
+
+**Trusting your own SSH key** draws [decision 107](../../decisions/0107-trust-your-own-ssh-key-from-the-signature-line.md): the Signature line's Trust This Key… for an SSH signature made with one of this Mac's keys, its confirm with and without the `git config` that points git at `~/.ssh/allowed_signers`, the line once it's Good, and someone else's key, which gets no offer.
+
+The last board, **Making a key, and the tools Roga found**, draws [decision 108](../../decisions/0108-make-a-signing-key-and-say-which-signing-programs-are-here.md): the format picker while Roga looks for each format's program and once GnuPG turns out to be missing, the warning when git already signs with OpenPGP and `gpg` isn't here, the keys as cards with a radio and New SSH Key… under the Key field, the confirms for a new SSH and OpenPGP key, the key once it's made with Add to GitHub, without gh's scope and for a GitLab remote, and setup's Look Around with SSH, GnuPG and the GitHub CLI after the agents.
+
 ## Regenerating the boards
 
 Read `project/canvas.json` from the canvas into a folder first, so that the merge starts from what's live, then:

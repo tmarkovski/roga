@@ -3,6 +3,7 @@ import AgentHooks
 import AppKit
 import GitRunner
 import IconUI
+import RepositoryEngine
 import SwiftUI
 
 // MARK: Pickers
@@ -118,11 +119,14 @@ struct SetupLooking: View {
     let found: [AgentKind]
     @Environment(GitProvider.self) private var gitProvider
     @Environment(AgentProvider.self) private var agents
+    /// What Roga found for signing commits, once git is there to read the
+    /// global config with.
+    @State private var signingTools: SetupWords.SigningTools?
 
     private static let shell = LoginShellPath.userShell
 
     var body: some View {
-        let isDone = !gitProvider.isLooking && (gitProvider.git == nil || !agents.isLooking)
+        let isDone = !gitProvider.isLooking && (gitProvider.git == nil || (!agents.isLooking && signingTools != nil))
         VStack(spacing: SetupLayout.gap) {
             SetupHead(
                 eyebrow: SetupModel.Step.looking.subject,
@@ -141,6 +145,27 @@ struct SetupLooking: View {
                     .disabled(!isDone)
             }
         }
+        .task(id: gitProvider.git != nil) {
+            guard let git = gitProvider.git, signingTools == nil else { return }
+            signingTools = await Self.lookForSigningTools(git: git)
+        }
+    }
+
+    /// The programs git would sign with, as the global config names them,
+    /// and gh, each with its version (decision 108).
+    private static func lookForSigningTools(git: Git) async -> SetupWords.SigningTools {
+        let programs = Programs(sharingWith: git)
+        let found = await SigningPrograms.find(git: git, programs: programs, in: NSHomeDirectory())
+        async let sshVersion = SigningPrograms.version(of: found.ssh, programs: programs)
+        async let gpgVersion = SigningPrograms.version(of: found.openPGP, programs: programs)
+        let gh = GitHubCLI.find(programs: programs)
+        async let ghVersion: String? = if let gh { await GitHubCLI.version(gh, programs: programs) } else { nil }
+        return SetupWords.SigningTools(
+            ssh: .init(isFound: found.ssh.isFound, version: await sshVersion),
+            gnuPG: .init(isFound: found.openPGP.isFound, version: await gpgVersion),
+            hasGPGSM: found.x509.isFound,
+            gitHubCLI: .init(isFound: gh != nil, version: await ghVersion)
+        )
     }
 
     private func back() {
@@ -160,7 +185,7 @@ struct SetupLooking: View {
             ),
         ] + AgentKind.allCases.map {
             SetupWords.agentLook($0, lookup: agents.lookups[$0], survey: agents.surveys[$0], hasGit: hasGit, gitFailed: gitFailed)
-        }
+        } + SetupWords.signingLooks(signingTools, hasGit: hasGit, gitFailed: gitFailed)
     }
 }
 

@@ -1,13 +1,17 @@
 import AgentHooks
+import AppKit
 import Foundation
 import GitCore
+import GitRunner
+import IconUI
 import RepositoryEngine
 import Testing
+import ThemeUI
 @testable import HistoryUI
 @testable import RogaUI
 
 /// What the window says about who commits go out as, and what the identity
-/// popover runs (decision 103).
+/// popover runs (decisions 103 and 105).
 struct IdentityTests {
     typealias Setting = CommitIdentity.Setting
     let globalFiles = GlobalConfigFiles(home: "/Users/sam", environment: [:])
@@ -68,9 +72,18 @@ struct IdentityTests {
         #expect(IdentityTint.color(for: identity(email: nil)) == nil)
     }
 
-    // MARK: The message box
+    @Test func leavesTheGrayLanesOut() {
+        // Monokai's Stone and Xcode's Slate would look like the global
+        // identity's gray.
+        let monokai = ColorTheme.monokai.colors.lanes
+        #expect(IdentityTint.colored(monokai).map(\.light) == monokai.enumerated().filter { $0.offset != 6 }.map(\.element.light))
+        let xcode = ColorTheme.xcode.colors.lanes
+        #expect(IdentityTint.colored(xcode).map(\.light) == xcode.dropLast().map(\.light))
+    }
 
-    @Test func theBoxSaysNothingForTheGlobalIdentity() {
+    // MARK: Exceptions
+
+    @Test func theGlobalIdentityIsntAnException() {
         #expect(IdentityException(identity(), defaultIdentity: identity()) == nil)
         // Signing doesn't make it someone else.
         #expect(IdentityException(identity(signs: true), defaultIdentity: identity()) == nil)
@@ -79,14 +92,68 @@ struct IdentityTests {
         #expect(IdentityException(nil, defaultIdentity: identity()) == nil)
     }
 
-    @Test func theBoxSaysWhoWhenItsSomeoneElse() {
+    @Test func someoneElseIsAnException() {
         let work = identity(email: "sam.rivera@acme.com", emailFrom: included)
         #expect(IdentityException(work, defaultIdentity: identity()) == .someoneElse(work))
     }
 
-    @Test func theBoxWarnsFirst() {
+    @Test func whatWouldGoWrongComesFirst() {
         #expect(IdentityException(identity(email: nil), defaultIdentity: identity()) == .problem(.noEmail))
         #expect(IdentityException(identity(signs: true, format: "ssh"), defaultIdentity: nil) == .problem(.noSigningKey))
+    }
+
+    // MARK: The title row and the message box
+
+    @Test func thePersonIsPlainForTheGlobalIdentity() {
+        #expect(IdentityPerson.Look(IdentityException(identity(signs: true), defaultIdentity: identity())) == .plain)
+        let work = identity(email: "sam.rivera@acme.com", emailFrom: included)
+        #expect(IdentityPerson.Look(.someoneElse(work)) == .tinted(IdentityTint.color(for: work)))
+        #expect(IdentityPerson.Look(.problem(.noSigningKey)) == .warning)
+    }
+
+    @Test func thePersonHasAShieldWhileCommitsAreSigned() {
+        #expect(IdentityPerson.Mark(.plain, signs: true) == .shield)
+        #expect(IdentityPerson.Mark(.tinted(nil), signs: true) == .shield)
+        #expect(IdentityPerson.Mark(.plain, signs: false) == nil)
+        #expect(IdentityPerson.Mark(.tinted(nil), signs: false) == nil)
+        // What would go wrong matters more than how it'd be signed.
+        #expect(IdentityPerson.Mark(.warning, signs: true) == .warning)
+        #expect(IdentityPerson.Mark(.warning, signs: false) == .warning)
+    }
+
+    @Test func theBoxAlwaysSaysWho() {
+        #expect(CommitBoxIdentity(identity(), defaultIdentity: identity()) == .line(identity(), isSomeoneElse: false))
+        let work = identity(email: "sam.rivera@acme.com", emailFrom: included)
+        #expect(CommitBoxIdentity(work, defaultIdentity: identity()) == .line(work, isSomeoneElse: true))
+        // Before the global identity is read, nothing says it's someone else.
+        #expect(CommitBoxIdentity(work, defaultIdentity: nil) == .line(work, isSomeoneElse: false))
+    }
+
+    @Test func theBoxWarnsInTheLinesPlace() {
+        #expect(CommitBoxIdentity(identity(email: nil), defaultIdentity: identity()) == .warning(.noEmail))
+        #expect(CommitBoxIdentity(identity(signs: true, format: "ssh"), defaultIdentity: identity()) == .warning(.noSigningKey))
+    }
+
+    @Test func theBoxKeepsTheLinesRoomUntilGitAnswers() {
+        #expect(CommitBoxIdentity(nil, defaultIdentity: identity()) == .unread)
+        #expect(CommitBoxIdentity(nil, defaultIdentity: nil) == .unread)
+    }
+
+    // MARK: The Key field
+
+    @Test func theKeyFieldKnowsTheKeyItNames() {
+        let file = SigningKey(value: "~/.ssh/id_ed25519.pub", title: "~/.ssh/id_ed25519.pub", details: ["ED25519", "sam@rivera.dev"], fingerprint: "SHA256:abc", emails: ["sam@rivera.dev"])
+        let fingerprint = "9A8B7C6D5E4F30211A2B3C4D4B5A69784F1E2D3C"
+        let openPGP = SigningKey(value: fingerprint, title: "Sam Rivera <sam@rivera.dev>", details: ["ED25519", "4B5A69784F1E2D3C"], fingerprint: fingerprint, emails: ["sam@rivera.dev"])
+        let keys = [file, openPGP]
+        #expect(SigningKeyField.key(named: "~/.ssh/id_ed25519.pub", in: keys) == file)
+        // The same file without `~`.
+        #expect(SigningKeyField.key(named: NSHomeDirectory() + "/.ssh/id_ed25519.pub", in: keys) == file)
+        // A long key ID is the end of the fingerprint, in any case.
+        #expect(SigningKeyField.key(named: "4b5a69784f1e2d3c", in: keys) == openPGP)
+        #expect(SigningKeyField.key(named: "0x4B5A69784F1E2D3C", in: keys) == openPGP)
+        #expect(SigningKeyField.key(named: "1E2D3C", in: keys) == nil)
+        #expect(SigningKeyField.key(named: "  ", in: keys) == nil)
     }
 
     // MARK: The popover
@@ -213,23 +280,194 @@ struct IdentityTests {
 
     @Test func saysWhatCheckingASignatureFound() {
         let key = "SHA256:abc"
-        #expect(SignatureWords(format: .ssh, check: nil).title == "Checking…")
-        let good = SignatureWords(format: .ssh, check: SignatureCheck(result: .good, signer: "sam@rivera.dev", key: key))
+        // Before git has checked, the line says how it's signed, with the
+        // plain shield and no spinner (decision 109).
+        let before = SignatureWords(format: .openPGP, check: nil)
+        #expect(before.title == "Signed with OpenPGP")
+        #expect(before.icon == .shield)
+        #expect(before.tone == .plain)
+        let good = SignatureWords(format: .ssh, check: SignatureCheck(result: .good, signer: "sam@rivera.dev", key: key), email: "sam@rivera.dev")
         #expect(good.title == "Good SSH signature")
-        #expect(good.detail == "sam@rivera.dev · SHA256:abc")
+        #expect(good.help == "Signed by sam@rivera.dev.")
         #expect(good.tone == .good)
+        // Someone other than the committer is named, since the Committer
+        // line doesn't say who signed.
+        let other = SignatureWords(format: .openPGP, check: SignatureCheck(result: .good, signer: "Alex Kim <alex@example.com>", key: "3AA5"), email: "sam@rivera.dev")
+        #expect(other.title == "Good signature from Alex Kim")
         let unchecked = SignatureWords(format: .ssh, check: SignatureCheck(result: .notChecked))
         #expect(unchecked.title == "Signed with SSH, not checked")
-        #expect(unchecked.detail == "git needs gpg.ssh.allowedSignersFile to know whose keys to trust.")
-        #expect(SignatureWords(format: .openPGP, check: SignatureCheck(result: .notChecked)).detail == "git couldn't run gpg to check it.")
-        #expect(SignatureWords(format: .ssh, check: SignatureCheck(result: .untrusted, key: key)).detail == "The allowed signers file doesn't list this key. SHA256:abc")
-        #expect(SignatureWords(format: .openPGP, check: SignatureCheck(result: .missingKey, key: "3AA5")).detail == "OpenPGP key 3AA5")
+        #expect(unchecked.help == "git needs gpg.ssh.allowedSignersFile to know whose keys to trust.")
+        #expect(SignatureWords(format: .openPGP, check: SignatureCheck(result: .notChecked)).help == "git couldn't run gpg to check it.")
+        #expect(SignatureWords(format: .ssh, check: SignatureCheck(result: .untrusted, key: key)).help == "The allowed signers file doesn't list this key.")
+        #expect(SignatureWords(format: .openPGP, check: SignatureCheck(result: .missingKey, key: "3AA5")).title == "Signed with a key not on this Mac")
         #expect(SignatureWords(format: .openPGP, check: SignatureCheck(result: .bad)).tone == .bad)
         #expect(SignatureWords(format: .openPGP, check: SignatureCheck(result: .expired)).tone == .warning)
+    }
+
+    @Test func eachTitleFitsOnTheSignaturesLine() {
+        // The panel's value column is about 220 points at its default
+        // width, which holds about 34 characters of 12-point text.
+        let results: [SignatureCheck.Result] = [.good, .untrusted, .expired, .revoked, .bad, .missingKey, .notChecked]
+        for format in [CommitIdentity.SigningFormat.ssh, .openPGP, .x509] {
+            #expect(SignatureWords(format: format, check: nil).title.count <= 34)
+            for result in results {
+                let title = SignatureWords(format: format, check: SignatureCheck(result: result)).title
+                #expect(title.count <= 34, "\(title)")
+            }
+        }
+        #expect(UserDefaults(suiteName: "checksSignatures-\(UUID())")?.checksSignatures == true)
+    }
+
+    func trustOffer(setsFile: Bool) throws -> AllowedSigners.Offer {
+        let key = try #require(SSHPublicKeyParser.parse("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEl5c7+FTBhBHYT9TKz61AWx/U3+VjN1Mh2idso8ynyp"))
+        let local = SigningKey(value: "~/.ssh/id_ed25519.pub", title: "~/.ssh/id_ed25519.pub", details: ["ED25519"], fingerprint: key.fingerprint, emails: [])
+        return AllowedSigners.Offer(
+            key: key, localKey: local, email: "sam@rivera.dev",
+            shownFile: "~/.ssh/allowed_signers", file: "/Users/sam/.ssh/allowed_signers", setsFile: setsFile
+        )
+    }
+
+    @Test func namesThisMacsKeyWhenItOffersToTrustIt() throws {
+        let offer = try trustOffer(setsFile: true)
+        #expect(SignatureWords(format: .ssh, check: SignatureCheck(result: .notChecked), offer: offer).help
+            == "git needs gpg.ssh.allowedSignersFile to know whose keys to trust. It was signed with ~/.ssh/id_ed25519.pub, one of this Mac's keys.")
+        #expect(SignatureWords(format: .ssh, check: SignatureCheck(result: .untrusted, key: offer.key.fingerprint), offer: offer).help
+            == "The allowed signers file doesn't list ~/.ssh/id_ed25519.pub, one of this Mac's keys.")
+    }
+
+    @Test func theConfirmShowsWhatItRunsAndAdds() throws {
+        let line = "sam@rivera.dev namespaces=\"git\" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEl5c7+FTBhBHYT9TKz61AWx/U3+VjN1Mh2idso8ynyp"
+        #expect(TrustKeyPopover.lines(try trustOffer(setsFile: true)) == [
+            .command(["config", "--global", "gpg.ssh.allowedSignersFile", "~/.ssh/allowed_signers"]),
+            .comment("Adds this line to ~/.ssh/allowed_signers"),
+            .output(line),
+        ])
+        #expect(TrustKeyPopover.lines(try trustOffer(setsFile: false)) == [.comment("Adds this line to ~/.ssh/allowed_signers"), .output(line)])
     }
 
     @Test func aSignedRowSaysSo() {
         #expect(CommitRowContent(shortID: "48ba6441", subject: "Add tests", isSigned: true).spokenText == "Add tests, 48ba6441, signed")
         #expect(CommitRowContent(shortID: "48ba6441", subject: "Add tests").spokenText == "Add tests, 48ba6441")
+    }
+
+    @Test func aSignedRowKeepsRoomForItsShieldAfterTheWholeShortID() throws {
+        let size = NSSize(width: 900, height: 26)
+        let signed = CommitRowLayout(content: CommitRowContent(shortID: "48ba6441", subject: "Add tests", isSigned: true), size: size)
+        let hash = try #require(signed.columns.first)
+        let shield = try #require(signed.signedMark)
+        // The short ID isn't cut, and the shield ends inside its column.
+        #expect(hash.width >= CommitRowLayout.width(of: "48ba6441", in: CommitCellView.Style.shortID))
+        #expect(shield.minX >= hash.x + hash.width + CommitRowLayout.signedMarkGap)
+        #expect(shield.maxX <= size.width - 14)
+        #expect(shield.width >= 9)
+        // The columns don't move for it.
+        let unsigned = CommitRowLayout(content: CommitRowContent(shortID: "48ba6441", subject: "Add tests"), size: size)
+        #expect(unsigned.signedMark == nil)
+        #expect(signed.columns.map(\.x) == unsigned.columns.map(\.x))
+        #expect(signed.subjectMaxX == unsigned.subjectMaxX)
+        #expect(CommitCellView.signedMarkToolTip == "Signed. Select the commit to check the signature.")
+    }
+
+    // MARK: Decision 108
+
+    @Test func aFormatWaitsForItsProgramAndSaysWhatsMissing() {
+        // Until the programs are found, only the format git uses can be chosen.
+        #expect(IdentityPopover.unavailable(.ssh, programs: nil, current: .openPGP) == "Looking for ssh-keygen…")
+        #expect(IdentityPopover.unavailable(.openPGP, programs: nil, current: .openPGP) == nil)
+
+        let found = SigningPrograms.Found(
+            ssh: .init(format: .ssh, named: "ssh-keygen", path: "/usr/bin/ssh-keygen"),
+            openPGP: .init(format: .openPGP, named: "gpg", path: nil),
+            x509: .init(format: .x509, named: "gpgsm", path: nil)
+        )
+        #expect(IdentityPopover.unavailable(.ssh, programs: found, current: .ssh) == nil)
+        #expect(IdentityPopover.unavailable(.openPGP, programs: found, current: .ssh) == "Install GnuPG to sign with OpenPGP")
+        #expect(IdentityPopover.unavailable(.x509, programs: found, current: .ssh) == "Install GnuPG, which has gpgsm, to sign with X.509")
+        // The format git signs with stays, and the popover warns instead.
+        #expect(IdentityPopover.unavailable(.openPGP, programs: found, current: .openPGP) == nil)
+    }
+
+    func sshPlan(setsFile: Bool = true) -> NewSigningKey.Plan {
+        NewSigningKey.Plan(
+            format: .ssh,
+            email: "sam@rivera.dev",
+            userID: "sam@rivera.dev",
+            program: "/usr/bin/ssh-keygen",
+            arguments: ["-q", "-t", "ed25519", "-C", "sam@rivera.dev", "-N", "", "-f", "/Users/sam/.ssh/id_ed25519_signing"],
+            shownArguments: ["-q", "-t", "ed25519", "-C", "sam@rivera.dev", "-N", "", "-f", "~/.ssh/id_ed25519_signing"],
+            shownFile: "~/.ssh/id_ed25519_signing",
+            file: "/Users/sam/.ssh/id_ed25519_signing",
+            trust: NewSigningKey.Trust(shownFile: "~/.ssh/allowed_signers", file: "/Users/sam/.ssh/allowed_signers", setsFile: setsFile)
+        )
+    }
+
+    @Test func theNewKeyConfirmSaysWhatItMakesAndRuns() {
+        let plan = sshPlan()
+        #expect(NewKeyPopover.note(plan) == "Roga makes an Ed25519 key in ~/.ssh/id_ed25519_signing, without a passphrase, so git, Roga and agents can sign without asking. Anyone who can read that file can sign as you. It also goes in ~/.ssh/allowed_signers, so git says your commits are good.")
+        #expect(NewKeyPopover.lines(plan) == [
+            .program(plan.command),
+            .command(["config", "--global", "gpg.ssh.allowedSignersFile", "~/.ssh/allowed_signers"]),
+            .comment("Adds the new key to ~/.ssh/allowed_signers for sam@rivera.dev"),
+        ])
+        #expect(plan.command.description.hasSuffix("-N '' -f ~/.ssh/id_ed25519_signing"))
+        #expect(NewKeyPopover.lines(sshPlan(setsFile: false)).count == 2)
+
+        let openPGP = NewSigningKey.Plan(
+            format: .openPGP,
+            email: "sam@rivera.dev",
+            userID: "Sam Rivera <sam@rivera.dev>",
+            program: "/opt/homebrew/bin/gpg",
+            arguments: [],
+            shownArguments: []
+        )
+        #expect(NewKeyPopover.note(openPGP) == "Roga makes an Ed25519 key for Sam Rivera <sam@rivera.dev> that doesn't expire, without a passphrase, so git, Roga and agents can sign without asking. Anyone who can use your GnuPG keyring can sign as you.")
+    }
+
+    @Test func theMadeKeySaysWhereItCanGo() {
+        let key = SigningKey(value: "~/.ssh/id_ed25519_signing.pub", title: "~/.ssh/id_ed25519_signing.pub", details: ["ED25519"], fingerprint: "SHA256:x", emails: [])
+        let made = NewSigningKey.Made(format: .ssh, key: key, publicKey: "ssh-ed25519 AAAA", publicKeyFile: "/Users/sam/.ssh/id_ed25519_signing.pub", shownPublicKeyFile: "~/.ssh/id_ed25519_signing.pub")
+        let gitHub = KeyHost.gitHub("github.com")
+        let gh = "/opt/homebrew/bin/gh"
+
+        let canAdd = KeyHosting(gh: gh, accounts: [GitHubAccount(host: "github.com", scopes: ["admin:ssh_signing_key"])], hosts: [gitHub])
+        #expect(NewKeyPopover.hostWords(gitHub, format: .ssh, hosting: canAdd, isAdded: false) == "gh can add it as a signing key, so commits signed with it show as Verified.")
+        #expect(NewKeyPopover.hostWords(gitHub, format: .ssh, hosting: canAdd, isAdded: true) == "Added as a signing key, so commits signed with it show as Verified.")
+        #expect(NewKeyPopover.lines(made, hosting: canAdd, added: []) == [
+            .program(ProgramCommand(gh, ["ssh-key", "add", "~/.ssh/id_ed25519_signing.pub", "--type", "signing", "--title", GitHubCLI.title])),
+        ])
+
+        // Signed in, but without the scope: the command that gives it.
+        let noScope = KeyHosting(gh: gh, accounts: [GitHubAccount(host: "github.com", scopes: ["repo"])], hosts: [gitHub])
+        #expect(NewKeyPopover.hostWords(gitHub, format: .ssh, hosting: noScope, isAdded: false).hasPrefix("gh may not add signing keys yet."))
+        #expect(NewKeyPopover.lines(made, hosting: noScope, added: []) == [
+            .comment("Lets gh add keys to github.com. Run it once in Terminal."),
+            .program(ProgramCommand(gh, ["auth", "refresh", "-h", "github.com", "-s", "admin:ssh_signing_key"])),
+        ])
+
+        // Without gh, GitHub's page, and GitLab's for a GitLab remote.
+        let noGH = KeyHosting(gh: nil, accounts: [], hosts: [gitHub, .gitLab("gitlab.com")])
+        #expect(NewKeyPopover.hostWords(gitHub, format: .ssh, hosting: noGH, isAdded: false) == "Add it on GitHub as a signing key, so commits signed with it show as Verified. Open GitHub copies it first.")
+        #expect(NewKeyPopover.hostWords(.gitLab("gitlab.com"), format: .ssh, hosting: noGH, isAdded: false) == "Add it on GitLab with the usage type Signing, so commits signed with it show as Verified. Open GitLab copies it first.")
+        #expect(NewKeyPopover.lines(made, hosting: noGH, added: []) == [.comment("Copy Public Key copies ~/.ssh/id_ed25519_signing.pub")])
+    }
+
+    @Test func setupSaysWhatItFoundForSigning() {
+        #expect(SetupWords.signingLooks(nil, hasGit: false, gitFailed: true).map(\.detail) == ["After Git", "After Git", "After Git"])
+        #expect(SetupWords.signingLooks(nil, hasGit: true, gitFailed: false).map(\.state) == [.looking, .looking, .looking])
+        let tools = SetupWords.SigningTools(
+            ssh: .init(isFound: true, version: "OpenSSH 9.9p2"),
+            gnuPG: .init(isFound: true, version: "2.4.7"),
+            hasGPGSM: true,
+            gitHubCLI: .init(isFound: false)
+        )
+        let looks = SetupWords.signingLooks(tools, hasGit: true, gitFailed: false)
+        #expect(looks.map(\.name) == ["SSH", "GnuPG", "GitHub CLI"])
+        #expect(looks.map(\.detail) == [
+            "OpenSSH 9.9p2 · for signing commits with SSH",
+            "2.4.7 · for signing with OpenPGP and X.509",
+            "Not found · optional, for adding keys to GitHub",
+        ])
+        // Like an agent that isn't there, a missing tool isn't a warning.
+        #expect(looks.allSatisfy { $0.state == .found })
     }
 }

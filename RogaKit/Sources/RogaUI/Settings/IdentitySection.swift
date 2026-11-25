@@ -25,6 +25,10 @@ struct IdentitySection: View {
     /// leaves alone.
     @FocusState private var focus: CommitIdentityCommands.Key?
     @State private var failure: String?
+    /// The keys on this Mac for each format the Key row has shown.
+    @State private var keyListings: [CommitIdentity.SigningFormat: SigningKeys.Listing] = [:]
+    /// Each format's program and whether it's on this Mac (decision 108).
+    @State private var signingPrograms: SigningPrograms.Found?
 
     private typealias Key = CommitIdentityCommands.Key
     private let globalFiles = GlobalConfigFiles()
@@ -54,6 +58,19 @@ struct IdentitySection: View {
         }
         .onAppear { load(keeping: nil) }
         .onChange(of: list.defaultIdentity) { load(keeping: focus) }
+        // The keys are listed only while the Key row shows, once for each
+        // format (decision 106).
+        .task(id: identity.signs ? identity.format : nil) {
+            let format = identity.format
+            guard identity.signs, format != .x509, keyListings[format] == nil else { return }
+            if let listing = await list.signingKeys(format, for: nil) { keyListings[format] = listing }
+        }
+        // Whether each format's program is here, each time the format shows
+        // (decision 108).
+        .task(id: identity.signs) {
+            guard identity.signs else { return }
+            signingPrograms = await list.signingPrograms(for: nil)
+        }
         // Leaving a field saves it, as Return does.
         .onChange(of: focus) { left, _ in
             if let left { save(left) }
@@ -86,10 +103,35 @@ struct IdentitySection: View {
                     identity.format
                 } set: { format in
                     write(.set(.signingFormat, format.rawValue, in: .everyRepository))
-                }, options: CommitIdentity.SigningFormat.allCases.map { ($0, $0.title) })
+                }, options: CommitIdentity.SigningFormat.allCases.map { ($0, $0.title) }, unavailable: {
+                    IdentityPopover.unavailable($0, programs: signingPrograms, current: identity.format)
+                })
+            }
+            if let warning = signingPrograms?[identity.format].warning {
+                SettingsBlock {
+                    Text(warning)
+                        .font(.system(size: 12))
+                        .foregroundStyle(AgentColors.warn)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         case .signingKey:
-            fieldRow(item, key: .signingKey, text: $key, placeholder: identity.format == .ssh ? "~/.ssh/id_ed25519.pub" : "Key ID, or empty to use the email's", isMonospaced: true)
+            settingRow(item, key: .signingKey) {
+                SigningKeyField(
+                    text: $key,
+                    format: identity.format,
+                    listing: keyListings[identity.format],
+                    email: identity.shownEmail,
+                    hasDefaultKeyCommand: identity.hasDefaultKeyCommand,
+                    width: 240,
+                    focus: $focus,
+                    choose: { _ in save(.signingKey) },
+                    maker: signingPrograms?[identity.format].isFound == false ? nil : KeyMaker(list: list, repository: nil, name: identity.shownName ?? "", savesAtOnce: true) { made in
+                        keyListings[made.format, default: SigningKeys.Listing(keys: [])].keys.append(made.key)
+                    }
+                )
+                .onSubmit { save(.signingKey) }
+            }
         default:
             EmptyView()
         }
@@ -268,8 +310,8 @@ private struct IdentityExceptionRowView: View {
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
             switch row.exception {
-            case .someoneElse(let identity):
-                IdentityBadge(identity: identity, size: 18, showsMark: false)
+            case .someoneElse:
+                IdentityPerson(look: .init(row.exception), style: .inline)
             case .problem:
                 Icon.warning.image
                     .font(.system(size: 12 / 1.128, weight: .semibold))

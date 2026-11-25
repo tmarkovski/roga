@@ -18,8 +18,8 @@ import SwiftUI
 /// a while, Commit turns into Stop. Whatever's worth knowing about the commit,
 /// such as an amend, a merge, a warning or a failure, shows at the top of the
 /// box with its own fix beside it, so that the row of buttons stays put. So does
-/// who the commit goes out as, while that's someone other than the global
-/// identity or a commit would go wrong (decision 103).
+/// who the commit goes out as, always, or what would go wrong with it
+/// (decision 105).
 struct CommitBox: View {
     @Bindable var composer: CommitComposer
     /// Gives the keyboard back to the list of files.
@@ -36,7 +36,7 @@ struct CommitBox: View {
     @Environment(\.openSettings) private var openSettings
     @Environment(\.accessibilityReduceMotion) private var reducesMotion
     /// The repository and the list, for who the commit goes out as
-    /// (decision 103), which a view that's tested on its own may not have.
+    /// (decision 105), which a view that's tested on its own may not have.
     @Environment(ListedRepository.self) private var repository: ListedRepository?
     @Environment(RepositoryList.self) private var list: RepositoryList?
     @AppStorage(AgentPreferences.showsGenerateButtonKey) private var showsGenerateButton = true
@@ -94,9 +94,11 @@ struct CommitBox: View {
 
     // MARK: The top of the box
 
-    /// What the top of the box says about who the commit goes out as.
-    private var identity: IdentityException? {
-        IdentityException(repository?.identity, defaultIdentity: list?.defaultIdentity)
+    /// What the top of the box says about who the commit goes out as, which
+    /// is always something in a repository (decision 105).
+    private var identity: CommitBoxIdentity? {
+        guard let repository, let list else { return nil }
+        return CommitBoxIdentity(repository.identity, defaultIdentity: list.defaultIdentity)
     }
 
     /// Whether anything shows above the text.
@@ -130,10 +132,14 @@ struct CommitBox: View {
                 }
                 if let identity, let repository, let list {
                     switch identity {
-                    case .problem(let problem):
+                    case .unread:
+                        Color.clear
+                            .frame(height: CommitBoxIdentityLine.height)
+                            .accessibilityHidden(true)
+                    case .warning(let problem):
                         CommitBoxIdentityWarning(problem: problem, repository: repository, list: list)
-                    case .someoneElse(let someone):
-                        CommitBoxIdentityLine(identity: someone, repository: repository, list: list)
+                    case .line(let who, let isSomeoneElse):
+                        CommitBoxIdentityLine(identity: who, isSomeoneElse: isSomeoneElse, repository: repository, list: list)
                     }
                 }
                 if case .failed(let output) = composer.phase {

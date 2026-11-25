@@ -2,10 +2,11 @@ import Foundation
 import GitCore
 import RepositoryEngine
 import SwiftUI
+import ThemeUI
 
 /// What the window says about who a repository's commits go out as
-/// (decision 103): the tooltip on the branch row's initials, where each
-/// setting comes from, and what's wrong.
+/// (decision 103): the tooltip on the title row's person (decision 105), where
+/// each setting comes from, and what's wrong.
 struct IdentityWords {
     let identity: CommitIdentity
     /// Where git keeps the user's global config, to tell a file that it
@@ -105,13 +106,24 @@ struct IdentityWords {
     }
 }
 
-/// The tint that the initials of an identity take, one of the graph's lane
+/// The tint that the person of an identity takes, one of the graph's lane
 /// colors picked by the email, so that a work identity and a personal one
 /// look different wherever they show.
 enum IdentityTint {
-    static func color(for identity: CommitIdentity) -> Color? {
+    /// One of the theme's lane colors, picked by the email.
+    @MainActor static func color(for identity: CommitIdentity) -> Color? {
         guard let email = identity.shownEmail?.lowercased() else { return nil }
-        return Palette.lane(Int(hash(email) % 1024))
+        let lanes = colored(ColorTheme.observed.colors.lanes)
+        return Color(nsColor: lanes[Int(hash(email) % 1024) % lanes.count].color)
+    }
+
+    /// The lanes that have a color of their own. A lane that's nearly gray,
+    /// as Monokai's Stone and Xcode's Slate are, would make someone else look
+    /// like the global identity, whose person is gray. They're judged by
+    /// their light values, so an email keeps its color in both appearances.
+    static func colored(_ lanes: [ThemeColor]) -> [ThemeColor] {
+        let colored = lanes.filter { ($0.light.usingColorSpace(.sRGB)?.saturationComponent ?? 0) >= 0.35 }
+        return colored.isEmpty ? lanes : colored
     }
 
     /// FNV-1a, which gives an email the same color every time Roga runs, as

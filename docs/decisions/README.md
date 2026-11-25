@@ -110,5 +110,10 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [100](0100-say-what-the-worktrees-agent-is-doing-in-the-branch-row.md) | Say what the worktree's agent is doing in the branch row | Accepted |
 | [101](0101-choose-a-programs-copy-in-a-popover-like-the-agents.md) | Choose a program's copy in a popover like the agents' | Accepted |
 | [102](0102-buttons-in-title-case.md) | Buttons in title case | Accepted |
-| [103](0103-show-who-commits-go-out-as-from-git-config.md) | Show who commits go out as, from git config | Accepted |
+| [103](0103-show-who-commits-go-out-as-from-git-config.md) | Show who commits go out as, from git config | Partly superseded by [105](0105-show-who-commits-go-out-as-at-the-end-of-the-title-row.md) |
 | [104](0104-mark-signed-commits-and-check-only-the-selected-one.md) | Mark signed commits, and check only the selected one | Accepted |
+| [105](0105-show-who-commits-go-out-as-at-the-end-of-the-title-row.md) | Show who commits go out as at the end of the title row, and always in the box | Accepted |
+| [106](0106-offer-the-signing-keys-this-mac-has.md) | Offer the signing keys this Mac has | Accepted |
+| [107](0107-trust-your-own-ssh-key-from-the-signature-line.md) | Trust your own SSH key from the Signature line | Accepted |
+| [108](0108-make-a-signing-key-and-say-which-signing-programs-are-here.md) | Make a signing key, and say which signing programs are here | Accepted |
+| [109](0109-keep-the-signature-line-in-place-and-let-checking-be-turned-off.md) | Keep the Signature line in place, and let checking be turned off | Accepted |

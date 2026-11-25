@@ -591,6 +591,54 @@ public final class RepositoryList {
         if let failure { throw failure }
     }
 
+    /// The keys on this Mac that can sign commits in a format, with the
+    /// programs a repository's config says git signs with, or the global
+    /// config's without a repository (decision 106). Nil when git isn't
+    /// there to ask.
+    func signingKeys(_ format: CommitIdentity.SigningFormat, for repository: ListedRepository?) async -> SigningKeys.Listing? {
+        if let session = repository?.session { return await session.signingKeys(format) }
+        guard let git else { return nil }
+        return await SigningKeys.list(format, git: git, programs: Programs(sharingWith: git), in: "/")
+    }
+
+    /// The program git signs with for each format and whether it's here,
+    /// as a repository's config names them, or the global config's without
+    /// a repository (decision 108). Nil when git isn't there to ask.
+    func signingPrograms(for repository: ListedRepository?) async -> SigningPrograms.Found? {
+        if let session = repository?.session { return await session.signingPrograms() }
+        guard let git else { return nil }
+        return await SigningPrograms.find(git: git, programs: Programs(sharingWith: git), in: "/")
+    }
+
+    /// What making a key would run (decision 108).
+    func newKeyPlan(_ format: CommitIdentity.SigningFormat, name: String, email: String, for repository: ListedRepository?) async -> NewSigningKey.Planned {
+        if let session = repository?.session { return await session.newKeyPlan(format, name: name, email: email) }
+        guard let git else { return .unavailable("Roga can't find git.") }
+        return await NewSigningKey.plan(format, name: name, email: email, git: git, programs: Programs(sharingWith: git), in: "/")
+    }
+
+    /// Makes the key the plan says (decision 108).
+    func makeKey(_ plan: NewSigningKey.Plan, for repository: ListedRepository?) async throws -> NewSigningKey.Made {
+        if let session = repository?.session { return try await session.makeKey(plan) }
+        guard let git else { throw NewSigningKey.Failure("Roga can't find git.") }
+        return try await NewSigningKey.make(plan, git: git, programs: Programs(sharingWith: git))
+    }
+
+    /// Where a new key's public half can go, and whether gh can put it
+    /// there: the hosts of a repository's remotes, or in Settings, those gh
+    /// is signed in to (decision 108).
+    func keyHosting(for repository: ListedRepository?) async -> KeyHosting {
+        if let session = repository?.session { return await session.keyHosting() }
+        guard let git else { return KeyHosting(gh: nil, accounts: [], hosts: []) }
+        return await KeyHosting.look(remoteURLs: nil, programs: Programs(sharingWith: git))
+    }
+
+    /// Adds a made key to the host with gh (decision 108).
+    func addKey(_ made: NewSigningKey.Made, to host: KeyHost, gh: String) async throws {
+        guard let git else { throw NewSigningKey.Failure("Roga can't find git.") }
+        try await GitHubCLI.add(made, to: host.host, title: GitHubCLI.title, gh: gh, programs: Programs(sharingWith: git))
+    }
+
     /// The repositories whose commits go out as someone other than the global
     /// identity, or whose commits would go wrong, for Settings › Git. A bare
     /// repository commits nothing, so it isn't one.
