@@ -46,9 +46,9 @@ struct IdentityTests {
     }
 
     @Test func saysWhereAnIncludedOrOwnSettingComesFrom() {
-        #expect(IdentityWords.origin(included, globalFiles: globalFiles) == "from ~/.gitconfig-work, which ~/.gitconfig includes")
-        #expect(IdentityWords.origin(local, globalFiles: globalFiles) == "this repository's own")
-        #expect(IdentityWords.origin(ConfigOrigin(scope: .worktree), globalFiles: globalFiles) == "this worktree's own")
+        #expect(IdentityWords.origin(included, globalFiles: globalFiles) == "from ~/.gitconfig-work (included by ~/.gitconfig)")
+        #expect(IdentityWords.origin(local, globalFiles: globalFiles) == "set in this repository")
+        #expect(IdentityWords.origin(ConfigOrigin(scope: .worktree), globalFiles: globalFiles) == "set in this worktree")
         #expect(IdentityWords.origin(ConfigOrigin(scope: .system, file: "/etc/gitconfig"), globalFiles: globalFiles) == "from /etc/gitconfig")
     }
 

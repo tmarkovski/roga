@@ -39,7 +39,7 @@ struct GenerateButtonTests {
     // MARK: The button
 
     @Test func showsTheWordWhileTheBoxIsEmpty() {
-        let state = GenerateButtonState(showsButton: true, agent: .claude, hasText: false, isWriting: false, readiness: .ready)
+        let state = GenerateButtonState(agent: .claude, hasText: false, isWriting: false, readiness: .ready)
         #expect(state == .shown(agent: .claude, rewrites: false, readiness: .ready))
         #expect(GenerateButton<EmptyView>.help(agent: .claude, rewrites: false, readiness: .ready) == "Generate a commit message with Claude Code (⌥\u{2009}⌘\u{2009}L)")
     }
@@ -51,13 +51,13 @@ struct GenerateButtonTests {
     }
 
     @Test func showsTheIconAloneToRewriteYourWords() {
-        let state = GenerateButtonState(showsButton: true, agent: .codex, hasText: true, isWriting: false, readiness: .ready)
+        let state = GenerateButtonState(agent: .codex, hasText: true, isWriting: false, readiness: .ready)
         #expect(state == .shown(agent: .codex, rewrites: true, readiness: .ready))
         #expect(GenerateButton<EmptyView>.help(agent: .codex, rewrites: true, readiness: .ready) == "Rewrite the commit message with Codex using the current draft (⌥\u{2009}⌘\u{2009}L)")
     }
 
     @Test func saysToStageFilesWhenNothingIsStaged() {
-        let state = GenerateButtonState(showsButton: true, agent: .claude, hasText: false, isWriting: false, readiness: .nothingStaged)
+        let state = GenerateButtonState(agent: .claude, hasText: false, isWriting: false, readiness: .nothingStaged)
         #expect(state == .shown(agent: .claude, rewrites: false, readiness: .nothingStaged))
         #expect(GenerateButton<EmptyView>.help(agent: .claude, rewrites: false, readiness: .nothingStaged) == "Stage changes to generate a commit message")
     }
@@ -70,10 +70,9 @@ struct GenerateButtonTests {
         #expect(GenerateButton<EmptyView>.help(agent: .claude, rewrites: true, readiness: .rebasing) == "Finish the rebase to generate a commit message")
     }
 
-    @Test func isHiddenWhenTurnedOffWithoutAnAgentOrWhileWriting() {
-        #expect(GenerateButtonState(showsButton: false, agent: .claude, hasText: false, isWriting: false, readiness: .ready) == .hidden)
-        #expect(GenerateButtonState(showsButton: true, agent: nil, hasText: false, isWriting: false, readiness: .ready) == .hidden)
-        #expect(GenerateButtonState(showsButton: true, agent: .claude, hasText: false, isWriting: true, readiness: .busy) == .hidden)
+    @Test func isHiddenWithoutAnAgentOrWhileWriting() {
+        #expect(GenerateButtonState(agent: nil, hasText: false, isWriting: false, readiness: .ready) == .hidden)
+        #expect(GenerateButtonState(agent: .claude, hasText: false, isWriting: true, readiness: .busy) == .hidden)
     }
 
     @Test func hasNoAgentToRunUntilOneIsFoundOrWhileAgentsAreOff() {

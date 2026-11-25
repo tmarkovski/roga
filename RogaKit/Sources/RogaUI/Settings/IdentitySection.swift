@@ -4,20 +4,28 @@ import IconUI
 import RepositoryEngine
 import SwiftUI
 
-/// Settings › Git › Identity: who every repository's commits go out as unless
-/// it sets its own, from the user's global config (decision 103). It has the
-/// identity popover's fields, and each change runs `git config --global` at
-/// once: a field's when Return is pressed or the field is left, and a
-/// switch's or a format's as it changes. Each row says its key and where its
-/// value comes from, which can be a file that `~/.gitconfig` includes.
+/// Settings › Git › Identity or Signing: who every repository's commits go
+/// out as unless it sets its own, and how they're signed, from the user's
+/// global config (decision 103). They have the identity popover's fields,
+/// and each change runs `git config --global` at once: a field's when Return
+/// is pressed or the field is left, and a switch's or a format's as it
+/// changes. Each row says its key and where its value comes from, which can
+/// be a file that `~/.gitconfig` includes. Identity ends with Repository
+/// overrides, which opens its own page, and Signing with whether Roga checks
+/// a selected commit's signature (decision 109), which Roga keeps itself.
 ///
 /// Search shows it too, with only the settings it found.
 struct IdentitySection: View {
+    /// Identity or Signing.
+    let group: SettingsGroup
     /// The settings to show, which search narrows.
-    var items = SettingsGroup.identity.items
+    let items: [SettingsItem]
     /// Whether the page's name goes beside the heading, as in search.
     var namesPage = false
+    /// Goes to Repository overrides.
+    var show: (SettingsDestination) -> Void = { _ in }
     @Environment(RepositoryList.self) private var list
+    @AppStorage(UserDefaults.checksSignaturesKey) private var checksSignatures = true
     @State private var name = ""
     @State private var email = ""
     @State private var key = ""
@@ -33,12 +41,23 @@ struct IdentitySection: View {
     private typealias Key = CommitIdentityCommands.Key
     private let globalFiles = GlobalConfigFiles()
 
+    init(group: SettingsGroup, items: [SettingsItem]? = nil, namesPage: Bool = false, show: @escaping (SettingsDestination) -> Void = { _ in }) {
+        self.group = group
+        self.items = items ?? group.items
+        self.namesPage = namesPage
+        self.show = show
+    }
+
     private var identity: CommitIdentity { list.defaultIdentity ?? CommitIdentity() }
+
+    /// Whether it's Signing, which lists keys and looks for the signing
+    /// programs.
+    private var isSigning: Bool { group == .signing }
 
     var body: some View {
         SettingsSection(
-            title: SettingsGroup.identity.title,
-            description: namesPage ? nil : SettingsGroup.identity.styledDescription
+            title: group.title,
+            description: namesPage ? nil : group.styledDescription
         ) {
             if namesPage {
                 Text(SettingsPage.git.title)
@@ -60,15 +79,15 @@ struct IdentitySection: View {
         .onChange(of: list.defaultIdentity) { load(keeping: focus) }
         // The keys are listed only while the Key row shows, once for each
         // format (decision 106).
-        .task(id: identity.signs ? identity.format : nil) {
+        .task(id: isSigning && identity.signs ? identity.format : nil) {
             let format = identity.format
-            guard identity.signs, format != .x509, keyListings[format] == nil else { return }
+            guard isSigning, identity.signs, format != .x509, keyListings[format] == nil else { return }
             if let listing = await list.signingKeys(format, for: nil) { keyListings[format] = listing }
         }
         // Whether each format's program is here, each time the format shows
         // (decision 108).
-        .task(id: identity.signs) {
-            guard identity.signs else { return }
+        .task(id: isSigning && identity.signs) {
+            guard isSigning, identity.signs else { return }
             signingPrograms = await list.signingPrograms(for: nil)
         }
         // Leaving a field saves it, as Return does.
@@ -88,6 +107,8 @@ struct IdentitySection: View {
             fieldRow(item, key: .name, text: $name, placeholder: "Your Name")
         case .identityEmail:
             fieldRow(item, key: .email, text: $email, placeholder: "you@example.com")
+        case .identityRepositories:
+            overridesRow(item)
         case .signsCommits:
             settingRow(item, key: .signsCommits) {
                 Toggle(item.title, isOn: Binding {
@@ -98,21 +119,23 @@ struct IdentitySection: View {
                 .toggleStyle(.settings)
             }
         case .signingFormat:
-            settingRow(item, key: .signingFormat) {
-                SettingsSegments(selection: Binding {
-                    identity.format
-                } set: { format in
-                    write(.set(.signingFormat, format.rawValue, in: .everyRepository))
-                }, options: CommitIdentity.SigningFormat.allCases.map { ($0, $0.title) }, unavailable: {
-                    IdentityPopover.unavailable($0, programs: signingPrograms, current: identity.format)
-                })
-            }
-            if let warning = signingPrograms?[identity.format].warning {
-                SettingsBlock {
+            // The warning goes with the row, with no line between them.
+            VStack(alignment: .leading, spacing: 0) {
+                settingRow(item, key: .signingFormat) {
+                    SettingsSegments(selection: Binding {
+                        identity.format
+                    } set: { format in
+                        write(.set(.signingFormat, format.rawValue, in: .everyRepository))
+                    }, options: CommitIdentity.SigningFormat.allCases.map { ($0, $0.title) }, unavailable: {
+                        IdentityPopover.unavailable($0, programs: signingPrograms, current: identity.format)
+                    })
+                }
+                if let warning = signingPrograms?[identity.format].warning {
                     Text(warning)
                         .font(.system(size: 12))
                         .foregroundStyle(AgentColors.warn)
                         .fixedSize(horizontal: false, vertical: true)
+                        .padding(.bottom, SettingsMetrics.rowPadding)
                 }
             }
         case .signingKey:
@@ -132,8 +155,38 @@ struct IdentitySection: View {
                 )
                 .onSubmit { save(.signingKey) }
             }
+        case .checksSignatures:
+            SettingsRow(title: item.title, help: item.help) {
+                Toggle(item.title, isOn: $checksSignatures)
+                    .toggleStyle(.settings)
+            }
         default:
             EmptyView()
+        }
+    }
+
+    /// Repository overrides, which goes to its own page, with how many
+    /// repositories it lists, and a warning when one's commits would go
+    /// wrong.
+    private func overridesRow(_ item: SettingsItem) -> some View {
+        let exceptions = list.identityExceptions
+        let hasProblem = exceptions.contains { if case .problem = $0.exception { true } else { false } }
+        let count = exceptions.isEmpty ? "None" : "\(exceptions.count)"
+        return SettingsLinkRow(
+            title: item.title,
+            help: item.help,
+            spokenValue: hasProblem ? "\(count), with identity problems" : count
+        ) {
+            show(.subpage(.repositoryOverrides))
+        } value: {
+            HStack(spacing: 6) {
+                if hasProblem {
+                    Icon.warning.image
+                        .font(.system(size: 12 / 1.128, weight: .semibold))
+                        .foregroundStyle(AgentColors.warn)
+                }
+                Text(count)
+            }
         }
     }
 
@@ -215,48 +268,45 @@ struct IdentitySection: View {
     }
 }
 
-/// Settings › Git › Repositories that commit as someone else: each repository
-/// in the sidebar whose name or email isn't the global identity, with the
-/// email and where it comes from, and each whose commits would go wrong
-/// (decision 103). Repositories that a file included for their folder gives
-/// the same email share a row. A repository's own value has Use Global, which
-/// runs `git config --local --unset`, and one whose commits would go wrong has
+/// Settings › Git › Repository overrides, a page that opens from the row at
+/// the end of Identity: each repository in the sidebar whose name or email
+/// isn't the global identity, with the email and where it comes from, and
+/// each whose commits would go wrong (decision 103). Repositories that a file
+/// included for their folder gives the same email share a row. A
+/// repository's own value has Use Global, which runs
+/// `git config --local --unset`, and one whose commits would go wrong has
 /// Set…, which opens the identity popover.
-struct IdentityExceptionsSection: View {
-    /// Whether the page's name goes beside the heading, as in search.
-    var namesPage = false
+struct RepositoryOverridesPage: View {
     @Environment(RepositoryList.self) private var list
 
     var body: some View {
-        SettingsSection(
-            title: SettingsGroup.identityExceptions.title,
-            description: namesPage ? nil : SettingsGroup.identityExceptions.styledDescription
-        ) {
-            if namesPage {
-                Text(SettingsPage.git.title)
-                    .foregroundStyle(SettingsColors.note)
-            }
-        } content: {
-            SettingsBlock {
-                let rows = IdentityExceptionRow.rows(list.identityExceptions)
+        let rows = IdentityExceptionRow.rows(list.identityExceptions)
+        VStack(alignment: .leading, spacing: 0) {
+            Text(SettingsItem.identityRepositories.help)
+                .font(.system(size: 12.5))
+                .lineSpacing(3)
+                .foregroundStyle(SettingsColors.note)
+                .fixedSize(horizontal: false, vertical: true)
+            SettingsRows(lineAbove: true) {
                 if rows.isEmpty {
-                    Text("Every repository in the sidebar commits as the global identity.")
+                    Text("All repositories use the global identity.")
                         .font(.system(size: 12.5))
                         .foregroundStyle(SettingsColors.note)
+                        .padding(.vertical, SettingsMetrics.rowPadding)
                 } else {
-                    SettingsList {
-                        ForEach(rows) { row in
-                            IdentityExceptionRowView(row: row, list: list)
-                        }
+                    ForEach(rows) { row in
+                        IdentityExceptionRowView(row: row, list: list)
                     }
                 }
             }
+            .padding(.top, 10)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
-/// One row of the repositories that commit as someone else: the repositories
-/// it's about, and what they have in common.
+/// One row of Repository overrides: the repositories it's about, and what
+/// they have in common.
 struct IdentityExceptionRow: Identifiable, Equatable {
     var repositories: [ListedRepository]
     var exception: IdentityException
@@ -340,7 +390,8 @@ private struct IdentityExceptionRowView: View {
                     }
             }
         }
-        .padding(EdgeInsets(top: 10, leading: 14, bottom: 10, trailing: 14))
+        .padding(.vertical, SettingsMetrics.rowPadding)
+        .frame(minHeight: 60)
         .accessibilityElement(children: .combine)
     }
 

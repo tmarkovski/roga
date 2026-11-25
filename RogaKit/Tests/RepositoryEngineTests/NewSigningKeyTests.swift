@@ -189,9 +189,9 @@ struct NewSigningKeyTests {
         let found = await SigningPrograms.find(git: git, programs: programs(), in: home)
         #expect(!found.openPGP.isFound)
         #expect(found.openPGP.setting == "gpg.program")
-        #expect(found.openPGP.hint == "Roga can't find /nonexistent/gpg, which gpg.program names")
-        #expect(found.openPGP.warning == "Roga can't find /nonexistent/gpg, which gpg.program names, so commits would stop at signing.")
-        #expect(found.x509.hint == "Roga can't find smimesign-that-isnt-here, which gpg.x509.program names")
+        #expect(found.openPGP.hint == "Can't find /nonexistent/gpg (set by gpg.program)")
+        #expect(found.openPGP.warning == "Can't find /nonexistent/gpg (set by gpg.program). Commits will fail at signing.")
+        #expect(found.x509.hint == "Can't find smimesign-that-isnt-here (set by gpg.x509.program)")
 
         // gpg.openpgp.program counts before gpg.program.
         _ = try await git.run(GitCommand(["config", "--global", "gpg.openpgp.program", "/usr/bin/true"], in: "/"))
@@ -202,7 +202,7 @@ struct NewSigningKeyTests {
     @Test func wordsAMissingDefaultProgram() {
         let gpg = SigningPrograms.Program(format: .openPGP, named: "gpg", path: nil)
         #expect(gpg.hint == "Install GnuPG to sign with OpenPGP")
-        #expect(gpg.warning == "Roga can't find gpg, so commits would stop at signing. Install GnuPG, or sign with SSH.")
+        #expect(gpg.warning == "Can't find gpg. Commits will fail at signing. Install GnuPG or use SSH.")
         let gpgsm = SigningPrograms.Program(format: .x509, named: "gpgsm", path: nil)
         #expect(gpgsm.hint == "Install GnuPG, which has gpgsm, to sign with X.509")
     }

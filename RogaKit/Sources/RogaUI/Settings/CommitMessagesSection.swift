@@ -2,9 +2,10 @@ import AgentEngine
 import Foundation
 import SwiftUI
 
-/// Settings › Git › Commit messages: how Generate writes a commit message
-/// (decision 41). It used to be a page of its own, and folded into Git once
-/// the agent and its model moved to the Agents page (decision 89). It shows
+/// Settings › Agents › Commit messages: how Generate writes a commit message
+/// (decision 41). It used to be a page of its own, folded into Git once the
+/// agent and its model moved to the Agents page (decision 89), and moved to
+/// Agents with the rest of what Use agents turns on (decision 110). It shows
 /// only while Roga uses agents.
 ///
 /// Search shows it too, with only the settings it found.
@@ -14,7 +15,6 @@ struct CommitSection: View {
     /// Whether the page's name goes beside the heading, as in search.
     var namesPage = false
 
-    @AppStorage(AgentPreferences.showsGenerateButtonKey) private var showsButton = true
     @AppStorage(AgentPreferences.matchesStyleKey) private var matchesStyle = true
     /// The instructions someone wrote, or nil for Roga's own. Resetting
     /// removes them rather than storing a copy of Roga's, so that the default
@@ -32,7 +32,7 @@ struct CommitSection: View {
     var body: some View {
         SettingsSection(title: SettingsGroup.generate.title) {
             if namesPage {
-                Text(SettingsPage.git.title)
+                Text(SettingsPage.agents.title)
                     .foregroundStyle(SettingsColors.note)
             }
         } content: {
@@ -44,11 +44,6 @@ struct CommitSection: View {
 
     @ViewBuilder private func row(_ item: SettingsItem) -> some View {
         switch item {
-        case .showsGenerateButton:
-            SettingsRow(title: item.title, help: item.help) {
-                Toggle(item.title, isOn: $showsButton)
-                    .toggleStyle(.settings)
-            }
         case .matchesStyle:
             SettingsRow(title: item.title, help: item.help) {
                 Toggle(item.title, isOn: $matchesStyle)

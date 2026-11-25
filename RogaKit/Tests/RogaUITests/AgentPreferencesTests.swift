@@ -28,7 +28,6 @@ struct AgentPreferencesTests {
         #expect(AgentPreferences.usesAgents(in: defaults))
         #expect(AgentPreferences.defaultAgent(in: defaults) == nil)
         #expect(AgentPreferences.customAgents(in: defaults).isEmpty)
-        #expect(AgentPreferences.showsGenerateButton(in: defaults))
         #expect(AgentPreferences.matchesStyle(in: defaults))
         #expect(AgentPreferences.instructions(in: defaults) == CommitMessagePrompt.defaultStyle)
     }
@@ -129,8 +128,10 @@ struct AgentPreferencesTests {
         defaults.set(false, forKey: AgentPreferences.legacyShowsMarksKey)
         defaults.set("--verbose", forKey: AgentPreferences.legacyExtraArgumentsKey(.claude))
         defaults.set(120, forKey: AgentPreferences.legacyTimeLimitKey(.codex))
+        defaults.set(false, forKey: AgentPreferences.legacyShowsGenerateButtonKey)
         AgentPreferences.migrate(defaults)
         #expect(defaults.object(forKey: AgentPreferences.legacyShowsMarksKey) == nil)
+        #expect(defaults.object(forKey: AgentPreferences.legacyShowsGenerateButtonKey) == nil)
         #expect(defaults.object(forKey: AgentPreferences.legacyExtraArgumentsKey(.claude)) == nil)
         #expect(defaults.object(forKey: AgentPreferences.legacyTimeLimitKey(.codex)) == nil)
         // Turning the marks off didn't turn agents off.
@@ -155,6 +156,7 @@ struct AgentPreferencesTests {
         #expect(AgentPreferences.legacyShowsMarksKey == "agentsShowInSidebar")
         #expect(AgentPreferences.legacyExtraArgumentsKey(.claude) == "agent.claude.extraArguments")
         #expect(AgentPreferences.legacyTimeLimitKey(.codex) == "agent.codex.timeLimit")
+        #expect(AgentPreferences.legacyShowsGenerateButtonKey == "generateShowsButton")
     }
 
     @Test func pickersCallTheAgentsOwnDefaultDefault() {
