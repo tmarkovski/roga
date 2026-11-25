@@ -6,7 +6,8 @@ import SwiftUI
 /// Who a repository's commits go out as, drawn as a person (decision 105).
 /// The global identity is a plain person icon, like the icon buttons around
 /// it. Anyone else's sits in a circle tinted by the email, and an identity
-/// whose next commit would go wrong is amber, with a triangle.
+/// whose next commit would go wrong is amber, with a triangle. A small shield
+/// at the person's lower right says commits are signed.
 struct IdentityPerson: View {
     enum Look: Equatable {
         /// The global identity, with nothing wrong.
@@ -26,46 +27,105 @@ struct IdentityPerson: View {
         }
     }
 
+    /// What sits at the person's lower right.
+    enum Mark: Equatable {
+        /// Commits are signed.
+        case shield
+        /// A commit would go wrong, which matters more than how it'd be
+        /// signed.
+        case warning
+
+        init?(_ look: Look, signs: Bool) {
+            switch look {
+            case .warning: self = .warning
+            case .plain, .tinted:
+                guard signs else { return nil }
+                self = .shield
+            }
+        }
+    }
+
     let look: Look
+    /// Whether commits are signed, which puts the shield on the person.
+    var signs = false
     /// How wide the circle is: 22 points in the title row, and 18 in the
     /// sidebar and Settings, where it sits beside a count or a name.
     var size: CGFloat = 22
-    /// Whether a warning has the triangle. The sidebar's doesn't, since its
-    /// second line says what would go wrong.
+    /// Whether the person has its mark. The sidebar's and Settings' don't,
+    /// since a second line says what would go wrong, and a shield on every
+    /// repository that signs would say one thing many times over.
     var showsMark = true
-    /// What's behind the person, which the triangle's circle cuts out of it.
-    var background = Palette.titleRow
+
+    private static let markSize: CGFloat = 14
+    private static let markOffset = CGSize(width: 5, height: 4)
 
     var body: some View {
-        Group {
-            switch look {
-            case .plain:
-                // The icon button's own size and gray.
-                Icon.user.image
-            case .tinted(let tint):
-                circle(ink: tint.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.secondary),
-                       fill: tint.map { $0.opacity(0.16) } ?? DialogColors.card)
-            case .warning:
-                circle(ink: AnyShapeStyle(AgentColors.warn), fill: IdentityColors.warningFill)
+        let mark = showsMark ? Mark(look, signs: signs) : nil
+        person
+            .frame(width: size, height: size)
+            // The mark's circle is cut out of the person rather than filled
+            // with the row's color, so that the button's gray shows through
+            // it under the pointer.
+            .mask {
+                Rectangle()
                     .overlay(alignment: .bottomTrailing) {
-                        if showsMark {
-                            Icon.warning.image
-                                .font(.system(size: 9 / 1.128, weight: .bold))
-                                .foregroundStyle(AgentColors.warn)
-                                .frame(width: 14, height: 14)
-                                .background(Circle().fill(background))
-                                .offset(x: 5, y: 4)
+                        if mark != nil {
+                            Circle()
+                                .frame(width: Self.markSize, height: Self.markSize)
+                                .offset(Self.markOffset)
+                                .blendMode(.destinationOut)
                         }
                     }
+                    .compositingGroup()
             }
-        }
-        .accessibilityHidden(true)
+            .overlay(alignment: .bottomTrailing) {
+                if let mark {
+                    markIcon(mark)
+                        .font(.system(size: 9 / 1.128, weight: .bold))
+                        .frame(width: Self.markSize, height: Self.markSize)
+                        .offset(Self.markOffset)
+                }
+            }
+            .accessibilityHidden(true)
     }
 
-    private func circle(ink: AnyShapeStyle, fill: Color) -> some View {
+    /// The mark in the person's color. The plain person's takes the button's
+    /// gray, which turns to ink under the pointer.
+    @ViewBuilder private func markIcon(_ mark: Mark) -> some View {
+        let icon = (mark == .warning ? Icon.warning : Icon.shield).image
+        if let ink {
+            icon.foregroundStyle(ink)
+        } else {
+            icon
+        }
+    }
+
+    @ViewBuilder private var person: some View {
+        switch look {
+        case .plain:
+            // The icon button's own size and gray.
+            Icon.user.image
+        case .tinted(let tint):
+            circle(fill: tint.map { $0.opacity(0.16) } ?? DialogColors.card)
+        case .warning:
+            circle(fill: IdentityColors.warningFill)
+        }
+    }
+
+    /// The circled person's color, which its mark takes too, or nil for the
+    /// plain person, which takes the button's.
+    private var ink: AnyShapeStyle? {
+        switch look {
+        case .plain: nil
+        case .tinted(let tint): tint.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.secondary)
+        case .warning: AnyShapeStyle(AgentColors.warn)
+        }
+    }
+
+    private func circle(fill: Color) -> some View {
         Icon.user.image
             .font(.system(size: size * 13 / 22 / 1.128, weight: .semibold))
-            .foregroundStyle(ink)
+            .foregroundStyle(ink ?? AnyShapeStyle(.secondary))
             .frame(width: size, height: size)
             .background(Circle().fill(fill))
     }
@@ -74,7 +134,9 @@ struct IdentityPerson: View {
 /// Who the repository's commits go out as, at the end of the title row, for
 /// the repository and every worktree and agent in it (decision 105). Commits,
 /// merges, rebases, cherry-picks and reverts all go out as it, so it shows
-/// whatever the panels show. Its tooltip has the name and the email, where
+/// whatever the panels show, with the shield while commits are signed, since
+/// a rebase or a cherry-pick signs each commit again. Its tooltip has the
+/// name and the email, where
 /// they come from and how commits are signed, and a click opens the identity
 /// popover. Nothing shows until git config has answered.
 struct IdentityButton: View {
@@ -88,7 +150,8 @@ struct IdentityButton: View {
             Button {
                 isEditing = true
             } label: {
-                IdentityPerson(look: .init(IdentityException(identity, defaultIdentity: list.defaultIdentity)))
+                IdentityPerson(look: .init(IdentityException(identity, defaultIdentity: list.defaultIdentity)),
+                               signs: identity.signs)
             }
             .buttonStyle(.icon(isOn: isEditing))
             .help(words.tooltip)

@@ -28,13 +28,13 @@ We chose G.
 - **Someone else,** whose name or email differs from the global identity, is a person in a 22-point circle in the email's tint, the lane color decision 103 picks by the email.
 - **An identity whose next commit would go wrong** is an amber person in a faint amber circle, with a triangle on it.
 
-It has no shield, since the tooltip and the box say how commits are signed. Its tooltip and its popover are decision 103's. The title row is there whatever the panels show, so the identity can be seen and changed in a clean worktree, before a merge or a rebase, or while an agent works. Nothing shows until git config has answered.
+**A small shield** sits at the person's lower right while commits are signed, in the person's color. Its circle is cut out of the person, so the button's gray shows through it under the pointer. The box isn't there in a clean worktree, and a rebase or a cherry-pick signs each commit again, so the title row says it too. Not signing gets no mark, as on decision 103's initials, since most people don't sign, and the triangle takes the shield's place when a commit would go wrong. Its tooltip and its popover are decision 103's. The title row is there whatever the panels show, so the identity can be seen and changed in a clean worktree, before a merge or a rebase, or while an agent works. Nothing shows until git config has answered.
 
 **The message box always says who.** The line at its top shows in every repository, with the person icon it had, the name, the email, and whether commits are signed. For the global identity, the whole line is gray. For anyone else, the person takes the email's tint and the name is in ink, so an exception still stands out. Until git config has answered, the box keeps the line's 22 points empty, so the message doesn't move down when the line arrives. The warnings take the line's place, as before.
 
 **The branch row has nothing** about the identity.
 
-**The sidebar and Settings draw the person.** A repository that commits as someone else has the tinted person in an 18-point circle just before its count, where it had the initials, and so does its row in Settings › Git's list.
+**The sidebar and Settings draw the person.** A repository that commits as someone else has the tinted person in an 18-point circle just before its count, where it had the initials, and so does its row in Settings › Git's list. Neither has the shield, since it would sit on every row that signs and say the same thing many times over.
 
 ## Consequences
 
@@ -52,4 +52,5 @@ It has no shield, since the tooltip and the box say how commits are signed. Its 
 - **E, the initials at the end of the tabs row, only for exceptions.** It would match the sidebar, but the global identity would show nowhere outside the box, and the initials say less than a tinted person.
 - **F, beside history's number of commits.** It sits with history's commands, so it would read as a filter for whose commits history shows, and it would be the first thing cut when the row is short of room.
 - **The email beside the person in the title row.** It reads without a hover, but it takes about 150 points from the tabs, which need them most when agents have many worktrees open. The box and the tooltip have the email.
-- **A shield on the person when commits are signed,** as decision 103 had on the initials. The box and the tooltip already say it, and a mark on every repository that signs would be noise.
+- **No mark for signing in the title row,** leaving it to the tooltip and the box. A clean worktree has no box, and a rebase there would sign every commit it replays without anything in view saying so.
+- **A crossed shield when commits aren't signed,** as the box's line has. Most people don't sign, so it would sit on nearly every repository and say little.

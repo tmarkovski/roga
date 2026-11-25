@@ -184,6 +184,11 @@ body{margin:0}
 .av.x{background:var(--warnb);color:var(--warn)}
 .trow .av .bg{background:var(--title)}
 .hue-p{color:var(--idp);display:flex}.hue-w{color:var(--idw);display:flex}.hue-o{color:var(--ido);display:flex}
+.gp{position:relative;width:22px;height:22px;display:grid;place-items:center;flex:none}
+.gp>.cut{width:22px;height:22px;display:grid;place-items:center;-webkit-mask:radial-gradient(circle at calc(100% - 2px) calc(100% - 3px),transparent 7px,#000 7.5px);mask:radial-gradient(circle at calc(100% - 2px) calc(100% - 3px),transparent 7px,#000 7.5px)}
+.gp>.bg{position:absolute;right:-5px;bottom:-4px;width:14px;height:14px;display:grid;place-items:center}
+.gp>.bg svg{width:10px;height:10px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;display:block}
+.gp.p{color:var(--idp)}.gp.w{color:var(--idw)}.gp.o{color:var(--ido)}.gp.x{color:var(--warn)}
 .piece{border:0;border-radius:10px;box-shadow:0 0 0 .5px rgba(0,0,0,.14);-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 56px);mask-image:linear-gradient(90deg,transparent 0,#000 56px)}
 .panes{display:flex;gap:24px;align-items:flex-start}
 .wn{border-radius:7px;background:var(--warnb);padding:6px 8px 7px;font-size:12px;overflow:hidden;flex:none}
@@ -584,21 +589,39 @@ def header_mark(i: Ident | None, option: str) -> str:
 
 def person(i: Ident, cls: str = "") -> str:
     """G's person in a circle tinted by the email, for anyone but the global
-    identity, or in amber with a triangle when committing would go wrong."""
+    identity, or in amber when committing would go wrong."""
     extra = f" {cls}" if cls else ""
+    hue = "x" if i.problem else i.hue
+    return f'<span class="av {hue}{extra}" aria-hidden="true">{USER}</span>'
+
+
+def marked(inner: str, i: Ident, hue: str = "") -> str:
+    """The person in the tabs row with its mark at the lower right: a
+    triangle when committing would go wrong, and otherwise a shield while
+    commits are signed. The mark's circle is cut out of the person, as the
+    build does, so the button's gray shows through it under the pointer."""
     if i.problem:
-        return f'<span class="av x{extra}" aria-hidden="true">{USER}{badge(P_TRI, warn=True)}</span>'
-    return f'<span class="av {i.hue}{extra}" aria-hidden="true">{USER}</span>'
+        mark = badge(P_TRI, warn=True)
+    elif i.signed:
+        mark = badge(P_SHIELD)
+    else:
+        return inner
+    cls = f"gp {hue}" if hue else "gp"
+    return f'<span class="{cls}"><span class="cut">{inner}</span>{mark}</span>'
 
 
 def tabs_mark(i: Ident | None, *, hover: bool = False) -> str:
     """G's button at the end of the tabs row: a plain person icon for the
     global identity, like the row's other icon buttons, and the tinted
-    circle for anyone else. Nothing until git config has answered."""
+    circle for anyone else, with a shield while commits are signed. Nothing
+    until git config has answered."""
     if i is None:
         return ""
     hov = " hov" if hover else ""
-    inner = USER16 if quiet(i) else person(i)
+    if quiet(i):
+        inner = marked(USER16, i)
+    else:
+        inner = marked(person(i), i, "x" if i.problem else i.hue)
     label = f'aria-label="Commit identity: {esc(i.tip.splitlines()[0])}"'
     return f'<button class="ib{hov}" type="button" {label}>{inner}</button>'
 
@@ -1654,7 +1677,7 @@ INTROS = [
 
 NOTES = {
     "Id-D.dc.html": "The line is always at the top of the box, so the place to see who a commit goes out as, and to change it, is where the commit is made, much as GitHub Desktop puts the author's picture beside the summary. It costs 27 points of the text's height in every repository, where decision 103 spent them only on the exceptions. The circle loses its shield, since the end of the line says Signed or Not signed, and a click opens the same popover under the line.",
-    "Id-G.dc.html": "The person icon at the end of the tabs row is gray for the global identity, like the row's other icon buttons, and sits in a circle tinted by the email for anyone else, as in the sidebar. It turns amber with a triangle when a commit would go wrong, which matters most for agents, whose commits would stop at signing while nobody watches the box. It has no shield, since the tooltip and the box's line say how commits are signed. The box's line keeps the person icon it has now, gray for the global identity, and in the email's tint with the name in ink for anyone else. The branch row has nothing.",
+    "Id-G.dc.html": "The person icon at the end of the tabs row is gray for the global identity, like the row's other icon buttons, and sits in a circle tinted by the email for anyone else, as in the sidebar. It turns amber with a triangle when a commit would go wrong, which matters most for agents, whose commits would stop at signing while nobody watches the box, and it has a small shield while commits are signed, since the box isn't there in a clean worktree, and a rebase or a cherry-pick signs each commit again. Not signing gets no mark, as on decision 103's initials. The box's line keeps the person icon it has now, gray for the global identity, and in the email's tint with the name in ink for anyone else. The branch row has nothing.",
     "Id-G-Change.dc.html": "The tabs row is there whatever the panels show, so the identity can be seen and changed in a clean worktree, before a merge or a rebase, or while an agent works. A click opens the same popover under the icon, and its note says that merges, rebases and agents use the identity too. Making a branch or a worktree doesn't use it, and a push goes out as the account the SSH key or the credential helper belongs to, which this doesn't show. The sidebar marks the same exceptions with the same tinted person, in place of the initials.",
     "Id-G-States.dc.html": "Before git config has answered, the end of the tabs row is empty and the box keeps the line's room, so nothing moves when they arrive. The warnings take the line's place in the box, and the icon in the tabs row turns amber. At 320 points the work email is long enough that the words Signed and Not signed go first, and the shield stays.",
     "Id-Where.dc.html": "E is the better place in the header. The tabs row belongs to the repository, which is the identity's scope, and the end of a top row is where apps put the person who's signed in. That's also its risk, since Roga has no account, and it takes room the tabs need when there are many worktrees. F sits with history's count and its commands, so the initials would read as a filter for whose commits history shows, and they'd go first when the row is short of room. With the line in the box always there, D draws nothing in the header. If the header should still say something, E for the exceptions only would match the sidebar.",

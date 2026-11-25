@@ -98,6 +98,16 @@ struct IdentityTests {
         #expect(IdentityPerson.Look(.problem(.noSigningKey)) == .warning)
     }
 
+    @Test func thePersonHasAShieldWhileCommitsAreSigned() {
+        #expect(IdentityPerson.Mark(.plain, signs: true) == .shield)
+        #expect(IdentityPerson.Mark(.tinted(nil), signs: true) == .shield)
+        #expect(IdentityPerson.Mark(.plain, signs: false) == nil)
+        #expect(IdentityPerson.Mark(.tinted(nil), signs: false) == nil)
+        // What would go wrong matters more than how it'd be signed.
+        #expect(IdentityPerson.Mark(.warning, signs: true) == .warning)
+        #expect(IdentityPerson.Mark(.warning, signs: false) == .warning)
+    }
+
     @Test func theBoxAlwaysSaysWho() {
         #expect(CommitBoxIdentity(identity(), defaultIdentity: identity()) == .line(identity(), isSomeoneElse: false))
         let work = identity(email: "sam.rivera@acme.com", emailFrom: included)
