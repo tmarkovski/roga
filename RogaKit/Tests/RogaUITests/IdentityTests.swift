@@ -3,6 +3,7 @@ import Foundation
 import GitCore
 import RepositoryEngine
 import Testing
+import ThemeUI
 @testable import HistoryUI
 @testable import RogaUI
 
@@ -66,6 +67,15 @@ struct IdentityTests {
         #expect(IdentityTint.hash("sam@rivera.dev") == IdentityTint.hash("sam@rivera.dev"))
         #expect(IdentityTint.hash("sam@rivera.dev") != IdentityTint.hash("sam.rivera@acme.com"))
         #expect(IdentityTint.color(for: identity(email: nil)) == nil)
+    }
+
+    @Test func leavesTheGrayLanesOut() {
+        // Monokai's Stone and Xcode's Slate would look like the global
+        // identity's gray.
+        let monokai = ColorTheme.monokai.colors.lanes
+        #expect(IdentityTint.colored(monokai).map(\.light) == monokai.enumerated().filter { $0.offset != 6 }.map(\.element.light))
+        let xcode = ColorTheme.xcode.colors.lanes
+        #expect(IdentityTint.colored(xcode).map(\.light) == xcode.dropLast().map(\.light))
     }
 
     // MARK: Exceptions

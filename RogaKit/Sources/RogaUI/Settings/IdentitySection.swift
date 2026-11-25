@@ -269,7 +269,7 @@ private struct IdentityExceptionRowView: View {
         HStack(alignment: .center, spacing: 12) {
             switch row.exception {
             case .someoneElse:
-                IdentityPerson(look: .init(row.exception), size: 18, showsMark: false)
+                IdentityPerson(look: .init(row.exception), style: .inline)
             case .problem:
                 Icon.warning.image
                     .font(.system(size: 12 / 1.128, weight: .semibold))

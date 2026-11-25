@@ -834,7 +834,7 @@ private struct RepositoryRow: View {
                 // Before the count, where the eye looks for what's unusual
                 // about a repository (decisions 103 and 105).
                 if case .someoneElse(let someone) = identity {
-                    IdentityPerson(look: .init(identity), size: 18, showsMark: false)
+                    IdentityPerson(look: .init(identity), style: .inline)
                         .help(IdentityWords(identity: someone).tooltip)
                         .transition(SidebarMotion.label(reducesMotion))
                 }

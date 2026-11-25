@@ -4,10 +4,12 @@ import RepositoryEngine
 import SwiftUI
 
 /// Who a repository's commits go out as, drawn as a person (decision 105).
-/// The global identity is a plain person icon, like the icon buttons around
-/// it. Anyone else's sits in a circle tinted by the email, and an identity
-/// whose next commit would go wrong is amber, with a triangle. A small shield
-/// at the person's lower right says commits are signed.
+/// The global identity is a person in gray, like the icon buttons around it,
+/// anyone else's is in the email's tint, and an identity whose next commit
+/// would go wrong is amber. None of them has a circle, whose faint fill would
+/// turn muddy on a hovered button's or a selected row's gray. In the title
+/// row, a small shield at the person's lower right says commits are signed,
+/// and a triangle there says a commit would go wrong.
 struct IdentityPerson: View {
     enum Look: Equatable {
         /// The global identity, with nothing wrong.
@@ -45,22 +47,32 @@ struct IdentityPerson: View {
         }
     }
 
+    /// Where the person is drawn.
+    enum Style {
+        /// In the title row's button, as large as the row's other icons, with
+        /// the mark.
+        case button
+        /// Beside a repository's count in the sidebar or its name in
+        /// Settings › Git's list, as large as the message box's line draws
+        /// it. It has no mark, since a second line says what would go wrong,
+        /// and a shield on every repository that signs would say one thing
+        /// many times over.
+        case inline
+    }
+
     let look: Look
     /// Whether commits are signed, which puts the shield on the person.
     var signs = false
-    /// How wide the circle is: 22 points in the title row, and 18 in the
-    /// sidebar and Settings, where it sits beside a count or a name.
-    var size: CGFloat = 22
-    /// Whether the person has its mark. The sidebar's and Settings' don't,
-    /// since a second line says what would go wrong, and a shield on every
-    /// repository that signs would say one thing many times over.
-    var showsMark = true
+    var style = Style.button
 
     private static let markSize: CGFloat = 14
     private static let markOffset = CGSize(width: 5, height: 4)
 
+    /// How wide the person is.
+    private var size: CGFloat { style == .button ? 22 : 18 }
+
     var body: some View {
-        let mark = showsMark ? Mark(look, signs: signs) : nil
+        let mark = style == .button ? Mark(look, signs: signs) : nil
         person
             .frame(width: size, height: size)
             // The mark's circle is cut out of the person rather than filled
@@ -89,45 +101,29 @@ struct IdentityPerson: View {
             .accessibilityHidden(true)
     }
 
-    /// The mark in the person's color. The plain person's takes the button's
-    /// gray, which turns to ink under the pointer.
-    @ViewBuilder private func markIcon(_ mark: Mark) -> some View {
-        let icon = (mark == .warning ? Icon.warning : Icon.shield).image
-        if let ink {
-            icon.foregroundStyle(ink)
-        } else {
-            icon
-        }
+    /// The mark in the person's color.
+    private func markIcon(_ mark: Mark) -> some View {
+        inked((mark == .warning ? Icon.warning : Icon.shield).image)
     }
 
     @ViewBuilder private var person: some View {
-        switch look {
-        case .plain:
-            // The icon button's own size and gray.
-            Icon.user.image
-        case .tinted(let tint):
-            circle(fill: tint.map { $0.opacity(0.16) } ?? DialogColors.card)
-        case .warning:
-            circle(fill: IdentityColors.warningFill)
+        switch style {
+        case .button:
+            // The icon button's own size.
+            inked(Icon.user.image)
+        case .inline:
+            inked(Icon.user.image.font(.system(size: 13 / 1.128, weight: .semibold)))
         }
     }
 
-    /// The circled person's color, which its mark takes too, or nil for the
-    /// plain person, which takes the button's.
-    private var ink: AnyShapeStyle? {
+    /// In the person's color. The global identity's takes the button's gray,
+    /// which turns to ink under the pointer.
+    @ViewBuilder private func inked(_ image: some View) -> some View {
         switch look {
-        case .plain: nil
-        case .tinted(let tint): tint.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.secondary)
-        case .warning: AnyShapeStyle(AgentColors.warn)
+        case .plain: image
+        case .tinted(let tint): image.foregroundStyle(tint.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.secondary))
+        case .warning: image.foregroundStyle(AgentColors.warn)
         }
-    }
-
-    private func circle(fill: Color) -> some View {
-        Icon.user.image
-            .font(.system(size: size * 13 / 22 / 1.128, weight: .semibold))
-            .foregroundStyle(ink ?? AnyShapeStyle(.secondary))
-            .frame(width: size, height: size)
-            .background(Circle().fill(fill))
     }
 }
 
@@ -136,9 +132,9 @@ struct IdentityPerson: View {
 /// merges, rebases, cherry-picks and reverts all go out as it, so it shows
 /// whatever the panels show, with the shield while commits are signed, since
 /// a rebase or a cherry-pick signs each commit again. Its tooltip has the
-/// name and the email, where
-/// they come from and how commits are signed, and a click opens the identity
-/// popover. Nothing shows until git config has answered.
+/// name and the email, where they come from and how commits are signed, and a
+/// click opens the identity popover. Nothing shows until git config has
+/// answered.
 struct IdentityButton: View {
     let repository: ListedRepository
     let list: RepositoryList
