@@ -155,14 +155,24 @@ final class CommitCellView: NSView {
             : nil
     }
 
-    /// Where the badges with tooltips are.
+    /// Where the badges with tooltips are, then the signed commit's shield.
     private var toolTipFrames: [NSRect] = []
+    /// Where the signed commit's shield is, if it has one.
+    private var signedMarkFrame: NSRect?
 
-    /// Gives each badge a tooltip, since it's drawn rather than being a view.
+    /// What the shield after a signed commit's short ID says under the
+    /// pointer, since it can't say whether the signature is good.
+    static let signedMarkToolTip = "Signed. Select the commit to check the signature."
+
+    /// Gives each badge and the shield a tooltip, since they're drawn rather
+    /// than being views.
     private func updateToolTips() {
         var frames: [NSRect] = []
-        if let content, !content.badges.isEmpty {
-            frames = CommitRowLayout(content: content, size: bounds.size).badges
+        signedMarkFrame = nil
+        if let content, !content.badges.isEmpty || content.isSigned {
+            let layout = CommitRowLayout(content: content, size: bounds.size)
+            signedMarkFrame = layout.signedMark
+            frames = layout.badges + [layout.signedMark].compactMap { $0 }
         }
         guard frames != toolTipFrames else { return }
         toolTipFrames = frames
@@ -217,14 +227,11 @@ final class CommitCellView: NSView {
                 draw(text, at: column.x, width: column.width, style: column.style)
             }
         }
-        // A signed commit has a small shield after its short ID, in the
-        // short ID's gray, which says it has a signature, not that it's good
-        // (decision 104). The short ID's column is the first to fit.
-        if content.isSigned, let hash = layout.columns.first, hash.text == content.shortID, let shield = Self.signedMark() {
-            let x = hash.x + CommitRowLayout.width(of: content.shortID, in: Style.shortID) + 4
-            if x + shield.size.width <= hash.x + hash.width {
-                draw(shield, at: x, in: textFrame(at: x, width: shield.size.width, style: Style.shortID))
-            }
+        // A signed commit has a shield after its short ID, in the author's and
+        // date's gray, which says it has a signature, not that it's good
+        // (decision 104). The layout keeps room for it in the short ID's column.
+        if let frame = layout.signedMark, let shield = Self.signedMark() {
+            draw(shield, at: frame.minX, in: textFrame(at: frame.minX, width: frame.width, style: Style.shortID))
         }
         for (index, frame) in layout.badges.enumerated() {
             drawBadge(content.badges[index], in: frame, isHovered: index == hoveredBadge)
@@ -333,12 +340,14 @@ final class CommitCellView: NSView {
     /// The shield after a signed commit's short ID, for each appearance.
     private static var signedMarks: [Bool: NSImage] = [:]
 
-    /// The shield after a signed commit's short ID, in the short ID's gray.
-    private static func signedMark() -> NSImage? {
+    /// The shield after a signed commit's short ID, as tall as the short ID's
+    /// digits and in the author's and date's gray, a step darker than the
+    /// short ID, so that it can be seen at a glance.
+    static func signedMark() -> NSImage? {
         let isDark = NSAppearance.currentDrawing().bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         if let mark = signedMarks[isDark] { return mark }
-        let configuration = NSImage.SymbolConfiguration(pointSize: 9, weight: .regular)
-            .applying(NSImage.SymbolConfiguration(paletteColors: [.tertiaryLabelColor]))
+        let configuration = NSImage.SymbolConfiguration(pointSize: 11, weight: .medium)
+            .applying(NSImage.SymbolConfiguration(paletteColors: [.secondaryLabelColor]))
         let mark = Icon.shield.nsImage?.withSymbolConfiguration(configuration)
         signedMarks[isDark] = mark
         return mark
@@ -430,7 +439,9 @@ final class CommitCellView: NSView {
 
 extension CommitCellView: NSViewToolTipOwner {
     func view(_ view: NSView, stringForToolTip tag: NSView.ToolTipTag, point: NSPoint, userData data: UnsafeMutableRawPointer?) -> String {
-        guard let content, let index = toolTipFrames.firstIndex(where: { $0.contains(point) }), index < content.badges.count else { return "" }
+        guard let content else { return "" }
+        if signedMarkFrame?.contains(point) == true { return Self.signedMarkToolTip }
+        guard let index = toolTipFrames.firstIndex(where: { $0.contains(point) }), index < content.badges.count else { return "" }
         return content.badges[index].spokenTitle
     }
 }
@@ -452,6 +463,8 @@ struct CommitRowLayout {
     static let badgeCloudGap: CGFloat = 1
     /// The space on each side of the line between a branch's name and its remote's.
     static let badgeDividerGap: CGFloat = 4
+    /// The space between a short ID and the shield after it.
+    static let signedMarkGap: CGFloat = 4
     /// The space between the subject and the body.
     static let bodyGap: CGFloat = 10
     /// Less room than this for the body isn't worth drawing.
@@ -467,6 +480,9 @@ struct CommitRowLayout {
     private(set) var columns: [Column] = []
     /// Where each badge goes, for as many of a row's badges as fit.
     private(set) var badges: [NSRect] = []
+    /// Where the shield after a signed commit's short ID goes, while the
+    /// short ID's column shows (decision 104).
+    private(set) var signedMark: NSRect?
     private(set) var subjectX: CGFloat
     private(set) var subjectMaxX: CGFloat
 
@@ -488,7 +504,9 @@ struct CommitRowLayout {
         // the same columns.
         let subjectRoom = Self.textX(afterGraphColumns: LaneRenderer.maxColumns) + Self.minimumSubjectWidth
         let columns: [(text: String?, width: CGFloat, style: CommitCellView.Style)] = [
-            (content.shortID, 72, CommitCellView.Style.shortID),
+            // Room for the eight digits and a signed commit's shield after
+            // them, in every row, so that the columns line up (decision 104).
+            (content.shortID, 76, CommitCellView.Style.shortID),
             (content.date, 120, CommitCellView.Style.detail),
             (content.author, 130, CommitCellView.Style.detail),
         ]
@@ -499,6 +517,14 @@ struct CommitRowLayout {
             right -= column.width
             self.columns.append(Column(text: column.text, x: right, width: column.width, style: column.style))
             right -= Self.gap
+        }
+        // The shield always fits after the short ID: a short ID too long for
+        // both is cut short instead, as it would be anyway.
+        if content.isSigned, let hash = self.columns.first, hash.text == content.shortID, let shield = CommitCellView.signedMark() {
+            let room = hash.width - Self.signedMarkGap - shield.size.width
+            let textWidth = min(Self.width(of: content.shortID, in: CommitCellView.Style.shortID), room)
+            self.columns[0].width = textWidth
+            signedMark = NSRect(x: hash.x + textWidth + Self.signedMarkGap, y: 0, width: shield.size.width, height: size.height)
         }
 
         for badge in content.badges {

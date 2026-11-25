@@ -1,4 +1,5 @@
 import AgentHooks
+import AppKit
 import Foundation
 import GitCore
 import GitRunner
@@ -323,6 +324,24 @@ struct IdentityTests {
     @Test func aSignedRowSaysSo() {
         #expect(CommitRowContent(shortID: "48ba6441", subject: "Add tests", isSigned: true).spokenText == "Add tests, 48ba6441, signed")
         #expect(CommitRowContent(shortID: "48ba6441", subject: "Add tests").spokenText == "Add tests, 48ba6441")
+    }
+
+    @Test func aSignedRowKeepsRoomForItsShieldAfterTheWholeShortID() throws {
+        let size = NSSize(width: 900, height: 26)
+        let signed = CommitRowLayout(content: CommitRowContent(shortID: "48ba6441", subject: "Add tests", isSigned: true), size: size)
+        let hash = try #require(signed.columns.first)
+        let shield = try #require(signed.signedMark)
+        // The short ID isn't cut, and the shield ends inside its column.
+        #expect(hash.width >= CommitRowLayout.width(of: "48ba6441", in: CommitCellView.Style.shortID))
+        #expect(shield.minX >= hash.x + hash.width + CommitRowLayout.signedMarkGap)
+        #expect(shield.maxX <= size.width - 14)
+        #expect(shield.width >= 9)
+        // The columns don't move for it.
+        let unsigned = CommitRowLayout(content: CommitRowContent(shortID: "48ba6441", subject: "Add tests"), size: size)
+        #expect(unsigned.signedMark == nil)
+        #expect(signed.columns.map(\.x) == unsigned.columns.map(\.x))
+        #expect(signed.subjectMaxX == unsigned.subjectMaxX)
+        #expect(CommitCellView.signedMarkToolTip == "Signed. Select the commit to check the signature.")
     }
 
     // MARK: Decision 108
