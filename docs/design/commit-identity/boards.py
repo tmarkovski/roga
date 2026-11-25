@@ -242,6 +242,47 @@ body{margin:0}
 .seg{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:2px;padding:2px;background:var(--card);border-radius:8px}
 .seg button{height:22px;padding:0 8px;border:0;border-radius:6px;background:none;color:var(--tx2);font:inherit;font-size:12px;font-weight:500;white-space:nowrap}
 .seg button.on{background:var(--sheet);color:var(--tx);box-shadow:0 0 0 .5px var(--edgeb),0 1px 2px rgba(0,0,0,.08)}
+.seg button.na{opacity:.4}
+.kf{position:relative}
+.kf .tf{padding-right:34px}
+.kf .chev{position:absolute;right:3px;top:2px;width:24px;height:24px;border-radius:6px;display:grid;place-items:center;color:var(--tx2)}
+.kf .chev.hv{background:var(--bhov);color:var(--tx)}
+.kl{font-size:11.5px;line-height:15px;color:var(--tx2)}
+.kl2{display:flex;align-items:baseline;gap:10px}
+.kl2 .kl{flex:1;min-width:0}
+.nk{border:0;background:none;padding:0;color:var(--act);font:inherit;font-size:12px;font-weight:500;white-space:nowrap;flex:none}
+.kcs{display:flex;flex-direction:column;gap:6px;padding:0 10px}
+.kc{display:flex;align-items:flex-start;gap:10px;padding:7px 10px;border:1px solid var(--edgeb);border-radius:10px}
+.kc.on{border:2px solid var(--ink);padding:6px 9px}
+.kc .rd{width:14px;height:14px;border-radius:50%;border:1px solid var(--tx2);flex:none;margin-top:2px}
+.kc.on .rd{border:4.5px solid var(--ink)}
+.kc .kt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;font-size:13px;line-height:17px}
+.kc .r1{display:flex;gap:8px}
+.kc .r1 b{font-weight:400}
+.kc .r1 i{margin-left:auto;font-style:normal;font-size:11.5px;color:var(--tx2)}
+.kc .kt span{font-size:12px;color:var(--tx2)}
+.kc .kt code{font:11px ui-monospace,"SF Mono",Menlo,monospace;color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpf{display:flex;align-items:center;gap:12px;padding:10px 12px 12px 16px;font-size:12.5px;color:var(--tx2)}
+.kpf span{flex:1}
+.cutl{padding:7px 16px 6px;font-size:11px;color:var(--tx3);text-align:center;border-bottom:1px dashed var(--edgeb)}
+.khr{display:flex;align-items:flex-start;gap:10px;padding:10px 16px 0;font-size:12px;line-height:16px;white-space:normal}
+.khr .ht{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.khr .ht b{font-weight:600}
+.khr .ht span{color:var(--tx2)}
+.ob{height:22px;padding:0 8px;border:1px solid var(--edgeb);border-radius:7px;background:none;color:var(--tx);font:inherit;font-size:12px;font-weight:500;white-space:nowrap;flex:none}
+.okm{color:var(--ok);flex:none;padding-top:2px}
+.slk{width:560px;display:flex;flex-direction:column;gap:12px}
+.slh{display:flex;flex-direction:column;align-items:center;gap:2px;text-align:center}
+.slh span{font-size:11px;color:var(--wtx2);text-transform:uppercase;letter-spacing:.08em}
+.slh b{font-size:17px;font-weight:600}
+.slh i{font-style:normal;font-size:12px;color:var(--wtx2)}
+.slc{background:var(--surface);color:var(--tx);border-radius:12px;box-shadow:0 0 0 .5px rgba(0,0,0,.12),0 1px 3px rgba(0,0,0,.06)}
+.slr{display:flex;align-items:center;gap:12px;height:34px;padding:0 16px;font-size:12.5px;border-top:1px solid var(--hair)}
+.slr:first-child{border-top:0}
+.slr b{width:100px;font-weight:500;flex:none}
+.slr span{color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.slr .gl{width:16px;height:16px;border-radius:50%;background:var(--ok);color:#fff;display:grid;place-items:center;flex:none}
+.slr .gl svg{width:10px;height:10px;stroke-width:3}
 .pnote{padding:6px 16px 0;font-size:12px;line-height:16px;color:var(--tx2)}
 .pnote.warn{color:var(--warn)}
 .pbtn{display:flex;justify-content:flex-end;align-items:center;gap:8px;padding:14px 16px 12px}
@@ -1550,6 +1591,187 @@ def board_trust() -> Board:
     return Board("Id-Trust.dc.html", title, w, h, page(title, body, w, h))
 
 
+# ---------------------------------------------------------------- making a key (decision 108)
+
+
+CHEVRONS = _ic(lucide("chevrons-up-down"), "ic t")
+CHECK = _ic(lucide("check"), "ic t")
+NEW_SSH = "~/.ssh/id_ed25519_signing"
+KEYS_W = 340      # the identity popover's width (`IdentityPopover.width`)
+NEW_W = 320       # the new key's popover (`NewKeyPopover.width`)
+
+
+def fmt_seg(on: str, unavailable: set[str]) -> str:
+    """The format picker, with the formats whose program Roga hasn't found
+    faded in their places."""
+    def button(o: str) -> str:
+        cls = "on" if o == on else ("na" if o in unavailable else "")
+        return f'<button type="button" class="{cls}" aria-pressed="{"true" if o == on else "false"}">{esc(o)}</button>'
+    return '<div class="seg" role="group" aria-label="Format">' + "".join(button(o) for o in ["OpenPGP", "SSH", "X.509"]) + "</div>"
+
+
+def key_field(value: str, line: str, *, hover: bool = False, new_key: str = "") -> str:
+    """The Key field, with the chevron that opens the keys, and under it the
+    line that says which key it names, ending with New Key… in the accent."""
+    chev = f'<span class="chev{" hv" if hover else ""}">{CHEVRONS}</span>'
+    button = f'<button class="nk" type="button">{esc(new_key)}</button>' if new_key else ""
+    return (f'<div class="pfd"><div class="pl"><label>Key</label><span class="o">from ~/.gitconfig</span></div>'
+            f'<div class="kf"><input class="tf mono" type="text" value="{esc(value)}" aria-label="Key">{chev}</div>'
+            f'<div class="kl2"><span class="kl">{esc(line)}</span>{button}</div></div>')
+
+
+def signing_popover(fmt: str, unavailable: set[str], key: str, line: str, *, warning: str = "", hover: bool = False,
+                    cmd: str = "Nothing to save yet", new_key: bool = True) -> str:
+    """The lower half of the identity popover: Sign commits, the format, the
+    key, Save to and the buttons."""
+    body = ['<div class="psw"><span class="l">Sign commits</span><button class="tg on" type="button" aria-pressed="true" aria-label="Sign commits"><i></i></button></div>',
+            f'<div class="pfd">{fmt_seg(fmt, unavailable)}</div>']
+    if warning:
+        body.append(f'<div class="pnote warn">{esc(warning)}</div>')
+    body.append(key_field(key, line, hover=hover, new_key=f"New {fmt} Key…" if new_key else ""))
+    body.append('<div class="pfd" style="padding-top:14px"><div class="pl"><label>Save to</label></div>'
+                f'{seg_html(["This repository", "Every repository"], "This repository", "Save to")}</div>')
+    body.append('<div class="pbtn"><button class="b sec" type="button">Cancel</button><button class="b pri" type="button" disabled>Save</button></div>')
+    body.append(f'<div class="cmd"><button class="cp" type="button" aria-label="Copy the command">{COPY}</button><div class="cl cm"># {esc(cmd)}</div></div>')
+    return (f'<div class="pop cut" style="width:{KEYS_W}px"><div class="pin">'
+            f'<div class="cutl">Name and Email above</div>{"".join(body)}</div></div>')
+
+
+PICKER_W = 400   # the keys' popover, as wide as the agents' (`KeyPickerPopover.width`)
+
+
+def key_picker() -> str:
+    """The keys as cards with a radio, as the popover for a program's copies
+    lays them out (decision 101), under the chevron."""
+    keys = [
+        ("~/.ssh/id_ed25519.pub", "ED25519", "sam@rivera.dev", "SHA256:dTN2I5PqIERxt1Q5XUaOShsVC3P19WcFTUUImtv1RPI", True),
+        ("work laptop", "ED25519", "in the agent", "SHA256:Kx9b2Vq0hF1nYbq7Qm3wJz8u5c2LrT0pEo6sNa4dXyM", False),
+        ("yubikey", "ED25519-SK", "in the agent · asks for a touch", "SHA256:Qv7h1nZ2mT8yR4cX0bL6pW3sE9uK5jD2aF1gH8iJ0kN", False),
+    ]
+    cards = "".join(
+        f'<div class="kc{" on" if on else ""}"><i class="rd"></i><div class="kt"><div class="r1"><b>{esc(t)}</b><i>{esc(k)}</i></div>'
+        f'<span>{esc(d)}</span><code>{esc(f)}</code></div></div>'
+        for t, k, d, f, on in keys
+    )
+    return (f'<div class="pop" style="position:absolute;left:0;top:164px;width:{PICKER_W}px"><i class="arr" style="left:300px"></i><div class="pin">'
+            '<div class="phd" style="padding-bottom:8px"><b>SSH keys on this Mac</b></div>'
+            f'<div class="kcs">{cards}</div>'
+            '<div class="kpf"><span>Save writes the key you pick.</span></div>'
+            '</div></div>')
+
+
+def new_key_popover(fmt: str) -> str:
+    """The confirm New SSH Key… or New OpenPGP Key… opens (decision 108)."""
+    unguarded = "without a passphrase, so git, Roga and agents can sign without asking"
+    if fmt == "SSH":
+        note = (f"Roga makes an Ed25519 key in {NEW_SSH}, {unguarded}. Anyone who can read that file can sign as you. "
+                "It also goes in ~/.ssh/allowed_signers, so git says your commits are good.")
+        lines = tokens([("t-p", "$"), ("t-g", "ssh-keygen"), ("t-f", "-q"), ("t-f", "-t"), ("t-s", "ed25519"), ("t-f", "-C"),
+                        ("t-s", "sam@rivera.dev"), ("t-f", "-N"), ("t-s", "''"), ("t-f", "-f"), ("t-s", NEW_SSH)])
+        lines += tokens(config_line("global", "gpg.ssh.allowedSignersFile", "~/.ssh/allowed_signers"))
+        lines += '<div class="cl cm"># Adds the new key to ~/.ssh/allowed_signers for sam@rivera.dev</div>'
+    else:
+        note = (f"Roga makes an Ed25519 key for Sam Rivera <sam@rivera.dev> that doesn't expire, {unguarded}. "
+                "Anyone who can use your GnuPG keyring can sign as you.")
+        lines = tokens([("t-p", "$"), ("t-g", "gpg"), ("t-f", "--batch"), ("t-f", "--yes"), ("t-f", "--passphrase"), ("t-s", "''"),
+                        ("t-f", "--status-fd"), ("t-s", "1"), ("t-f", "--quick-generate-key"), ("t-s", "'Sam Rivera <sam@rivera.dev>'"),
+                        ("t-s", "ed25519"), ("t-s", "sign"), ("t-s", "never")])
+    block = f'<div class="cmd"><button class="cp" type="button" aria-label="Copy the command">{COPY}</button>{lines}</div>'
+    return (f'<div class="pop" style="width:{NEW_W}px"><i class="arr" style="left:28px"></i><div class="pin">'
+            f'<div class="phd"><b>New {esc(fmt)} key</b><span>For signing commits as sam@rivera.dev</span></div>'
+            f'<div class="pnote">{esc(note)}</div>'
+            '<div class="pbtn"><button class="b sec" type="button">Cancel</button><button class="b pri" type="button">Make Key</button></div>'
+            f'{block}</div></div>')
+
+
+def made_popover(hosts: list[tuple[str, str, str]], lines: str) -> str:
+    """Once the key is made: where its public half can go, with Add to GitHub
+    when gh may add keys there, or the button that opens the host's page."""
+    rows = ""
+    for name, words, button in hosts:
+        if button == "added":
+            end = f'<span class="okm">{CHECK}</span>'
+        elif button:
+            end = f'<button class="ob" type="button">{esc(button)}</button>'
+        else:
+            end = ""
+        rows += f'<div class="khr"><div class="ht"><b>{esc(name)}</b><span>{esc(words)}</span></div>{end}</div>'
+    block = f'<div class="cmd"><button class="cp" type="button" aria-label="Copy the command">{COPY}</button>{lines}</div>'
+    return (f'<div class="pop" style="width:{NEW_W}px"><i class="arr" style="left:28px"></i><div class="pin">'
+            f'<div class="phd"><b>Key made</b><span>{NEW_SSH}.pub</span></div>'
+            "<div class=\"pnote\">It's in the Key field. Save to sign commits with it.</div>"
+            f'{rows}'
+            '<div class="pbtn"><button class="b sec" type="button">Copy Public Key</button><button class="b pri" type="button">Done</button></div>'
+            f'{block}</div></div>')
+
+
+def look_around() -> str:
+    """Setup's Look Around, with the signing tools after the agents."""
+    rows = [
+        ("Shell PATH", "Read from your login shell, zsh", False),
+        ("Git", "2 found · 2.50.1 from Homebrew", False),
+        ("Claude Code", "1 found · 2.1.3", False),
+        ("Codex", "Not found", False),
+        ("SSH", "OpenSSH 9.9p2 · for signing commits with SSH", True),
+        ("GnuPG", "Not found · only needed to sign with OpenPGP", True),
+        ("GitHub CLI", "2.105.0 · for adding signing keys to GitHub", True),
+    ]
+    html = "".join(f'<div class="slr{" nw" if new else ""}"><i class="gl">{CHECK}</i><b>{esc(n)}</b><span>{esc(d)}</span></div>'
+                   for n, d, new in rows)
+    return ('<div class="slk"><div class="slh"><span>Look around</span><b>Scan complete</b>'
+            "<i>Check your login shell's PATH and installed tool versions. This scan makes no changes.</i></div>"
+            f'<div class="slc">{html}</div></div>')
+
+
+def board_keys() -> Board:
+    looking = signing_popover("SSH", {"OpenPGP", "X.509"}, "~/.ssh/id_ed25519.pub", "ED25519 · sam@rivera.dev")
+    no_gpg = signing_popover("SSH", {"OpenPGP", "X.509"}, "~/.ssh/id_ed25519.pub", "ED25519 · sam@rivera.dev")
+    stuck = signing_popover(
+        "OpenPGP", {"X.509"}, "4B5A69784F1E2D3C", "Roga can't find gpg, so it can't list your keys. Type a key ID or fingerprint.",
+        warning="Roga can't find gpg, so commits would stop at signing. Install GnuPG, or sign with SSH.",
+        new_key=False,
+    )
+    menu = signing_popover("SSH", {"X.509"}, "~/.ssh/id_ed25519.pub", "ED25519 · sam@rivera.dev", hover=True) + key_picker()
+
+    gh_add = tokens([("t-p", "$"), ("t-g", "gh"), ("t-g", "ssh-key"), ("t-g", "add"), ("t-s", f"{NEW_SSH}.pub"),
+                     ("t-f", "--type"), ("t-s", "signing"), ("t-f", "--title"), ("t-s", "'Signing key on Sam’s MacBook Pro'")])
+    refresh = ('<div class="cl cm"># Lets gh add keys to github.com. Run it once in Terminal.</div>'
+               + tokens([("t-p", "$"), ("t-g", "gh"), ("t-g", "auth"), ("t-g", "refresh"), ("t-f", "-h"), ("t-s", "github.com"),
+                         ("t-f", "-s"), ("t-s", "admin:ssh_signing_key")]))
+    verified = "so commits signed with it show as Verified"
+    can_add = made_popover([("GitHub · github.com", f"gh can add it as a signing key, {verified}.", "Add to GitHub")], gh_add)
+    added = made_popover([("GitHub · github.com", f"Added as a signing key, {verified}.", "added")],
+                         f'<div class="cl cm"># Copy Public Key copies {NEW_SSH}.pub</div>')
+    no_scope = made_popover(
+        [("GitHub · github.com", f"gh may not add signing keys yet. Run the command below once, or add it on GitHub as a signing key, {verified}.", "Open GitHub")],
+        refresh,
+    )
+    gitlab = made_popover(
+        [("GitLab · gitlab.com", f"Add it on GitLab with the usage type Signing, {verified}. Open GitLab copies it first.", "Open GitLab")],
+        f'<div class="cl cm"># Copy Public Key copies {NEW_SSH}.pub</div>',
+    )
+
+    def stage(inner: str, h: int, w: int = KEYS_W, tip: str = "") -> str:
+        return f'<div class="stage" style="width:{w}px;height:{h}px">{inner}{tip}</div>'
+
+    w = 80 + 3 * 344 + PICKER_W + 3 * 48
+    rows = [
+        ([cell("While Roga looks", "only git's format can be chosen", stage(looking, 420, tip=tip_box("Looking for gpg…", 30, 100))),
+          cell("GnuPG isn't installed", "faded, with why", stage(no_gpg, 420, tip=tip_box("Install GnuPG to sign with OpenPGP", 30, 100))),
+          cell("git signs with OpenPGP, without gpg", "it stays, with a warning", stage(stuck, 420)),
+          cell("Picking a key", "the chevron opens the keys as cards", stage(menu, 480, PICKER_W))], 480),
+        ([cell("New SSH Key…", "the confirm", stage(new_key_popover("SSH"), 400, NEW_W)),
+          cell("New OpenPGP Key…", "the confirm", stage(new_key_popover("OpenPGP"), 400, NEW_W)),
+          cell("Key made", "gh may add keys to GitHub", stage(can_add, 400, NEW_W)),
+          cell("Added to GitHub", "", stage(added, 400, NEW_W))], 400),
+        ([cell("Key made", "gh is signed in, without the scope", stage(no_scope, 330, NEW_W)),
+          cell("Key made", "a GitLab remote", stage(gitlab, 330, NEW_W)),
+          cell("Setup's Look Around", "what Roga found, and what it would use it for", stage(look_around(), 330, 560))], 330),
+    ]
+    title = "Making a key, and the tools Roga found"
+    return stacked_board("Id-Keys.dc.html", title, rows, w=w)
+
+
 # ---------------------------------------------------------------- after building it
 
 
@@ -1712,6 +1934,7 @@ def all_boards() -> list[list[Board]]:
         [board_sidebar(), board_settings()],
         [board_history()],
         [board_trust()],
+        [board_keys()],
     ]
 
 
@@ -1726,6 +1949,7 @@ TITLES = [
     "The sidebar and Settings",
     "Signed commits",
     "Trusting your own SSH key",
+    "Making a key, and the tools Roga found",
 ]
 
 INTROS = [
@@ -1762,9 +1986,15 @@ INTROS = [
     "git checks an SSH signature only against gpg.ssh.allowedSignersFile, so most people's own commits say not checked. When the key "
     "that signed a commit is one of this Mac's, the Signature line offers to trust it, which adds it to that file for the commit's "
     "email, and points git at ~/.ssh/allowed_signers first when nothing names a file yet (issue 119).",
+    "Someone turning signing on may have no key yet, or may not have the program a format needs. The line under the Key field ends "
+    "with New SSH Key… or New OpenPGP Key… in the accent, which makes an Ed25519 key without a passphrase and, once it's made, helps "
+    "add its public half where the repository's remotes are, with gh when gh may add keys there. The chevron in the field opens the "
+    "keys as cards with a radio, as the popover for a program's copies does. The format picker fades a format whose program isn't "
+    "on this Mac, and setup's Look Around says what Roga found for signing, after the agents.",
 ]
 
 NOTES = {
+    "Id-Keys.dc.html": "The popover and Settings look for each format's program each time they show the format, in the background, so GnuPG installed later counts at once. Until Roga has looked, only the format git signs with now can be chosen. A format whose program isn't here stays in its place, faded, so nothing moves when the answer comes, and its tooltip says what to install. The format git already signs with is never faded, and the popover warns instead, since hiding it would hide what's so, and New Key… goes away while its program is missing. The keys show as cards rather than a menu, which has room for each key's email or where it is and its fingerprint, as decision 101's cards have for a program's copies. A new key has no passphrase, because git can't ask for one when Roga or an agent commits, and the confirm says who could sign with it. A new SSH key never replaces one that's there, and goes in the allowed signers file as Trust This Key… would add it. Once it's made, Roga asks gh which hosts it's signed in to. gh adds a key only with a scope that gh auth login doesn't ask for, so without it the popover shows the one command that gives it, and Open GitHub, which copies the key first. Setup's three new rows only say what Roga found; nothing is kept from them.",
     "Id-Trust.dc.html": "Trust This Key… shows only for a key that's one of this Mac's, as decision 106 lists them, since vouching for someone else's key is a different question. Roga reads the key from the commit's signature itself, because git doesn't say which key signed a commit it couldn't check. The confirm says which key and which email, and shows the git config it runs when nothing names a file yet and the line it adds, which is the committer's email, namespaces=\"git\" and the key. Roga never adds a line twice, and checks the commit again once the line is there.",
     "Id-D.dc.html": "The line is always at the top of the box, so the place to see who a commit goes out as, and to change it, is where the commit is made, much as GitHub Desktop puts the author's picture beside the summary. It costs 27 points of the text's height in every repository, where decision 103 spent them only on the exceptions. The circle loses its shield, since the end of the line says Signed or Not signed, and a click opens the same popover under the line.",
     "Id-G.dc.html": "The person icon at the end of the tabs row is gray for the global identity, like the row's other icon buttons, and in the email's tint for anyone else, as in the sidebar and the box's line. It has no circle, whose faint fill would turn muddy on the button's gray under the pointer. It turns amber with a triangle when a commit would go wrong, which matters most for agents, whose commits would stop at signing while nobody watches the box, and it has a small shield while commits are signed, since the box isn't there in a clean worktree, and a rebase or a cherry-pick signs each commit again. Not signing gets no mark, as on decision 103's initials. The box's line keeps the person icon it has now, gray for the global identity, and in the email's tint with the name in ink for anyone else. The branch row has nothing.",

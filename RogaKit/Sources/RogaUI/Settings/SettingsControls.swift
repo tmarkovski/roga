@@ -236,13 +236,24 @@ struct SettingsSegments<Value: Hashable>: View {
     @Binding var selection: Value
     let options: [(value: Value, title: String)]
     var icon: (Value) -> Icon? = { _ in nil }
+    /// Whether the segments share all the width they're offered, as in the
+    /// identity popover, where they line up with the fields above and below
+    /// them, rather than each being as wide as the widest title.
+    var fillsWidth = false
+    /// Why an option can't be chosen, for its tooltip, or nil when it can.
+    /// Such an option stays in its place, faded, so that nothing moves when
+    /// it becomes one that can, as a signing format does once its program
+    /// is found (decision 108).
+    var unavailable: (Value) -> String? = { _ in nil }
 
     var body: some View {
-        EqualWidths(spacing: 2) {
+        EqualWidths(spacing: 2, fillsWidth: fillsWidth) {
             ForEach(options, id: \.value) { option in
                 let isOn = selection == option.value
+                let reason = isOn ? nil : unavailable(option.value)
                 Button {
-                    selection = option.value
+                    // Rather than disabled, so that its tooltip still shows.
+                    if reason == nil { selection = option.value }
                 } label: {
                     if let icon = icon(option.value) {
                         HStack(spacing: 6) {
@@ -255,8 +266,10 @@ struct SettingsSegments<Value: Hashable>: View {
                         Text(option.title)
                     }
                 }
-                .buttonStyle(SegmentStyle(isOn: isOn))
+                .buttonStyle(SegmentStyle(isOn: isOn, isAvailable: reason == nil))
+                .help(reason ?? "")
                 .accessibilityAddTraits(isOn ? .isSelected : [])
+                .accessibilityHint(reason ?? "")
             }
         }
         .padding(2)
@@ -267,9 +280,11 @@ struct SettingsSegments<Value: Hashable>: View {
 
 private struct SegmentStyle: ButtonStyle {
     let isOn: Bool
+    var isAvailable = true
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .opacity(isAvailable ? 1 : 0.4)
             .font(.system(size: 13, weight: .medium))
             .lineLimit(1)
             .padding(.horizontal, 11)
@@ -286,20 +301,26 @@ private struct SegmentStyle: ButtonStyle {
                         }
                 }
             }
-            .opacity(configuration.isPressed && !isOn ? 0.6 : 1)
+            .opacity(configuration.isPressed && !isOn && isAvailable ? 0.6 : 1)
             .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
 
-/// Lays its views out in a row, each as wide as the widest of them.
+/// Lays its views out in a row, each as wide as the widest of them, or each
+/// an equal share of the width offered when that's more.
 private struct EqualWidths: Layout {
     var spacing: CGFloat
+    var fillsWidth = false
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
         let width = sizes.map(\.width).max() ?? 0
         let height = sizes.map(\.height).max() ?? 0
-        return CGSize(width: width * CGFloat(subviews.count) + spacing * CGFloat(max(0, subviews.count - 1)), height: height)
+        let natural = width * CGFloat(subviews.count) + spacing * CGFloat(max(0, subviews.count - 1))
+        guard fillsWidth, let offered = proposal.width, offered.isFinite else {
+            return CGSize(width: natural, height: height)
+        }
+        return CGSize(width: max(natural, offered), height: height)
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
@@ -444,6 +465,27 @@ struct SettingsLinkStyle: ButtonStyle {
             .opacity(!isEnabled ? 0.45 : configuration.isPressed ? 0.6 : 1)
             .contentShape(Rectangle())
     }
+}
+
+/// Words in the accent that act on what they sit beside, without a button
+/// around them: Use Global beside a field, Trust This Key… under a signature,
+/// New SSH Key… at the end of the line under the Key field, and Add Custom
+/// Agent… under the agents (decision 108).
+struct ContextualActionStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(Palette.action)
+            .lineLimit(1)
+            .opacity(!isEnabled ? 0.45 : configuration.isPressed ? 0.6 : 1)
+            .contentShape(Rectangle())
+    }
+}
+
+extension ButtonStyle where Self == ContextualActionStyle {
+    static var contextual: ContextualActionStyle { ContextualActionStyle() }
 }
 
 // MARK: Choosing and typing

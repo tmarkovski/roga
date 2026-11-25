@@ -196,6 +196,9 @@ struct IdentityPopover: View {
     @State private var failure: String?
     /// The keys on this Mac for each format the Key field has shown.
     @State private var keyListings: [CommitIdentity.SigningFormat: SigningKeys.Listing] = [:]
+    /// Each format's program and whether it's on this Mac, looked up each
+    /// time the popover shows the format (decision 108).
+    @State private var signingPrograms: SigningPrograms.Found?
 
     static let width: CGFloat = 340
     private static let inset: CGFloat = 16
@@ -250,8 +253,19 @@ struct IdentityPopover: View {
                             .labelsHidden()
                     }
                     if editor.signs {
-                        SettingsSegments(selection: $editor.format, options: CommitIdentity.SigningFormat.allCases.map { ($0, $0.title) })
-                            .accessibilityLabel("Format")
+                        SettingsSegments(
+                            selection: $editor.format,
+                            options: CommitIdentity.SigningFormat.allCases.map { ($0, $0.title) },
+                            fillsWidth: true,
+                            unavailable: { Self.unavailable($0, programs: signingPrograms, current: editor.identity.format) }
+                        )
+                        .accessibilityLabel("Format")
+                        if let warning = signingPrograms?[editor.format].warning {
+                            Text(warning)
+                                .font(.system(size: 12))
+                                .foregroundStyle(AgentColors.warn)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                         VStack(alignment: .leading, spacing: 5) {
                             label(.signingKey, "Key", editor: editor)
                             SigningKeyField(
@@ -260,7 +274,16 @@ struct IdentityPopover: View {
                                 listing: keyListings[editor.format],
                                 email: editor.email,
                                 hasDefaultKeyCommand: editor.identity.hasDefaultKeyCommand,
-                                width: Self.width - 2 * Self.inset
+                                width: Self.width - 2 * Self.inset,
+                                // No New Key… when the format's program isn't here.
+                                maker: signingPrograms?[editor.format].isFound == false ? nil : KeyMaker(
+                                    list: list,
+                                    repository: repository,
+                                    name: editor.name,
+                                    savesAtOnce: false
+                                ) { made in
+                                    keyListings[made.format, default: SigningKeys.Listing(keys: [])].keys.append(made.key)
+                                }
                             )
                             .onSubmit { if !editor.changes.isEmpty { save(editor.changes) } }
                         }
@@ -269,7 +292,7 @@ struct IdentityPopover: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Save to")
                         .font(.system(size: 12, weight: .medium))
-                    SettingsSegments(selection: $editor.place, options: [(.repository, "This Repository"), (.everyRepository, "Every Repository")])
+                    SettingsSegments(selection: $editor.place, options: [(.repository, "This Repository"), (.everyRepository, "Every Repository")], fillsWidth: true)
                         .accessibilityLabel("Save to")
                 }
                 .padding(.top, 2)
@@ -308,6 +331,25 @@ struct IdentityPopover: View {
             let format = editor.format
             if let listing = await list.signingKeys(format, for: repository) { keyListings[format] = listing }
         }
+        // In the background, with the formats it hasn't confirmed faded in
+        // the meantime (decision 108).
+        .task(id: editor.signs) {
+            guard editor.signs, signingPrograms == nil else { return }
+            signingPrograms = await list.signingPrograms(for: repository)
+        }
+    }
+
+    /// Why a format can't be chosen, while its program is being looked for
+    /// or once it isn't found, or nil when it can. The format git signs with
+    /// now can always be chosen, so that the popover shows what's so.
+    static func unavailable(
+        _ format: CommitIdentity.SigningFormat,
+        programs: SigningPrograms.Found?,
+        current: CommitIdentity.SigningFormat
+    ) -> String? {
+        guard format != current else { return nil }
+        guard let programs else { return "Looking for \(SigningPrograms.defaultName(format))…" }
+        return programs[format].hint
     }
 
     /// A field's label, where its value comes from, and Use Global when the
@@ -325,9 +367,7 @@ struct IdentityPopover: View {
             Spacer(minLength: 0)
             if editor.canUseGlobal(key) {
                 Button("Use Global") { editor.useGlobal(key) }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Palette.action)
+                    .buttonStyle(.contextual)
                     .fixedSize()
                     .help(BranchModel.command(IdentityEditor.Change.unset(key, in: .repository).arguments))
             }

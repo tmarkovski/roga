@@ -1,6 +1,7 @@
 import AgentHooks
 import Foundation
 import GitCore
+import GitRunner
 import RepositoryEngine
 import Testing
 import ThemeUI
@@ -322,5 +323,108 @@ struct IdentityTests {
     @Test func aSignedRowSaysSo() {
         #expect(CommitRowContent(shortID: "48ba6441", subject: "Add tests", isSigned: true).spokenText == "Add tests, 48ba6441, signed")
         #expect(CommitRowContent(shortID: "48ba6441", subject: "Add tests").spokenText == "Add tests, 48ba6441")
+    }
+
+    // MARK: Decision 108
+
+    @Test func aFormatWaitsForItsProgramAndSaysWhatsMissing() {
+        // Until the programs are found, only the format git uses can be chosen.
+        #expect(IdentityPopover.unavailable(.ssh, programs: nil, current: .openPGP) == "Looking for ssh-keygen…")
+        #expect(IdentityPopover.unavailable(.openPGP, programs: nil, current: .openPGP) == nil)
+
+        let found = SigningPrograms.Found(
+            ssh: .init(format: .ssh, named: "ssh-keygen", path: "/usr/bin/ssh-keygen"),
+            openPGP: .init(format: .openPGP, named: "gpg", path: nil),
+            x509: .init(format: .x509, named: "gpgsm", path: nil)
+        )
+        #expect(IdentityPopover.unavailable(.ssh, programs: found, current: .ssh) == nil)
+        #expect(IdentityPopover.unavailable(.openPGP, programs: found, current: .ssh) == "Install GnuPG to sign with OpenPGP")
+        #expect(IdentityPopover.unavailable(.x509, programs: found, current: .ssh) == "Install GnuPG, which has gpgsm, to sign with X.509")
+        // The format git signs with stays, and the popover warns instead.
+        #expect(IdentityPopover.unavailable(.openPGP, programs: found, current: .openPGP) == nil)
+    }
+
+    func sshPlan(setsFile: Bool = true) -> NewSigningKey.Plan {
+        NewSigningKey.Plan(
+            format: .ssh,
+            email: "sam@rivera.dev",
+            userID: "sam@rivera.dev",
+            program: "/usr/bin/ssh-keygen",
+            arguments: ["-q", "-t", "ed25519", "-C", "sam@rivera.dev", "-N", "", "-f", "/Users/sam/.ssh/id_ed25519_signing"],
+            shownArguments: ["-q", "-t", "ed25519", "-C", "sam@rivera.dev", "-N", "", "-f", "~/.ssh/id_ed25519_signing"],
+            shownFile: "~/.ssh/id_ed25519_signing",
+            file: "/Users/sam/.ssh/id_ed25519_signing",
+            trust: NewSigningKey.Trust(shownFile: "~/.ssh/allowed_signers", file: "/Users/sam/.ssh/allowed_signers", setsFile: setsFile)
+        )
+    }
+
+    @Test func theNewKeyConfirmSaysWhatItMakesAndRuns() {
+        let plan = sshPlan()
+        #expect(NewKeyPopover.note(plan) == "Roga makes an Ed25519 key in ~/.ssh/id_ed25519_signing, without a passphrase, so git, Roga and agents can sign without asking. Anyone who can read that file can sign as you. It also goes in ~/.ssh/allowed_signers, so git says your commits are good.")
+        #expect(NewKeyPopover.lines(plan) == [
+            .program(plan.command),
+            .command(["config", "--global", "gpg.ssh.allowedSignersFile", "~/.ssh/allowed_signers"]),
+            .comment("Adds the new key to ~/.ssh/allowed_signers for sam@rivera.dev"),
+        ])
+        #expect(plan.command.description.hasSuffix("-N '' -f ~/.ssh/id_ed25519_signing"))
+        #expect(NewKeyPopover.lines(sshPlan(setsFile: false)).count == 2)
+
+        let openPGP = NewSigningKey.Plan(
+            format: .openPGP,
+            email: "sam@rivera.dev",
+            userID: "Sam Rivera <sam@rivera.dev>",
+            program: "/opt/homebrew/bin/gpg",
+            arguments: [],
+            shownArguments: []
+        )
+        #expect(NewKeyPopover.note(openPGP) == "Roga makes an Ed25519 key for Sam Rivera <sam@rivera.dev> that doesn't expire, without a passphrase, so git, Roga and agents can sign without asking. Anyone who can use your GnuPG keyring can sign as you.")
+    }
+
+    @Test func theMadeKeySaysWhereItCanGo() {
+        let key = SigningKey(value: "~/.ssh/id_ed25519_signing.pub", title: "~/.ssh/id_ed25519_signing.pub", details: ["ED25519"], fingerprint: "SHA256:x", emails: [])
+        let made = NewSigningKey.Made(format: .ssh, key: key, publicKey: "ssh-ed25519 AAAA", publicKeyFile: "/Users/sam/.ssh/id_ed25519_signing.pub", shownPublicKeyFile: "~/.ssh/id_ed25519_signing.pub")
+        let gitHub = KeyHost.gitHub("github.com")
+        let gh = "/opt/homebrew/bin/gh"
+
+        let canAdd = KeyHosting(gh: gh, accounts: [GitHubAccount(host: "github.com", scopes: ["admin:ssh_signing_key"])], hosts: [gitHub])
+        #expect(NewKeyPopover.hostWords(gitHub, format: .ssh, hosting: canAdd, isAdded: false) == "gh can add it as a signing key, so commits signed with it show as Verified.")
+        #expect(NewKeyPopover.hostWords(gitHub, format: .ssh, hosting: canAdd, isAdded: true) == "Added as a signing key, so commits signed with it show as Verified.")
+        #expect(NewKeyPopover.lines(made, hosting: canAdd, added: []) == [
+            .program(ProgramCommand(gh, ["ssh-key", "add", "~/.ssh/id_ed25519_signing.pub", "--type", "signing", "--title", GitHubCLI.title])),
+        ])
+
+        // Signed in, but without the scope: the command that gives it.
+        let noScope = KeyHosting(gh: gh, accounts: [GitHubAccount(host: "github.com", scopes: ["repo"])], hosts: [gitHub])
+        #expect(NewKeyPopover.hostWords(gitHub, format: .ssh, hosting: noScope, isAdded: false).hasPrefix("gh may not add signing keys yet."))
+        #expect(NewKeyPopover.lines(made, hosting: noScope, added: []) == [
+            .comment("Lets gh add keys to github.com. Run it once in Terminal."),
+            .program(ProgramCommand(gh, ["auth", "refresh", "-h", "github.com", "-s", "admin:ssh_signing_key"])),
+        ])
+
+        // Without gh, GitHub's page, and GitLab's for a GitLab remote.
+        let noGH = KeyHosting(gh: nil, accounts: [], hosts: [gitHub, .gitLab("gitlab.com")])
+        #expect(NewKeyPopover.hostWords(gitHub, format: .ssh, hosting: noGH, isAdded: false) == "Add it on GitHub as a signing key, so commits signed with it show as Verified. Open GitHub copies it first.")
+        #expect(NewKeyPopover.hostWords(.gitLab("gitlab.com"), format: .ssh, hosting: noGH, isAdded: false) == "Add it on GitLab with the usage type Signing, so commits signed with it show as Verified. Open GitLab copies it first.")
+        #expect(NewKeyPopover.lines(made, hosting: noGH, added: []) == [.comment("Copy Public Key copies ~/.ssh/id_ed25519_signing.pub")])
+    }
+
+    @Test func setupSaysWhatItFoundForSigning() {
+        #expect(SetupWords.signingLooks(nil, hasGit: false, gitFailed: true).map(\.detail) == ["After Git", "After Git", "After Git"])
+        #expect(SetupWords.signingLooks(nil, hasGit: true, gitFailed: false).map(\.state) == [.looking, .looking, .looking])
+        let tools = SetupWords.SigningTools(
+            ssh: .init(isFound: true, version: "OpenSSH 9.9p2"),
+            gnuPG: .init(isFound: true, version: "2.4.7"),
+            hasGPGSM: true,
+            gitHubCLI: .init(isFound: false)
+        )
+        let looks = SetupWords.signingLooks(tools, hasGit: true, gitFailed: false)
+        #expect(looks.map(\.name) == ["SSH", "GnuPG", "GitHub CLI"])
+        #expect(looks.map(\.detail) == [
+            "OpenSSH 9.9p2 · for signing commits with SSH",
+            "2.4.7 · for signing with OpenPGP and X.509",
+            "Not found · optional, for adding keys to GitHub",
+        ])
+        // Like an agent that isn't there, a missing tool isn't a warning.
+        #expect(looks.allSatisfy { $0.state == .found })
     }
 }

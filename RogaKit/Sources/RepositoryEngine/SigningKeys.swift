@@ -74,14 +74,7 @@ public enum SigningKeys {
             else { continue }
             let hasPrivateKey = FileManager.default.fileExists(atPath: String(path.dropLast(".pub".count)))
             guard hasPrivateKey || inAgent.contains(key.fingerprint), seen.insert(key.fingerprint).inserted else { continue }
-            let shown = "~/.ssh/" + file
-            keys.append(SigningKey(
-                value: shown,
-                title: shown,
-                details: [key.typeName] + (key.comment.isEmpty ? [] : [key.comment]) + touch(key),
-                fingerprint: key.fingerprint,
-                emails: KeyEmails.find(in: key.comment)
-            ))
+            keys.append(fileKey(key, shown: "~/.ssh/" + file))
         }
         for key in agent where seen.insert(key.fingerprint).inserted {
             keys.append(agentKey(key, place: "in the agent"))
@@ -98,9 +91,21 @@ public enum SigningKeys {
         let reason = if identityAgent != nil, !usesOnePassword {
             "No keys in ~/.ssh or the agent. The agent ~/.ssh/config names signs only when gpg.ssh.program is its own program, as 1Password's op-ssh-sign is."
         } else {
-            "No keys in ~/.ssh or the agent. Type a key's path, or create one with ssh-keygen."
+            "No keys in ~/.ssh or the agent. Make one, or type a key's path."
         }
         return Listing(keys: keys, emptyReason: reason)
+    }
+
+    /// A key in a `.pub` file, written as its path, such as
+    /// `~/.ssh/id_ed25519.pub`.
+    static func fileKey(_ key: SSHPublicKey, shown: String) -> SigningKey {
+        SigningKey(
+            value: shown,
+            title: shown,
+            details: [key.typeName] + (key.comment.isEmpty ? [] : [key.comment]) + touch(key),
+            fingerprint: key.fingerprint,
+            emails: KeyEmails.find(in: key.comment)
+        )
     }
 
     private static func agentKey(_ key: SSHPublicKey, place: String) -> SigningKey {
@@ -156,23 +161,26 @@ public enum SigningKeys {
             let words = result.errorOutput.split(whereSeparator: \.isNewline).last.map(String.init) ?? "it exited with \(result.status)"
             return Listing(keys: [], emptyReason: "\(named) didn't list its keys: \(words)")
         }
-        let keys = OpenPGPKeyParser.parse(result.text).map { key in
-            SigningKey(
-                value: key.fingerprint,
-                title: key.userIDs.first ?? key.keyID,
-                details: [key.algorithm, key.keyID] + (key.isOnCard ? ["on a smartcard"] : []),
-                fingerprint: key.fingerprint,
-                emails: key.userIDs.flatMap { KeyEmails.find(in: $0) }
-            )
-        }
-        return Listing(keys: keys, emptyReason: "\(named) has no secret keys that can sign. Create one with gpg --full-generate-key.")
+        let keys = OpenPGPKeyParser.parse(result.text).map(openPGPKey)
+        return Listing(keys: keys, emptyReason: "\(named) has no secret keys that can sign. Make one, or type a key ID.")
+    }
+
+    /// An OpenPGP key, written as its fingerprint.
+    static func openPGPKey(_ key: OpenPGPSecretKey) -> SigningKey {
+        SigningKey(
+            value: key.fingerprint,
+            title: key.userIDs.first ?? key.keyID,
+            details: [key.algorithm, key.keyID] + (key.isOnCard ? ["on a smartcard"] : []),
+            fingerprint: key.fingerprint,
+            emails: key.userIDs.flatMap { KeyEmails.find(in: $0) }
+        )
     }
 
     // MARK: Finding programs and settings
 
     /// A program by its path, or by its name through git's `PATH` and then
     /// Homebrew's folders and GPG Suite's.
-    private static func program(_ named: String, programs: Programs) -> String? {
+    static func program(_ named: String, programs: Programs) -> String? {
         if named.hasPrefix("/") { return ExecutableSearch.isExecutableFile(named) ? named : nil }
         let expanded = (named as NSString).expandingTildeInPath
         if expanded.hasPrefix("/") { return ExecutableSearch.isExecutableFile(expanded) ? expanded : nil }
@@ -180,13 +188,13 @@ public enum SigningKeys {
         return find(named, programs: programs, wellKnown: wellKnown)
     }
 
-    private static func find(_ name: String, programs: Programs, wellKnown: [String]) -> String? {
+    static func find(_ name: String, programs: Programs, wellKnown: [String]) -> String? {
         ExecutableSearch.candidates(named: [name], searchPath: programs.environment["PATH"] ?? "", wellKnown: wellKnown).first
     }
 
     /// A setting's value as git reads it in `directory`, or nil when it isn't
     /// set or git can't say.
-    private static func configValue(_ key: String, git: Git, in directory: String) async -> String? {
+    static func configValue(_ key: String, git: Git, in directory: String) async -> String? {
         var command = GitCommand(["config", "--get", key], in: directory)
         command.successStatuses = [0, 1]
         guard let output = try? await git.run(command).output else { return nil }

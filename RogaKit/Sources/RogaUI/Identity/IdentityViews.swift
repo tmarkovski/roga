@@ -349,9 +349,7 @@ struct CommitBoxIdentityWarning: View {
                         .help(BranchModel.command(Self.stopSigning.arguments))
                 }
             }
-            .buttonStyle(.plain)
-            .font(.system(size: 12, weight: .medium))
-            .foregroundStyle(Palette.action)
+            .buttonStyle(.contextual)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)

@@ -81,9 +81,7 @@ private struct TrustKeyButton: View {
 
     var body: some View {
         Button("Trust This Key…") { isConfirming = true }
-            .buttonStyle(.plain)
-            .font(.system(size: 12, weight: .medium))
-            .foregroundStyle(Palette.action)
+            .buttonStyle(.contextual)
             .padding(.top, 2)
             .help("Add \(offer.localKey.title) to \(offer.shownFile) for \(offer.email)")
             .popover(isPresented: $isConfirming, arrowEdge: .bottom) {
@@ -164,40 +162,36 @@ struct TrustKeyPopover: View {
     }
 }
 
-/// What the Signature line looks like: its label, then a mark and the words,
-/// with the gray detail under them, and anything that follows, such as
-/// Trust This Key….
+/// What the Signature line shows after its label, which the commit panel
+/// puts in the column with the other labels: a mark and the words, with the
+/// gray detail under them, and anything that follows, such as Trust This
+/// Key….
 struct SignatureLineContent<Accessory: View>: View {
     let words: SignatureWords
     @ViewBuilder var accessory: Accessory
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 0) {
-            Text("Signature")
-                .foregroundStyle(.secondary)
-            Text("  ")
-            VStack(alignment: .leading, spacing: 1) {
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    if let icon = words.icon {
-                        icon.image
-                            .font(.system(size: 12 / 1.128, weight: .medium))
-                    } else {
-                        ProgressView()
-                            .controlSize(.mini)
-                    }
-                    Text(words.title)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .textSelection(.enabled)
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                if let icon = words.icon {
+                    icon.image
+                        .font(.system(size: 12 / 1.128, weight: .medium))
+                } else {
+                    ProgressView()
+                        .controlSize(.mini)
                 }
-                .foregroundStyle(words.color)
-                if let detail = words.detail {
-                    Text(detail)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .textSelection(.enabled)
-                }
-                accessory
+                Text(words.title)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
             }
+            .foregroundStyle(words.color)
+            if let detail = words.detail {
+                Text(detail)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+            }
+            accessory
         }
         .font(.system(size: 12))
         .accessibilityElement(children: .contain)

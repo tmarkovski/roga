@@ -260,27 +260,32 @@ private struct CommitDetails: View {
             Text(stash.title.isEmpty ? "This stash has no message." : stash.title)
                 .fontWeight(.semibold)
                 .textSelection(.enabled)
-            VStack(alignment: .leading, spacing: 4) {
+            Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 8, verticalSpacing: 4) {
                 if let branch = stash.branch {
-                    Text("\(Text("Branch").foregroundStyle(.secondary))  \(branch)")
+                    GridRow {
+                        DetailLabel(title: "Branch")
+                        Text(branch)
+                    }
                 }
                 if let base = commit.stashBase {
-                    HStack(spacing: 8) {
-                        Text("Made on").foregroundStyle(.secondary)
+                    GridRow {
+                        DetailLabel(title: "Made on")
                         CommitLink(id: base, isInHistory: model.hasCommit(base), help: "Select the commit in history") {
                             model.select(commit: base)
                         }
                     }
                 }
-                Text("\(Text("Date").foregroundStyle(.secondary))  \(date(info.author.time))")
+                GridRow {
+                    DetailLabel(title: "Date")
+                    Text(date(info.author.time))
+                }
             }
             .font(.system(size: 12))
         case .comparison(let comparison):
             ComparisonSummary(comparison: comparison, info: info, fromInfo: commit.fromInfo, model: model)
         case .commit, .scattered, .submodule, nil:
             message
-            people
-            parents
+            details
         }
     }
 
@@ -333,42 +338,65 @@ private struct CommitDetails: View {
         }
     }
 
-    @ViewBuilder private var people: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            signature(info.author, title: "Author")
+    /// Who wrote the commit and when, its signature and its parents, each
+    /// value starting in the same column after the gray labels. The parents
+    /// sit a little apart, as they did under the people.
+    private var details: some View {
+        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 8, verticalSpacing: 2) {
+            GridRow {
+                DetailLabel(title: "Author")
+                signature(info.author)
+            }
             if info.committer != info.author {
-                signature(info.committer, title: "Committer")
+                GridRow {
+                    DetailLabel(title: "Committer")
+                    signature(info.committer)
+                }
             }
             // Only for a commit with a signature, and only the one the panel
             // shows, since checking runs gpg or ssh-keygen (decision 104).
             if let format = info.signatureFormat {
-                SignatureLine(commit: info.id, format: format, email: info.committer.email, session: model.session)
-            }
-        }
-    }
-
-    private func signature(_ signature: Signature, title: String) -> some View {
-        let label = Text(title).foregroundStyle(.secondary)
-        let email = signature.email.isEmpty ? "" : " <\(signature.email)>"
-        let details = Text("\(email)  \(date(signature.time))").foregroundStyle(.secondary)
-        return Text("\(label)  \(signature.name)\(details)")
-            .font(.system(size: 12))
-            .textSelection(.enabled)
-    }
-
-    @ViewBuilder private var parents: some View {
-        if !info.parents.isEmpty {
-            HStack(spacing: 8) {
-                Text(info.parents.count == 1 ? "Parent" : "Parents")
-                    .foregroundStyle(.secondary)
-                ForEach(info.parents, id: \.self) { parent in
-                    CommitLink(id: parent, isInHistory: model.hasCommit(parent), help: "Select the parent in history") {
-                        model.select(commit: parent)
-                    }
+                GridRow {
+                    DetailLabel(title: "Signature")
+                    SignatureLine(commit: info.id, format: format, email: info.committer.email, session: model.session)
                 }
             }
-            .font(.system(size: 12))
+            if !info.parents.isEmpty {
+                GridRow {
+                    DetailLabel(title: info.parents.count == 1 ? "Parent" : "Parents")
+                        .padding(.top, 8)
+                    HStack(spacing: 8) {
+                        ForEach(info.parents, id: \.self) { parent in
+                            CommitLink(id: parent, isInHistory: model.hasCommit(parent), help: "Select the parent in history") {
+                                model.select(commit: parent)
+                            }
+                        }
+                    }
+                    .padding(.top, 8)
+                }
+            }
         }
+        .font(.system(size: 12))
+    }
+
+    private func signature(_ signature: Signature) -> some View {
+        let email = signature.email.isEmpty ? "" : " <\(signature.email)>"
+        let details = Text("\(email)  \(date(signature.time))").foregroundStyle(.secondary)
+        return Text("\(signature.name)\(details)")
+            .fixedSize(horizontal: false, vertical: true)
+            .textSelection(.enabled)
+    }
+}
+
+/// A gray label in the first column of the commit panel's details, which is
+/// as wide as the longest of them.
+private struct DetailLabel: View {
+    let title: String
+
+    var body: some View {
+        Text(title)
+            .foregroundStyle(.secondary)
+            .fixedSize()
     }
 }
 

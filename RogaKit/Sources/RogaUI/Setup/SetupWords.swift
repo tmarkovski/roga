@@ -79,6 +79,47 @@ enum SetupWords {
         }
     }
 
+    /// What Roga found for signing commits and adding keys to GitHub
+    /// (decision 108): the program for each format, and gh.
+    struct SigningTools: Equatable {
+        struct Tool: Equatable {
+            var isFound: Bool
+            var version: String?
+        }
+
+        var ssh: Tool
+        var gnuPG: Tool
+        /// Whether `gpgsm`, which signs with X.509, came with GnuPG.
+        var hasGPGSM: Bool
+        var gitHubCLI: Tool
+    }
+
+    /// The rows for signing tools, after the agents'. Like an agent, a tool
+    /// Roga didn't find isn't a problem, so it reads as found out, and each
+    /// row says what Roga would use it for. The popover and Settings look
+    /// again each time, so this is only what's so now.
+    static func signingLooks(_ tools: SigningTools?, hasGit: Bool, gitFailed: Bool) -> [Look] {
+        let names = ["SSH", "GnuPG", "GitHub CLI"]
+        guard hasGit else {
+            return names.map { Look(name: $0, state: .waiting, detail: gitFailed ? "After Git" : "") }
+        }
+        guard let tools else { return names.map { Look(name: $0, state: .looking, detail: "Looking…") } }
+        func look(_ name: String, _ tool: SigningTools.Tool, use: String, missing: String) -> Look {
+            guard tool.isFound else { return Look(name: name, state: .found, detail: "Not found · \(missing)") }
+            return Look(name: name, state: .found, detail: [tool.version, use].compactMap { $0 }.joined(separator: " · "))
+        }
+        return [
+            look("SSH", tools.ssh, use: "for signing commits with SSH", missing: "can't sign with SSH"),
+            look(
+                "GnuPG",
+                tools.gnuPG,
+                use: tools.hasGPGSM ? "for signing with OpenPGP and X.509" : "for signing commits with OpenPGP",
+                missing: "only needed to sign with OpenPGP"
+            ),
+            look("GitHub CLI", tools.gitHubCLI, use: "for adding signing keys to GitHub", missing: "optional, for adding keys to GitHub"),
+        ]
+    }
+
     private static func count(_ number: Int, _ word: String) -> String {
         "\(number) \(word)"
     }

@@ -73,6 +73,24 @@ public enum AllowedSigners {
         let keys = await SigningKeys.list(.ssh, git: git, programs: programs, in: directory, home: home).keys
         guard let localKey = keys.first(where: { $0.fingerprint == key.fingerprint }) else { return nil }
 
+        let place = await destination(git: git, in: directory, home: home)
+        if let text = try? String(contentsOfFile: place.file, encoding: .utf8),
+           AllowedSignersFile.lists(key, for: email, in: text)
+        {
+            return nil
+        }
+        return Offer(key: key, localKey: localKey, email: email, shownFile: place.shownFile, file: place.file, setsFile: place.setsFile)
+    }
+
+    /// Which file a new line goes in: the one `gpg.ssh.allowedSignersFile`
+    /// names, as it's written and as a path, or `~/.ssh/allowed_signers`,
+    /// which the setting has to be pointed at first.
+    @concurrent
+    public static func destination(
+        git: Git,
+        in directory: String,
+        home: String = NSHomeDirectory()
+    ) async -> (shownFile: String, file: String, setsFile: Bool) {
         let named = await configValue(["config", "--get", "gpg.ssh.allowedSignersFile"], git: git, in: directory)
         let file: String
         if let path = await configValue(["config", "--get", "--path", "gpg.ssh.allowedSignersFile"], git: git, in: directory) {
@@ -80,19 +98,7 @@ public enum AllowedSigners {
         } else {
             file = home + "/" + defaultFile.dropFirst(2)
         }
-        if let text = try? String(contentsOfFile: file, encoding: .utf8),
-           AllowedSignersFile.lists(key, for: email, in: text)
-        {
-            return nil
-        }
-        return Offer(
-            key: key,
-            localKey: localKey,
-            email: email,
-            shownFile: named ?? defaultFile,
-            file: file,
-            setsFile: named == nil
-        )
+        return (named ?? defaultFile, file, named == nil)
     }
 
     /// Points git at the file when the offer says to, then adds the line,
