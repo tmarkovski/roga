@@ -34,6 +34,8 @@ Once decision 103 was built, the initials in the branch row looked out of place,
 
 After G come the two boards that led to it. **D** showed the box's line all the time, with the initials at its start, and nothing in the header. **Where the initials could go** compared D with **E**, at the end of the tabs row, and **F**, beside history's number of commits.
 
+The last board, **Trusting your own SSH key**, draws [decision 107](../../decisions/0107-trust-your-own-ssh-key-from-the-signature-line.md): the Signature line's Trust This Key… for an SSH signature made with one of this Mac's keys, its confirm with and without the `git config` that points git at `~/.ssh/allowed_signers`, the line once it's Good, and someone else's key, which gets no offer.
+
 ## Regenerating the boards
 
 Read `project/canvas.json` from the canvas into a folder first, so that the merge starts from what's live, then:

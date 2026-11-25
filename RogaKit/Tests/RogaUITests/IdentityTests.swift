@@ -292,6 +292,33 @@ struct IdentityTests {
         #expect(SignatureWords(format: .openPGP, check: SignatureCheck(result: .expired)).tone == .warning)
     }
 
+    func trustOffer(setsFile: Bool) throws -> AllowedSigners.Offer {
+        let key = try #require(SSHPublicKeyParser.parse("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEl5c7+FTBhBHYT9TKz61AWx/U3+VjN1Mh2idso8ynyp"))
+        let local = SigningKey(value: "~/.ssh/id_ed25519.pub", title: "~/.ssh/id_ed25519.pub", details: ["ED25519"], fingerprint: key.fingerprint, emails: [])
+        return AllowedSigners.Offer(
+            key: key, localKey: local, email: "sam@rivera.dev",
+            shownFile: "~/.ssh/allowed_signers", file: "/Users/sam/.ssh/allowed_signers", setsFile: setsFile
+        )
+    }
+
+    @Test func namesThisMacsKeyWhenItOffersToTrustIt() throws {
+        let offer = try trustOffer(setsFile: true)
+        #expect(SignatureWords(format: .ssh, check: SignatureCheck(result: .notChecked), offer: offer).detail
+            == "git needs gpg.ssh.allowedSignersFile to know whose keys to trust. It was signed with ~/.ssh/id_ed25519.pub, one of this Mac's keys.")
+        #expect(SignatureWords(format: .ssh, check: SignatureCheck(result: .untrusted, key: offer.key.fingerprint), offer: offer).detail
+            == "The allowed signers file doesn't list ~/.ssh/id_ed25519.pub, one of this Mac's keys.")
+    }
+
+    @Test func theConfirmShowsWhatItRunsAndAdds() throws {
+        let line = "sam@rivera.dev namespaces=\"git\" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEl5c7+FTBhBHYT9TKz61AWx/U3+VjN1Mh2idso8ynyp"
+        #expect(TrustKeyPopover.lines(try trustOffer(setsFile: true)) == [
+            .command(["config", "--global", "gpg.ssh.allowedSignersFile", "~/.ssh/allowed_signers"]),
+            .comment("Adds this line to ~/.ssh/allowed_signers"),
+            .output(line),
+        ])
+        #expect(TrustKeyPopover.lines(try trustOffer(setsFile: false)) == [.comment("Adds this line to ~/.ssh/allowed_signers"), .output(line)])
+    }
+
     @Test func aSignedRowSaysSo() {
         #expect(CommitRowContent(shortID: "48ba6441", subject: "Add tests", isSigned: true).spokenText == "Add tests, 48ba6441, signed")
         #expect(CommitRowContent(shortID: "48ba6441", subject: "Add tests").spokenText == "Add tests, 48ba6441")

@@ -56,13 +56,130 @@ public enum SSHPublicKeyParser {
         guard parts.count >= 2, typeNames[String(parts[0])] != nil,
               let data = Data(base64Encoded: String(parts[1])), !data.isEmpty
         else { return nil }
-        let hash = Data(SHA256.hash(data: data)).base64EncodedString().trimmingCharacters(in: CharacterSet(charactersIn: "="))
+        return key(type: String(parts[0]), blob: data, comment: parts.count > 2 ? String(parts[2]) : "")
+    }
+
+    /// A key from its type and its bytes, with the fingerprint `ssh-keygen
+    /// -l` prints: `SHA256:` and the bytes' hash in base64, without padding.
+    static func key(type: String, blob: Data, comment: String) -> SSHPublicKey {
+        let hash = Data(SHA256.hash(data: blob)).base64EncodedString().trimmingCharacters(in: CharacterSet(charactersIn: "="))
         return SSHPublicKey(
-            type: String(parts[0]),
-            blob: String(parts[1]),
-            comment: parts.count > 2 ? String(parts[2]).trimmingCharacters(in: .whitespacesAndNewlines) : "",
+            type: type,
+            blob: blob.base64EncodedString(),
+            comment: comment.trimmingCharacters(in: .whitespacesAndNewlines),
             fingerprint: "SHA256:" + hash
         )
+    }
+}
+
+/// Reads which key made a commit's SSH signature, from the signature itself
+/// (issue 119), since git says which key signed a commit only once it can
+/// check it against `gpg.ssh.allowedSignersFile`.
+public enum SSHSignatureParser {
+    /// The signature in the headers that `git cat-file commit` prints:
+    /// `gpgsig`, or `gpgsig-sha256` in a SHA-256 repository, whose lines
+    /// after the first start with a space.
+    public static func signature(inCommit text: String) -> String? {
+        var lines: [Substring] = []
+        var isInSignature = false
+        for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            // A blank line ends the headers.
+            if line.isEmpty { break }
+            if isInSignature {
+                guard line.hasPrefix(" ") else { break }
+                lines.append(line.dropFirst())
+            } else if line.hasPrefix("gpgsig ") || line.hasPrefix("gpgsig-sha256 ") {
+                isInSignature = true
+                lines.append(line[line.index(after: line.firstIndex(of: " ")!)...])
+            }
+        }
+        return lines.isEmpty ? nil : lines.joined(separator: "\n")
+    }
+
+    /// The public key in an armored SSH signature, which OpenSSH's
+    /// PROTOCOL.sshsig lays out as `SSHSIG`, a version, then the key.
+    public static func publicKey(inSignature armored: String) -> SSHPublicKey? {
+        guard armored.contains("-----BEGIN SSH SIGNATURE-----") else { return nil }
+        let base64 = armored.split(whereSeparator: \.isNewline)
+            .filter { !$0.hasPrefix("-----") }
+            .joined()
+        guard let data = Data(base64Encoded: base64) else { return nil }
+        var reader = Reader(bytes: [UInt8](data))
+        guard reader.take(6) == Array("SSHSIG".utf8), reader.uint32() != nil,
+              let blob = reader.string()
+        else { return nil }
+        var inner = Reader(bytes: blob)
+        guard let type = inner.string().map({ String(decoding: $0, as: UTF8.self) }),
+              SSHPublicKeyParser.typeNames[type] != nil
+        else { return nil }
+        return SSHPublicKeyParser.key(type: type, blob: Data(blob), comment: "")
+    }
+
+    /// Reads the SSH wire format: 32-bit lengths, big-endian, before bytes.
+    private struct Reader {
+        let bytes: [UInt8]
+        var offset = 0
+
+        mutating func take(_ count: Int) -> [UInt8]? {
+            guard count >= 0, offset + count <= bytes.count else { return nil }
+            defer { offset += count }
+            return Array(bytes[offset..<offset + count])
+        }
+
+        mutating func uint32() -> UInt32? {
+            take(4).map { $0.reduce(0) { $0 << 8 | UInt32($1) } }
+        }
+
+        mutating func string() -> [UInt8]? {
+            uint32().flatMap { take(Int($0)) }
+        }
+    }
+}
+
+/// The file `gpg.ssh.allowedSignersFile` names, which says whose SSH keys git
+/// trusts when it checks a signature (issue 119). Each line has the emails
+/// the key signs for, optional options such as `namespaces="git"`, then the
+/// key.
+public enum AllowedSignersFile {
+    /// The line that trusts a key for an email's git signatures.
+    public static func line(email: String, key: SSHPublicKey) -> String {
+        "\(email) namespaces=\"git\" \(key.type) \(key.blob)"
+    }
+
+    /// Whether a line in the file already lists the key for the email,
+    /// comparing emails without case.
+    public static func lists(_ key: SSHPublicKey, for email: String, in text: String) -> Bool {
+        for line in text.split(whereSeparator: \.isNewline) {
+            let words = self.words(line)
+            guard let principals = words.first, !principals.hasPrefix("#"),
+                  let type = words.firstIndex(where: { SSHPublicKeyParser.typeNames[$0] != nil }),
+                  type + 1 < words.count, words[type + 1] == key.blob
+            else { continue }
+            let emails = principals.split(separator: ",").map { $0.lowercased() }
+            if emails.contains(email.lowercased()) { return true }
+        }
+        return false
+    }
+
+    /// A line's words, split by spaces outside double quotes, without the
+    /// quotes around a whole word.
+    static func words(_ line: Substring) -> [String] {
+        var words: [String] = []
+        var word = ""
+        var isQuoted = false
+        for character in line.trimmingCharacters(in: .whitespaces) {
+            if character == "\"" {
+                isQuoted.toggle()
+                word.append(character)
+            } else if character == " " || character == "\t", !isQuoted {
+                if !word.isEmpty { words.append(word) }
+                word = ""
+            } else {
+                word.append(character)
+            }
+        }
+        if !word.isEmpty { words.append(word) }
+        return words.map { $0.hasPrefix("\"") && $0.hasSuffix("\"") && $0.count >= 2 ? String($0.dropFirst().dropLast()) : $0 }
     }
 }
 

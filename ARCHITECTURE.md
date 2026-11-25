@@ -58,7 +58,7 @@ roga/
 │   │   │       ├── StatusParser.swift      status --porcelain=v2 -z, with what it says of a submodule's checkout, and --numstat -z
 │   │   │       ├── RawDiffParser.swift     diff-tree --raw --numstat -z
 │   │   │       ├── CommitIdentityParser.swift config --show-scope --show-origin -z, for who commits go out as
-│   │   │       ├── SigningKeyParsers.swift .pub files and ssh-add -L, IdentityAgent in ~/.ssh/config, and gpg --list-secret-keys --with-colons, decision 106
+│   │   │       ├── SigningKeyParsers.swift .pub files and ssh-add -L, IdentityAgent in ~/.ssh/config, gpg --list-secret-keys --with-colons (decision 106), and a commit's SSH signature and the allowed signers file (decision 107)
 │   │   │       └── PatchParser.swift       the hunks that diff-tree -p prints
 │   │   ├── GitRunner/
 │   │   │   ├── Git.swift               running a command, which every git command goes through
@@ -100,6 +100,7 @@ roga/
 │   │   │   ├── SubmoduleLoader.swift   listing a worktree's submodules, reading a checkout for its rows and its panel, and updating it, decision 75
 │   │   │   ├── CommitIdentityCommands.swift reading who commits go out as, in a repository and outside any, and changing it with git config, decision 103
 │   │   │   ├── SigningKeys.swift       listing the SSH and OpenPGP keys git can sign with, with ssh-add and gpg, decision 106
+│   │   │   ├── AllowedSigners.swift    trusting your own SSH key for checking signatures, in gpg.ssh.allowedSignersFile, decision 107
 │   │   │   ├── RepositoryWatcher.swift one FSEvents stream, numbered batches, decision 49
 │   │   │   ├── FolderWatcher.swift     the FSEvents stream itself
 │   │   │   ├── RepositoryChanges.swift what a batch of changed paths affects
@@ -155,7 +156,7 @@ roga/
 │   │   │   ├── Agents/                 finding agents, the marks, and what each worktree's agents are doing
 │   │   │   ├── Workspace/              windows, finding git, the sidebar, the saved list of repositories and the update notice
 │   │   │   ├── Repository/             the repository model, panels, the refs panel, commit details
-│   │   │   ├── Identity/               who commits go out as: the title row's person, the message box's line and warnings, and the popover (decisions 103 and 105), its Key field's menu of keys (decision 106), and the commit panel's Signature line (decision 104)
+│   │   │   ├── Identity/               who commits go out as: the title row's person, the message box's line and warnings, and the popover (decisions 103 and 105), its Key field's menu of keys (decision 106), and the commit panel's Signature line (decision 104) with Trust This Key… (decision 107)
 │   │   │   ├── Dialogs/                the sheet for everything Roga asks or reports, with its command (decision 29)
 │   │   │   ├── House/                  the house's joints, its animations and drawing them (decision 21), and the wordmark
 │   │   │   ├── Commands/               menus and keyboard shortcuts

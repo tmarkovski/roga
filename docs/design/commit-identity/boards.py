@@ -297,9 +297,11 @@ body{margin:0}
 .sgl .w{display:flex;flex-direction:column;gap:1px;min-width:0}
 .sgl .h{display:flex;align-items:center;gap:5px}
 .sgl .h svg{width:13px;height:13px;flex:none}
-.sgl .g{color:var(--tx2)}
+.sgl .g{color:var(--tx2);overflow-wrap:anywhere}
 .sgl.good .h svg{color:var(--ok)}
 .sgl.bad .h{color:var(--red)}
+.sgl .tbt{align-self:flex-start;border:0;background:none;padding:0;margin-top:3px;color:var(--act);font:inherit;font-weight:500}
+.cl.out{padding-left:0;text-indent:0;color:#cfcfc2}
 .spin{width:12px;height:12px;border-radius:50%;border:1.5px solid var(--track);border-top-color:var(--tx2);flex:none}
 .lk{color:var(--act);font:500 12px ui-monospace,"SF Mono",Menlo,monospace}
 
@@ -1450,8 +1452,8 @@ SIG_STATES = [
 ]
 
 
-def commit_details(sig: str, *, signed_by: str = "Sam Rivera", email: str = "sam@rivera.dev") -> str:
-    return (f'<div class="cpanel" style="width:{PANEL}px;height:218px"><div class="clip">'
+def commit_details(sig: str, *, signed_by: str = "Sam Rivera", email: str = "sam@rivera.dev", height: int = 218) -> str:
+    return (f'<div class="cpanel" style="width:{PANEL}px;height:{height}px"><div class="clip">'
             f'<div class="cph">Commit <span class="hs2">5405371</span><span class="sp"></span><span class="ib">{COPY}</span></div>'
             '<div class="cpb"><div class="sj">Lock the login after five failed attempts</div>'
             f'<div class="ppl"><div><span class="lb">Author</span>{esc(signed_by)} <span class="g">&lt;{esc(email)}&gt;  Nov 24, 2026 at 10:12</span></div></div>'
@@ -1472,6 +1474,80 @@ def board_history() -> Board:
             f'<div class="cells" style="gap:40px">{sig_cells2}</div></div></div></div>')
     return Board("Id-History.dc.html", "Signed commits in history and the commit panel", w, h,
                  page("Signed commits in history and the commit panel", body, w, h))
+
+
+# ---------------------------------------------------------------- trusting your own SSH key
+
+
+TRUST_FILE = "~/.ssh/id_ed25519.pub"
+TRUST_PANEL_H = 262
+# Just under Trust This Key…, which the panel's longest line puts near its bottom.
+TRUST_POP_TOP = 246
+TRUST_LINE = 'sam@rivera.dev namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEl5c7+FTBhBHYT9TKz61AWx/U3+VjN1Mh2idso8ynyp'
+
+
+def trust_sig(title: str, detail: str, *, button: bool = True) -> str:
+    """The Signature line for an SSH signature git couldn't vouch for, with
+    Trust This Key… when the key that signed it is one of this Mac's."""
+    btn = '<button class="tbt" type="button">Trust This Key…</button>' if button else ""
+    return (f'<div class="sgl"><span class="lb">Signature</span><span class="w"><span class="h">{SH_Q}{esc(title)}</span>'
+            f'<span class="g">{esc(detail)}</span>{btn}</span></div>')
+
+
+def trust_popover(*, sets_file: bool) -> str:
+    """The confirm under Trust This Key…: which key, for which email, and
+    what Roga runs and adds, as decision 29 asks."""
+    lines = ""
+    if sets_file:
+        lines += tokens(config_line("global", "gpg.ssh.allowedSignersFile", "'~/.ssh/allowed_signers'"))
+    lines += '<div class="cl cm"># Adds this line to ~/.ssh/allowed_signers</div>'
+    lines += f'<div class="cl out">{esc(TRUST_LINE)}</div>'
+    block = f'<div class="cmd"><button class="cp" type="button" aria-label="Copy the command">{COPY}</button>{lines}</div>'
+    note = (f"{TRUST_FILE} is one of this Mac's keys. Once the allowed signers file lists it for sam@rivera.dev, "
+            "git says the commits it signs are good.")
+    return (f'<div class="pop" style="position:absolute;left:96px;top:{TRUST_POP_TOP}px;width:300px"><i class="arr" style="left:28px"></i><div class="pin">'
+            '<div class="phd"><b>Trust this key</b><span>For checking the commits it signs</span></div>'
+            f'<div class="pnote">{esc(note)}</div>'
+            '<div class="pbtn"><button class="b sec" type="button">Cancel</button><button class="b pri" type="button">Trust Key</button></div>'
+            f'{block}</div></div>')
+
+
+def board_trust() -> Board:
+    not_checked = trust_sig(
+        "Signed with SSH, not checked",
+        f"git needs gpg.ssh.allowedSignersFile to know whose keys to trust. It was signed with {TRUST_FILE}, one of this Mac's keys.",
+    )
+    untrusted = trust_sig(
+        "Good signature, from a key this Mac doesn't trust",
+        f"The allowed signers file doesn't list {TRUST_FILE}, one of this Mac's keys.",
+    )
+    someone = trust_sig(
+        "Signed with SSH, not checked",
+        "git needs gpg.ssh.allowedSignersFile to know whose keys to trust.",
+        button=False,
+    )
+    good = (f'<div class="sgl good"><span class="lb">Signature</span><span class="w"><span class="h">{SH_CHECK}Good SSH signature</span>'
+            '<span class="g">sam@rivera.dev · SHA256:dTN2I5PqIERxt1Q5XUaOShsVC3P19WcFTUUImtv1RPI</span></span></div>')
+    stage_h = 600
+
+    def stage(sig: str, pop: str = "") -> str:
+        return (f'<div class="stage" style="position:relative;width:{PANEL}px;height:{stage_h}px">'
+                f'{commit_details(sig, height=TRUST_PANEL_H)}{pop}</div>')
+
+    rows = [
+        [cell("Not checked", "this Mac's key", stage(not_checked)),
+         cell("Trust This Key…", "no file yet", stage(not_checked, trust_popover(sets_file=True))),
+         cell("After", "checked again", stage(good))],
+        [cell("Not trusted", "the file doesn't list it", stage(untrusted)),
+         cell("Trust This Key…", "the file is set", stage(untrusted, trust_popover(sets_file=False))),
+         cell("Someone else's key", "nothing offered", stage(someone))],
+    ]
+    w = 80 + 3 * PANEL + 2 * 40
+    h = 34 + 2 * (36 + 12 + stage_h) + 36 + 40
+    body = (f'<div class="board th-l" style="width:{w}px;height:{h}px">'
+            + "".join(f'<div class="cells" style="gap:40px">{"".join(r)}</div>' for r in rows) + "</div>")
+    title = "Trusting your own SSH key"
+    return Board("Id-Trust.dc.html", title, w, h, page(title, body, w, h))
 
 
 # ---------------------------------------------------------------- after building it
@@ -1635,6 +1711,7 @@ def all_boards() -> list[list[Board]]:
         [board_popover(), board_try()],
         [board_sidebar(), board_settings()],
         [board_history()],
+        [board_trust()],
     ]
 
 
@@ -1648,6 +1725,7 @@ TITLES = [
     "Changing it",
     "The sidebar and Settings",
     "Signed commits",
+    "Trusting your own SSH key",
 ]
 
 INTROS = [
@@ -1681,9 +1759,13 @@ INTROS = [
     "the global identity, with the keys it writes, and lists the repositories that commit as someone else.",
     "A signed commit has a gpgsig header, which CommitParser already reads past for every commit history shows, so marking it costs "
     "nothing. Checking the signature runs gpg or ssh-keygen, so Roga checks only the selected commit, and the commit panel says what it found.",
+    "git checks an SSH signature only against gpg.ssh.allowedSignersFile, so most people's own commits say not checked. When the key "
+    "that signed a commit is one of this Mac's, the Signature line offers to trust it, which adds it to that file for the commit's "
+    "email, and points git at ~/.ssh/allowed_signers first when nothing names a file yet (issue 119).",
 ]
 
 NOTES = {
+    "Id-Trust.dc.html": "Trust This Key… shows only for a key that's one of this Mac's, as decision 106 lists them, since vouching for someone else's key is a different question. Roga reads the key from the commit's signature itself, because git doesn't say which key signed a commit it couldn't check. The confirm says which key and which email, and shows the git config it runs when nothing names a file yet and the line it adds, which is the committer's email, namespaces=\"git\" and the key. Roga never adds a line twice, and checks the commit again once the line is there.",
     "Id-D.dc.html": "The line is always at the top of the box, so the place to see who a commit goes out as, and to change it, is where the commit is made, much as GitHub Desktop puts the author's picture beside the summary. It costs 27 points of the text's height in every repository, where decision 103 spent them only on the exceptions. The circle loses its shield, since the end of the line says Signed or Not signed, and a click opens the same popover under the line.",
     "Id-G.dc.html": "The person icon at the end of the tabs row is gray for the global identity, like the row's other icon buttons, and in the email's tint for anyone else, as in the sidebar and the box's line. It has no circle, whose faint fill would turn muddy on the button's gray under the pointer. It turns amber with a triangle when a commit would go wrong, which matters most for agents, whose commits would stop at signing while nobody watches the box, and it has a small shield while commits are signed, since the box isn't there in a clean worktree, and a rebase or a cherry-pick signs each commit again. Not signing gets no mark, as on decision 103's initials. The box's line keeps the person icon it has now, gray for the global identity, and in the email's tint with the name in ink for anyone else. The branch row has nothing.",
     "Id-G-Change.dc.html": "The tabs row is there whatever the panels show, so the identity can be seen and changed in a clean worktree, before a merge or a rebase, or while an agent works. A click opens the same popover under the icon, and its note says that merges, rebases and agents use the identity too. Making a branch or a worktree doesn't use it, and a push goes out as the account the SSH key or the credential helper belongs to, which this doesn't show. The sidebar marks the same exceptions with the same person in the email's tint, in place of the initials.",

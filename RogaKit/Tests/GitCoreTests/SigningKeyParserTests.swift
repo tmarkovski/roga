@@ -56,6 +56,40 @@ struct SigningKeyParserTests {
         #expect(KeyEmails.find(in: "work, sam.rivera@acme.com") == ["sam.rivera@acme.com"])
     }
 
+    // MARK: Allowed signers
+
+    @Test func knowsWhetherTheAllowedSignersFileListsAKey() throws {
+        let key = try #require(SSHPublicKeyParser.parse("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEl5c7+FTBhBHYT9TKz61AWx/U3+VjN1Mh2idso8ynyp sam@rivera.dev"))
+        let file = """
+        # Who signs what
+        other@example.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEl5c7+FTBhBHYT9TKz61AWx/U3+VjN1Mh2idso8ynyp
+        "Sam@Rivera.dev,sam@acme.com" namespaces="git,file" valid-after="20260101" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEl5c7+FTBhBHYT9TKz61AWx/U3+VjN1Mh2idso8ynyp
+        """
+        #expect(AllowedSignersFile.lists(key, for: "sam@rivera.dev", in: file))
+        #expect(AllowedSignersFile.lists(key, for: "sam@acme.com", in: file))
+        #expect(AllowedSignersFile.lists(key, for: "other@example.com", in: file))
+        #expect(!AllowedSignersFile.lists(key, for: "new@example.com", in: file))
+        #expect(AllowedSignersFile.line(email: "sam@rivera.dev", key: key)
+            == "sam@rivera.dev namespaces=\"git\" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEl5c7+FTBhBHYT9TKz61AWx/U3+VjN1Mh2idso8ynyp")
+    }
+
+    @Test func findsACommitsSignatureInItsHeaders() {
+        let commit = """
+        tree 4b825dc642cb6eb9a060e54bf8d69288fbee4904
+        author T <t@example.com> 1764000000 +0000
+        committer T <t@example.com> 1764000000 +0000
+        gpgsig -----BEGIN SSH SIGNATURE-----
+         U1NIU0lH
+         -----END SSH SIGNATURE-----
+
+        Signed
+        """
+        #expect(SSHSignatureParser.signature(inCommit: commit) == "-----BEGIN SSH SIGNATURE-----\nU1NIU0lH\n-----END SSH SIGNATURE-----")
+        #expect(SSHSignatureParser.signature(inCommit: "tree 4b82\n\nUnsigned\ngpgsig in the message") == nil)
+        // A signature too short to hold a key.
+        #expect(SSHSignatureParser.publicKey(inSignature: "-----BEGIN SSH SIGNATURE-----\nU1NIU0lH\n-----END SSH SIGNATURE-----") == nil)
+    }
+
     // MARK: OpenPGP
 
     /// A key that signs, then one that has expired, one that was revoked, one

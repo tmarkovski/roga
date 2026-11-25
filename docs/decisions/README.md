@@ -114,3 +114,4 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [104](0104-mark-signed-commits-and-check-only-the-selected-one.md) | Mark signed commits, and check only the selected one | Accepted |
 | [105](0105-show-who-commits-go-out-as-at-the-end-of-the-title-row.md) | Show who commits go out as at the end of the title row, and always in the box | Accepted |
 | [106](0106-offer-the-signing-keys-this-mac-has.md) | Offer the signing keys this Mac has | Accepted |
+| [107](0107-trust-your-own-ssh-key-from-the-signature-line.md) | Trust your own SSH key from the Signature line | Accepted |

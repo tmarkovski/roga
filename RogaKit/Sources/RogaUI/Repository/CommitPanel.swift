@@ -342,7 +342,7 @@ private struct CommitDetails: View {
             // Only for a commit with a signature, and only the one the panel
             // shows, since checking runs gpg or ssh-keygen (decision 104).
             if let format = info.signatureFormat {
-                SignatureLine(commit: info.id, format: format, session: model.session)
+                SignatureLine(commit: info.id, format: format, email: info.committer.email, session: model.session)
             }
         }
     }
