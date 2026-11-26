@@ -30,7 +30,7 @@ The sidebar runs the full height of the window on the left, with the traffic lig
 
 Rows at the top of the sidebar, under the traffic lights, do what isn't about a repository ([decision 53](decisions/0053-organizations-as-groups-in-the-list-and-add-and-settings-at-the-top.md)). A line across the sidebar separates them from the list.
 
-- **Add Repositories** opens a popover for adding clones (see Adding repositories), and **Settings** opens Settings ([Settings](design/settings/README.md)). Each has a gray icon and its title, is as tall as the list's rows and fills with gray under the pointer. Add Repositories keeps the darker gray while its popover is open, and Settings while its sheet is, because neither is a selection.
+- **Add Repositories** opens a popover for adding clones that are on this Mac and for cloning from a URL (see Adding repositories), and **Settings** opens Settings ([Settings](design/settings/README.md)). Each has a gray icon and its title, is as tall as the list's rows and fills with gray under the pointer. Add Repositories keeps the darker gray while its popover is open, and Settings while its sheet is, because neither is a selection.
 - **A new version of Roga** shows as a third row in every window, in orange with an arrow in a circle, reading Update to 1.4 ([decision 43](decisions/0043-show-a-new-version-in-the-sidebar-rather-than-sparkles-window.md)). Clicking it opens Sparkle's window for that version. When Sparkle has already downloaded it, it reads Restart to Update, and a click installs it and relaunches Roga. It stays until the version installs or is skipped in Sparkle's window.
 
 ### The list
@@ -58,13 +58,22 @@ The list starts with **Repositories** in bold, with how many there are in its to
 
 ### Adding repositories
 
-The **Add Repositories** row opens a popover with that title. With nothing in the sidebar yet, there's nowhere for it to look, so the row asks for a folder first, as Look in Another Folder… does, and cancelling that leaves the popover closed.
+The **Add Repositories** row opens a popover with that title, and a segmented control under it for where to add from: **On This Mac** or **From a URL** ([decision 113](decisions/0113-clone-from-a-url-in-add-repositories.md)). It shows the one it showed last. With nothing in the sidebar yet, there's nowhere for it to look, so the row asks for a folder first, as Look in Another Folder… does, and cancelling that leaves the popover closed.
+
+On This Mac:
 
 - It lists the clones it finds in the folders the user has added repositories from, one level deep, leaving out what the sidebar lists. Each row has a checkbox, the clone's name, its folder and when it was last used, which is when its index last changed, and the latest come first. Finding them only reads the folders, without running git, and the sidebar looks once as the window opens. The popover opens with what was found last and looks again, so it opens at its full size.
 - A field at the top filters by name. The down arrow goes from it to the rows, where the up and down arrows move, Space checks a row and Return adds what's checked, or else the row the keyboard is on.
 - **Look in Another Folder…** lists the clones in a folder the user picks, or the folder itself if it's a clone, which starts checked. **Add Selected** adds them to the sidebar and shows the first.
 
-File > Open still asks for a folder and adds its repository, from anywhere.
+From a URL:
+
+- A form takes the **URL**, the **Name** of the clone's folder, which follows the URL's last part without `.git` until it's typed over, and the **Folder** it goes in. The folder is a pop-up of the folders On This Mac looks in, starting with the one most listed repositories are in, with **Choose…** at its end for the open panel. **Clone submodules too** is on unless it's turned off, and adds `--recurse-submodules`.
+- A command block under the form shows exactly what will run, as in `git clone --progress --recurse-submodules --end-of-options https://github.com/owner/repo /Users/me/git/repo`.
+- When something is already at the folder the clone would make, the form says so and **Clone** stays disabled. When the sidebar already has a repository with that remote, however its URL is written, it says so and offers **Show**.
+- Clone, or Return, closes the popover. The repository's row shows at once, faint, in the group of the owner in its URL, with a second line such as `Cloning · receiving objects` and `42%` at the right. It can't be selected yet, and its menu has only **Cancel clone**, which stops git, and git deletes what it made. When the clone is done, the window shows it, unless another worktree was selected in the meantime. When git refuses, the refusal dialog shows the command and what git said, and the row goes.
+
+File > Open… still asks for a folder and adds its repository, from anywhere. File > Clone Repository…, with Shift-Command-O, opens the popover on From a URL, and so does Clone Repository… in a window with no repositories.
 
 ## The title row
 

@@ -86,7 +86,7 @@ Release 1 was also going to have file history, search and blame, and to pass the
 - Stage and unstage by line. Staging by file, committing and amending came first (decision 30), then discarding (decision 39), and then staging and unstaging by hunk.
 - Rename branches and switch branches from the keyboard. Starting a branch from any commit came first (decision 65).
 - Ask for a passphrase when git needs one to fetch, pull or push (decision 20).
-- Clone a repository into a folder the user chooses, using the user's own credential helpers and SSH setup, and add it to the sidebar. Its action goes under opening a repository at the top of the sidebar.
+- Clone a repository into a folder the user chooses, using the user's own credential helpers and SSH setup, and add it to the sidebar. It's From a URL in the Add Repositories popover, and File > Clone Repository… (decision 113).
 - Create, apply and drop stashes.
 - Decide whether Roga turns on the untracked cache or the filesystem monitor for large repositories.
 

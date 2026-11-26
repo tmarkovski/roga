@@ -6,24 +6,41 @@ import SwiftUI
 /// What the popover found and what the user has chosen, which outlast the
 /// popover closing, while the open panel is up and until it opens again.
 struct AddRepositoriesState {
+    /// Where the popover adds from: the clones already on this Mac, or a URL
+    /// to clone (decision 113).
+    enum Source: Hashable {
+        case thisMac
+        case url
+    }
+
+    var source = Source.thisMac
     /// The clones found the last time it looked, or nil until it has.
     var found: [LocalClone]?
     /// The folders the user picked, which it looks in as well.
     var pickedFolders: [String] = []
     /// The clones checked, by their folders.
     var checked: Set<String> = []
+    /// What the clone form has been given.
+    var clone = CloneFormState()
 }
 
-/// The popover that adds clones already on this Mac to the sidebar. It looks in
-/// the folders that listed repositories are in, and in any the user picks
-/// (decision 16). It opens with what the sidebar found as the window opened,
-/// or what it found itself last time, and looks again, so that it opens at
-/// its full size rather than growing once it has looked.
+/// The popover that adds repositories to the sidebar, with a segmented control
+/// along its top for where from (decision 113).
+///
+/// On This Mac adds clones that are already here. It looks in the folders that
+/// listed repositories are in, and in any the user picks (decision 16). It
+/// opens with what the sidebar found as the window opened, or what it found
+/// itself last time, and looks again, so that it opens at its full size rather
+/// than growing once it has looked.
+///
+/// From a URL clones a repository into one of those folders (`CloneForm`).
 struct AddRepositories: View {
     let list: RepositoryList
     @Binding var state: AddRepositoriesState
+    @Binding var selection: WorktreeSelection?
     let lookInAnotherFolder: () -> Void
-    let select: (WorktreeSelection) -> Void
+    /// Asks for a folder to clone into with the open panel.
+    let chooseCloneFolder: () -> Void
     /// The row the keyboard is on.
     @State private var current: String?
     @State private var filter = ""
@@ -43,6 +60,40 @@ struct AddRepositories: View {
                 .frame(height: 44)
                 .padding(.horizontal, 16)
                 .accessibilityAddTraits(.isHeader)
+            Picker("Add From", selection: $state.source) {
+                Text("On This Mac").tag(AddRepositoriesState.Source.thisMac)
+                Text("From a URL").tag(AddRepositoriesState.Source.url)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(EdgeInsets(top: 0, leading: 12, bottom: 12, trailing: 12))
+            switch state.source {
+            case .thisMac:
+                clonesOnThisMac
+            case .url:
+                CloneForm(
+                    list: list,
+                    state: $state.clone,
+                    folders: list.cloneFolders(alsoLookingIn: state.pickedFolders + state.clone.chosenFolders),
+                    selection: $selection,
+                    chooseFolder: chooseCloneFolder
+                )
+            }
+        }
+        .frame(width: 400)
+        .task(id: state.pickedFolders) {
+            let found = await list.clonesToAdd(alsoLookingIn: state.pickedFolders)
+            guard !Task.isCancelled else { return }
+            state.found = found
+            // A folder the user picked that is itself a clone is the one they
+            // want.
+            state.checked.formUnion(found.map(\.path).filter(pickedPaths.contains))
+        }
+    }
+
+    /// The clones on this Mac, under the filter, and the buttons that add them.
+    @ViewBuilder private var clonesOnThisMac: some View {
+        VStack(alignment: .leading, spacing: 0) {
             filterField
             Text("Clones found in the folders you’ve already added from.")
                 .font(.system(size: 12))
@@ -62,15 +113,6 @@ struct AddRepositories: View {
                     .disabled(toAdd.isEmpty)
             }
             .padding(12)
-        }
-        .frame(width: 400)
-        .task(id: state.pickedFolders) {
-            let found = await list.clonesToAdd(alsoLookingIn: state.pickedFolders)
-            guard !Task.isCancelled else { return }
-            state.found = found
-            // A folder the user picked that is itself a clone is the one they
-            // want.
-            state.checked.formUnion(found.map(\.path).filter(pickedPaths.contains))
         }
         .onAppear { isFilterFocused = true }
     }
@@ -201,7 +243,7 @@ struct AddRepositories: View {
                     showAlert("Can't add \((folder as NSString).lastPathComponent)", error)
                 }
             }
-            if let first { select(first) }
+            if let first { selection = first }
         }
     }
 }
