@@ -46,9 +46,9 @@ struct IdentityTests {
     }
 
     @Test func saysWhereAnIncludedOrOwnSettingComesFrom() {
-        #expect(IdentityWords.origin(included, globalFiles: globalFiles) == "from ~/.gitconfig-work, which ~/.gitconfig includes")
-        #expect(IdentityWords.origin(local, globalFiles: globalFiles) == "this repository's own")
-        #expect(IdentityWords.origin(ConfigOrigin(scope: .worktree), globalFiles: globalFiles) == "this worktree's own")
+        #expect(IdentityWords.origin(included, globalFiles: globalFiles) == "from ~/.gitconfig-work (included by ~/.gitconfig)")
+        #expect(IdentityWords.origin(local, globalFiles: globalFiles) == "set in this repository")
+        #expect(IdentityWords.origin(ConfigOrigin(scope: .worktree), globalFiles: globalFiles) == "set in this worktree")
         #expect(IdentityWords.origin(ConfigOrigin(scope: .system, file: "/etc/gitconfig"), globalFiles: globalFiles) == "from /etc/gitconfig")
     }
 
@@ -167,14 +167,34 @@ struct IdentityTests {
         #expect(editor.changes.isEmpty)
     }
 
+    @Test func labelsOnlyTheValuesThatDontComeFromTheGlobalFile() {
+        let editor = IdentityEditor(identity: identity(emailFrom: included), defaultIdentity: identity(), globalFiles: globalFiles)
+        // From ~/.gitconfig, the global value, which is the usual case.
+        #expect(editor.labelWords(.name) == nil)
+        // From a file ~/.gitconfig includes, which the label names.
+        #expect(editor.labelWords(.email) == "from ~/.gitconfig-work (included by ~/.gitconfig)")
+        // Not set, which the switch that's off shows.
+        #expect(editor.labelWords(.signsCommits) == nil)
+        // Once a field changes, its label says nothing, since Save to and
+        // the block along the bottom show what Save will do, and so flipping
+        // the switch adds no words beside it.
+        editor.email = "sam@oss.example"
+        editor.signs = true
+        #expect(editor.labelWords(.email) == nil)
+        #expect(editor.labelWords(.signsCommits) == nil)
+
+        let setHere = IdentityEditor(identity: identity(emailFrom: local), defaultIdentity: identity(), globalFiles: globalFiles)
+        #expect(setHere.labelWords(.email) == "set in this repository")
+        setHere.useGlobal(.email)
+        #expect(setHere.labelWords(.email) == nil)
+    }
+
     @Test func savesToTheRepositoryByDefault() {
         let editor = IdentityEditor(identity: identity(), defaultIdentity: identity(), globalFiles: globalFiles)
         editor.email = "sam@oss.example"
         #expect(editor.changes == [.set(.email, "sam@oss.example", in: .repository)])
-        #expect(editor.originWords(.email) == "this repository's own, once saved")
         editor.place = .everyRepository
         #expect(editor.changes == [.set(.email, "sam@oss.example", in: .everyRepository)])
-        #expect(editor.originWords(.email) == "in ~/.gitconfig, once saved")
         #expect(editor.shadowNote == nil)
     }
 
@@ -182,7 +202,6 @@ struct IdentityTests {
         let editor = IdentityEditor(identity: identity(), defaultIdentity: identity(), globalFiles: globalFiles)
         editor.name = ""
         #expect(editor.changes == [.unset(.name, in: .repository)])
-        #expect(editor.originWords(.name) == "removed from this repository once saved")
     }
 
     @Test func turnsSigningOnWithAFormatAndAKey() {
@@ -199,6 +218,43 @@ struct IdentityTests {
         // Turning it off again leaves the format and the key alone.
         editor.signs = false
         #expect(editor.changes.isEmpty)
+    }
+
+    @Test func signsWithOneChoiceOfOffOrAFormat() {
+        let editor = IdentityEditor(identity: identity(), defaultIdentity: identity(), globalFiles: globalFiles)
+        #expect(editor.signing == nil)
+        #expect(editor.signingKeys == [.signsCommits])
+        editor.signing = .ssh
+        #expect(editor.signs)
+        #expect(editor.format == .ssh)
+        #expect(editor.signingKeys == [.signsCommits, .signingFormat])
+        #expect(editor.changes == [
+            .set(.signsCommits, "true", in: .repository),
+            .set(.signingFormat, "ssh", in: .repository),
+        ])
+        // Off leaves the format as it is, so it changes nothing.
+        editor.signing = nil
+        #expect(editor.format == .ssh)
+        #expect(editor.changes.isEmpty)
+    }
+
+    @Test func useGlobalOnSignCommitsRemovesBothOfTheRepositorysSettings() {
+        var own = identity()
+        own.signsCommits = Setting("true", origin: local)
+        own.signingFormat = Setting("ssh", origin: local)
+        let editor = IdentityEditor(identity: own, defaultIdentity: identity(), globalFiles: globalFiles)
+        #expect(editor.signing == .ssh)
+        #expect(editor.labelWords(.signsCommits) == "set in this repository")
+        let set = editor.signingKeys.filter(editor.canUseGlobal)
+        #expect(set == [.signsCommits, .signingFormat])
+        set.forEach(editor.useGlobal)
+        // The global config doesn't sign, so the format no longer shows, but
+        // its removal still runs.
+        #expect(editor.signing == nil)
+        #expect(editor.changes == [
+            .unset(.signsCommits, in: .repository),
+            .unset(.signingFormat, in: .repository),
+        ])
     }
 
     @Test func goesBackToTheGlobalValue() {
@@ -385,6 +441,8 @@ struct IdentityTests {
         #expect(IdentityPopover.unavailable(.x509, programs: found, current: .ssh) == "Install GnuPG, which has gpgsm, to sign with X.509")
         // The format git signs with stays, and the popover warns instead.
         #expect(IdentityPopover.unavailable(.openPGP, programs: found, current: .openPGP) == nil)
+        // While commits aren't signed, git's default is faded like the rest.
+        #expect(IdentityPopover.unavailable(.openPGP, programs: found, current: nil) == "Install GnuPG to sign with OpenPGP")
     }
 
     func sshPlan(setsFile: Bool = true) -> NewSigningKey.Plan {
@@ -403,7 +461,11 @@ struct IdentityTests {
 
     @Test func theNewKeyConfirmSaysWhatItMakesAndRuns() {
         let plan = sshPlan()
-        #expect(NewKeyPopover.note(plan) == "Roga makes an Ed25519 key in ~/.ssh/id_ed25519_signing, without a passphrase, so git, Roga and agents can sign without asking. Anyone who can read that file can sign as you. It also goes in ~/.ssh/allowed_signers, so git says your commits are good.")
+        #expect(NewKeyPopover.facts(plan) == [
+            .init(label: "Email", value: "sam@rivera.dev"),
+            .init(label: "File", value: "~/.ssh/id_ed25519_signing"),
+        ])
+        #expect(NewKeyPopover.note(plan) == "Roga makes an Ed25519 key without a passphrase, so git, Roga and agents can sign without asking. Anyone who can read the file can sign as you. It also goes in ~/.ssh/allowed_signers, so git says your commits are good.")
         #expect(NewKeyPopover.lines(plan) == [
             .program(plan.command),
             .command(["config", "--global", "gpg.ssh.allowedSignersFile", "~/.ssh/allowed_signers"]),
@@ -415,12 +477,17 @@ struct IdentityTests {
         let openPGP = NewSigningKey.Plan(
             format: .openPGP,
             email: "sam@rivera.dev",
+            name: "Sam Rivera",
             userID: "Sam Rivera <sam@rivera.dev>",
             program: "/opt/homebrew/bin/gpg",
             arguments: [],
             shownArguments: []
         )
-        #expect(NewKeyPopover.note(openPGP) == "Roga makes an Ed25519 key for Sam Rivera <sam@rivera.dev> that doesn't expire, without a passphrase, so git, Roga and agents can sign without asking. Anyone who can use your GnuPG keyring can sign as you.")
+        #expect(NewKeyPopover.facts(openPGP) == [
+            .init(label: "Name", value: "Sam Rivera"),
+            .init(label: "Email", value: "sam@rivera.dev"),
+        ])
+        #expect(NewKeyPopover.note(openPGP) == "Roga makes an Ed25519 key that doesn't expire, without a passphrase, so git, Roga and agents can sign without asking. Anyone who can use your GnuPG keyring can sign as you.")
     }
 
     @Test func theMadeKeySaysWhereItCanGo() {

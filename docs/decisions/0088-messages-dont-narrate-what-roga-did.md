@@ -10,7 +10,7 @@ macOS alerts traditionally name the app, as in "Safari can't open the page", bec
 
 ## Decision
 
-**A message says what happened, or what's wrong, without the app as its subject.** "Couldn't check whether it's installed: codex timed out after 15 seconds." "Couldn't open … as a repository." "git status printed an unexpected record." "Something else moved HEAD in the meantime, so it was left alone." "Sets pull.rebase in its git config, so you won't be asked again."
+**A message says what happened, or what's wrong, without the app as its subject.** "Couldn't check installation: codex timed out after 15 seconds." "Couldn't open … as a repository." "git status printed an unexpected record." "Something else moved HEAD in the meantime, so it was left alone." "Sets pull.rebase in its git config, so you won't be asked again."
 
 **Roga is named only where it tells Roga apart from something else:**
 
@@ -22,6 +22,8 @@ macOS alerts traditionally name the app, as in "Safari can't open the page", bec
 
 **Setup names Roga at most once on a screen,** where it says what Roga needs or does: "Roga needs Git 2.45 or newer", or "Roga runs the Git on your Mac, with your own configuration…". The heading above that sentence is now "Git 2.54.0 is ready".
 
+**Settings descriptions use plain interface wording.** The gray text under a heading or a setting says what the setting does or what it affects, in a sentence or two of the kind other Mac apps use: "Used by all repositories unless overridden. Saved in ~/.gitconfig." or "Verifies the selected commit's signature with gpg or ssh-keygen. When off, click Check to verify." It doesn't explain how Roga works or walk through each case. This was added on 2026-11-25, after the Identity section's description read like a story, and the Settings text that shows beside it, such as where a value comes from and why a format can't sign, was rewritten the same way.
+
 **The hooks' plugin keeps its words,** although its description, which Claude Code shows, names Roga twice. Codex trusts a plugin's hooks by a hash of its files, so new words there would ask everyone to trust Roga's hooks again, and the files would need checking with `claude plugin validate` again. It can change the next time the plugin has to.
 
 ## Consequences
@@ -31,3 +33,4 @@ macOS alerts traditionally name the app, as in "Safari can't open the page", bec
 - A program that runs past its time limit now "timed out after 15 seconds", rather than "didn't finish within 15 seconds, so Roga stopped it".
 - New messages follow the same rule. A sentence where "Roga" could be dropped, or replaced with "it", shouldn't name it.
 - The first-run boards still have the old wording. The [first-run README](../design/first-run/README.md) lists where the app now differs from them.
+- The Settings, agent settings and commit identity boards still have the Settings text from before 2026-11-25.

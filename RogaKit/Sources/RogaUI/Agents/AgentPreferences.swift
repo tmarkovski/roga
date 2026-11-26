@@ -21,9 +21,6 @@ enum AgentPreferences {
     static let defaultAgentKey = "defaultAgent"
     /// The agents someone added as commands, as JSON.
     static let customAgentsKey = "customAgents"
-    /// Whether the commit box shows the Generate button. A Bool, on unless
-    /// someone turned it off.
-    static let showsGenerateButtonKey = "generateShowsButton"
     /// Whether Generate sends the repository's recent subjects, so that the
     /// message matches its style. A Bool, on unless someone turned it off.
     static let matchesStyleKey = "generateMatchesStyle"
@@ -48,11 +45,6 @@ enum AgentPreferences {
     /// Whether Roga uses agents.
     static func usesAgents(in defaults: UserDefaults = .standard) -> Bool {
         defaults.object(forKey: usesAgentsKey) as? Bool ?? true
-    }
-
-    /// Whether the commit box shows the Generate button.
-    static func showsGenerateButton(in defaults: UserDefaults = .standard) -> Bool {
-        defaults.object(forKey: showsGenerateButtonKey) as? Bool ?? true
     }
 
     /// Whether Generate sends recent subjects.
@@ -98,10 +90,14 @@ enum AgentPreferences {
     /// which Settings no longer offers.
     static func legacyExtraArgumentsKey(_ kind: AgentKind) -> String { "agent.\(kind.rawValue).extraArguments" }
     static func legacyTimeLimitKey(_ kind: AgentKind) -> String { "agent.\(kind.rawValue).timeLimit" }
+    /// Whether the commit box showed the Generate button, which follows Use
+    /// agents now (decision 110).
+    static let legacyShowsGenerateButtonKey = "generateShowsButton"
 
     /// Turns what Settings kept before decision 89 into Use agents and the
-    /// default agent, and removes it. It changes nothing once it's gone, so
-    /// it's safe to call at each launch.
+    /// default agent, and removes it, with the Generate button's switch that
+    /// decision 110 took out. It changes nothing once it's gone, so it's safe
+    /// to call at each launch.
     ///
     /// Both agents switched off means agents are off. Generate's agent stays
     /// the default while it was switched on, and with only one switched on,
@@ -111,7 +107,7 @@ enum AgentPreferences {
             (defaults.object(forKey: legacyEnabledKey(kind)) as? Bool).map { (kind: kind, isOn: $0) }
         }
         let generate = defaults.string(forKey: legacyGenerateAgentKey)
-        let others = [legacyShowsMarksKey] + AgentKind.allCases.flatMap { [legacyExtraArgumentsKey($0), legacyTimeLimitKey($0)] }
+        let others = [legacyShowsMarksKey, legacyShowsGenerateButtonKey] + AgentKind.allCases.flatMap { [legacyExtraArgumentsKey($0), legacyTimeLimitKey($0)] }
         defer {
             for kind in AgentKind.allCases { defaults.removeObject(forKey: legacyEnabledKey(kind)) }
             defaults.removeObject(forKey: legacyGenerateAgentKey)

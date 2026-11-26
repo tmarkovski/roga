@@ -277,9 +277,9 @@ struct AddCustomAgentDialog: View {
 enum CustomAgentWords {
     static let commandPlaceholder = "ollama run qwen2.5-coder:7b"
 
-    static let commandHelp = "Gets the instructions and the diff on standard input, and prints its answer."
+    static let commandHelp = "Reads the prompt from standard input and prints the response."
 
-    static let addMessage = "Any command that reads from standard input and prints its answer, such as a local model. Roga can't install hooks in it, so it has no status in the sidebar."
+    static let addMessage = "A command that reads a prompt from standard input and prints a response, such as a local model. Custom agents don't show status in the sidebar."
 
     /// What runs, as the dialog's block shows it: where the instructions and
     /// the diff go, then the command in the shell, or the shell alone until
@@ -295,11 +295,11 @@ enum CustomAgentWords {
     static func deleteDialog(_ custom: CustomAgent, agents: AgentProvider, cancel: @escaping () -> Void, delete: @escaping () -> Void) -> DialogContent {
         let isDefault = agents.defaultAgent == .custom(custom.id)
         let next = agents.availableAgents.first { $0 != .custom(custom.id) }.flatMap(agents.named)
-        let instead = isDefault ? (next.map { " Generate, Resolve and Fix run \($0.name) instead." } ?? " Generate, Resolve and Fix are hidden until there's another agent.") : ""
+        let instead = isDefault ? (next.map { " Generate, Resolve and Fix will use \($0.name)." } ?? " Generate, Resolve and Fix will be hidden until another agent is available.") : ""
         return DialogContent(
             id: "deleteCustomAgent-\(custom.id)",
             title: "Delete \(custom.shownName)?",
-            message: DialogText(stringLiteral: "Roga won't run its command any more.\(instead)"),
+            message: DialogText(stringLiteral: "Its command will no longer run.\(instead)"),
             buttons: [
                 DialogButton(title: "Cancel", kind: .secondary, action: cancel),
                 DialogButton(title: "Delete Agent", kind: .destructive, action: delete),

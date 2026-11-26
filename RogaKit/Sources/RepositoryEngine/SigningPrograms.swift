@@ -35,9 +35,9 @@ public enum SigningPrograms {
         /// What a disabled format's tooltip says, or nil when it's found.
         public var hint: String? {
             guard !isFound else { return nil }
-            if let setting { return "Roga can't find \(named), which \(setting) names" }
+            if let setting { return "Can't find \(named) (set by \(setting))" }
             switch format {
-            case .ssh: return "Roga can't find ssh-keygen"
+            case .ssh: return "Can't find ssh-keygen"
             case .openPGP: return "Install GnuPG to sign with OpenPGP"
             case .x509: return "Install GnuPG, which has gpgsm, to sign with X.509"
             }
@@ -47,9 +47,9 @@ public enum SigningPrograms {
         /// program isn't here, or nil when it's found.
         public var warning: String? {
             guard !isFound else { return nil }
-            let what = setting.map { "\(named), which \($0) names" } ?? named
-            let install = format == .ssh || setting != nil ? "" : " Install GnuPG, or sign with SSH."
-            return "Roga can't find \(what), so commits would stop at signing.\(install)"
+            let what = setting.map { "\(named) (set by \($0))" } ?? named
+            let install = format == .ssh || setting != nil ? "" : " Install GnuPG or use SSH."
+            return "Can't find \(what). Commits will fail at signing.\(install)"
         }
     }
 

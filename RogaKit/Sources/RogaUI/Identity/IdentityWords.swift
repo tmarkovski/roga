@@ -63,13 +63,13 @@ struct IdentityWords {
             guard let file = origin.file else { return "from git's config" }
             let shown = globalFiles.abbreviated(file)
             if origin.scope == .global, !globalFiles.paths.contains(file), let including = globalFiles.shownFile {
-                return "from \(shown), which \(including) includes"
+                return "from \(shown) (included by \(including))"
             }
             return "from \(shown)"
         case .local:
-            return "this repository's own"
+            return "set in this repository"
         case .worktree:
-            return "this worktree's own"
+            return "set in this worktree"
         case .command:
             return "from git's environment"
         case .unknown:
@@ -99,9 +99,9 @@ struct IdentityWords {
     static func problem(_ problem: CommitIdentity.Problem) -> (title: String, detail: String) {
         switch problem {
         case .noEmail:
-            ("No email to commit with", "git would refuse to commit, or make one up from your login and this Mac's name.")
+            ("No email to commit with", "Git may refuse to commit, or guess an email from your login and computer name.")
         case .noSigningKey:
-            ("Signing is on, but there's no key", "SSH signing needs user.signingkey, so the commit would stop at signing.")
+            ("Signing is on, but there's no key", "SSH signing requires user.signingkey. Commits will fail at signing.")
         }
     }
 }

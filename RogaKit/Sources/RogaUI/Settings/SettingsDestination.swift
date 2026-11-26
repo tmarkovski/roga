@@ -2,24 +2,52 @@ import AgentEngine
 import Foundation
 import SwiftUI
 
-/// Where Settings opens: one of its pages, or an agent's own page, custom
-/// agents' too, which belongs to Agents. Commands elsewhere in Roga open Settings at the setting
-/// they're about, such as Agent Settings… after Generate fails.
+/// A page of Settings that opens from a row on another page, with a back
+/// button before its title, as an agent's page does.
+enum SettingsSubpage: String {
+    /// The repositories whose identity isn't the global one, from Git's
+    /// Identity section.
+    case repositoryOverrides
+
+    /// The page it belongs to, which the sidebar shows as selected.
+    var page: SettingsPage {
+        switch self {
+        case .repositoryOverrides: .git
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .repositoryOverrides: SettingsItem.identityRepositories.title
+        }
+    }
+}
+
+/// Where Settings opens: one of its pages, an agent's own page, custom
+/// agents' too, which belongs to Agents, or a page that opens from a row,
+/// such as Repository overrides. Commands elsewhere in Roga open Settings at
+/// the setting they're about, such as Agent Settings… after Generate fails.
 enum SettingsDestination: Equatable {
     case page(SettingsPage)
     case agent(AgentID)
+    case subpage(SettingsSubpage)
 
     /// Where Settings keeps its page, so it opens where it was last.
     static let pageKey = "settingsPage"
     /// Where Settings keeps the agent whose page shows, as `AgentID.stored`.
     /// While it's absent, the page itself shows.
     static let agentKey = "settingsAgent"
+    /// Where Settings keeps the subpage that shows. While it's absent, the
+    /// page itself shows.
+    static let subpageKey = "settingsSubpage"
 
-    /// What's stored for a page and an agent. An agent's page shows only
-    /// under Agents.
-    init(page: SettingsPage, agent: AgentID?) {
+    /// What's stored for a page, an agent and a subpage. An agent's page
+    /// shows only under Agents, and a subpage only under its own page.
+    init(page: SettingsPage, agent: AgentID?, subpage: SettingsSubpage? = nil) {
         if page == .agents, let agent {
             self = .agent(agent)
+        } else if let subpage, subpage.page == page {
+            self = .subpage(subpage)
         } else {
             self = .page(page)
         }
@@ -30,6 +58,7 @@ enum SettingsDestination: Equatable {
         switch self {
         case .page(let page): page
         case .agent: .agents
+        case .subpage(let subpage): subpage.page
         }
     }
 
@@ -41,6 +70,11 @@ enum SettingsDestination: Equatable {
             defaults.set(id.stored, forKey: Self.agentKey)
         } else {
             defaults.removeObject(forKey: Self.agentKey)
+        }
+        if case .subpage(let subpage) = self {
+            defaults.set(subpage.rawValue, forKey: Self.subpageKey)
+        } else {
+            defaults.removeObject(forKey: Self.subpageKey)
         }
     }
 }

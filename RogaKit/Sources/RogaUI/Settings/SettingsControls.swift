@@ -31,21 +31,29 @@ enum SettingsColors {
 }
 
 extension VerticalAlignment {
-    private enum SettingsFirstLine: AlignmentID {
+    private enum SettingsRowMiddle: AlignmentID {
         static func defaultValue(in context: ViewDimensions) -> CGFloat {
             context[VerticalAlignment.center]
         }
     }
 
-    /// The middle of a row's first line, which is its name, for the controls
-    /// at the row's top right, in every row of Settings. They stay beside the
-    /// name however many lines go under it, as a row's commands do elsewhere
-    /// in Roga.
-    static let settingsFirstLine = VerticalAlignment(SettingsFirstLine.self)
+    /// The middle of a row's words and of its control, which every row of
+    /// Settings lines up, as other Mac apps' settings do. A control with more
+    /// under it, such as the Key field and the line about its key, marks the
+    /// middle of the field, so that the words line up with the field.
+    static let settingsRowMiddle = VerticalAlignment(SettingsRowMiddle.self)
 }
 
-/// A group of settings under a heading, with a thin line between its rows and
-/// no card around them.
+/// The spacing of Settings' pages.
+enum SettingsMetrics {
+    /// Between one section and the heading of the next.
+    static let sectionSpacing: CGFloat = 40
+    /// Above and below a row's words and its control.
+    static let rowPadding: CGFloat = 12
+}
+
+/// A group of settings under a heading, with a thin line under the heading,
+/// a thin line between its rows, and no card around them.
 struct SettingsSection<Aside: View, Content: View>: View {
     let title: String
     /// Gray words under the heading that say what the whole group is about.
@@ -56,33 +64,57 @@ struct SettingsSection<Aside: View, Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
+                // As large as a row's name, and bold, so that the page's
+                // title stays the largest words on it.
                 Text(title)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .accessibilityAddTraits(.isHeader)
                 aside
             }
             .frame(minHeight: 26, alignment: .leading)
-            .padding(.bottom, 4)
             if let description {
                 Text(description)
                     .font(.system(size: 12.5))
                     .lineSpacing(3)
                     .foregroundStyle(SettingsColors.note)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.bottom, 8)
+                    .padding(.top, 2)
             }
+            SettingsRows(lineAbove: true) {
+                content
+            }
+            .padding(.top, 10)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Rows with a thin line between each, and above the first when they follow
+/// a heading.
+struct SettingsRows<Content: View>: View {
+    var lineAbove = false
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
             Group(subviews: content) { rows in
                 ForEach(rows) { row in
-                    if row.id != rows.first?.id {
-                        Rectangle()
-                            .fill(SettingsColors.hairline)
-                            .frame(height: 1)
+                    if lineAbove || row.id != rows.first?.id {
+                        SettingsHairline()
                     }
                     row
                 }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// The thin line between rows.
+struct SettingsHairline: View {
+    var body: some View {
+        Rectangle()
+            .fill(SettingsColors.hairline)
+            .frame(height: 1)
     }
 }
 
@@ -93,9 +125,9 @@ extension SettingsSection where Aside == EmptyView {
 }
 
 /// One setting: its name and gray help on the left, and its control on the
-/// right, on the name's line, so that it stays beside the name however long
-/// the help is or however it changes. Help that's more than words, such as a program's path in the code
-/// font, goes in `detail`, and `help` then says all of it in words. VoiceOver
+/// right, the two lined up on their middles. Help that's more than words,
+/// such as a program's path in the code font, goes in `detail`, and `help`
+/// then says all of it in words. VoiceOver
 /// reads the name and the detail as one element, with `help` as its value,
 /// so it hears the whole sentence once rather than the detail's pieces.
 ///
@@ -117,7 +149,7 @@ struct SettingsRow<Detail: View, Control: View>: View {
     }
 
     var body: some View {
-        HStack(alignment: .settingsFirstLine, spacing: 16) {
+        HStack(alignment: .settingsRowMiddle, spacing: 16) {
             if let spokenDetail {
                 words
                     .accessibilityElement(children: .ignore)
@@ -131,15 +163,13 @@ struct SettingsRow<Detail: View, Control: View>: View {
                     .fixedSize()
                     .accessibilityLabel(title)
                     .accessibilityHint(help ?? "")
-                    .alignmentGuide(.settingsFirstLine) { $0[VerticalAlignment.center] }
             } else {
                 control
                     .fixedSize()
-                    .alignmentGuide(.settingsFirstLine) { $0[VerticalAlignment.center] }
             }
         }
-        .padding(.vertical, 10)
-        .frame(minHeight: hasHelp ? 56 : 46)
+        .padding(.vertical, SettingsMetrics.rowPadding)
+        .frame(minHeight: hasHelp ? 60 : 48)
     }
 
     private var hasHelp: Bool {
@@ -156,9 +186,8 @@ struct SettingsRow<Detail: View, Control: View>: View {
 
     /// The name, and the help or the detail under it.
     private var words: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 3) {
             Text(title)
-                .alignmentGuide(.settingsFirstLine) { $0[VerticalAlignment.center] }
             if let detail {
                 detail
                     .font(.system(size: 12.5))
@@ -187,6 +216,50 @@ extension SettingsRow where Detail == EmptyView {
     }
 }
 
+/// A row that opens a page of its own, such as Repository overrides: its name
+/// and gray help, then a short value and a chevron. The whole row is the
+/// button.
+struct SettingsLinkRow<Value: View>: View {
+    let title: String
+    var help: String?
+    /// What VoiceOver reads as the value, for what `value` draws.
+    var spokenValue = ""
+    let action: () -> Void
+    @ViewBuilder var value: Value
+
+    var body: some View {
+        Button(action: action) {
+            HStack(alignment: .center, spacing: 10) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                    if let help, !help.isEmpty {
+                        Text(help)
+                            .font(.system(size: 12.5))
+                            .lineSpacing(3)
+                            .foregroundStyle(SettingsColors.note)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                value
+                    .foregroundStyle(SettingsColors.note)
+                    .fixedSize()
+                Icon.chevronRight.image
+                    .font(.system(size: 14))
+                    .foregroundStyle(SettingsColors.note)
+                    .frame(width: 20, height: 24)
+            }
+            .padding(.vertical, SettingsMetrics.rowPadding)
+            .frame(minHeight: help?.isEmpty == false ? 60 : 48)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityValue(spokenValue)
+        .accessibilityHint(help ?? "")
+    }
+}
+
 /// Something that isn't a setting, such as the house's animations, in the
 /// list of rows.
 struct SettingsBlock<Content: View>: View {
@@ -194,7 +267,7 @@ struct SettingsBlock<Content: View>: View {
 
     var body: some View {
         content
-            .padding(.vertical, 12)
+            .padding(.vertical, SettingsMetrics.rowPadding)
     }
 }
 
