@@ -6,24 +6,41 @@ import SwiftUI
 /// What the popover found and what the user has chosen, which outlast the
 /// popover closing, while the open panel is up and until it opens again.
 struct AddRepositoriesState {
+    /// Where the popover adds from: the clones already on this Mac, or a URL
+    /// to clone (decision 113).
+    enum Source: Hashable {
+        case thisMac
+        case url
+    }
+
+    var source = Source.thisMac
     /// The clones found the last time it looked, or nil until it has.
     var found: [LocalClone]?
     /// The folders the user picked, which it looks in as well.
     var pickedFolders: [String] = []
     /// The clones checked, by their folders.
     var checked: Set<String> = []
+    /// What the clone form has been given.
+    var clone = CloneFormState()
 }
 
-/// The popover that adds clones already on this Mac to the sidebar. It looks in
-/// the folders that listed repositories are in, and in any the user picks
-/// (decision 16). It opens with what the sidebar found as the window opened,
-/// or what it found itself last time, and looks again, so that it opens at
-/// its full size rather than growing once it has looked.
+/// The popover that adds repositories to the sidebar, with a segmented control
+/// along its top for where from (decision 113).
+///
+/// On This Mac adds clones that are already here. It looks in the folders that
+/// listed repositories are in, and in any the user picks (decision 16). It
+/// opens with what the sidebar found as the window opened, or what it found
+/// itself last time, and looks again, so that it opens at its full size rather
+/// than growing once it has looked.
+///
+/// From a URL clones a repository into one of those folders (`CloneForm`).
 struct AddRepositories: View {
     let list: RepositoryList
     @Binding var state: AddRepositoriesState
+    @Binding var selection: WorktreeSelection?
     let lookInAnotherFolder: () -> Void
-    let select: (WorktreeSelection) -> Void
+    /// Asks for a folder to clone into with the open panel.
+    let chooseCloneFolder: () -> Void
     /// The row the keyboard is on.
     @State private var current: String?
     @State private var filter = ""
@@ -31,6 +48,8 @@ struct AddRepositories: View {
     @FocusState private var isListFocused: Bool
     @Environment(\.dismiss) private var dismiss
 
+    /// How wide the popover is, which the clone form's fields fill.
+    static let width: CGFloat = 400
     private static let rowHeight: CGFloat = 44
     /// The list fits its rows, between these many, so that a few clones don't
     /// leave a gap and a long filter result doesn't push the buttons away.
@@ -43,27 +62,24 @@ struct AddRepositories: View {
                 .frame(height: 44)
                 .padding(.horizontal, 16)
                 .accessibilityAddTraits(.isHeader)
-            filterField
-            Text("Clones found in the folders you’ve already added from.")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(EdgeInsets(top: 8, leading: 16, bottom: 6, trailing: 16))
-            rows
-                .frame(height: Self.rowHeight * CGFloat(visible.count.clamped(to: Self.visibleRows)))
-            Rectangle()
-                .fill(Palette.separator)
-                .frame(height: 1)
-            HStack {
-                Button("Look in Another Folder…", action: lookInAnotherFolder)
-                Spacer()
-                Button("Add Selected", action: add)
-                    .buttonStyle(.borderedProminent)
-                    .disabled(toAdd.isEmpty)
+            SettingsSegments(selection: $state.source, options: [(.thisMac, "On This Mac"), (.url, "From a URL")], fillsWidth: true)
+                .accessibilityLabel("Add From")
+                .padding(EdgeInsets(top: 0, leading: 16, bottom: 12, trailing: 16))
+            switch state.source {
+            case .thisMac:
+                clonesOnThisMac
+            case .url:
+                CloneForm(
+                    list: list,
+                    state: $state.clone,
+                    folders: list.cloneFolders(alsoLookingIn: state.pickedFolders + state.clone.chosenFolders),
+                    selection: $selection,
+                    chooseFolder: chooseCloneFolder
+                )
             }
-            .padding(12)
         }
-        .frame(width: 400)
+        .frame(width: Self.width)
+        .background(DialogColors.surface)
         .task(id: state.pickedFolders) {
             let found = await list.clonesToAdd(alsoLookingIn: state.pickedFolders)
             guard !Task.isCancelled else { return }
@@ -71,6 +87,31 @@ struct AddRepositories: View {
             // A folder the user picked that is itself a clone is the one they
             // want.
             state.checked.formUnion(found.map(\.path).filter(pickedPaths.contains))
+        }
+    }
+
+    /// The clones on this Mac, under the filter, and the buttons that add them.
+    @ViewBuilder private var clonesOnThisMac: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            filterField
+            Text("Clones found in the folders you’ve already added from.")
+                .font(.system(size: 12))
+                .foregroundStyle(DialogColors.note)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(EdgeInsets(top: 8, leading: 16, bottom: 6, trailing: 16))
+            rows
+                .frame(height: Self.rowHeight * CGFloat(visible.count.clamped(to: Self.visibleRows)))
+            Rectangle()
+                .fill(Palette.separator)
+                .frame(height: 1)
+            // The dialogs' buttons, as the clone form has. Return is handled
+            // by the field and the list, which add what the keyboard is on.
+            HStack(spacing: 8) {
+                DialogActionButton(button: DialogButton(title: "Look in Another Folder…", kind: .secondary, action: lookInAnotherFolder))
+                Spacer(minLength: 0)
+                DialogActionButton(button: DialogButton(title: "Add Selected", kind: .primary, isEnabled: !toAdd.isEmpty, pressesWithReturn: false, action: add))
+            }
+            .padding(EdgeInsets(top: 12, leading: 16, bottom: 14, trailing: 16))
         }
         .onAppear { isFilterFocused = true }
     }
@@ -126,7 +167,7 @@ struct AddRepositories: View {
             RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .strokeBorder(isFilterFocused ? Color.primary.opacity(0.35) : Palette.separator)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 16)
     }
 
     @ViewBuilder private var rows: some View {
@@ -201,7 +242,7 @@ struct AddRepositories: View {
                     showAlert("Can't add \((folder as NSString).lastPathComponent)", error)
                 }
             }
-            if let first { select(first) }
+            if let first { selection = first }
         }
     }
 }

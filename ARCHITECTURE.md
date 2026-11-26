@@ -84,6 +84,7 @@ roga/
 │   │   │   └── WorkingTreeLine.swift   the line from uncommitted changes down to HEAD
 │   │   ├── RepositoryEngine/
 │   │   │   ├── RepositoryLocation.swift where a repository's files are, and its hash
+│   │   │   ├── Cloning.swift          cloning a repository from a URL, and reading how far along git is, decision 113
 │   │   │   ├── RepositorySession.swift one actor per repository, which its worktrees share
 │   │   │   ├── HistoryLoader.swift     commit-graph, newer commits, fallbacks
 │   │   │   ├── RefsLoader.swift

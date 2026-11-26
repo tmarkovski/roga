@@ -10,6 +10,7 @@ public struct RepositoryCommands: Commands {
     /// The agents that write commit messages, for Generate's commands.
     let agents: AgentProvider
     @FocusedValue(\.selection) private var selection
+    @FocusedValue(\.asksToClone) private var asksToClone
     @FocusedValue(\.repository) private var repository
     @FocusedValue(\.sidebarVisibility) private var sidebarVisibility
     @FocusedValue(\.deleteSelectedWorktree) private var deleteSelectedWorktree
@@ -27,6 +28,9 @@ public struct RepositoryCommands: Commands {
 
     /// The shortcut for opening a repository, which the sidebar shows too.
     static let openShortcut = KeyboardShortcut("o")
+    /// The shortcut for cloning a repository from a URL, which pairs with
+    /// Open…'s (decision 113).
+    static let cloneShortcut = KeyboardShortcut("o", modifiers: [.shift, .command])
     /// The shortcut for deleting the worktree selected in the sidebar (decision 33).
     static let deleteWorktreeShortcut = KeyboardShortcut(.delete, modifiers: .command)
     /// The shortcut for copying the selected commit's hash, which the commit
@@ -120,6 +124,13 @@ public struct RepositoryCommands: Commands {
             }
             .keyboardShortcut(Self.openShortcut)
             .disabled(!list.isConnected)
+            Button("Clone Repository…") {
+                // The popover hangs from the sidebar's row.
+                if sidebarVisibility?.wrappedValue == .detailOnly { sidebarVisibility?.wrappedValue.toggleSidebar() }
+                asksToClone?.wrappedValue = true
+            }
+            .keyboardShortcut(Self.cloneShortcut)
+            .disabled(!list.isConnected || asksToClone == nil)
             Divider()
             Button("Show in Finder") {
                 worktreeCommands?.reveal?()
