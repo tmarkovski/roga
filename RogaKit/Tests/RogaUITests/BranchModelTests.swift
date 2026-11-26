@@ -1170,6 +1170,64 @@ struct BranchModelTests {
         #expect(model.branch.finished == "Pulled")
     }
 
+    /// With the house off in Settings as a pull starts, there's no house to
+    /// wait for, even once it's turned back on partway through, and the next
+    /// action has its house again (decision 112). This would wait for ten
+    /// minutes if it waited at all.
+    @Test func aPullWithTheHouseOffDoesntWaitForIt() async throws {
+        let clones = try await clones()
+        try await pushFromOther(clones)
+        let model = model(clones)
+        await model.appear()
+        await model.branch.quietFetch?.value
+        try await git("fetch", "--quiet", in: clones.work)
+        await model.branch.refresh()
+        model.branch.timeToPlayHouse = { _ in .seconds(600) }
+        var animatesHouse = false
+        model.branch.animatesHouse = { animatesHouse }
+
+        model.branch.pull()
+        #expect(model.branch.action == .pulling)
+        #expect(!model.branch.playsHouse)
+        animatesHouse = true
+        await model.branch.running?.value
+        #expect(model.branch.finished == "Pulled")
+        #expect(!model.branch.playsHouse)
+
+        model.branch.timeToPlayHouse = { _ in .zero }
+        model.branch.fetch()
+        #expect(model.branch.playsHouse)
+        await model.branch.running?.value
+    }
+
+    /// Turning the house off partway through a pull takes it away for the
+    /// rest of the pull, even once it's turned back on, so the house doesn't
+    /// come back partway through and the pull doesn't wait for it.
+    @Test func theHouseTurnedOffDuringAPullSitsOutTheRestOfIt() async throws {
+        let clones = try await clones()
+        try await pushFromOther(clones)
+        let model = model(clones)
+        await model.appear()
+        await model.branch.quietFetch?.value
+        try await git("fetch", "--quiet", in: clones.work)
+        await model.branch.refresh()
+        model.branch.timeToPlayHouse = { _ in .seconds(600) }
+        var animatesHouse = true
+        model.branch.animatesHouse = { animatesHouse }
+
+        model.branch.pull()
+        #expect(model.branch.playsHouse)
+        animatesHouse = false
+        NotificationCenter.default.post(name: UserDefaults.didChangeNotification, object: UserDefaults.standard)
+        #expect(await AgentTestSupport.eventually { !model.branch.playsHouse })
+        animatesHouse = true
+        NotificationCenter.default.post(name: UserDefaults.didChangeNotification, object: UserDefaults.standard)
+        model.branch.houseSettingMayHaveChanged()
+        #expect(!model.branch.playsHouse)
+        await model.branch.running?.value
+        #expect(model.branch.finished == "Pulled")
+    }
+
     /// These would wait for ten minutes if they waited at all, and the suite's
     /// time limit would fail them.
     @Test func aRefusalDoesntWaitForTheHouse() async throws {

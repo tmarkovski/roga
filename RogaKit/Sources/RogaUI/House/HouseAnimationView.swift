@@ -3,11 +3,19 @@ import SwiftUI
 
 extension UserDefaults {
     static let houseAnimationSpeedKey = "houseAnimationSpeed"
+    static let animatesHouseKey = "animatesHouse"
 
     /// How fast the house moves, as a multiple of normal speed. This reads the
     /// value the way `@AppStorage` does, so that the two can't disagree.
     var houseAnimationSpeed: Double {
         object(forKey: Self.houseAnimationSpeedKey) == nil ? 1 : double(forKey: Self.houseAnimationSpeedKey)
+    }
+
+    /// Whether the house works in the title row and drops through the Fetch
+    /// button while git runs, which it does unless the user turned it off
+    /// (decision 112).
+    var animatesHouse: Bool {
+        object(forKey: Self.animatesHouseKey) as? Bool ?? true
     }
 }
 
@@ -25,11 +33,17 @@ extension BranchModel.Action {
     }
 
     /// How long the house takes to play once at the speed it plays at. With no
-    /// house, or for someone who asked for less motion and sees a still pose,
-    /// there's nothing to wait for.
+    /// house, because the action has none or the house is off in Settings, or
+    /// for someone who asked for less motion and sees a still pose, there's
+    /// nothing to wait for.
     var timeToPlayHouse: Duration {
-        guard let houseAnimation, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return .zero }
-        return houseAnimation.timeToPlay(atSpeed: HouseAnimationView.playingSpeed(UserDefaults.standard.houseAnimationSpeed))
+        timeToPlayHouse(in: .standard)
+    }
+
+    /// How long the house takes to play once, with these settings.
+    func timeToPlayHouse(in defaults: UserDefaults) -> Duration {
+        guard let houseAnimation, defaults.animatesHouse, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return .zero }
+        return houseAnimation.timeToPlay(atSpeed: HouseAnimationView.playingSpeed(defaults.houseAnimationSpeed))
     }
 }
 
