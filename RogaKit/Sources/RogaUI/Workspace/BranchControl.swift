@@ -286,8 +286,9 @@ struct BranchMenuItems: View {
 /// counts come back, all at once (decision 93). A commit or a
 /// discard has no house, so its words open after the counts, which stay, so that
 /// `↑` can push what was just committed while `Committed 9f2c1ab` and its Undo
-/// are still showing (decision 76). A fetch shows nothing here, because the house
-/// drops through the Fetch button instead (decisions 45 and 55).
+/// are still showing (decision 76). With the house off in Settings, a push or a
+/// pull does the same (decision 112). A fetch shows nothing here, because the
+/// house drops through the Fetch button instead (decisions 45 and 55).
 private struct BranchCounts: View {
     /// How the title row moves from one step to the next.
     private enum Motion {
@@ -311,7 +312,8 @@ private struct BranchCounts: View {
     /// start before the action ends, and the action comes first.
     private enum Activity: Equatable {
         case idle
-        case running(BranchModel.Action)
+        /// The action, and its house, if it has one.
+        case running(BranchModel.Action, house: HouseAnimation?)
         /// The words, and the house of the action they're about, if it had one.
         case finished(String, house: HouseAnimation?)
     }
@@ -320,11 +322,18 @@ private struct BranchCounts: View {
     let switchBranch: (() -> Void)?
     @State private var shown = Shown()
     @Environment(\.accessibilityReduceMotion) private var reducesMotion
+    @AppStorage(UserDefaults.animatesHouseKey) private var animatesHouse = true
 
     private var activity: Activity {
-        if let action = branch.action, action != .fetching { .running(action) }
-        else if let finished = branch.finished { .finished(finished, house: branch.finishedAction?.houseAnimation) }
+        if let action = branch.action, action != .fetching { .running(action, house: house(action)) }
+        else if let finished = branch.finished { .finished(finished, house: branch.finishedAction.flatMap(house)) }
         else { .idle }
+    }
+
+    /// The house for an action, unless it's off in Settings, now or when the
+    /// action started (decision 112).
+    private func house(_ action: BranchModel.Action) -> HouseAnimation? {
+        animatesHouse && branch.playsHouse ? action.houseAnimation : nil
     }
 
     var body: some View {
@@ -418,8 +427,8 @@ private struct BranchCounts: View {
                 shown.showsWords = true
                 shown.showsCounts = house == nil
             }
-        case .running(let action):
-            guard let house = action.houseAnimation else {
+        case .running(let action, let house):
+            guard let house else {
                 // Outside the animation, because turning what just happened into
                 // these moves what's to the right past where it ends up.
                 shown.words = action.title

@@ -867,16 +867,34 @@ struct SettingsPagesTests {
         #expect(SettingsGroup.found("Custom instructions").map(\.group) == [.generate])
     }
 
-    /// Motion, with the house's animations and their speed, is left out for
-    /// now, so Appearance shows Interface and Lists, and search can't find it.
-    @Test func motionIsLeftOutForNow() {
+    /// Animate the house is the last row of Interface, after the code font,
+    /// rather than a section of one switch. Motion holds only the speed,
+    /// which is left out for now, so Appearance shows Interface and Lists,
+    /// and search can't find the speed (decision 112).
+    @Test func interfaceEndsWithAnimateTheHouseAndMotionStaysHidden() {
         #expect(!HouseAnimationView.offersSpeed)
+        #expect(SettingsGroup.interface.items == [.theme, .colors, .codeFont, .animatesHouse])
+        #expect(!SettingsGroup.motion.isShown)
         #expect(SettingsGroup.shown().filter { $0.page == .appearance } == [.interface, .lists])
+        #expect(!SettingsItem.animationSpeed.isShown)
         #expect(SettingsGroup.found("Animation speed").isEmpty)
-        #expect(SettingsGroup.found("Motion").isEmpty)
-        // A search still finds the rest of the page.
+        // The page draws its rows from the group's items, so the slider
+        // and the card of houses above it stay off the page too.
+        #expect(!SettingsGroup.allCases.contains { $0.items.contains(.animationSpeed) })
         #expect(SettingsGroup.found("Appearance").map(\.group) == [.interface, .lists])
         #expect(SettingsGroup.found("Monokai").map(\.items) == [[.colors]])
+    }
+
+    /// Search finds the switch by its name, its line, and the words someone
+    /// looking for it might type, such as Motion.
+    @Test func searchFindsAnimateTheHouse() {
+        for query in ["Animate", "house", "Motion", "Reduce Motion", "Animation", "animations", "title row"] {
+            #expect(SettingsGroup.found(query).map(\.group) == [.interface], "\(query)")
+            #expect(SettingsGroup.found(query).map(\.items) == [[.animatesHouse]], "\(query)")
+        }
+        #expect(SettingsItem.animatesHouse.group == .interface)
+        #expect(SettingsItem.animatesHouse.title == "Animate the house")
+        #expect(!SettingsItem.animatesHouse.help.isEmpty)
     }
 }
 

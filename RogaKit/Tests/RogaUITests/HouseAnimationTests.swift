@@ -1,3 +1,4 @@
+import AppKit
 import CoreGraphics
 import Foundation
 import SwiftUI
@@ -260,7 +261,8 @@ struct HouseAnimationTests {
         #expect(HouseAnimation.push.timeToPlay(atSpeed: 0.5) == .seconds(2.5))
     }
 
-    @Test func theSpeedIsNormalUntilSomeoneSetsIt() throws {
+    /// Defaults of their own, for a test to change.
+    func withTemporaryDefaults(_ body: (UserDefaults) throws -> Void) throws {
         // A suite named by an absolute path is a file at that path, so these
         // defaults live in a temporary folder rather than in the Preferences
         // folder, where emptying the suite would still leave its file.
@@ -270,12 +272,40 @@ struct HouseAnimationTests {
         let name = folder.appending(path: "defaults").path(percentEncoded: false)
         let defaults = try #require(UserDefaults(suiteName: name))
         defer { defaults.removePersistentDomain(forName: name) }
-        #expect(defaults.houseAnimationSpeed == 1)
-        defaults.set(2.5, forKey: UserDefaults.houseAnimationSpeedKey)
-        #expect(defaults.houseAnimationSpeed == 2.5)
-        // What @AppStorage would read as 3.
-        defaults.set("3", forKey: UserDefaults.houseAnimationSpeedKey)
-        #expect(defaults.houseAnimationSpeed == 3)
+        try body(defaults)
+    }
+
+    @Test func theSpeedIsNormalUntilSomeoneSetsIt() throws {
+        try withTemporaryDefaults { defaults in
+            #expect(defaults.houseAnimationSpeed == 1)
+            defaults.set(2.5, forKey: UserDefaults.houseAnimationSpeedKey)
+            #expect(defaults.houseAnimationSpeed == 2.5)
+            // What @AppStorage would read as 3.
+            defaults.set("3", forKey: UserDefaults.houseAnimationSpeedKey)
+            #expect(defaults.houseAnimationSpeed == 3)
+        }
+    }
+
+    /// The house is on until someone turns it off in Settings, and then no
+    /// action has a house to wait for (decision 112).
+    @Test func theHouseIsOnUntilSomeoneTurnsItOff() throws {
+        let housed: [BranchModel.Action] = [.pushing, .forcePushing, .deletingFromRemote, .pulling, .undoing, .aborting, .continuingRebase]
+        try withTemporaryDefaults { defaults in
+            #expect(defaults.animatesHouse)
+            // Someone who asked for less motion has nothing to wait for anyway.
+            if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+                #expect(BranchModel.Action.pushing.timeToPlayHouse(in: defaults) == HouseAnimation.push.timeToPlay(atSpeed: 1))
+            }
+            defaults.set(false, forKey: UserDefaults.animatesHouseKey)
+            #expect(!defaults.animatesHouse)
+            for action in housed {
+                #expect(action.timeToPlayHouse(in: defaults) == .zero, "\(action)")
+            }
+            // Which actions have a house doesn't change, only whether it plays.
+            #expect(BranchModel.Action.pushing.houseAnimation == .push)
+            defaults.set(true, forKey: UserDefaults.animatesHouseKey)
+            #expect(defaults.animatesHouse)
+        }
     }
 
     /// Settings doesn't offer the speed for now, so a speed saved before

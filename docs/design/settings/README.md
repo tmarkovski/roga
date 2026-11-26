@@ -23,7 +23,7 @@ Rows tagged **In the app** on the boards are what today's settings window or men
 | Page | What's on it | In the app today |
 | --- | --- | --- |
 | General | Reopening windows, the rail of organizations, the editor and terminal for Open in…, updates | The terminal for Open in Terminal, checking for updates and downloading them, and grouping and sorting the sidebar from the View menu |
-| Appearance | Theme, text size, the house's animations, the code font and diff options, how lists are shown | The theme, the animation speed, and the file layout, branch sort and folded descriptions from menus |
+| Appearance | Theme, text size, the house's animations, the code font and diff options, how lists are shown | The theme, the colors, the code font, the switch that turns the house off, and the file layout, branch sort and folded descriptions from menus |
 | Git | Which git runs and why one was passed over, name and email, fetching, pulling and pushing | Fetching when Roga becomes active |
 | Commit | The long first line, generating messages with an agent, the Commit button, signing, discarding | The Generate section, and the 72-character mark and asking before discarding many files as fixed behavior |
 | Agents | Command-line agents Roga found, and their hooks for working status | Claude Code and Codex, each with a page of its own, without Add a Command |
@@ -84,6 +84,8 @@ Each hook runs `roga-hook hook --host <agent> --event <name>`, a launcher in Rog
 - **The key to the marks is a piece of the sidebar,** the same one setup's Hooks screen shows, rather than a card of three rows with a worktree's name and what the mark means in a line. The sidebar's own rows draw it, and the rows around the three fade out with the sidebar's panel, so it reads as a glimpse of the window. Each mark has a line out to what it means. Changed on November 17, 2026.
 
 - **Rows line up on their middle, and Git has fewer sections** ([decision 110](../../decisions/0110-line-up-settings-rows-on-their-middle-and-give-git-fewer-sections.md)). Each heading is as large as a row's name, with a line under it and 40 points before the next section, and a row's words and control line up on their middles, where the boards put each control on its name's line. Git has Installation, Identity, Signing and Background tasks, and the repositories that commit as someone else are on a page of their own, Repository overrides, which opens from Identity. Show Generate button is gone, so Use agents alone shows or hides Generate, and Commit messages moves to the Agents page, between Agents and Status. The boards here, and the agent settings and commit identity boards, still draw the old layout. Changed on November 25, 2026.
+
+- **A switch that turns the house off ends Interface** ([decision 112](../../decisions/0112-let-the-house-be-turned-off-in-settings.md)). Animate the house comes after the code font, with "Shows the house in the title row and on the Fetch button while Git works." under it, and is on by default and stored as `animatesHouse` for every window. Turned off, the title row shows words after the counts while git pushes, pulls, undoes or aborts, and the Fetch button pulses rather than dropping the house. It isn't a Motion section of its own, which would hold one setting, and the card of the house's animations doesn't come back above it, because it would be a card of moving houses on the page where someone goes to stop them. Motion stays hidden with the speed slider. Built on November 26, 2026.
 
 ## Still to decide
 

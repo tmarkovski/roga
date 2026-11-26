@@ -5,8 +5,8 @@ import SwiftUI
 /// runs. The house follows it down, hanging by a thread from its chimney, and
 /// then the icon comes back in from the top (decision 57). That repeats until
 /// the fetch is done, and the drop it's on always finishes, so even a quick
-/// fetch shows a whole one. Someone who asked for less motion sees the icon fade
-/// in and out instead.
+/// fetch shows a whole one. Someone who asked for less motion, or who turned the
+/// house off in Settings, sees the icon fade in and out instead (decision 112).
 struct FetchDrop: View {
     /// The button's height, which is the window everything slides through.
     static let height: CGFloat = 32
@@ -19,19 +19,20 @@ struct FetchDrop: View {
 
     let isFetching: Bool
     @Environment(\.accessibilityReduceMotion) private var reducesMotion
+    @AppStorage(UserDefaults.animatesHouseKey) private var animatesHouse = true
+    /// The drops, which start only while the house is on, so that turning it
+    /// back on during a fetch waits for the next one.
     @State private var run: FetchDropRun?
 
     var body: some View {
         Group {
-            if reducesMotion {
-                Icon.fetch.image
-                    .symbolEffect(.pulse.wholeSymbol, options: .repeat(.continuous), isActive: isFetching)
-            } else if let run {
+            if let run, animatesHouse, !reducesMotion {
                 TimelineView(.animation) { timeline in
                     strip(dropped: run.dropped(at: timeline.date))
                 }
             } else {
                 Icon.fetch.image
+                    .symbolEffect(.pulse.wholeSymbol, options: .repeat(.continuous), isActive: isFetching)
             }
         }
         .frame(width: Self.height, height: Self.height)
@@ -40,12 +41,16 @@ struct FetchDrop: View {
             if isFetching {
                 if let run, run.isRunning(at: .now) {
                     self.run?.end = nil
-                } else {
+                } else if animatesHouse {
                     run = FetchDropRun(start: .now)
                 }
             } else {
                 run?.stop(at: .now)
             }
+        }
+        // Turning the house off takes it away at once, as the pulse takes over.
+        .onChange(of: animatesHouse) { _, animatesHouse in
+            if !animatesHouse { run = nil }
         }
         .task(id: run?.end) {
             guard let end = run?.end else { return }
