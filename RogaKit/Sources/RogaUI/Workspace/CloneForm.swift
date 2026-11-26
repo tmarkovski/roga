@@ -33,9 +33,12 @@ struct CloneFormState {
 }
 
 /// The part of Add Repositories that clones a repository from a URL (decision
-/// 113). It shows the exact command as it's filled in (decision 29), and says
-/// what's in the way before Clone can be pressed. Clone closes the popover, and
-/// the repository's row in the sidebar says how far along git is.
+/// 113). It's laid out as the identity popover is: each field under its label,
+/// gray words beside a label for where its value came from, Choose… in the
+/// accent beside Folder's, Cancel and Clone at the trailing edge, and the
+/// exact command along the bottom edge (decision 29). It says what's in the way
+/// before Clone can be pressed. Clone closes the popover, and the repository's
+/// row in the sidebar says how far along git is.
 struct CloneForm: View {
     let list: RepositoryList
     @Binding var state: CloneFormState
@@ -47,62 +50,73 @@ struct CloneForm: View {
     @FocusState private var isURLFocused: Bool
     @Environment(\.dismiss) private var dismiss
 
-    /// The pop-up's tag for Choose…, which can't be a folder's path.
-    private static let chooseTag = "\u{0}choose"
+    /// How far the form stands from the popover's edges, as the popover's
+    /// title does.
+    static let inset: CGFloat = 16
+    private static let fieldWidth = AddRepositories.width - 2 * inset
 
     var body: some View {
         let request = request
         let problem = request?.problem
         let existing = list.repository(withRemote: state.url)
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 8) {
-                row("URL") {
-                    TextField("https://github.com/owner/repository", text: Binding { state.url } set: { state.setURL($0) })
-                        .textFieldStyle(.roundedBorder)
-                        .focused($isURLFocused)
-                        .onSubmit(clone)
-                        .accessibilityLabel("URL")
+            VStack(alignment: .leading, spacing: 12) {
+                field("URL") {
+                    SettingsTextField(
+                        text: Binding { state.url } set: { state.setURL($0) },
+                        placeholder: "https://github.com/owner/repository",
+                        width: Self.fieldWidth,
+                        isMonospaced: true
+                    )
+                    .focused($isURLFocused)
+                    .accessibilityLabel("URL")
+                    .onSubmit(clone)
                 }
-                row("Name") {
-                    TextField("Folder name", text: Binding { state.name } set: { state.setName($0) })
-                        .textFieldStyle(.roundedBorder)
-                        .onSubmit(clone)
-                        .accessibilityLabel("Name")
+                field("Name", note: state.isNameEdited || state.name.isEmpty ? nil : "from the URL") {
+                    SettingsTextField(
+                        text: Binding { state.name } set: { state.setName($0) },
+                        placeholder: "The clone's folder",
+                        width: Self.fieldWidth
+                    )
+                    .accessibilityLabel("Name")
+                    .onSubmit(clone)
                 }
-                row("Folder") {
-                    folderPicker
+                field(
+                    "Folder",
+                    note: folder != nil && state.folder == nil ? "where most listed repositories are" : nil,
+                    action: ("Choose…", "Choose another folder to clone into", chooseFolder)
+                ) {
+                    SettingsSelect(
+                        selection: Binding { folder ?? "" } set: { state.folder = $0 },
+                        options: folderChoices.map { ($0, ($0 as NSString).abbreviatingWithTildeInPath) },
+                        emptyTitle: "No folder yet",
+                        width: Self.fieldWidth
+                    )
+                    .accessibilityLabel("Folder")
                 }
-                row(nil) {
-                    Toggle("Clone submodules too", isOn: $state.recursesSubmodules)
-                        .toggleStyle(.checkbox)
-                        .font(.system(size: 13))
+                HStack(spacing: 6) {
+                    Text("Clone submodules")
+                        .font(.system(size: 12, weight: .medium))
+                    Spacer(minLength: 0)
+                    Toggle("Clone submodules", isOn: $state.recursesSubmodules)
+                        .toggleStyle(.settings)
+                        .labelsHidden()
                 }
+                note(problem: problem, existing: existing)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 4)
-            note(problem: problem, existing: existing)
-                .padding(EdgeInsets(top: 8, leading: 16, bottom: 0, trailing: 16))
-            Group {
-                if let request, !request.url.isEmpty {
-                    CommandBlock(lines: [.command(request.arguments)], isCompact: true)
-                } else {
-                    CommandBlock(lines: [.comment("The command shows here once there's a URL.")], isCompact: true)
-                }
+            .padding(.horizontal, Self.inset)
+            HStack(spacing: 8) {
+                DialogActionButton(button: .cancel { dismiss() })
+                DialogActionButton(button: DialogButton(title: "Clone", kind: .primary, isEnabled: request != nil && problem == nil, action: clone))
             }
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .padding(EdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12))
-            Rectangle()
-                .fill(Palette.separator)
-                .frame(height: 1)
-            HStack {
-                Spacer()
-                Button("Clone", action: clone)
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(request == nil || problem != nil)
-            }
-            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .trailing)
+            .padding(EdgeInsets(top: 16, leading: Self.inset, bottom: 14, trailing: Self.inset))
+            CommandBlock(
+                lines: request.flatMap { $0.url.isEmpty ? nil : [.command($0.arguments)] } ?? [.comment("Nothing to clone yet")],
+                isCompact: true
+            )
         }
+        .font(.system(size: 13))
         .task {
             // Once the field is in the popover's window. Switching to the form
             // from the segmented control puts it there a moment after the form
@@ -112,17 +126,34 @@ struct CloneForm: View {
         }
     }
 
-    /// A row of the form: its label, right-aligned in a column as wide as the
-    /// longest, and what it labels, as wide as the rest of the popover.
-    private func row(_ title: String?, @ViewBuilder content: () -> some View) -> some View {
-        HStack(spacing: 8) {
-            Text(title ?? "")
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
-                .frame(width: 44, alignment: .trailing)
-                .accessibilityHidden(true)
+    /// A field under its label, with gray words after the label, and an action
+    /// in the accent at the label's end, as the identity popover has them.
+    private func field(
+        _ title: String,
+        note: String? = nil,
+        action: (title: String, help: String, perform: () -> Void)? = nil,
+        @ViewBuilder content: () -> some View
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 6) {
+                Text(title)
+                    .font(.system(size: 12, weight: .medium))
+                    .fixedSize()
+                if let note {
+                    Text(note)
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(DialogColors.note)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                if let action {
+                    Button(action.title, action: action.perform)
+                        .buttonStyle(.contextual)
+                        .fixedSize()
+                        .help(action.help)
+                }
+            }
             content()
-                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -130,6 +161,13 @@ struct CloneForm: View {
     /// listed repositories are in.
     private var folder: String? {
         state.folder ?? folders.first
+    }
+
+    /// The folders the Folder select offers, with one chosen with Choose…
+    /// that isn't among them.
+    private var folderChoices: [String] {
+        guard let folder, !folders.contains(folder) else { return folders }
+        return folders + [folder]
     }
 
     /// What would run, once there's a folder to clone into.
@@ -143,67 +181,35 @@ struct CloneForm: View {
         )
     }
 
-    /// A pop-up of the folders Add Repositories looks in, and Choose… for
-    /// another, which opens the open panel.
-    @ViewBuilder private var folderPicker: some View {
-        let choices = folder.map { folders.contains($0) ? folders : folders + [$0] } ?? folders
-        // With nothing listed there's no folder to offer, and a pop-up showing
-        // Choose… couldn't be used to choose it again.
-        if choices.isEmpty {
-            Button("Choose…", action: chooseFolder)
-                .accessibilityLabel("Choose a Folder")
-        } else {
-            folderPopUp(choices)
-        }
-    }
-
-    private func folderPopUp(_ choices: [String]) -> some View {
-        Picker("Folder", selection: Binding {
-            folder ?? Self.chooseTag
-        } set: { picked in
-            if picked == Self.chooseTag {
-                chooseFolder()
-            } else {
-                state.folder = picked
-            }
-        }) {
-            ForEach(choices, id: \.self) { folder in
-                Text((folder as NSString).abbreviatingWithTildeInPath).tag(folder)
-            }
-            Divider()
-            Text("Choose…").tag(Self.chooseTag)
-        }
-        .labelsHidden()
-        .accessibilityLabel("Folder")
-    }
-
-    /// What's in the way, under the fields: a folder that's already there, or
-    /// a repository with that remote that the sidebar already has, which it
-    /// offers to show instead.
+    /// What's in the way, under the fields: a folder that's already there,
+    /// which the identity popover's warnings' amber says, or a repository with
+    /// that remote that the sidebar already has, which it offers to show
+    /// instead.
     @ViewBuilder private func note(problem: CloneRequest.Problem?, existing: ListedRepository?) -> some View {
         if let request, problem == .destinationExists {
-            Text("\((request.destination as NSString).abbreviatingWithTildeInPath) is already there. Choose another name or folder.")
+            Text("Something called \(request.name) is already in that folder. Choose another name or folder.")
                 .font(.system(size: 12))
-                .foregroundStyle(.red)
+                .foregroundStyle(AgentColors.warn)
                 .fixedSize(horizontal: false, vertical: true)
         } else if problem == .nameIsNotAFolder {
             Text("The name has to be one folder, without a slash.")
                 .font(.system(size: 12))
-                .foregroundStyle(.red)
+                .foregroundStyle(AgentColors.warn)
                 .fixedSize(horizontal: false, vertical: true)
         } else if let existing {
-            HStack(spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(existing.cloning == nil ? "The sidebar already has \(existing.name) from this URL." : "\(existing.name) is already being cloned from this URL.")
                     .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(DialogColors.note)
                     .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
                 if existing.cloning == nil {
-                    Button("Show") {
+                    Button("Show \(existing.name)") {
                         selection = existing.home
                         dismiss()
                     }
-                    .buttonStyle(.link)
-                    .font(.system(size: 12))
+                    .buttonStyle(.contextual)
+                    .fixedSize()
                 }
             }
         }

@@ -48,6 +48,8 @@ struct AddRepositories: View {
     @FocusState private var isListFocused: Bool
     @Environment(\.dismiss) private var dismiss
 
+    /// How wide the popover is, which the clone form's fields fill.
+    static let width: CGFloat = 400
     private static let rowHeight: CGFloat = 44
     /// The list fits its rows, between these many, so that a few clones don't
     /// leave a gap and a long filter result doesn't push the buttons away.
@@ -60,13 +62,9 @@ struct AddRepositories: View {
                 .frame(height: 44)
                 .padding(.horizontal, 16)
                 .accessibilityAddTraits(.isHeader)
-            Picker("Add From", selection: $state.source) {
-                Text("On This Mac").tag(AddRepositoriesState.Source.thisMac)
-                Text("From a URL").tag(AddRepositoriesState.Source.url)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .padding(EdgeInsets(top: 0, leading: 12, bottom: 12, trailing: 12))
+            SettingsSegments(selection: $state.source, options: [(.thisMac, "On This Mac"), (.url, "From a URL")], fillsWidth: true)
+                .accessibilityLabel("Add From")
+                .padding(EdgeInsets(top: 0, leading: 16, bottom: 12, trailing: 16))
             switch state.source {
             case .thisMac:
                 clonesOnThisMac
@@ -80,7 +78,8 @@ struct AddRepositories: View {
                 )
             }
         }
-        .frame(width: 400)
+        .frame(width: Self.width)
+        .background(DialogColors.surface)
         .task(id: state.pickedFolders) {
             let found = await list.clonesToAdd(alsoLookingIn: state.pickedFolders)
             guard !Task.isCancelled else { return }
@@ -97,7 +96,7 @@ struct AddRepositories: View {
             filterField
             Text("Clones found in the folders you’ve already added from.")
                 .font(.system(size: 12))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(DialogColors.note)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(EdgeInsets(top: 8, leading: 16, bottom: 6, trailing: 16))
             rows
@@ -105,14 +104,14 @@ struct AddRepositories: View {
             Rectangle()
                 .fill(Palette.separator)
                 .frame(height: 1)
-            HStack {
-                Button("Look in Another Folder…", action: lookInAnotherFolder)
-                Spacer()
-                Button("Add Selected", action: add)
-                    .buttonStyle(.borderedProminent)
-                    .disabled(toAdd.isEmpty)
+            // The dialogs' buttons, as the clone form has. Return is handled
+            // by the field and the list, which add what the keyboard is on.
+            HStack(spacing: 8) {
+                DialogActionButton(button: DialogButton(title: "Look in Another Folder…", kind: .secondary, action: lookInAnotherFolder))
+                Spacer(minLength: 0)
+                DialogActionButton(button: DialogButton(title: "Add Selected", kind: .primary, isEnabled: !toAdd.isEmpty, pressesWithReturn: false, action: add))
             }
-            .padding(12)
+            .padding(EdgeInsets(top: 12, leading: 16, bottom: 14, trailing: 16))
         }
         .onAppear { isFilterFocused = true }
     }
@@ -168,7 +167,7 @@ struct AddRepositories: View {
             RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .strokeBorder(isFilterFocused ? Color.primary.opacity(0.35) : Palette.separator)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 16)
     }
 
     @ViewBuilder private var rows: some View {

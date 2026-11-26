@@ -58,7 +58,7 @@ The list starts with **Repositories** in bold, with how many there are in its to
 
 ### Adding repositories
 
-The **Add Repositories** row opens a popover with that title, and a segmented control under it for where to add from: **On This Mac** or **From a URL** ([decision 113](decisions/0113-clone-from-a-url-in-add-repositories.md)). It shows the one it showed last. With nothing in the sidebar yet, there's nowhere for it to look, so the row asks for a folder first, as Look in Another Folder… does, and cancelling that leaves the popover closed.
+The **Add Repositories** row opens a popover with that title, and a segmented control under it for where to add from: **On This Mac** or **From a URL** ([decision 113](decisions/0113-clone-from-a-url-in-add-repositories.md)). It shows the one it showed last. Like the identity popover, it has the dialogs' white surface and buttons. With nothing in the sidebar yet, there's nowhere for it to look, so the row asks for a folder first, as Look in Another Folder… does, and cancelling that leaves the popover closed.
 
 On This Mac:
 
@@ -68,9 +68,9 @@ On This Mac:
 
 From a URL:
 
-- A form takes the **URL**, the **Name** of the clone's folder, which follows the URL's last part without `.git` until it's typed over, and the **Folder** it goes in. The folder is a pop-up of the folders On This Mac looks in, starting with the one most listed repositories are in, with **Choose…** at its end for the open panel. **Clone submodules too** is on unless it's turned off, and adds `--recurse-submodules`.
-- A command block under the form shows exactly what will run, as in `git clone --progress --recurse-submodules --end-of-options https://github.com/owner/repo /Users/me/git/repo`.
-- When something is already at the folder the clone would make, the form says so and **Clone** stays disabled. When the sidebar already has a repository with that remote, however its URL is written, it says so and offers **Show**.
+- A form laid out as the identity popover is takes the **URL**, in the code font, the **Name** of the clone's folder, which follows the URL's last part without `.git` until it's typed over and says `from the URL` until then, and the **Folder** it goes in. The folder is a select of the folders On This Mac looks in, starting with the one most listed repositories are in, and **Choose…** in the accent at the end of its label's line opens the open panel. The **Clone submodules** switch is on unless it's turned off, and adds `--recurse-submodules`.
+- **Cancel** and **Clone** are at the trailing edge, and the command block along the popover's bottom edge shows exactly what will run, as in `git clone --progress --recurse-submodules --end-of-options https://github.com/owner/repo /Users/me/git/repo`.
+- When something is already at the folder the clone would make, the form says so in amber and **Clone** stays disabled. When the sidebar already has a repository with that remote, however its URL is written, it says so and offers **Show** with the repository's name, in the accent.
 - Clone, or Return, closes the popover. The repository's row shows at once, faint, in the group of the owner in its URL, with a second line such as `Cloning · receiving objects` and `42%` at the right. It can't be selected yet, and its menu has only **Cancel clone**, which stops git, and git deletes what it made. When the clone is done, the window shows it, unless another worktree was selected in the meantime. When git refuses, the refusal dialog shows the command and what git said, and the row goes.
 
 File > Open… still asks for a folder and adds its repository, from anywhere. File > Clone Repository…, with Shift-Command-O, opens the popover on From a URL, and so does Clone Repository… in a window with no repositories.
