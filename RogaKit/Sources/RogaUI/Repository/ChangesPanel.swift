@@ -8,13 +8,13 @@ import SwiftUI
 /// Shows a worktree's uncommitted files, in the place of the commit panel while
 /// their row in history is selected, and the message of the next commit. A file
 /// with both staged and unstaged changes is listed twice, and each row selects its
-/// own diff. Staged files stay in view right above the message (decision 30).
+/// own diff.
 ///
-/// The files still to stage, the staged files and the message split the panel's
-/// height 40, 40 and 20, so that staging a file doesn't move the line between the
-/// lists. A list with no files isn't shown, and the other one takes its room
-/// (`ChangesSplit`). The heights glide when a list comes or goes, and when Amend
-/// changes what the box needs.
+/// Conflicts, Unstaged, Untracked and Staged scroll together, and each list's
+/// heading stays in view while its files are scrolled away, at the top for those
+/// above and at the bottom for those below (decision 115). The message takes a
+/// fifth of the panel's height, or what it needs (`ChangesSplit`), and its height
+/// glides when Amend changes what the box needs.
 struct ChangesPanel: View {
     let selection: SelectedChanges
     let composer: CommitComposer
@@ -22,6 +22,9 @@ struct ChangesPanel: View {
     var canStash = false
     var stash: () -> Void = {}
     @FocusState private var isFocused: Bool
+    /// Where the lists are in the scrolled files, for their headings to stay in
+    /// view. Only the headings read it, so scrolling draws nothing else again.
+    @State private var headings = StuckHeadings()
     @Environment(\.accessibilityReduceMotion) private var reducesMotion
 
     /// The room under the last row of a list.
@@ -84,25 +87,29 @@ struct ChangesPanel: View {
     }
 
     private func list(_ changes: WorktreeChanges) -> some View {
-        let toStage = SelectedChanges.groups.filter { $0 != .staged }
-        let hasFilesToStage = toStage.contains { !changes[$0].isEmpty }
-        let hasStagedFiles = !changes.staged.isEmpty
+        // A list that a filter leaves no files in isn't shown, heading included.
+        let groups = SelectedChanges.groups.filter { !fileList.rows(of: changes[$0], in: $0).isEmpty }
         return ScrollViewReader { scroller in
-            StagedUnderUnstaged(hasFilesToStage: hasFilesToStage, hasStagedFiles: hasStagedFiles) {
-                filesToStage(toStage, in: changes, hasFiles: hasFilesToStage)
-                stagedFiles(changes)
-                    .overlay(alignment: .top) {
-                        // On its own, the list is right under the panel's header,
-                        // which has a line of its own.
-                        Rectangle()
-                            .fill(Palette.separator)
-                            .frame(height: 1)
-                            .opacity(hasFilesToStage ? 1 : 0)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    if groups.isEmpty {
+                        NoMatchingFiles(filter: fileList.filter)
                     }
+                    ForEach(Array(groups.enumerated()), id: \.element) { index, group in
+                        let place = StuckHeadings.Place(index: index, count: groups.count)
+                        groupOfFiles(group, in: changes, place: place) {
+                            headings.scroll(scroller, to: group, at: place)
+                        }
+                    }
+                }
+                // An empty list is as wide as a full one, so that the first files to
+                // come in don't grow from no width.
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.bottom, Self.listEnd)
+                .id(FileRows.top)
             }
-            // Only when a list comes or goes, because staging a file while both
-            // have files doesn't move the line.
-            .animation(motion, value: [hasFilesToStage, hasStagedFiles])
+            .coordinateSpace(.named(StuckHeadings.space))
+            .onGeometryChange(for: Double.self) { $0.size.height } action: { headings.height = $0 }
             .focusable()
             .focused($isFocused)
             .focusEffectDisabled()
@@ -116,15 +123,18 @@ struct ChangesPanel: View {
             }
             .onChange(of: selection.fileSteps) {
                 if let group = selection.selectedFile.group, let path = selection.selectedFile.file?.path {
-                    scroller.scrollTo(FileRow.ID(group: group, path: path))
+                    let id = FileRow.ID(group: group, path: path)
+                    let row = fileList.rows(of: changes[group], in: group).firstIndex { $0.id == id }
+                    let place = groups.firstIndex(of: group).map { StuckHeadings.Place(index: $0, count: groups.count) }
+                    headings.scroll(scroller, toRow: id, at: row, of: group, place: place)
                 }
             }
             .onChange(of: fileList.layout) {
-                revealSelectedFile(scroller)
+                revealSelectedFile(scroller, groups: groups)
             }
             .onChange(of: fileList.filter) {
                 if fileList.filter.isEmpty {
-                    revealSelectedFile(scroller)
+                    revealSelectedFile(scroller, groups: groups)
                 } else {
                     scroller.scrollOnceLaidOut(to: FileRows.top, anchor: .top)
                 }
@@ -132,46 +142,14 @@ struct ChangesPanel: View {
         }
     }
 
-    /// Conflicts, Unstaged and Untracked, each while it has files to show.
-    private func filesToStage(_ groups: [WorktreeChanges.Group], in changes: WorktreeChanges, hasFiles: Bool) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                let matching = groups.filter { !fileList.rows(of: changes[$0], in: $0).isEmpty }
-                if hasFiles, matching.isEmpty {
-                    NoMatchingFiles(filter: fileList.filter)
-                }
-                ForEach(matching, id: \.self) { group in
-                    groupOfFiles(group, in: changes)
-                }
-            }
-            // An empty list is as wide as a full one, so that the first files to
-            // come in don't grow from no width.
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.bottom, Self.listEnd)
-            .id(FileRows.top)
-        }
-    }
-
-    /// The staged files.
-    private func stagedFiles(_ changes: WorktreeChanges) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                if !fileList.rows(of: changes.staged, in: .staged).isEmpty {
-                    groupOfFiles(.staged, in: changes)
-                } else if !changes.staged.isEmpty {
-                    NoMatchingFiles(filter: fileList.filter)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.bottom, Self.listEnd)
-        }
-    }
-
-    private func groupOfFiles(_ group: WorktreeChanges.Group, in changes: WorktreeChanges) -> some View {
+    private func groupOfFiles(_ group: WorktreeChanges.Group, in changes: WorktreeChanges, place: StuckHeadings.Place, reveal: @escaping () -> Void) -> some View {
         GroupOfFiles(
             group: group,
             files: changes[group],
             list: fileList,
+            headings: headings,
+            place: place,
+            reveal: reveal,
             selectedFile: selection.selectedFile,
             toggleAll: { selection.toggleAll(in: group) },
             discardAll: {
@@ -224,11 +202,13 @@ struct ChangesPanel: View {
     }
 
     /// Brings the selected file's row into view, opening its folders, because a
-    /// filter can select a file in a closed one.
-    private func revealSelectedFile(_ scroller: ScrollViewProxy) {
+    /// filter can select a file in a closed one. The rows have just changed, so
+    /// it goes right under the headings at the top rather than by where it was.
+    private func revealSelectedFile(_ scroller: ScrollViewProxy, groups: [WorktreeChanges.Group]) {
         guard let group = selection.selectedFile.group, let path = selection.selectedFile.file?.path else { return }
         fileList.reveal(path, in: group)
-        scroller.scrollOnceLaidOut(to: FileRow.ID(group: group, path: path))
+        let place = StuckHeadings.Place(index: groups.firstIndex(of: group) ?? 0, count: groups.count)
+        scroller.scrollOnceLaidOut(to: FileRow.ID(group: group, path: path), anchor: headings.anchorUnderHeadings(at: place))
     }
 
     private func note(_ text: String) -> some View {
@@ -251,6 +231,12 @@ private struct GroupOfFiles: View {
     let group: WorktreeChanges.Group
     let files: [DiffFile]
     let list: FileListModel
+    let headings: StuckHeadings
+    /// Where the list is among those that show, which says where its heading
+    /// stays.
+    let place: StuckHeadings.Place
+    /// Scrolls to the list's files, for its heading while it's stuck at an edge.
+    let reveal: () -> Void
     let selectedFile: SelectedFile
     let toggleAll: () -> Void
     let discardAll: () -> Void
@@ -261,6 +247,18 @@ private struct GroupOfFiles: View {
     let toggleFolder: (String) -> Void
 
     var body: some View {
+        StuckHeading(headings: headings, group: group, place: place, reveal: reveal) {
+            heading
+        }
+        FileRows(list: list, rows: list.rows(of: files, in: group), selectedFile: selectedFile, select: select, toggleFolder: toggleFolder, rowAction: rowAction, folderAction: folderAction, folderDiscard: folderDiscard)
+            // Where the rows start says where the heading's place is, which the
+            // heading can't say itself while it's moved to stay in view.
+            .onGeometryChange(for: Double.self) { $0.frame(in: .named(StuckHeadings.space)).minY } action: { top in
+                headings.rowsTops[group] = top
+            }
+    }
+
+    private var heading: some View {
         let matching = list.matching(files, in: group)
         let lines = matching.compactMap(\.lines)
         let added = lines.reduce(0) { $0 + $1.added }
@@ -268,7 +266,7 @@ private struct GroupOfFiles: View {
         let discardable = matching.count { group.discarding($0) != nil }
         let stageTitle = group.stageAllTitle(matching: matching.count, filter: list.filter)
         let discardTitle = discardable > 0 ? group.discardAllTitle(matching: discardable, filter: list.filter) : nil
-        HStack(spacing: 8) {
+        return HStack(spacing: 8) {
             // The title and count never give way, because they say which files the
             // buttons act on, and the buttons have shorter forms.
             Text(group.title)
@@ -293,10 +291,10 @@ private struct GroupOfFiles: View {
             }
         }
         .font(.system(size: 12))
-        .frame(height: 20)
+        .frame(height: StuckHeadings.titleHeight)
         .padding(.horizontal, 14)
-        .padding(.top, 10)
-        .padding(.bottom, 6)
+        .padding(.top, StuckHeadings.aboveTitle)
+        .padding(.bottom, StuckHeadings.belowTitle)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(group.title)
         .accessibilityValue(spokenValue(count: matching.count, added: added, removed: removed))
@@ -309,7 +307,6 @@ private struct GroupOfFiles: View {
                 Button(stageTitle, action: toggleAll)
             }
         }
-        FileRows(list: list, rows: list.rows(of: files, in: group), selectedFile: selectedFile, select: select, toggleFolder: toggleFolder, rowAction: rowAction, folderAction: folderAction, folderDiscard: folderDiscard)
     }
 
     /// The buttons, in words while there's room for them. A narrower panel gets

@@ -89,6 +89,10 @@ struct FileRows: View {
     /// scroll back to.
     static let top = "top of the files"
 
+    /// How tall every row is, a file's or a folder's, which is what lets the
+    /// lazy stack know its height, and the panel work out where a row is.
+    static let rowHeight = 24.0
+
     var body: some View {
         LazyVStack(alignment: .leading, spacing: 0) {
             ForEach(rows) { row in
@@ -189,7 +193,7 @@ private struct FileRowButton<Content: View>: View {
                             Rectangle()
                         }
                     }
-                    .frame(height: 24)
+                    .frame(height: FileRows.rowHeight)
                     .background {
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
                             .fill(isSelected ? Palette.selection : isHovering ? Palette.hover : .clear)
