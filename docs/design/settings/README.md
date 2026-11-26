@@ -83,6 +83,8 @@ Each hook runs `roga-hook hook --host <agent> --event <name>`, a launcher in Rog
 
 - **The key to the marks is a piece of the sidebar,** the same one setup's Hooks screen shows, rather than a card of three rows with a worktree's name and what the mark means in a line. The sidebar's own rows draw it, and the rows around the three fade out with the sidebar's panel, so it reads as a glimpse of the window. Each mark has a line out to what it means. Changed on November 17, 2026.
 
+- **Rows line up on their middle, and Git has fewer sections** ([decision 110](../../decisions/0110-line-up-settings-rows-on-their-middle-and-give-git-fewer-sections.md)). Each heading is as large as a row's name, with a line under it and 40 points before the next section, and a row's words and control line up on their middles, where the boards put each control on its name's line. Git has Installation, Identity, Signing and Background tasks, and the repositories that commit as someone else are on a page of their own, Repository overrides, which opens from Identity. Show Generate button is gone, so Use agents alone shows or hides Generate, and Commit messages moves to the Agents page, between Agents and Status. The boards here, and the agent settings and commit identity boards, still draw the old layout. Changed on November 25, 2026.
+
 ## Still to decide
 
 - **Which proposals to keep.** Open in Editor, reopening windows at launch, text size and date formats would each need work outside Settings first. Grouping and sorting the sidebar are app-wide already, so they could move here as they are.

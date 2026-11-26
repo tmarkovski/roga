@@ -53,6 +53,9 @@ struct SigningKeyField: View {
                         }
                     }
                 }
+                // In Settings, the row's words line up with the field, and
+                // the line about the key hangs under it.
+                .alignmentGuide(.settingsRowMiddle) { $0[VerticalAlignment.center] }
             let line = line(keys)
             if line != nil || offersNewKey {
                 // Side by side when the line fits on one row beside the

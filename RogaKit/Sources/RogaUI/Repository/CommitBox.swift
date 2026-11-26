@@ -39,7 +39,6 @@ struct CommitBox: View {
     /// (decision 105), which a view that's tested on its own may not have.
     @Environment(ListedRepository.self) private var repository: ListedRepository?
     @Environment(RepositoryList.self) private var list: RepositoryList?
-    @AppStorage(AgentPreferences.showsGenerateButtonKey) private var showsGenerateButton = true
 
     /// Three lines, and then about half of an ordinary window's panel.
     private static let shortest = 48.0
@@ -56,7 +55,6 @@ struct CommitBox: View {
 
     private var generateButton: GenerateButtonState {
         GenerateButtonState(
-            showsButton: showsGenerateButton,
             agent: agents?.defaultAgent.flatMap { agents?.named($0) },
             // What the box shows, which during a rebase is the message of the
             // commit it stopped on rather than the draft underneath.

@@ -1,6 +1,6 @@
 # 109. Keep the Signature line in place, and let checking be turned off
 
-Accepted on 2026-11-25. This changes how the commit panel's Signature line from [decision 104](0104-mark-signed-commits-and-check-only-the-selected-one.md) looks while git checks a signature and after, moves the explanations and Trust This Key… from [decision 107](0107-trust-your-own-ssh-key-from-the-signature-line.md), and adds a setting that turns the check off. It came up while trying decisions 105 to 108 in the app.
+Accepted on 2026-11-25. This changes how the commit panel's Signature line from [decision 104](0104-mark-signed-commits-and-check-only-the-selected-one.md) looks while git checks a signature and after, moves the explanations and Trust This Key… from [decision 107](0107-trust-your-own-ssh-key-from-the-signature-line.md), and adds a setting that turns the check off. It came up while trying decisions 105 to 108 in the app. Partly superseded by [decision 110](0110-line-up-settings-rows-on-their-middle-and-give-git-fewer-sections.md), which moves Check signatures when a commit is selected from a Signed commits section of its own to the end of Git's Signing section. The rest of this decision still holds.
 
 ## Context
 

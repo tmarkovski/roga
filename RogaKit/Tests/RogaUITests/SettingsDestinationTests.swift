@@ -33,11 +33,43 @@ struct SettingsDestinationTests {
         #expect(SettingsPage(rawValue: "commit") == nil)
         #expect(SettingsPage(rawValue: "advanced") == nil)
         #expect(SettingsPage.groups == [[.general, .appearance], [.git], [.agents]])
-        // Git has Advanced's one group after Fetching, and commit messages
-        // last.
+        // Git has Advanced's one setting after fetching, under Background
+        // tasks. Commit messages moved to Agents (decision 110).
         let git = SettingsGroup.shown().filter { $0.page == .git }
-        #expect(git == [.installation, .identity, .identityExceptions, .fetching, .largeRepositories, .generate])
-        #expect(SettingsGroup.largeRepositories.items == [.keepsCommitGraphCurrent])
+        #expect(git == [.installation, .identity, .signing, .background])
+        #expect(SettingsGroup.generate.page == .agents)
+        #expect(SettingsGroup.generate.items == [.matchesStyle, .instructions])
+        #expect(SettingsGroup.background.items == [.fetchesByItself, .keepsCommitGraphCurrent])
+    }
+
+    @Test func gitGroupsSettingsByWhatTheyAreAbout() {
+        // Identity ends with the row that opens Repository overrides, and
+        // Signing has git's signing settings and Roga's own check.
+        #expect(SettingsGroup.identity.items == [.identityName, .identityEmail, .identityRepositories])
+        #expect(SettingsGroup.signing.items == [.signsCommits, .signingFormat, .signingKey, .checksSignatures])
+        #expect(SettingsGroup.signing.title == "Signing")
+        #expect(SettingsGroup.background.title == "Background tasks")
+        // Search still finds them by the names their sections had.
+        #expect(SettingsGroup.found("Large repositories").map(\.items) == [[.keepsCommitGraphCurrent]])
+        #expect(SettingsGroup.found("someone else").map(\.items) == [[.identityRepositories]])
+    }
+
+    @Test func aSubpageBelongsToItsPage() {
+        #expect(SettingsDestination(page: .git, agent: nil, subpage: .repositoryOverrides) == .subpage(.repositoryOverrides))
+        #expect(SettingsDestination.subpage(.repositoryOverrides).page == .git)
+        #expect(SettingsSubpage.repositoryOverrides.title == "Repository overrides")
+        // A subpage stored with another page is left over, and the page
+        // shows.
+        #expect(SettingsDestination(page: .general, agent: nil, subpage: .repositoryOverrides) == .page(.general))
+        #expect(SettingsDestination(page: .agents, agent: .known(.codex), subpage: .repositoryOverrides) == .agent(.known(.codex)))
+
+        let (defaults, name) = AgentTestSupport.defaults()
+        defer { AgentTestSupport.remove(defaults, named: name) }
+        SettingsDestination.subpage(.repositoryOverrides).store(in: defaults)
+        #expect(defaults.string(forKey: SettingsDestination.pageKey) == "git")
+        #expect(defaults.string(forKey: SettingsDestination.subpageKey) == "repositoryOverrides")
+        SettingsDestination.page(.git).store(in: defaults)
+        #expect(defaults.string(forKey: SettingsDestination.subpageKey) == nil)
     }
 
     @Test func theActionStaysEqualForItsWindow() {
