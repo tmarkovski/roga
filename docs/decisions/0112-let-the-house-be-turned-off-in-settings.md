@@ -1,6 +1,6 @@
 # 112. Let the house be turned off in Settings
 
-Accepted on 2026-11-26. This adds a setting that turns off the house from [decision 21](0021-draw-the-houses-animations-from-joints.md) in the title row and the one that drops through the Fetch button in [decision 57](0057-the-house-drops-through-the-fetch-button.md), and brings back Settings' Motion section to hold it. It was asked for in [issue 123](https://github.com/tmarkovski/roga/issues/123).
+Accepted on 2026-11-26. This adds a setting that turns off the house from [decision 21](0021-draw-the-houses-animations-from-joints.md) in the title row and the one that drops through the Fetch button in [decision 57](0057-the-house-drops-through-the-fetch-button.md), as the last row of Settings' Interface section. It was asked for in [issue 123](https://github.com/tmarkovski/roga/issues/123).
 
 ## Context
 
@@ -10,7 +10,7 @@ Until now the only way to calm it was the Mac's Reduce Motion, which changes eve
 
 ## Decision
 
-**Settings › Appearance has a Motion section again, with one switch, Animate the house,** and the line "The house that pushes, pulls and drops through Fetch while Git works." under it. It's stored as `animatesHouse`, is on unless it's turned off, and is one setting for every window. Search finds it by its name, its line, Motion, and words such as Animations and Reduce Motion. The section has no card of houses above the switch, so nothing moves on the page where people go to stop the motion. The speed slider stays out, as 3e8e34d left it.
+**Settings › Appearance › Interface ends with a switch, Animate the house,** after the code font, with "Shows the house in the title row and on the Fetch button while Git works." under it, worded the way [decision 88](0088-messages-dont-narrate-what-roga-did.md) asks. It's stored as `animatesHouse`, is on unless it's turned off, and is one setting for every window. Search finds it by its name, its line, and words such as Motion, Animations and Reduce Motion, and a search that finds only it leaves out the theme preview. There's no card of houses above the switch, so nothing moves on the page where people go to stop the motion. The speed slider stays out, as 3e8e34d left it, and so does the Motion section, which holds only the speed.
 
 **With the switch off, there's no house anywhere git runs:**
 
@@ -27,12 +27,13 @@ Until now the only way to calm it was the Mac's Reduce Motion, which changes eve
 - Someone who turns the house off sees the counts stay during a push or a pull, and can click one while git runs, which does nothing until git is done, as during a commit.
 - A quick push or pull with the house off says what it did sooner, since it doesn't wait for the house to play once.
 - The house still plays on the first-run setup screens, which come before Settings, in Replay History, where it's part of the video someone asked for, in the app icon and the wordmark. Other motion, such as the agents' turning ring, follows Reduce Motion as before.
-- Motion is shown whenever it has a setting to show, rather than only while the speed is offered, so the speed can come back beside the switch.
+- Motion is shown whenever it has a setting to show, rather than only while the speed is offered. For now it has none, so it stays hidden until the speed comes back.
 
 ## Alternatives considered
 
 - **House animations as the name.** It reads more like a heading than a setting, and the other switches in Settings say what they do.
 - **Show the house while Git works as the name.** It's closer to what off does, since there's no house rather than a still one, but Animate the house is shorter and matches what people search for, and the line under it says which house.
+- **A Motion section of its own for the switch,** between Interface and Lists, where the speed used to be. It would be a section with a single setting, which is what [decision 110](0110-line-up-settings-rows-on-their-middle-and-give-git-fewer-sections.md) folded away on the Git page, and the house is part of how Roga looks, as the theme and the colors are.
 - **The card of the house's animations above the switch,** as it was above the speed. It shows what the switch turns off, but it's a card of moving houses on the page where someone goes to stop them. Showing them still while the switch is off was considered too.
 - **A still house with the switch off,** as with Reduce Motion. It still takes the counts' place in the title row and makes the action wait, which isn't the quieter window this is for.
 - **Bringing the house back at once when the switch is turned on.** The house would zoom in during a push that had started without it, hiding the counts partway through, or appear for the last seconds of the words about a push that's done, and the Fetch button would jump into the middle of a drop.

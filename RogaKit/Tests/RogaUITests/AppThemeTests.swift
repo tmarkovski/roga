@@ -40,7 +40,8 @@ struct AppThemeTests {
     @Test func settingsShowsItFirstOnAppearance() {
         #expect(AppTheme.allCases.map(\.title) == ["System", "Light", "Dark"])
         #expect(SettingsGroup.allCases.first { $0.page == .appearance } == .interface)
-        #expect(SettingsGroup.interface.items == [.theme, .colors, .codeFont])
+        // Animate the house ends the section (decision 112).
+        #expect(SettingsGroup.interface.items == [.theme, .colors, .codeFont, .animatesHouse])
         #expect(SettingsItem.theme.title == "Theme")
         // Search finds it by any of its choices, and by what people call them.
         for query in ["theme", "Dark", "light mode", "System", "Appearance"] {
@@ -65,7 +66,8 @@ struct AppThemeTests {
         #expect(SettingsItem.codeFont.title == "Code font")
         // Its name says what it's for, so it has no gray help (decision 89).
         #expect(SettingsItem.codeFont.help.isEmpty)
-        #expect(SettingsGroup.interface.items.last == .codeFont)
+        // Only Animate the house comes after it (decision 112).
+        #expect(SettingsGroup.interface.items.suffix(2) == [.codeFont, .animatesHouse])
         for query in ["font", "monospaced", "SF Mono", "typeface", "diff", "font size", "text size", "points"] {
             #expect(SettingsItem.codeFont.matches(query), "\(query)")
         }

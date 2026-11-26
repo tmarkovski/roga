@@ -121,8 +121,9 @@ enum SettingsGroup: CaseIterable {
     }
 
     /// Whether Settings shows it, on its page and when searching, which it
-    /// does while it has a setting to show. Motion has Animate the house,
-    /// whether or not it offers the speed (decision 112).
+    /// does while it has a setting to show. Motion has only the speed, which
+    /// is left out for now, so it's hidden, and Animate the house is in
+    /// Interface (decision 112).
     var isShown: Bool {
         !items.isEmpty
     }
@@ -181,8 +182,8 @@ enum SettingsItem: CaseIterable {
         switch self {
         case .terminal: .openIn
         case .checksForUpdates, .downloadsUpdates: .updates
-        case .theme, .colors, .codeFont: .interface
-        case .animatesHouse, .animationSpeed: .motion
+        case .theme, .colors, .codeFont, .animatesHouse: .interface
+        case .animationSpeed: .motion
         case .fileLayout, .refsSort, .foldsDescriptions: .lists
         case .gitProgram: .installation
         case .identityName, .identityEmail, .identityRepositories: .identity
@@ -239,7 +240,7 @@ enum SettingsItem: CaseIterable {
         case .colors:
             "Used for the commit graph, branches, diffs and commands."
         case .animatesHouse:
-            "The house that pushes, pulls and drops through Fetch while Git works."
+            "Shows the house in the title row and on the Fetch button while Git works."
         case .animationSpeed:
             "House animation speed during Git operations."
         case .identityRepositories:
@@ -273,7 +274,7 @@ enum SettingsItem: CaseIterable {
         case .fileLayout: ["List", "Tree", "Changes"]
         case .refsSort: ["Name", "Date", "Refs", "Branches"]
         case .foldsDescriptions: ["Collapse", "Expand", "Subject", "Body"]
-        case .animatesHouse: ["Animations", "Reduce Motion", "Mascot", "Title row"]
+        case .animatesHouse: ["Animations", "Motion", "Reduce Motion", "Mascot", "Push", "Pull"]
         case .gitProgram: ["Rescan", "Choose another", "executable", "program", "version", "PATH", "Xcode", "Command Line Tools", "Homebrew"]
         case .identityName: ["user.name", "Identity", "author", "committer"]
         case .identityEmail: ["user.email", "Identity", "author", "committer"]
@@ -547,19 +548,24 @@ struct SettingsSheet: View {
                     }
                 }
                 if group == .interface {
-                    // The preview goes between the rows it follows: Theme and
+                    // The preview goes between the rows it shows: Theme and
                     // Colors above it, and the code font below (decision 73).
                     // Its border sets it apart, so no line comes between it and
-                    // the row on either side.
-                    let above = items.filter { $0 != .codeFont }
+                    // the row on either side. Animate the house comes after,
+                    // below a line like any row, and a search that finds only
+                    // it leaves the preview out (decision 112).
+                    let above = items.filter { $0 == .theme || $0 == .colors }
                     let showsCodeFont = items.contains(.codeFont)
                     ForEach(above.dropLast(), id: \.self) { row($0) }
-                    VStack(spacing: 0) {
-                        if let last = above.last { row(last) }
-                        ThemePreview()
-                            .padding(EdgeInsets(top: above.isEmpty ? 8 : 4, leading: 0, bottom: showsCodeFont ? 4 : 12, trailing: 0))
-                        if showsCodeFont { codeFontRow }
+                    if !above.isEmpty || showsCodeFont {
+                        VStack(spacing: 0) {
+                            if let last = above.last { row(last) }
+                            ThemePreview()
+                                .padding(EdgeInsets(top: above.isEmpty ? 8 : 4, leading: 0, bottom: showsCodeFont ? 4 : 12, trailing: 0))
+                            if showsCodeFont { codeFontRow }
+                        }
                     }
+                    ForEach(items.filter { $0 == .animatesHouse }, id: \.self) { row($0) }
                 } else {
                     ForEach(items, id: \.self) { row($0) }
                 }
