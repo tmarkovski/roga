@@ -140,7 +140,9 @@ struct IdentitySection: View {
             }
         case .signingKey:
             settingRow(item, key: .signingKey) {
-                SigningKeyField(
+                // The row's name is beside the field, so it has no label
+                // over it.
+                SigningKeyField<EmptyView>(
                     text: $key,
                     format: identity.format,
                     listing: keyListings[identity.format],

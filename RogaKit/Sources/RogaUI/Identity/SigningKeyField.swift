@@ -8,9 +8,10 @@ import SwiftUI
 /// The chevron at its end opens the keys this Mac has for the format, as
 /// cards with a radio, and a path or key ID that isn't listed can still be
 /// typed. The line under it says which key the field names, or why there
-/// are none, and ends with New SSH Key… or New OpenPGP Key… in the accent
-/// color (decision 108).
-struct SigningKeyField: View {
+/// are none. New SSH Key… or New OpenPGP Key…, in the accent color, ends the
+/// field's label where it has one over it, as in the identity popover, and
+/// the line under it otherwise, as in Settings (decision 108).
+struct SigningKeyField<Label: View>: View {
     @Binding var text: String
     let format: CommitIdentity.SigningFormat
     /// The keys for the format, or nil while they're being listed and for
@@ -30,6 +31,15 @@ struct SigningKeyField: View {
     /// What New SSH Key… and New OpenPGP Key… need, or nil to offer neither
     /// (decision 108).
     var maker: KeyMaker?
+    /// The label over the field, which New Key… ends, or nil where the
+    /// field has its name beside it, as in Settings. Under a label, the line
+    /// about the key always has room for two lines, so that picking a key
+    /// doesn't change how tall the field is.
+    var label: Label?
+    /// Set while the keys or New Key… are open over the field, until they've
+    /// gone, which the identity popover follows to keep its height
+    /// meanwhile.
+    var isShowingPopover: Binding<Bool>?
     @State private var isPicking = false
     @State private var isMakingKey = false
 
@@ -37,47 +47,77 @@ struct SigningKeyField: View {
         let keys = listing.map { SigningKeys.ordered($0.keys, for: email) } ?? []
         let offersDefault = hasDefaultKeyCommand && format == .ssh
         let hasPicker = !keys.isEmpty || offersDefault
-        VStack(alignment: .leading, spacing: 4) {
-            focused(SettingsTextField(text: $text, placeholder: placeholder, width: width, isMonospaced: true, trailingRoom: hasPicker ? 22 : 0))
-                .accessibilityLabel("Key")
-                .overlay(alignment: .trailing) {
-                    if hasPicker {
-                        pickerButton(keys, offersDefault: offersDefault)
-                            .padding(.trailing, 4)
-                    }
+        VStack(alignment: .leading, spacing: 6) {
+            if let label {
+                HStack(spacing: 12) {
+                    label
+                    newKeyButton
                 }
-                .popover(isPresented: $isMakingKey, arrowEdge: .bottom) {
-                    if let maker {
-                        NewKeyPopover(format: format, email: email ?? "", maker: maker, made: made) {
-                            isMakingKey = false
-                        }
-                    }
-                }
-                // In Settings, the row's words line up with the field, and
-                // the line about the key hangs under it.
-                .alignmentGuide(.settingsRowMiddle) { $0[VerticalAlignment.center] }
-            let line = line(keys)
-            if line != nil || offersNewKey {
-                // Side by side when the line fits on one row beside the
-                // button, and otherwise the line keeps the whole width and
-                // the button goes under it, so that a long user ID isn't cut.
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        lineText(line).fixedSize()
-                        Spacer(minLength: 0)
-                        newKeyButton
-                    }
-                    VStack(alignment: .trailing, spacing: 3) {
-                        lineText(line)
-                            .lineLimit(2)
-                            .truncationMode(.middle)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        newKeyButton
-                    }
-                }
-                .frame(width: width, alignment: .leading)
             }
+            VStack(alignment: .leading, spacing: 4) {
+                field(keys, offersDefault: offersDefault, hasPicker: hasPicker)
+                lineUnder(keys)
+            }
+        }
+    }
+
+    private func field(_ keys: [SigningKey], offersDefault: Bool, hasPicker: Bool) -> some View {
+        focused(SettingsTextField(text: $text, placeholder: placeholder, width: width, isMonospaced: true, trailingRoom: hasPicker ? 22 : 0))
+            .accessibilityLabel("Key")
+            .overlay(alignment: .trailing) {
+                if hasPicker {
+                    pickerButton(keys, offersDefault: offersDefault)
+                        .padding(.trailing, 4)
+                }
+            }
+            .popover(isPresented: $isMakingKey, arrowEdge: .bottom) {
+                if let maker {
+                    NewKeyPopover(format: format, email: email ?? "", maker: maker, made: made) {
+                        isMakingKey = false
+                    }
+                    .modifier(Showing(isShowing: isShowingPopover))
+                }
+            }
+            // In Settings, the row's words line up with the field, and
+            // the line about the key hangs under it.
+            .alignmentGuide(.settingsRowMiddle) { $0[VerticalAlignment.center] }
+    }
+
+    /// The line about the key under the field.
+    @ViewBuilder private func lineUnder(_ keys: [SigningKey]) -> some View {
+        let line = line(keys)
+        if label != nil {
+            // Two lines' room from the start, whatever the line says and
+            // whether the keys have been listed yet, so that nothing under
+            // it moves.
+            ZStack(alignment: .topLeading) {
+                lineText(" \n ").hidden()
+                lineText(line)
+                    .lineLimit(2)
+                    .truncationMode(.middle)
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(width: width, alignment: .leading)
+        } else if line != nil || offersNewKey {
+            // Side by side when the line fits on one row beside the
+            // button, and otherwise the line keeps the whole width and
+            // the button goes under it, so that a long user ID isn't cut.
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    lineText(line).fixedSize()
+                    Spacer(minLength: 0)
+                    newKeyButton
+                }
+                VStack(alignment: .trailing, spacing: 3) {
+                    lineText(line)
+                        .lineLimit(2)
+                        .truncationMode(.middle)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    newKeyButton
+                }
+            }
+            .frame(width: width, alignment: .leading)
         }
     }
 
@@ -118,7 +158,7 @@ struct SigningKeyField: View {
             KeyPickerPopover(
                 format: format,
                 keys: keys,
-                picked: Self.key(named: text, in: keys),
+                picked: SigningKeys.key(named: text, in: keys),
                 offersDefault: offersDefault,
                 isEmpty: text.trimmingCharacters(in: .whitespaces).isEmpty,
                 savesAtOnce: maker?.savesAtOnce ?? false,
@@ -126,6 +166,7 @@ struct SigningKeyField: View {
             ) {
                 isPicking = false
             }
+            .modifier(Showing(isShowing: isShowingPopover))
         }
     }
 
@@ -155,6 +196,19 @@ struct SigningKeyField: View {
         pick(key.key.value)
     }
 
+    /// Says whether a popover over the field is showing: from when its
+    /// content appears until it's gone, which is after it has finished
+    /// closing.
+    private struct Showing: ViewModifier {
+        let isShowing: Binding<Bool>?
+
+        func body(content: Content) -> some View {
+            content
+                .onAppear { isShowing?.wrappedValue = true }
+                .onDisappear { isShowing?.wrappedValue = false }
+        }
+    }
+
     private var placeholder: String {
         switch format {
         case .ssh: hasDefaultKeyCommand ? "Empty to let gpg.ssh.defaultKeyCommand pick" : "~/.ssh/id_ed25519.pub"
@@ -165,12 +219,14 @@ struct SigningKeyField: View {
 
     /// Which listed key the field names, or why there are none to offer.
     private func line(_ keys: [SigningKey]) -> String? {
-        if let key = Self.key(named: text, in: keys) {
+        if let key = SigningKeys.key(named: text, in: keys) {
             return key.title == key.value ? key.subtitle : "\(key.title) · \(key.subtitle)"
         }
         return listing?.emptyReason
     }
+}
 
+extension SigningKeys {
     /// The listed key a field's text names: the same path, with or without
     /// `~`, the same `key::` key, or an OpenPGP fingerprint that ends with
     /// the key ID typed, without case or spaces.
