@@ -167,6 +167,24 @@ struct IdentityTests {
         #expect(editor.changes.isEmpty)
     }
 
+    @Test func labelsOnlyTheValuesThatDontComeFromTheGlobalFile() {
+        let editor = IdentityEditor(identity: identity(emailFrom: included), defaultIdentity: identity(), globalFiles: globalFiles)
+        // From ~/.gitconfig, which the line under the title names once.
+        #expect(editor.labelWords(.name) == nil)
+        #expect(editor.subtitle(for: "roga") == "For roga and every worktree of it. Values come from ~/.gitconfig unless a field says otherwise.")
+        // From a file ~/.gitconfig includes, which the label still names.
+        #expect(editor.labelWords(.email) == "from ~/.gitconfig-work (included by ~/.gitconfig)")
+        // Not set, which the switch that's off shows.
+        #expect(editor.labelWords(.signsCommits) == nil)
+        // Once it changes, the label says where Save will put it.
+        editor.name = "Sam R."
+        #expect(editor.labelWords(.name) == "this repository's own, once saved")
+        #expect(editor.subtitle(for: "roga") == "For roga and every worktree of it.")
+
+        let setHere = IdentityEditor(identity: identity(emailFrom: local), defaultIdentity: identity(), globalFiles: globalFiles)
+        #expect(setHere.labelWords(.email) == "set in this repository")
+    }
+
     @Test func savesToTheRepositoryByDefault() {
         let editor = IdentityEditor(identity: identity(), defaultIdentity: identity(), globalFiles: globalFiles)
         editor.email = "sam@oss.example"
