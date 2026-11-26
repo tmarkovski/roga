@@ -128,46 +128,28 @@ final class IdentityEditor {
         }
     }
 
-    /// Where a field's value comes from, or where Save will put it once it
-    /// has changed.
+    /// Where a field's value comes from, as it was read.
     func originWords(_ key: Key) -> String {
-        if usingGlobal.contains(key) { return "the global value, once saved" }
-        if isChanged(key) {
-            let file = globalFiles.shownFile ?? "~/.gitconfig"
-            if value(key).isEmpty {
-                return place == .repository ? "removed from this repository once saved" : "removed from \(file) once saved"
-            }
-            return place == .repository ? "this repository's own, once saved" : "in \(file), once saved"
-        }
         guard let setting = setting(key) else { return key == .signingFormat ? "git's default" : "not set" }
         return IdentityWords.origin(setting.origin, globalFiles: globalFiles)
     }
 
     /// What a field's label says after its name: where its value comes from,
-    /// or where Save will put it. It says nothing while the value is
-    /// unchanged and comes from the global config file, which the line under
-    /// the title names once, or isn't set, which the empty field or the
-    /// switch that's off already shows.
+    /// when that isn't the global config file, as in `set in this
+    /// repository` beside Use Global. A global value is the usual case, so
+    /// it says nothing. Neither does a value that isn't set, which the empty
+    /// field or the switch that's off already shows, or a field once it
+    /// changes, since Save to and the block along the bottom show what Save
+    /// will do. So flipping Sign commits never adds words beside its switch.
     func labelWords(_ key: Key) -> String? {
-        let isUnset = setting(key) == nil && !isChanged(key) && !usingGlobal.contains(key)
-        return isFromGlobalFile(key) || isUnset ? nil : originWords(key)
+        guard !isChanged(key), !usingGlobal.contains(key), setting(key) != nil, !isFromGlobalFile(key) else { return nil }
+        return originWords(key)
     }
 
-    /// The line under the popover's title: which repository it changes, and,
-    /// when a field leaves out where its value comes from, the file it does
-    /// come from.
-    func subtitle(for repository: String) -> String {
-        let start = "For \(repository) and every worktree of it."
-        let labeled: [Key] = signs ? [.name, .email, .signsCommits, .signingKey] : [.name, .email, .signsCommits]
-        guard labeled.contains(where: isFromGlobalFile), let file = globalFiles.shownFile else { return start }
-        return "\(start) Values come from \(file) unless a field says otherwise."
-    }
-
-    /// Whether a field still has the value it was read with, from the file
-    /// `git config --global` writes to.
+    /// Whether a field's value was read from the file `git config --global`
+    /// writes to.
     private func isFromGlobalFile(_ key: Key) -> Bool {
-        guard !usingGlobal.contains(key), !isChanged(key), let origin = setting(key)?.origin,
-              origin.scope == .global, let file = origin.file else { return false }
+        guard let origin = setting(key)?.origin, origin.scope == .global, let file = origin.file else { return false }
         return globalFiles.abbreviated(file) == globalFiles.shownFile
     }
 
@@ -212,8 +194,8 @@ final class IdentityEditor {
 /// Email; Sign commits, with the format and the key under it while it's on;
 /// and Save to beside the buttons, which chooses the repository's own
 /// config, the default, or the global config. A field says where its value
-/// comes from when that isn't the global config file, which the line under
-/// the title names once. The block along its bottom shows the exact
+/// comes from only when that isn't the global config file, as in `set in
+/// this repository` beside Use Global. The block along its bottom shows the exact
 /// commands that Save runs (decision 29). No field is selected when it
 /// opens, so that nothing is highlighted until someone clicks or presses
 /// Tab.
@@ -273,10 +255,13 @@ struct IdentityPopover: View {
                 Text("Commit identity")
                     .font(.system(size: 13, weight: .semibold))
                     .accessibilityAddTraits(.isHeader)
-                Text(editor.subtitle(for: repository.name))
+                // Which repository, since Settings opens it from a list of
+                // them as well as from the repository's own window.
+                Text("For \(repository.name) and its worktrees")
                     .font(.system(size: 12))
                     .foregroundStyle(DialogColors.note)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
             }
             .padding(EdgeInsets(top: 13, leading: Self.inset, bottom: 14, trailing: Self.inset))
             // Who: the name and the email.
@@ -290,7 +275,10 @@ struct IdentityPopover: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 6) {
                     label(.signsCommits, "Sign commits", editor: editor)
-                    Toggle("Sign commits", isOn: $editor.signs.animation(.snappy(duration: 0.15)))
+                    // Without an animation, so the popover takes its new
+                    // height in one step. Animated, it grew or shrank around
+                    // its content, which moved toward the middle and back.
+                    Toggle("Sign commits", isOn: $editor.signs)
                         .toggleStyle(.settings)
                         .labelsHidden()
                 }
@@ -416,7 +404,7 @@ struct IdentityPopover: View {
             if let words = editor.labelWords(key) {
                 Text(words)
                     .font(.system(size: 11.5))
-                    .foregroundStyle(editor.isChanged(key) ? Color.primary : DialogColors.note)
+                    .foregroundStyle(DialogColors.note)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }

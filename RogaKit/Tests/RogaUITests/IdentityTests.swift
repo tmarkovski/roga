@@ -169,30 +169,32 @@ struct IdentityTests {
 
     @Test func labelsOnlyTheValuesThatDontComeFromTheGlobalFile() {
         let editor = IdentityEditor(identity: identity(emailFrom: included), defaultIdentity: identity(), globalFiles: globalFiles)
-        // From ~/.gitconfig, which the line under the title names once.
+        // From ~/.gitconfig, the global value, which is the usual case.
         #expect(editor.labelWords(.name) == nil)
-        #expect(editor.subtitle(for: "roga") == "For roga and every worktree of it. Values come from ~/.gitconfig unless a field says otherwise.")
-        // From a file ~/.gitconfig includes, which the label still names.
+        // From a file ~/.gitconfig includes, which the label names.
         #expect(editor.labelWords(.email) == "from ~/.gitconfig-work (included by ~/.gitconfig)")
         // Not set, which the switch that's off shows.
         #expect(editor.labelWords(.signsCommits) == nil)
-        // Once it changes, the label says where Save will put it.
-        editor.name = "Sam R."
-        #expect(editor.labelWords(.name) == "this repository's own, once saved")
-        #expect(editor.subtitle(for: "roga") == "For roga and every worktree of it.")
+        // Once a field changes, its label says nothing, since Save to and
+        // the block along the bottom show what Save will do, and so flipping
+        // the switch adds no words beside it.
+        editor.email = "sam@oss.example"
+        editor.signs = true
+        #expect(editor.labelWords(.email) == nil)
+        #expect(editor.labelWords(.signsCommits) == nil)
 
         let setHere = IdentityEditor(identity: identity(emailFrom: local), defaultIdentity: identity(), globalFiles: globalFiles)
         #expect(setHere.labelWords(.email) == "set in this repository")
+        setHere.useGlobal(.email)
+        #expect(setHere.labelWords(.email) == nil)
     }
 
     @Test func savesToTheRepositoryByDefault() {
         let editor = IdentityEditor(identity: identity(), defaultIdentity: identity(), globalFiles: globalFiles)
         editor.email = "sam@oss.example"
         #expect(editor.changes == [.set(.email, "sam@oss.example", in: .repository)])
-        #expect(editor.originWords(.email) == "this repository's own, once saved")
         editor.place = .everyRepository
         #expect(editor.changes == [.set(.email, "sam@oss.example", in: .everyRepository)])
-        #expect(editor.originWords(.email) == "in ~/.gitconfig, once saved")
         #expect(editor.shadowNote == nil)
     }
 
@@ -200,7 +202,6 @@ struct IdentityTests {
         let editor = IdentityEditor(identity: identity(), defaultIdentity: identity(), globalFiles: globalFiles)
         editor.name = ""
         #expect(editor.changes == [.unset(.name, in: .repository)])
-        #expect(editor.originWords(.name) == "removed from this repository once saved")
     }
 
     @Test func turnsSigningOnWithAFormatAndAKey() {
