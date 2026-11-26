@@ -108,6 +108,7 @@ struct SigningKeyField: View {
         }
         .buttonStyle(.plain)
         .fixedSize()
+        .opensOnPress($isPicking)
         .help("Keys on This Mac")
         .accessibilityLabel("Keys on This Mac")
         .popover(isPresented: $isPicking, arrowEdge: .bottom) {

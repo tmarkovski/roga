@@ -59,6 +59,7 @@ struct AgentSplitButton: View {
                     .frame(maxHeight: .infinity)
                     .contentShape(Rectangle())
             }
+            .opensOnPress($isChoosing)
             .help("Choose an Agent")
             .accessibilityLabel("Choose an Agent")
             .popover(isPresented: $isChoosing, arrowEdge: .bottom) {

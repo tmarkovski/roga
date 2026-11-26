@@ -140,19 +140,21 @@ private struct NewBranchButton: View {
 
     var body: some View {
         let isAtRow = branch.newRefPlace != nil
+        let isOpenHere = Binding {
+            branch.isCreatingBranch && !isAtRow
+        } set: { isShown in
+            if !isShown { branch.isCreatingBranch = false }
+        }
         Button {
             branch.startNewBranch()
         } label: {
             Icon.newBranch.image
         }
-        .buttonStyle(.icon(isOn: branch.isCreatingBranch && !isAtRow))
+        .buttonStyle(.icon(isOn: isOpenHere.wrappedValue))
+        .opensOnPress(isOpenHere, open: branch.startNewBranch)
         .help(help)
         .accessibilityLabel("New Branch")
-        .popover(isPresented: Binding {
-            branch.isCreatingBranch && !isAtRow
-        } set: { isShown in
-            if !isShown { branch.isCreatingBranch = false }
-        }, arrowEdge: .bottom) {
+        .popover(isPresented: isOpenHere, arrowEdge: .bottom) {
             NewBranchPopover(branch: branch, showWorktree: showWorktree)
         }
         // On views of their own, because a view is only sure of showing one popover.

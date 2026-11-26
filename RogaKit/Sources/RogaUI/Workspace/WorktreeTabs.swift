@@ -504,6 +504,7 @@ private struct NewWorktreeTabButton: View {
             Icon.plus.image
         }
         .buttonStyle(.icon(isOn: isPresented))
+        .opensOnPress($isPresented)
         .help(NewWorktreePopover.title(startingFrom: start))
         .accessibilityLabel(NewWorktreePopover.title(startingFrom: start))
         .popover(isPresented: $isPresented, arrowEdge: .bottom) {
