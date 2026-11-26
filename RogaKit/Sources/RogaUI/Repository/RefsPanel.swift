@@ -722,11 +722,11 @@ private struct RefRow<Trailing: View, Commands: View>: View {
                     }
                 }
                 if let subtitle {
-                    Text(subtitle)
+                    // It gives way to the commands on hover, so it fades out
+                    // before them rather than being cut short (decision 114).
+                    FadingText(subtitle)
                         .font(.system(size: 11.5))
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
                 }
             }
             if showsCommands {
