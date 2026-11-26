@@ -36,9 +36,9 @@ struct SigningKeyField<Label: View>: View {
     /// about the key always has room for two lines, so that picking a key
     /// doesn't change how tall the field is.
     var label: Label?
-    /// Set while the keys or New Key… are open over the field, until they've
-    /// gone, which the identity popover follows to keep its height
-    /// meanwhile.
+    /// Set from when the keys or New Key… open over the field until they've
+    /// finished closing, which the identity popover follows to keep its
+    /// height meanwhile.
     var isShowingPopover: Binding<Bool>?
     @State private var isPicking = false
     @State private var isMakingKey = false
@@ -59,6 +59,24 @@ struct SigningKeyField<Label: View>: View {
                 lineUnder(keys)
             }
         }
+        .onChange(of: isPicking || isMakingKey) { _, isOpen in
+            if isOpen { isShowingPopover?.wrappedValue = true }
+        }
+        // The keys or New Key… are gone once AppKit says their popover has
+        // closed, which is after its closing has run. Their content goes as
+        // the closing starts, and a popover under one that's still closing
+        // drew a frame out of place when it took its new height then. Only
+        // they close while the field asks for neither.
+        .onReceive(NotificationCenter.default.publisher(for: NSPopover.didCloseNotification)) { _ in
+            if !isPicking, !isMakingKey { isShowingPopover?.wrappedValue = false }
+        }
+        .task(id: isPicking || isMakingKey) {
+            // In case AppKit says nothing, such as when one closes before
+            // the field knows it has.
+            guard !isPicking, !isMakingKey, isShowingPopover?.wrappedValue == true else { return }
+            try? await Task.sleep(for: .seconds(1))
+            if !Task.isCancelled { isShowingPopover?.wrappedValue = false }
+        }
     }
 
     private func field(_ keys: [SigningKey], offersDefault: Bool, hasPicker: Bool) -> some View {
@@ -75,7 +93,6 @@ struct SigningKeyField<Label: View>: View {
                     NewKeyPopover(format: format, email: email ?? "", maker: maker, made: made) {
                         isMakingKey = false
                     }
-                    .modifier(Showing(isShowing: isShowingPopover))
                 }
             }
             // In Settings, the row's words line up with the field, and
@@ -166,7 +183,6 @@ struct SigningKeyField<Label: View>: View {
             ) {
                 isPicking = false
             }
-            .modifier(Showing(isShowing: isShowingPopover))
         }
     }
 
@@ -194,19 +210,6 @@ struct SigningKeyField<Label: View>: View {
     private func made(_ key: NewSigningKey.Made) {
         maker?.made(key)
         pick(key.key.value)
-    }
-
-    /// Says whether a popover over the field is showing: from when its
-    /// content appears until it's gone, which is after it has finished
-    /// closing.
-    private struct Showing: ViewModifier {
-        let isShowing: Binding<Bool>?
-
-        func body(content: Content) -> some View {
-            content
-                .onAppear { isShowing?.wrappedValue = true }
-                .onDisappear { isShowing?.wrappedValue = false }
-        }
     }
 
     private var placeholder: String {
