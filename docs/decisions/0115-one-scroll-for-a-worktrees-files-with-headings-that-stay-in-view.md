@@ -23,6 +23,6 @@ When a filter leaves no files in any list, one note says so, where each list use
 - A long list of files to stage gets the whole height above the message, rather than 40% of the panel.
 - The staged files aren't always in view any more, but Staged's heading is, with how many there are, how many lines they change and Unstage All. Seeing one staged file takes scrolling to it or clicking the heading.
 - Staging a file takes its row out of its list and puts it in Staged, and the rows after it move up one, as they did within a list. There's no line between two lists for staging to move.
-- With every list's files scrolled away, the headings take 36 points each at the edges, so four of them take 144 points of the scroll.
+- A heading has 6 points above its title and 6 below it, so a button's gray fill under the pointer sits in its middle, and the headings are thinner than the panel's header. With every list's files scrolled away, they take 32 points each at the edges, so four of them take 128 points of the scroll.
 - The lists no longer glide to new heights when one comes or goes, since they share one scroll. The message box still glides when Amend changes what it needs.
 - Each list's rows are still in a lazy stack of rows that are all the same height. Where a heading sits follows from where its list's rows start, which a model of their own holds, and only the headings read it, so scrolling draws nothing else again.

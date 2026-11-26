@@ -28,13 +28,12 @@ final class StuckHeadings {
     static let space = "uncommitted files"
     /// How tall a heading's title and buttons are.
     static let titleHeight = 20.0
-    /// The room above a heading's title, which sets it apart from the rows of
-    /// the list before it.
-    static let aboveTitle = 10.0
-    /// The room under a heading's title.
-    static let belowTitle = 6.0
+    /// The room above and below a heading's title, the same on both sides, so
+    /// that a button's gray fill under the pointer sits in the middle of the
+    /// heading. The headings are thinner than the panel's header for it.
+    static let aroundTitle = 6.0
     /// How tall a heading is.
-    static var headingHeight: Double { titleHeight + aboveTitle + belowTitle }
+    static var headingHeight: Double { titleHeight + 2 * aroundTitle }
 
     /// What a list's heading is known by, for scrolling to it.
     static func headingID(_ group: WorktreeChanges.Group) -> String {
