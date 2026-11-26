@@ -23,7 +23,7 @@ Rows tagged **In the app** on the boards are what today's settings window or men
 | Page | What's on it | In the app today |
 | --- | --- | --- |
 | General | Reopening windows, the rail of organizations, the editor and terminal for Open in…, updates | The terminal for Open in Terminal, checking for updates and downloading them, and grouping and sorting the sidebar from the View menu |
-| Appearance | Theme, text size, the house's animations, the code font and diff options, how lists are shown | The theme, the animation speed, and the file layout, branch sort and folded descriptions from menus |
+| Appearance | Theme, text size, the house's animations, the code font and diff options, how lists are shown | The theme, the colors, the code font, the switch that turns the house off, and the file layout, branch sort and folded descriptions from menus |
 | Git | Which git runs and why one was passed over, name and email, fetching, pulling and pushing | Fetching when Roga becomes active |
 | Commit | The long first line, generating messages with an agent, the Commit button, signing, discarding | The Generate section, and the 72-character mark and asking before discarding many files as fixed behavior |
 | Agents | Command-line agents Roga found, and their hooks for working status | Claude Code and Codex, each with a page of its own, without Add a Command |
@@ -82,6 +82,8 @@ Each hook runs `roga-hook hook --host <agent> --event <name>`, a launcher in Rog
 - **Advanced folds into Git** ([decision 90](../../decisions/0090-fold-advanced-into-git.md)). Advanced had one setting, Keep commit-graph files up to date, so its Large repositories section moves to Git, after Fetching, and the sidebar ends at Agents. The boards here still draw Advanced, with the command log and reset it would have had. The Agent settings page of the canvas draws the Git page with Large repositories. Built on November 16, 2026.
 
 - **The key to the marks is a piece of the sidebar,** the same one setup's Hooks screen shows, rather than a card of three rows with a worktree's name and what the mark means in a line. The sidebar's own rows draw it, and the rows around the three fade out with the sidebar's panel, so it reads as a glimpse of the window. Each mark has a line out to what it means. Changed on November 17, 2026.
+
+- **Motion comes back with a switch that turns the house off** ([decision 112](../../decisions/0112-let-the-house-be-turned-off-in-settings.md)). Appearance has Interface, Motion and Lists again. Motion has one switch, Animate the house, with "The house that pushes, pulls and drops through Fetch while Git works." under it, which is on by default and stored as `animatesHouse` for every window. Turned off, the title row shows words after the counts while git pushes, pulls, undoes or aborts, and the Fetch button pulses rather than dropping the house. The card of the house's animations doesn't come back above the switch, because it would be a card of moving houses on the page where someone goes to stop them, and the speed slider stays out. Motion shows whenever it has a setting to show, rather than only while the speed is offered. Built on November 26, 2026.
 
 ## Still to decide
 

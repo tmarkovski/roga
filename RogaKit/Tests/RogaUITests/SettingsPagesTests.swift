@@ -864,16 +864,34 @@ struct SettingsPagesTests {
         #expect(SettingsGroup.found("Generate button").map(\.items) == [[.showsGenerateButton]])
     }
 
-    /// Motion, with the house's animations and their speed, is left out for
-    /// now, so Appearance shows Interface and Lists, and search can't find it.
-    @Test func motionIsLeftOutForNow() {
+    /// Motion is back on Appearance for Animate the house, between Interface
+    /// and Lists. The speed is still left out, and search can't find it
+    /// (decision 112).
+    @Test func motionHasAnimateTheHouseButNotTheSpeed() {
         #expect(!HouseAnimationView.offersSpeed)
-        #expect(SettingsGroup.shown().filter { $0.page == .appearance } == [.interface, .lists])
+        #expect(SettingsGroup.motion.isShown)
+        #expect(SettingsGroup.motion.items == [.animatesHouse])
+        #expect(SettingsGroup.shown().filter { $0.page == .appearance } == [.interface, .motion, .lists])
+        #expect(SettingsGroup.shown(usesAgents: false).contains(.motion))
+        #expect(!SettingsItem.animationSpeed.isShown)
         #expect(SettingsGroup.found("Animation speed").isEmpty)
-        #expect(SettingsGroup.found("Motion").isEmpty)
-        // A search still finds the rest of the page.
-        #expect(SettingsGroup.found("Appearance").map(\.group) == [.interface, .lists])
+        #expect(!SettingsGroup.found("Speed").contains { $0.items.contains(.animationSpeed) })
+        // The page draws its rows from the group's items, so the slider
+        // and the card of houses above it stay off the page too.
+        #expect(!SettingsGroup.allCases.contains { $0.items.contains(.animationSpeed) })
+        #expect(SettingsGroup.found("Appearance").map(\.group) == [.interface, .motion, .lists])
         #expect(SettingsGroup.found("Monokai").map(\.items) == [[.colors]])
+    }
+
+    /// Search finds the switch by its name, its line, its heading, and the
+    /// words someone looking for it might type.
+    @Test func searchFindsAnimateTheHouse() {
+        for query in ["Animate", "house", "Motion", "Reduce Motion", "Animation", "animations", "drops through Fetch"] {
+            #expect(SettingsGroup.found(query).map(\.items) == [[.animatesHouse]], "\(query)")
+        }
+        #expect(SettingsItem.animatesHouse.group == .motion)
+        #expect(SettingsItem.animatesHouse.title == "Animate the house")
+        #expect(!SettingsItem.animatesHouse.help.isEmpty)
     }
 }
 

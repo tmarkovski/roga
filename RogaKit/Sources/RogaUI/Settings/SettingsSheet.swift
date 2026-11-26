@@ -121,16 +121,16 @@ enum SettingsGroup: CaseIterable {
         description.map { AttributedString.settingsWords($0, typedNames: ["PATH", "~/.gitconfig", "git config --global"]) }
     }
 
+    /// Its settings that Settings shows.
     var items: [SettingsItem] {
-        SettingsItem.allCases.filter { $0.group == self }
+        SettingsItem.allCases.filter { $0.group == self && $0.isShown }
     }
 
-    /// Whether Settings shows it, on its page and when searching. Motion is
-    /// left out for now, with the house's animations and their speed, which
-    /// stays normal (`HouseAnimationView.offersSpeed`). Its code stays, for
-    /// when it comes back.
+    /// Whether Settings shows it, on its page and when searching, which it
+    /// does while it has a setting to show. Motion has Animate the house,
+    /// whether or not it offers the speed (decision 112).
     var isShown: Bool {
-        self != .motion || HouseAnimationView.offersSpeed
+        !items.isEmpty
     }
 
     /// The groups Settings shows, in order, with what's about agents only
@@ -160,6 +160,7 @@ enum SettingsItem: CaseIterable {
     case theme
     case colors
     case codeFont
+    case animatesHouse
     case animationSpeed
     case fileLayout
     case refsSort
@@ -188,7 +189,7 @@ enum SettingsItem: CaseIterable {
         case .terminal: .openIn
         case .checksForUpdates, .downloadsUpdates: .updates
         case .theme, .colors, .codeFont: .interface
-        case .animationSpeed: .motion
+        case .animatesHouse, .animationSpeed: .motion
         case .fileLayout, .refsSort, .foldsDescriptions: .lists
         case .gitProgram: .installation
         case .identityName, .identityEmail, .signsCommits, .signingFormat, .signingKey: .identity
@@ -210,6 +211,7 @@ enum SettingsItem: CaseIterable {
         case .theme: "Theme"
         case .colors: "Colors"
         case .codeFont: "Code font"
+        case .animatesHouse: "Animate the house"
         case .animationSpeed: "Animation speed"
         case .fileLayout: "File layout"
         case .refsSort: "Branch sorting"
@@ -246,6 +248,8 @@ enum SettingsItem: CaseIterable {
             "Installs when Roga quits, or at once with Restart to Update."
         case .colors:
             "For the graph, branches, diffs and commands."
+        case .animatesHouse:
+            "The house that pushes, pulls and drops through Fetch while Git works."
         case .animationSpeed:
             "House animation speed during Git operations."
         case .checksSignatures:
@@ -277,6 +281,7 @@ enum SettingsItem: CaseIterable {
         case .fileLayout: ["List", "Tree", "Changes"]
         case .refsSort: ["Name", "Date", "Refs", "Branches"]
         case .foldsDescriptions: ["Collapse", "Expand", "Subject", "Body"]
+        case .animatesHouse: ["Animations", "Reduce Motion", "Mascot", "Title row"]
         case .showsGenerateButton: ["Generate", "⌥⌘L", "message editor"]
         case .gitProgram: ["Rescan", "Choose another", "executable", "program", "version", "PATH", "Xcode", "Command Line Tools", "Homebrew"]
         case .identityName: ["user.name", "Identity", "author", "committer"]
@@ -294,6 +299,13 @@ enum SettingsItem: CaseIterable {
         case .marksLegend: ["Working", "Finished", "Waiting", "approval", "response", "sidebar"]
         default: []
         }
+    }
+
+    /// Whether Settings shows it. The speed is left out for now, and the
+    /// house plays at normal speed (`HouseAnimationView.offersSpeed`). Its
+    /// code stays, for when it comes back.
+    var isShown: Bool {
+        self != .animationSpeed || HouseAnimationView.offersSpeed
     }
 
     func matches(_ query: String) -> Bool {
@@ -326,6 +338,7 @@ struct SettingsSheet: View {
     /// The families to choose the code font from, which are looked up as the
     /// sheet opens, so that a font installed since then is among them.
     @State private var codeFontFamilies: [String] = []
+    @AppStorage(UserDefaults.animatesHouseKey) private var animatesHouse = true
     @AppStorage(UserDefaults.houseAnimationSpeedKey) private var speed = 1.0
     @AppStorage(FileListSettings.layout) private var fileLayout = FileLayout.list
     @AppStorage(RefsPanelSettings.sort) private var refsSort = RefsModel.Sort.name
@@ -627,6 +640,9 @@ struct SettingsSheet: View {
                 SettingsSegments(selection: $theme, options: AppTheme.allCases.map { ($0, $0.title) }, icon: \.icon)
             case .colors:
                 SettingsSegments(selection: $colorTheme, options: ColorTheme.allCases.map { ($0, $0.title) })
+            case .animatesHouse:
+                Toggle(item.title, isOn: $animatesHouse)
+                    .toggleStyle(.settings)
             case .animationSpeed:
                 SettingsSlider(value: $speed, range: HouseAnimationView.speeds, step: 0.25) { "\($0.formatted())×" }
             case .fileLayout:

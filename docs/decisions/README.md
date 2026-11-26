@@ -117,3 +117,4 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [107](0107-trust-your-own-ssh-key-from-the-signature-line.md) | Trust your own SSH key from the Signature line | Accepted |
 | [108](0108-make-a-signing-key-and-say-which-signing-programs-are-here.md) | Make a signing key, and say which signing programs are here | Accepted |
 | [109](0109-keep-the-signature-line-in-place-and-let-checking-be-turned-off.md) | Keep the Signature line in place, and let checking be turned off | Accepted |
+| [112](0112-let-the-house-be-turned-off-in-settings.md) | Let the house be turned off in Settings | Accepted |

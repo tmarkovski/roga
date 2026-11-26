@@ -304,6 +304,12 @@ final class BranchModel {
     /// The action that `finished` is about, so that its house can keep going
     /// beside the words, or nil when they were announced rather than run.
     private(set) var finishedAction: Action?
+    /// Whether the house plays for `action`, and keeps going beside the words
+    /// about what it did: whether it was on in Settings as the action started
+    /// and has stayed on since. Turning it off takes it away at once, and
+    /// turning it back on waits for the next action, so that the house
+    /// doesn't zoom in partway through one (decision 112).
+    private(set) var playsHouse = true
     /// What takes back what just happened, as for a commit. It's set before `work`
     /// returns, and it goes along with the words.
     var undoFinished: FinishedUndo?
@@ -427,6 +433,10 @@ final class BranchModel {
     /// How long the house takes to play once for an action, which is how long
     /// the action stays in the title row when git finishes sooner.
     @ObservationIgnored var timeToPlayHouse: (Action) -> Duration = { $0.timeToPlayHouse }
+    /// Whether the house is on in Settings, as an action starts and whenever
+    /// a setting changes.
+    @ObservationIgnored var animatesHouse: () -> Bool = { UserDefaults.standard.animatesHouse }
+    @ObservationIgnored private var defaultsObserver: (any NSObjectProtocol)?
     /// How long what happened stays in the title row, given whether it can be
     /// undone. Tests stretch it, so that a slow run doesn't see it go before
     /// they look.
@@ -452,6 +462,25 @@ final class BranchModel {
         self.worktree = worktree
         self.fetchesByItself = fetchesByItself
         self.reportBranchChange = reportBranchChange
+        defaultsObserver = NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.houseSettingMayHaveChanged()
+            }
+        }
+    }
+
+    isolated deinit {
+        if let defaultsObserver { NotificationCenter.default.removeObserver(defaultsObserver) }
+    }
+
+    /// Once the house is turned off, it sits out the rest of the action under
+    /// way and the words about what it did, even if it's turned back on first.
+    func houseSettingMayHaveChanged() {
+        if playsHouse, !animatesHouse() { playsHouse = false }
     }
 
     /// Reads where the branch stands, and which commits it's missing from its
@@ -1215,13 +1244,15 @@ final class BranchModel {
         finished = nil
         finishedAction = nil
         undoFinished = nil
+        playsHouse = animatesHouse()
         let started = ContinuousClock.now
         running = Task {
             do {
                 if let message = try await work() {
                     // A quick git shouldn't change the words before the house
-                    // has played once. Bad news doesn't wait for it.
-                    if let action { try? await Task.sleep(until: started + timeToPlayHouse(action), clock: .continuous) }
+                    // has played once. Bad news doesn't wait for it, and
+                    // nothing waits for a house that isn't there.
+                    if let action, playsHouse { try? await Task.sleep(until: started + timeToPlayHouse(action), clock: .continuous) }
                     show(finished: message, by: action)
                 }
             } catch {
