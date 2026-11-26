@@ -2,7 +2,7 @@
 
 Accepted on 2026-11-25. This adds New SSH Key… and New OpenPGP Key… to the Key field from [decision 106](0106-offer-the-signing-keys-this-mac-has.md), fades a format in the identity popover's and Settings › Git's picker when its program isn't on this Mac, and adds the signing programs and gh to setup's Look Around from [decision 69](0069-set-roga-up-in-the-whole-window-the-first-time-it-runs.md). It came up while reviewing the work for decisions 105 to 107.
 
-Amended in place on 2026-11-25: the confirm puts the name and email the key is made for, and a new SSH key's file, in a gray card above what it says, rather than inside the sentence and the line under the title.
+Amended in place on 2026-11-25: the confirm puts the name and email the key is made for, and a new SSH key's file, in a gray card above what it says, rather than inside the sentence and the line under the title. Amended in place on 2026-11-26: the identity popover's Sign commits always shows the formats, beside Off, so it looks for the programs each time it opens, and while commits aren't signed, no format counts as the one git signs with, so git's default, OpenPGP, fades like the others when gpg is missing.
 
 ## Context
 
@@ -42,7 +42,7 @@ Setup's Look Around is where Roga says what it found on this Mac and what it wou
 - Turning signing on with no key takes one confirm, and a new SSH key's commits say Good at once.
 - Anyone who can read `~/.ssh/id_ed25519_signing`, or use the GnuPG keyring, can sign as the person, as with any key made without a passphrase, and the confirm says so.
 - For most people, Add to GitHub needs one `gh auth refresh` first, which Roga can't run for them, because it signs in in the browser.
-- Opening the popover with signing on also runs `git config --get-regexp ^gpg\.`, and making a key runs `gh auth status`, which asks each host whether gh's token still works.
+- Opening the popover also runs `git config --get-regexp ^gpg\.`, and making a key runs `gh auth status`, which asks each host whether gh's token still works.
 - Setup's Look Around also runs `ssh -V`, `gpg --version` and `gh --version`.
 
 ## Alternatives considered

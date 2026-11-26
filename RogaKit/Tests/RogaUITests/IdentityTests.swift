@@ -220,6 +220,43 @@ struct IdentityTests {
         #expect(editor.changes.isEmpty)
     }
 
+    @Test func signsWithOneChoiceOfOffOrAFormat() {
+        let editor = IdentityEditor(identity: identity(), defaultIdentity: identity(), globalFiles: globalFiles)
+        #expect(editor.signing == nil)
+        #expect(editor.signingKeys == [.signsCommits])
+        editor.signing = .ssh
+        #expect(editor.signs)
+        #expect(editor.format == .ssh)
+        #expect(editor.signingKeys == [.signsCommits, .signingFormat])
+        #expect(editor.changes == [
+            .set(.signsCommits, "true", in: .repository),
+            .set(.signingFormat, "ssh", in: .repository),
+        ])
+        // Off leaves the format as it is, so it changes nothing.
+        editor.signing = nil
+        #expect(editor.format == .ssh)
+        #expect(editor.changes.isEmpty)
+    }
+
+    @Test func useGlobalOnSignCommitsRemovesBothOfTheRepositorysSettings() {
+        var own = identity()
+        own.signsCommits = Setting("true", origin: local)
+        own.signingFormat = Setting("ssh", origin: local)
+        let editor = IdentityEditor(identity: own, defaultIdentity: identity(), globalFiles: globalFiles)
+        #expect(editor.signing == .ssh)
+        #expect(editor.labelWords(.signsCommits) == "set in this repository")
+        let set = editor.signingKeys.filter(editor.canUseGlobal)
+        #expect(set == [.signsCommits, .signingFormat])
+        set.forEach(editor.useGlobal)
+        // The global config doesn't sign, so the format no longer shows, but
+        // its removal still runs.
+        #expect(editor.signing == nil)
+        #expect(editor.changes == [
+            .unset(.signsCommits, in: .repository),
+            .unset(.signingFormat, in: .repository),
+        ])
+    }
+
     @Test func goesBackToTheGlobalValue() {
         let own = identity(email: "sam@oss.example", emailFrom: local)
         let editor = IdentityEditor(identity: own, defaultIdentity: identity(), globalFiles: globalFiles)
@@ -404,6 +441,8 @@ struct IdentityTests {
         #expect(IdentityPopover.unavailable(.x509, programs: found, current: .ssh) == "Install GnuPG, which has gpgsm, to sign with X.509")
         // The format git signs with stays, and the popover warns instead.
         #expect(IdentityPopover.unavailable(.openPGP, programs: found, current: .openPGP) == nil)
+        // While commits aren't signed, git's default is faded like the rest.
+        #expect(IdentityPopover.unavailable(.openPGP, programs: found, current: nil) == "Install GnuPG to sign with OpenPGP")
     }
 
     func sshPlan(setsFile: Bool = true) -> NewSigningKey.Plan {
