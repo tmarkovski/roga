@@ -1,12 +1,14 @@
 import AgentHooks
+import AppKit
 import IconUI
 import SwiftUI
 
 /// What the agent in the worktree on screen is doing, after the counts in the
-/// branch row (decision 100), as in `◌ Run the test suite · 6 min`. It's the
-/// agent's mark, then the sidebar's second line, in gray, or in amber while
-/// an agent waits for you. When the row is short of room, the words are cut
-/// at their end and the mark and how long stay.
+/// branch row (decision 100), as in `Run the test suite · 6 min`. It's the
+/// sidebar's second line, in gray, with a light in Roga's orange running
+/// through its words while an agent works. Otherwise a mark comes first, and
+/// the words are in amber while an agent waits for you. When the row is short
+/// of room, the words are cut at their end and the mark and how long stay.
 ///
 /// It's a button: it fills with gray under the pointer, as the counts do,
 /// and a click opens a popover with a section for each session. It redraws as
@@ -18,6 +20,10 @@ struct BranchAgentLine: View {
     @State private var isHovering = false
     @State private var showsDetail = false
 
+    /// The words' font, as AppKit has it, which the light draws them in again
+    /// to light them up.
+    private static let font = NSFont.systemFont(ofSize: 13)
+
     var body: some View {
         TimelineView(WholeMinutes(of: [line.summary])) { context in
             let parts = line.parts(now: context.date)
@@ -26,10 +32,17 @@ struct BranchAgentLine: View {
                 showsDetail.toggle()
             } label: {
                 HStack(spacing: 6) {
-                    AgentLineMark(mark: line.mark)
+                    if let mark = line.mark {
+                        AgentLineMark(mark: mark)
+                    }
                     HStack(spacing: 0) {
                         Text(parts.words)
                             .truncationMode(.tail)
+                            .overlay {
+                                if line.shimmers {
+                                    TextShimmer(text: parts.words, font: Self.font)
+                                }
+                            }
                         if let time = parts.time {
                             Text(" · \(time)")
                                 .monospacedDigit()

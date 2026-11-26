@@ -531,62 +531,6 @@ struct CommitTableBadgeTests {
         #expect(cell.view(cell, stringForToolTip: 0, point: NSPoint(x: layout.badges[0].midX, y: 14), userData: nil) == "main, current branch")
     }
 
-    /// The light lies over the row's words, drawn from the same text in the
-    /// same place, and goes once the row stops shimmering.
-    @Test func theRowForChangesHasALightOverItsWordsWhileItShimmers() throws {
-        let cell = CommitCellView()
-        cell.frame = NSRect(x: 0, y: 0, width: 600, height: 28)
-        let row = CommitRowContent(shortID: "", subject: "3 uncommitted files", isWorkingTree: true, isShimmering: true)
-        cell.content = row
-        let shimmer = try #require(cell.shimmer)
-        #expect(shimmer.superview === cell)
-        #expect(shimmer.frame == cell.bounds)
-        let words = try #require(shimmer.words)
-        let layout = CommitRowLayout(content: row, size: cell.bounds.size)
-        #expect(words.text == "3 uncommitted files")
-        #expect(words.frame.minX == layout.subjectX)
-        #expect(words.frame.maxX == layout.subjectMaxX)
-        #expect(words.font == CommitCellView.Style.uncommittedSubject.font)
-        // Nowhere to be seen, so nothing runs.
-        #expect(!shimmer.isShimmering)
-
-        var still = row
-        still.isShimmering = false
-        cell.content = still
-        #expect(cell.shimmer == nil)
-        #expect(shimmer.superview == nil)
-    }
-
-    /// Nothing runs where nobody can see it. A test can't put a window on
-    /// someone's screen, so the test copy checked that it runs while it can be
-    /// seen.
-    @Test func theLightRunsOnlyWhileItCanBeSeen() throws {
-        let window = NSWindow(
-            contentRect: CGRect(x: 0, y: 0, width: 600, height: 28), styleMask: .borderless,
-            backing: .buffered, defer: false
-        )
-        window.isReleasedWhenClosed = false
-        let cell = CommitCellView()
-        cell.frame = NSRect(x: 0, y: 0, width: 600, height: 28)
-        window.contentView?.addSubview(cell)
-        cell.content = CommitRowContent(shortID: "", subject: "3 uncommitted files", isWorkingTree: true, isShimmering: true)
-        let shimmer = try #require(cell.shimmer)
-        shimmer.layoutSubtreeIfNeeded()
-        #expect(!window.occlusionState.contains(.visible))
-        #expect(!shimmer.isShimmering)
-    }
-
-    /// Each pass crosses the words in about two and a half seconds and goes on
-    /// forever.
-    @Test func theLightCrossesTheWordsOverAndOver() {
-        let pass = TextShimmerView.shimmer(from: -20, to: 140)
-        #expect(pass.keyPath == "position.x")
-        #expect(pass.fromValue as? CGFloat == -20)
-        #expect(pass.toValue as? CGFloat == 140)
-        #expect(pass.duration == 2.4)
-        #expect(pass.repeatCount == .infinity)
-    }
-
     /// A right-click in the middle of a row, as the table gets it.
     static func rightClick(onRow row: Int, in table: NSTableView) throws -> NSEvent {
         let frame = table.rect(ofRow: row)

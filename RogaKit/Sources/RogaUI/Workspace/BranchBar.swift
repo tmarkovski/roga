@@ -96,10 +96,6 @@ struct BranchBar: View {
         .frame(maxWidth: .infinity)
         .animation(.easeOut(duration: 0.2), value: showsLine)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
-        // History's row for uncommitted changes shimmers while an agent works.
-        .onChange(of: line?.isWorking == true, initial: true) { _, isWorking in
-            model.agentIsWorking = isWorking
-        }
         .background(Palette.surface)
         .overlay(alignment: .bottom) {
             Rectangle()

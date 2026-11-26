@@ -6,8 +6,8 @@ import Testing
 @testable import RogaUI
 
 /// The agents' marks: each takes the box it's given, the waiting circle looks
-/// as big as the ring wherever a mark is drawn, and the ring turns only while
-/// someone can see it.
+/// as big as the ring wherever a mark is drawn, and the ring turns, and the
+/// light in the branch row's words runs, only while someone can see it.
 struct AgentMarkTests {
     static let states: [AgentSummary.State] = [.working, .waiting(.question), .finished]
 
@@ -178,5 +178,37 @@ struct AgentMarkTests {
         #expect(first.duration == 1 && first.repeatCount == .infinity)
         #expect(first.toValue as? Double == 2 * .pi)
         #expect(abs(first.timeOffset - 0.25) < 1e-9 && abs(later.timeOffset - first.timeOffset) < 1e-9)
+    }
+
+    /// The light in the branch row's words, which stands in for the ring
+    /// there, runs only while someone can see it, as the ring turns. A test
+    /// can't put a window on someone's screen, so the test copy checked that
+    /// it runs while it can be seen.
+    @Test func theLightInTheWordsRunsOnlyWhileItCanBeSeen() throws {
+        let view = TextShimmerView(frame: CGRect(x: 0, y: 0, width: 200, height: 16))
+        view.words = TextShimmerView.Words(text: "Run the test suite", font: .systemFont(ofSize: 13))
+        view.layoutSubtreeIfNeeded()
+        #expect(!view.isShimmering)
+
+        let window = NSWindow(
+            contentRect: CGRect(x: 0, y: 0, width: 200, height: 16), styleMask: .borderless,
+            backing: .buffered, defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.contentView?.addSubview(view)
+        view.layoutSubtreeIfNeeded()
+        #expect(!window.occlusionState.contains(.visible))
+        #expect(!view.isShimmering)
+    }
+
+    /// Each pass crosses the words in about two and a half seconds and goes on
+    /// forever.
+    @Test func theLightCrossesTheWordsOverAndOver() {
+        let pass = TextShimmerView.shimmer(from: -20, to: 140)
+        #expect(pass.keyPath == "position.x")
+        #expect(pass.fromValue as? CGFloat == -20)
+        #expect(pass.toValue as? CGFloat == 140)
+        #expect(pass.duration == 2.4)
+        #expect(pass.repeatCount == .infinity)
     }
 }
