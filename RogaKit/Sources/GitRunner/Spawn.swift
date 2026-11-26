@@ -87,6 +87,7 @@ final class ChildProcess: Sendable {
         directory: String? = nil,
         withInput: Bool = false,
         priority: GitCommand.Priority = .normal,
+        onErrorOutput: (@Sendable ([UInt8]) -> Void)? = nil,
         onExit: @escaping @Sendable (ExitStatus) -> Void = { _ in }
     ) throws(SpawnError) -> ChildProcess {
         let outputPipe = try makePipe(executable, directory)
@@ -174,7 +175,7 @@ final class ChildProcess: Sendable {
             queue: queue,
             input: inputPipe.map { PipeWriter(fileDescriptor: $0.write, queue: queue) },
             output: PipeReader(fileDescriptor: outputPipe.read, queue: queue),
-            errorOutput: PipeCollector(fileDescriptor: errorPipe.read, queue: queue),
+            errorOutput: PipeCollector(fileDescriptor: errorPipe.read, queue: queue, onData: onErrorOutput),
             onExit: onExit
         )
     }

@@ -245,6 +245,20 @@ public enum RemoteAddress {
         return segments.count >= 2 ? String(segments[0]) : nil
     }
 
+    /// A URL as it compares with another way of writing the same repository's
+    /// address: its host and path in lowercase, without `.git` or a slash at
+    /// the end, so that `git@github.com:git/git.git` and
+    /// `https://github.com/git/git` are the same. Like `shown(_:)`, it leaves
+    /// out the user name, and keeps a local path as it is.
+    public static func comparable(_ url: String) -> String {
+        let trimmed = url.drop(while: \.isWhitespace).reversed().drop(while: \.isWhitespace).reversed()
+        var address = Substring(shown(String(trimmed)).lowercased())
+        while address.hasSuffix("/") { address = address.dropLast() }
+        if address.hasSuffix(".git") { address = address.dropLast(4) }
+        while address.hasSuffix("/") { address = address.dropLast() }
+        return String(address)
+    }
+
     /// Who owns a repository with these remotes, each of them once, because
     /// hosts don't care about case. The owner of `origin` comes first, then
     /// the others by the names of their remotes.

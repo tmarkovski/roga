@@ -96,6 +96,12 @@ enum SidebarMenus {
         return entries
     }
 
+    /// The menu of a repository that's being cloned, which has nothing to open
+    /// yet, so all it can do is stop (decision 113).
+    static func entries(forCloning isCancelling: Bool, cancel: @escaping () -> Void) -> [RefMenu.Entry] {
+        [.command("Cancel clone", isEnabled: !isCancelling, action: cancel)]
+    }
+
     /// A linked worktree's menu, with its one deleting row. With a branch that
     /// could go too, the dialog asks how far to go, which the ellipsis says.
     /// Without one, it may not ask at all.

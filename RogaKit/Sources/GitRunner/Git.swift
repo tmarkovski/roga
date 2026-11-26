@@ -54,15 +54,20 @@ public struct Git: Sendable {
 
     /// Runs a command to the end and returns what it printed.
     ///
-    /// - Parameter input: Bytes to write to the command's standard input,
-    ///   which is empty otherwise.
+    /// - Parameters:
+    ///   - input: Bytes to write to the command's standard input, which is
+    ///     empty otherwise.
+    ///   - errorOutput: Called with each chunk of standard error as git writes
+    ///     it, on a queue of its own, for a command that says there how far
+    ///     along it is. The result still has the end of it.
     /// - Throws: `GitError.failed` when git's exit status isn't one of the
     ///   command's success statuses, `GitError.couldNotStart`, or
-    ///   `CancellationError` when the task is cancelled, which also stops git.
+    ///   `CancellationError` when the task is cancelled, which stops git and
+    ///   waits for it to exit.
     @concurrent
-    public func run(_ command: GitCommand, input: [UInt8]? = nil) async throws -> GitResult {
+    public func run(_ command: GitCommand, input: [UInt8]? = nil, errorOutput: (@Sendable ([UInt8]) -> Void)? = nil) async throws -> GitResult {
         try Task.checkCancellation()
-        let running = try start(command, withInput: input != nil)
+        let running = try start(command, withInput: input != nil, onErrorOutput: errorOutput)
         return try await withTaskCancellationHandler {
             if let input, let writer = running.process.input {
                 // Write while reading, so that neither side waits for the other.
@@ -101,7 +106,7 @@ public struct Git: Sendable {
     }
 
     /// Starts git and records the command in the log.
-    func start(_ command: GitCommand, withInput: Bool = false) throws(GitError) -> RunningGit {
+    func start(_ command: GitCommand, withInput: Bool = false, onErrorOutput: (@Sendable ([UInt8]) -> Void)? = nil) throws(GitError) -> RunningGit {
         let entry = log.begin(command)
         do {
             let process = try ChildProcess.spawn(
@@ -111,6 +116,7 @@ public struct Git: Sendable {
                 directory: command.directory,
                 withInput: withInput,
                 priority: command.priority,
+                onErrorOutput: onErrorOutput,
                 onExit: { [log] status in log.finish(entry, .finished(status)) }
             )
             return RunningGit(command: command, process: process)
