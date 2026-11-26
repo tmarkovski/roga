@@ -20,6 +20,21 @@ func chooseRepositoryFolder(message: String = "Choose a repository, or any folde
     return (url.path(percentEncoded: false) as NSString).standardizingPath
 }
 
+/// Asks for a folder to clone a repository into with an open panel, which can
+/// make a new folder, and returns its path.
+@MainActor
+func chooseCloneDestination() -> String? {
+    let panel = NSOpenPanel()
+    panel.canChooseDirectories = true
+    panel.canChooseFiles = false
+    panel.canCreateDirectories = true
+    panel.allowsMultipleSelection = false
+    panel.prompt = "Choose"
+    panel.message = "Choose a folder to clone into."
+    guard panel.runModal() == .OK, let url = panel.url else { return nil }
+    return (url.path(percentEncoded: false) as NSString).standardizingPath
+}
+
 /// The closest folder above `path` that still exists.
 func nearestExistingFolder(above path: String) -> String? {
     var folder = (path as NSString).deletingLastPathComponent
@@ -102,4 +117,7 @@ extension FocusedValues {
     /// The worktree the focused window shows, so that a repository opened
     /// from the menu shows in that window.
     @Entry var selection: Binding<WorktreeSelection?>?
+    /// Whether the focused window's sidebar is asked to open Add Repositories'
+    /// clone form, for the menu bar's Clone Repository… (decision 113).
+    @Entry var asksToClone: Binding<Bool>?
 }

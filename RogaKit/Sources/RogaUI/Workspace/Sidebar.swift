@@ -31,6 +31,9 @@ struct Sidebar: View {
     /// Makes a new branch in a new worktree from a row's worktree, and shows
     /// it. It returns what git said if it refused.
     let createWorktree: (WorktreeSelection, String) async -> String?
+    /// Whether the menu bar's Clone Repository… asked for Add Repositories'
+    /// clone form, which opens it and turns this back off (decision 113).
+    @Binding var asksToClone: Bool
     /// Whether the rows show agents' marks, as the person chose in Settings.
     var marks = AgentMarksSetting()
     @AppStorage(SidebarSettings.groupsByOrganization) private var groupsByOrganization = true
@@ -71,7 +74,7 @@ struct Sidebar: View {
                     }
                 }
                 .popover(isPresented: $isAddingRepositories, arrowEdge: .trailing) {
-                    AddRepositories(list: list, state: $adding, lookInAnotherFolder: lookInAnotherFolder) { selection = $0 }
+                    AddRepositories(list: list, state: $adding, selection: $selection, lookInAnotherFolder: lookInAnotherFolder, chooseCloneFolder: chooseCloneFolder)
                 }
                 // Looks for clones as the window opens, so that the popover
                 // opens at its full size the first time too. It takes a few
@@ -101,6 +104,12 @@ struct Sidebar: View {
             rows(groups: groups)
         }
         .dialog { deletions.dialog ?? repairs.dialog }
+        .onChange(of: asksToClone, initial: true) {
+            guard asksToClone, list.isConnected else { return }
+            asksToClone = false
+            adding.source = .url
+            isAddingRepositories = true
+        }
     }
 
     /// How the list is grouped and sorted, and which groups are collapsed.
@@ -142,15 +151,31 @@ struct Sidebar: View {
     }
 
     /// Asks for a folder to look in, then shows the popover with the clones in
-    /// it. The popover closes while the open panel is up, because a popover
-    /// can close by itself when another window takes over, and opens again
-    /// after, unless the panel was cancelled before the popover was ever open.
+    /// it.
     private func lookInAnotherFolder() {
+        askForFolder { chooseRepositoryFolder(message: "Choose a folder to look in, or a repository.") } then: { folder in
+            adding.pickedFolders.append(folder)
+        }
+    }
+
+    /// Asks for a folder for the clone form to clone into, and picks it there.
+    private func chooseCloneFolder() {
+        askForFolder(choose: chooseCloneDestination) { folder in
+            if !adding.clone.chosenFolders.contains(folder) { adding.clone.chosenFolders.append(folder) }
+            adding.clone.folder = folder
+        }
+    }
+
+    /// Asks for a folder with the open panel, and passes it to `then`. The
+    /// popover closes while the open panel is up, because a popover can close
+    /// by itself when another window takes over, and opens again after, unless
+    /// the panel was cancelled before the popover was ever open.
+    private func askForFolder(choose: @escaping () -> String?, then: @escaping (String) -> Void) {
         let wasOpen = isAddingRepositories
         isAddingRepositories = false
         Task {
-            let folder = chooseRepositoryFolder(message: "Choose a folder to look in, or a repository.")
-            if let folder { adding.pickedFolders.append(folder) }
+            let folder = choose()
+            if let folder { then(folder) }
             if folder != nil || wasOpen { isAddingRepositories = true }
         }
     }
@@ -550,6 +575,8 @@ struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
     /// What would go wrong with a commit because of who it goes out as, for a
     /// repository's row.
     var identityProblem: CommitIdentity.Problem?
+    /// How far along a clone of the row's repository is, while git makes it.
+    var cloning: CloneLine?
     /// How far the second line stands from the row's content, to start where
     /// the row's own text does.
     var lineIndent: CGFloat = 0
@@ -576,6 +603,7 @@ struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
         agent: AgentSummary?,
         unfinished: UnfinishedWork? = nil,
         identityProblem: CommitIdentity.Problem? = nil,
+        cloning: CloneLine? = nil,
         lineIndent: CGFloat = 0,
         action: @escaping () -> Void,
         @ViewBuilder content: () -> Content,
@@ -588,6 +616,7 @@ struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
         self.agent = agent
         self.unfinished = unfinished
         self.identityProblem = identityProblem
+        self.cloning = cloning
         self.lineIndent = lineIndent
         self.action = action
         self.content = content()
@@ -596,7 +625,7 @@ struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
     }
 
     var body: some View {
-        let line = RowLine(agent: agent, unfinished: unfinished, identity: identityProblem)
+        let line = RowLine(agent: agent, unfinished: unfinished, identity: identityProblem, cloning: cloning)
         // A row without commands, such as the one for hidden worktrees, keeps
         // its mark on hover.
         let showsCommands = isHovering && isEnabled && Commands.self != EmptyView.self
@@ -662,14 +691,19 @@ struct SidebarRow<Content: View, Trailing: View, Commands: View>: View {
 /// you. Then a merge, rebase or revert that stopped partway, then an agent at
 /// work or one that finished, and last a commit that would go wrong because of
 /// who it goes out as (decision 103), which stays until the config is fixed. A
-/// row with none of these has one line.
+/// repository that's being cloned has nothing else to say, so its clone's
+/// progress is all its line shows (decision 113). A row with none of these has
+/// one line.
 enum RowLine: Equatable {
     case agent(AgentSummary)
     case unfinished(UnfinishedWork)
     case identity(CommitIdentity.Problem)
+    case cloning(CloneLine)
 
-    init?(agent: AgentSummary?, unfinished: UnfinishedWork?, identity: CommitIdentity.Problem? = nil) {
-        if let agent, case .waiting = agent.state {
+    init?(agent: AgentSummary?, unfinished: UnfinishedWork?, identity: CommitIdentity.Problem? = nil, cloning: CloneLine? = nil) {
+        if let cloning {
+            self = .cloning(cloning)
+        } else if let agent, case .waiting = agent.state {
             self = .agent(agent)
         } else if let unfinished {
             self = .unfinished(unfinished)
@@ -716,6 +750,10 @@ private struct RowLineView: View {
             }
             .foregroundStyle(AgentColors.warn)
             .help(IdentityWords.problem(problem).detail)
+        case .cloning(let cloning):
+            Self.parts(words: cloning.words, end: cloning.end)
+                .foregroundStyle(.secondary)
+                .help(cloning.help)
         }
     }
 
@@ -815,7 +853,8 @@ private struct RepositoryRow: View {
         let agent = agents?.summary
         let hasChevron = linkedWorktrees > 0 && !standsForWorktrees
         let identity = self.identity
-        SidebarRow(isSelected: isSelected || isOpen, agent: agent, unfinished: unfinished, identityProblem: identity?.problem, action: select) {
+        let cloning = repository.cloning.map(CloneLine.init(job:))
+        SidebarRow(isSelected: isSelected || isOpen, canSelect: cloning == nil, agent: agent, unfinished: unfinished, identityProblem: identity?.problem, cloning: cloning, action: select) {
             HStack(spacing: 3) {
                 FadingText(title)
                     .font(.system(size: 13))
@@ -861,12 +900,14 @@ private struct RepositoryRow: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
         .accessibilityValue(
-            [detail, linkedWorktreesDescription, unfinished?.title, agent?.description, uncommittedFilesDescription(ownUncommittedFiles, hasConflicts: ownHasConflicts), ownStatusFailure?.spoken, identity.map(IdentityWords.spoken), linkedWorktrees > 0 && !standsForWorktrees ? (repository.isExpanded ? "Expanded" : "Collapsed") : nil, problem]
+            [detail, cloning?.spoken, linkedWorktreesDescription, unfinished?.title, agent?.description, uncommittedFilesDescription(ownUncommittedFiles, hasConflicts: ownHasConflicts), ownStatusFailure?.spoken, identity.map(IdentityWords.spoken), linkedWorktrees > 0 && !standsForWorktrees ? (repository.isExpanded ? "Expanded" : "Collapsed") : nil, problem]
                 .compactMap(\.self)
                 .joined(separator: ", ")
         )
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
-        .accessibilityAction(.default, select)
+        .accessibilityAction(.default) {
+            if cloning == nil { select() }
+        }
         .accessibilityActions {
             if linkedWorktrees > 0, !standsForWorktrees {
                 Button(repository.isExpanded ? "Hide Worktrees" : "Show Worktrees", action: toggle)
@@ -924,7 +965,7 @@ private struct RepositoryRow: View {
 
     private var problem: String? {
         switch repository.state {
-        case .opening, .open: nil
+        case .opening, .open, .cloning: nil
         case .missing: "Missing"
         case .failed: "Can't open"
         }
@@ -946,7 +987,12 @@ private struct RepositoryRow: View {
     }
 
     private var menu: [RefMenu.Entry] {
-        SidebarMenus.entries(
+        if repository.cloning != nil {
+            return SidebarMenus.entries(forCloning: repository.cloning?.isCancelling == true) { [list, repository] in
+                list.cancelClone(repository)
+            }
+        }
+        return SidebarMenus.entries(
             forRepository: main,
             cantOpen: problem != nil,
             actions: SidebarMenus.RepositoryActions(

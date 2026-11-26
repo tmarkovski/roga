@@ -160,13 +160,13 @@ private struct GenerateButtonPartStyle: ButtonStyle {
 
 /// Whether the message box shows the Generate button, and how (decision 41).
 enum GenerateButtonState: Equatable {
-    /// It's turned off in Settings, no agent can be used, or an agent is
-    /// writing already, and Stop is in its place.
+    /// Agents are off, no agent can be used, or an agent is writing
+    /// already, and Stop is in its place.
     case hidden
     case shown(agent: NamedAgent, rewrites: Bool, readiness: MessageGenerator.Readiness)
 
-    init(showsButton: Bool, agent: NamedAgent?, hasText: Bool, isWriting: Bool, readiness: MessageGenerator.Readiness) {
-        guard showsButton, let agent, !isWriting else {
+    init(agent: NamedAgent?, hasText: Bool, isWriting: Bool, readiness: MessageGenerator.Readiness) {
+        guard let agent, !isWriting else {
             self = .hidden
             return
         }

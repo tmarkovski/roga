@@ -204,6 +204,19 @@ struct RefDetailsParserTests {
         #expect(RemoteAddress.owner(url) == nil)
     }
 
+    @Test func remotesThatAreTheSameRepository() {
+        let ways = [
+            "git@github.com:Acme/API.git",
+            "https://github.com/acme/api",
+            "https://me:token@github.com/acme/api.git/",
+            "ssh://git@github.com/acme/api.git",
+            " https://github.com/acme/api/ ",
+        ]
+        #expect(Set(ways.map(RemoteAddress.comparable)) == ["github.com/acme/api"])
+        #expect(RemoteAddress.comparable("https://github.com/acme/api-old") != RemoteAddress.comparable("https://github.com/acme/api"))
+        #expect(RemoteAddress.comparable("/Users/me/git/api/") == "/users/me/git/api")
+    }
+
     @Test func ownersOfARepository() {
         // Without an `origin`, they go by the names of their remotes.
         #expect(RemoteAddress.owners([

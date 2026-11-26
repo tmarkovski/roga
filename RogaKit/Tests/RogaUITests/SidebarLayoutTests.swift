@@ -335,6 +335,7 @@ struct SidebarLayoutTests {
             locate: { _ in },
             newWorktreeRow: .constant(nil),
             createWorktree: { _, _ in nil },
+            asksToClone: .constant(false),
             marks: AgentMarksSetting(store: defaults)
         )
         return SidebarLayout(groups: list.groups, arrangement: SidebarArrangement(groupsByOrganization: false), selection: selection).items.map { item in

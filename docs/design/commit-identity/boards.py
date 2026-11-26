@@ -284,6 +284,9 @@ body{margin:0}
 .slr .gl{width:16px;height:16px;border-radius:50%;background:var(--ok);color:#fff;display:grid;place-items:center;flex:none}
 .slr .gl svg{width:10px;height:10px;stroke-width:3}
 .pnote{padding:6px 16px 0;font-size:12px;line-height:16px;color:var(--tx2)}
+.pfacts{display:grid;grid-template-columns:auto 1fr;column-gap:12px;row-gap:4px;align-items:baseline;margin:6px 16px 4px;padding:8px 12px;background:var(--card);border-radius:8px}
+.pfacts span{font-size:12px;color:var(--tx2)}
+.pfacts b{font-size:13px;font-weight:500;overflow-wrap:anywhere}
 .pnote.warn{color:var(--warn)}
 .pbtn{display:flex;justify-content:flex-end;align-items:center;gap:8px;padding:14px 16px 12px}
 .b{height:26px;padding:0 12px;border-radius:7px;border:0;font:inherit;font-size:12.5px;font-weight:500;white-space:nowrap}
@@ -1664,21 +1667,25 @@ def new_key_popover(fmt: str) -> str:
     """The confirm New SSH Key… or New OpenPGP Key… opens (decision 108)."""
     unguarded = "without a passphrase, so git, Roga and agents can sign without asking"
     if fmt == "SSH":
-        note = (f"Roga makes an Ed25519 key in {NEW_SSH}, {unguarded}. Anyone who can read that file can sign as you. "
+        facts = [("Email", "sam@rivera.dev"), ("File", NEW_SSH)]
+        note = (f"Roga makes an Ed25519 key {unguarded}. Anyone who can read the file can sign as you. "
                 "It also goes in ~/.ssh/allowed_signers, so git says your commits are good.")
         lines = tokens([("t-p", "$"), ("t-g", "ssh-keygen"), ("t-f", "-q"), ("t-f", "-t"), ("t-s", "ed25519"), ("t-f", "-C"),
                         ("t-s", "sam@rivera.dev"), ("t-f", "-N"), ("t-s", "''"), ("t-f", "-f"), ("t-s", NEW_SSH)])
         lines += tokens(config_line("global", "gpg.ssh.allowedSignersFile", "~/.ssh/allowed_signers"))
         lines += '<div class="cl cm"># Adds the new key to ~/.ssh/allowed_signers for sam@rivera.dev</div>'
     else:
-        note = (f"Roga makes an Ed25519 key for Sam Rivera <sam@rivera.dev> that doesn't expire, {unguarded}. "
+        facts = [("Name", "Sam Rivera"), ("Email", "sam@rivera.dev")]
+        note = (f"Roga makes an Ed25519 key that doesn't expire, {unguarded}. "
                 "Anyone who can use your GnuPG keyring can sign as you.")
         lines = tokens([("t-p", "$"), ("t-g", "gpg"), ("t-f", "--batch"), ("t-f", "--yes"), ("t-f", "--passphrase"), ("t-s", "''"),
                         ("t-f", "--status-fd"), ("t-s", "1"), ("t-f", "--quick-generate-key"), ("t-s", "'Sam Rivera <sam@rivera.dev>'"),
                         ("t-s", "ed25519"), ("t-s", "sign"), ("t-s", "never")])
+    card = "".join(f'<span>{esc(label)}</span><b>{esc(value)}</b>' for label, value in facts)
     block = f'<div class="cmd"><button class="cp" type="button" aria-label="Copy the command">{COPY}</button>{lines}</div>'
     return (f'<div class="pop" style="width:{NEW_W}px"><i class="arr" style="left:28px"></i><div class="pin">'
-            f'<div class="phd"><b>New {esc(fmt)} key</b><span>For signing commits as sam@rivera.dev</span></div>'
+            f'<div class="phd"><b>New {esc(fmt)} key</b><span>For signing commits</span></div>'
+            f'<div class="pfacts">{card}</div>'
             f'<div class="pnote">{esc(note)}</div>'
             '<div class="pbtn"><button class="b sec" type="button">Cancel</button><button class="b pri" type="button">Make Key</button></div>'
             f'{block}</div></div>')
@@ -1760,8 +1767,8 @@ def board_keys() -> Board:
           cell("GnuPG isn't installed", "faded, with why", stage(no_gpg, 420, tip=tip_box("Install GnuPG to sign with OpenPGP", 30, 100))),
           cell("git signs with OpenPGP, without gpg", "it stays, with a warning", stage(stuck, 420)),
           cell("Picking a key", "the chevron opens the keys as cards", stage(menu, 480, PICKER_W))], 480),
-        ([cell("New SSH Key…", "the confirm", stage(new_key_popover("SSH"), 400, NEW_W)),
-          cell("New OpenPGP Key…", "the confirm", stage(new_key_popover("OpenPGP"), 400, NEW_W)),
+        ([cell("New SSH Key…", "the confirm", stage(new_key_popover("SSH"), 440, NEW_W)),
+          cell("New OpenPGP Key…", "the confirm", stage(new_key_popover("OpenPGP"), 440, NEW_W)),
           cell("Key made", "gh may add keys to GitHub", stage(can_add, 400, NEW_W)),
           cell("Added to GitHub", "", stage(added, 400, NEW_W))], 400),
         ([cell("Key made", "gh is signed in, without the scope", stage(no_scope, 330, NEW_W)),
