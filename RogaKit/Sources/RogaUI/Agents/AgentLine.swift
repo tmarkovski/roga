@@ -15,8 +15,9 @@ struct WorktreeAgent: Equatable, Identifiable {
 }
 
 /// What the branch row says about the agents in the worktree on screen
-/// (decision 100): the sidebar's second line for them after a mark, and in the
-/// popover behind it, a section for each session.
+/// (decision 100): the sidebar's second line for them, after a mark or with a
+/// light running through it, and in the popover behind it, a section for each
+/// session.
 ///
 /// It speaks for the most urgent of them, as a sidebar row's mark does, and
 /// keeps a finished session after someone has looked, since the worktree on
@@ -25,7 +26,8 @@ struct WorktreeAgent: Equatable, Identifiable {
 struct AgentLine: Equatable {
     /// What starts the line.
     enum Mark: Equatable {
-        /// The sidebar's mark: the turning ring, or the amber circle.
+        /// The sidebar's mark: the amber circle, or in the popover, the
+        /// turning ring.
         case agent(AgentSummary.State)
         /// A gray check in a circle, for a turn that ended.
         case finished
@@ -69,12 +71,11 @@ struct AgentLine: Equatable {
         if case .waiting = summary.state { true } else { false }
     }
 
-    /// Whether any agent is at work, which is when history's row for
-    /// uncommitted changes shimmers, since its files are still being made.
-    /// One at work beside another that waits for you still counts, though
-    /// the line speaks for the one that waits.
-    var isWorking: Bool {
-        agents.contains { $0.phase == .working }
+    /// Whether the words shimmer, which they do while the line speaks for
+    /// agents at work. The worktree's tab turns a ring a few points above, so
+    /// a light in the words says it here rather than a second ring.
+    var shimmers: Bool {
+        summary.state == .working
     }
 
     /// Whether the line is about one session whose turn ended with an error.
@@ -84,8 +85,10 @@ struct AgentLine: Equatable {
         summary.state == .finished && summary.sessions == 1 && agents.first?.phase == .finished(failed: true)
     }
 
-    var mark: Mark {
+    /// The mark before the words, or nil while they shimmer instead.
+    var mark: Mark? {
         switch summary.state {
+        case .working: nil
         case .finished: hasFailed ? .failed : .finished
         case let state: .agent(state)
         }

@@ -97,14 +97,9 @@ final class CommitCellView: NSView {
             if content != oldValue {
                 needsDisplay = true
                 updateToolTips()
-                updateShimmer()
             }
         }
     }
-
-    /// The light through the words of the row for uncommitted changes while
-    /// an agent makes them, which is there only while the row shimmers.
-    private(set) var shimmer: TextShimmerView?
 
     /// The index of the badge the pointer is over, which has a border.
     var hoveredBadge: Int? {
@@ -127,32 +122,6 @@ final class CommitCellView: NSView {
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
         updateToolTips()
-        updateShimmer()
-    }
-
-    /// Lays the light over the subject while the row shimmers, and takes it
-    /// away once it stops.
-    private func updateShimmer() {
-        guard let content, content.isShimmering, let subject = content.subject else {
-            shimmer?.removeFromSuperview()
-            shimmer = nil
-            return
-        }
-        let layout = CommitRowLayout(content: content, size: bounds.size)
-        let style = Style.uncommittedSubject
-        let view = shimmer ?? TextShimmerView()
-        if shimmer == nil {
-            shimmer = view
-            addSubview(view)
-        }
-        view.frame = bounds
-        view.words = layout.subjectMaxX > layout.subjectX
-            ? TextShimmerView.Words(
-                text: subject,
-                font: style.font,
-                frame: textFrame(at: layout.subjectX, width: layout.subjectMaxX - layout.subjectX, style: style)
-            )
-            : nil
     }
 
     /// Where the badges with tooltips are, then the signed commit's shield.

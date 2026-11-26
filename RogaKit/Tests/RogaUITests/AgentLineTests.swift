@@ -4,8 +4,8 @@ import Testing
 @testable import RogaUI
 
 /// What the branch row says about the agents in the worktree on screen
-/// (decision 100): the sidebar's words, the mark, and the popover's sections in
-/// their order.
+/// (decision 100): the sidebar's words, the mark or the light in the words,
+/// and the popover's sections in their order.
 struct AgentLineTests {
     let start = Date(timeIntervalSince1970: 1_800_000_000)
 
@@ -26,8 +26,10 @@ struct AgentLineTests {
         let line = try #require(AgentLine([agent("a", .working, "Run the test suite"), agent("b", .idle)]))
         #expect(line.parts(now: minutes(6)) == ("Run the test suite", "6 min"))
         #expect(line.parts(now: start) == ("Run the test suite", nil))
-        #expect(line.mark == .agent(.working))
-        #expect(line.isWorking)
+        // The words shimmer rather than following a second ring under the
+        // tab's.
+        #expect(line.mark == nil)
+        #expect(line.shimmers)
         #expect(!line.isWaiting)
         #expect(line.help(now: minutes(6)) == "Claude Code is working: Run the test suite, for 6 minutes")
         // The idle session has nothing to show in the popover either.
@@ -43,7 +45,7 @@ struct AgentLineTests {
         let line = try #require(AgentLine([agent("a", .waiting(.permission), host: .codex, "git push")]))
         #expect(line.parts(now: minutes(2)) == ("Approval required: git push", "2 min"))
         #expect(line.isWaiting)
-        #expect(!line.isWorking)
+        #expect(!line.shimmers)
         #expect(line.mark == .agent(.waiting(.permission)))
     }
 
@@ -62,8 +64,10 @@ struct AgentLineTests {
         ]))
         #expect(line.parts(now: minutes(3)) == ("Codex needs approval: git push", "1 min"))
         #expect(line.isWaiting)
-        // Claude Code is still making files.
-        #expect(line.isWorking)
+        // The line speaks for the one that waits, so its words don't shimmer
+        // while Claude Code works.
+        #expect(!line.shimmers)
+        #expect(line.mark == .agent(.waiting(.permission)))
         #expect(line.agents.map(\.id.id) == ["b", "a", "c"])
     }
 
@@ -71,7 +75,7 @@ struct AgentLineTests {
         let line = try #require(AgentLine([agent("a", .finished(failed: false), "Added the line to the tooltip")]))
         #expect(line.parts(now: minutes(30)) == ("Added the line to the tooltip", nil))
         #expect(line.mark == .finished)
-        #expect(!line.isWorking)
+        #expect(!line.shimmers)
     }
 
     @Test func aTurnThatFailedSaysSo() throws {

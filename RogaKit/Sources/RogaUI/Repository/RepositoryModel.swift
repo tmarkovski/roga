@@ -148,14 +148,6 @@ final class RepositoryModel {
     /// The commits the checked-out branch is missing from its upstream, which
     /// a pull would bring in. They're IDs, since history may not have them yet.
     @ObservationIgnored private var missingCommits: [ObjectID] = []
-    /// Whether an agent is at work in the worktree, which the branch row says.
-    /// While it is, the words of the row for uncommitted changes shimmer, since
-    /// those files are still being made (decision 100).
-    @ObservationIgnored var agentIsWorking = false {
-        didSet {
-            if agentIsWorking != oldValue, hasWorkingTreeRow { historyVersion += 1 }
-        }
-    }
     /// The missing commits that history fades, which leaves out the ones the
     /// count under the pointer lights up.
     @ObservationIgnored private var fadedCommits: Set<CommitGraph.Position> = []
@@ -1478,9 +1470,7 @@ final class RepositoryModel {
                 body: isWarning ? "· \(files)" : nil,
                 lanes: workingTreeLine?.row,
                 isWorkingTree: true,
-                isWarning: isWarning,
-                // Conflicts are in red, and the light is for gray words.
-                isShimmering: agentIsWorking && !isWarning
+                isWarning: isWarning
             )
         }
         let row = row - rowOffset

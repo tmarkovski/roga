@@ -1,24 +1,40 @@
 import AppKit
 import QuartzCore
+import SwiftUI
 
-/// A light in the brand's orange that runs left to right through words a row
-/// has drawn under it, for the row for uncommitted changes while an agent makes
-/// them (decision 100), as decision 68's light runs along an agent's command.
+/// A light in the brand's orange that runs left to right through the words of
+/// the branch row's agent line while an agent works (decision 100), as
+/// decision 68's light runs along an agent's command. It stands in for the
+/// turning ring there, since the worktree's tab turns one a few points above.
 ///
-/// It's a band of orange that fades out at both ends, cut to the shape of the
-/// words by a mask drawn from the same text, in the same place, as the row
-/// draws it, so that only the letters light up. Core Animation moves the band,
-/// so neither the list nor the main thread does anything for each frame. It
-/// stops whenever the window can't be seen, being minimized, hidden, on
-/// another Space or fully covered, and for someone who asked for less motion,
-/// and then nothing of it shows.
+/// It lies over the words, as large as they are, and gets the same text and
+/// font, so that it can draw them again as its mask.
+struct TextShimmer: NSViewRepresentable {
+    let text: String
+    let font: NSFont
+
+    func makeNSView(context: Context) -> TextShimmerView {
+        TextShimmerView()
+    }
+
+    func updateNSView(_ view: TextShimmerView, context: Context) {
+        view.words = TextShimmerView.Words(text: text, font: font)
+    }
+}
+
+/// The light itself: a band of orange that fades out at both ends, cut to the
+/// shape of the words by a mask drawn from the same text, across the view's
+/// bounds, as the text under it is drawn, so that only the letters light up.
+/// Core Animation moves the band, so neither SwiftUI nor the main thread does
+/// anything for each frame. It stops whenever the window can't be seen, being
+/// minimized, hidden, on another Space or fully covered, and for someone who
+/// asked for less motion, and then nothing of it shows.
 final class TextShimmerView: NSView {
-    /// What the light runs through.
+    /// What the light runs through, which is drawn from the view's top left
+    /// corner and cut short at its right edge.
     struct Words: Equatable {
         var text: String
         var font: NSFont
-        /// Where the row draws the text, in this view's coordinates.
-        var frame: NSRect
     }
 
     var words: Words? {
@@ -71,7 +87,7 @@ final class TextShimmerView: NSView {
     override var isFlipped: Bool { true }
     override var wantsUpdateLayer: Bool { true }
 
-    /// Clicks and hovering go to the row.
+    /// Clicks and hovering go to the button the words are in.
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
     override func isAccessibilityElement() -> Bool { false }
 
@@ -147,7 +163,7 @@ final class TextShimmerView: NSView {
     /// Whether the light should run: there are words, someone can see them,
     /// and nobody asked for less motion.
     private var shouldShimmer: Bool {
-        guard let words, words.frame.width > 0, let window, window.occlusionState.contains(.visible) else { return false }
+        guard words != nil, bounds.width > 0, let window, window.occlusionState.contains(.visible) else { return false }
         return !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
     }
 
@@ -159,22 +175,21 @@ final class TextShimmerView: NSView {
             band.isHidden = true
             return
         }
-        let width = Self.textWidth(of: words)
+        let width = textWidth(of: words)
         let bandWidth = min(Self.widestBand, max(24, width * Self.bandShare))
-        let start = words.frame.minX - bandWidth / 2
-        let end = words.frame.minX + width + bandWidth / 2
+        let start = -bandWidth / 2
+        let end = width + bandWidth / 2
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         band.isHidden = false
         band.bounds = CGRect(x: 0, y: 0, width: bandWidth, height: bounds.height)
         band.position = CGPoint(x: start, y: bounds.midY)
         CATransaction.commit()
-        let shimmer = Self.shimmer(from: start, to: end)
         if let running = band.animation(forKey: Self.animationKey) as? CABasicAnimation,
            running.fromValue as? CGFloat == start, running.toValue as? CGFloat == end {
             return
         }
-        band.add(shimmer, forKey: Self.animationKey)
+        band.add(Self.shimmer(from: start, to: end), forKey: Self.animationKey)
     }
 
     /// The band's travel from where the words start to past where they end,
@@ -189,14 +204,14 @@ final class TextShimmerView: NSView {
         return shimmer
     }
 
-    /// How much of its frame the text takes, since the light shouldn't run
-    /// on past short words.
-    private static func textWidth(of words: Words) -> CGFloat {
-        min(words.frame.width, ceil((words.text as NSString).size(withAttributes: [.font: words.font]).width))
+    /// How much of the view the text takes, since the light shouldn't run on
+    /// past short words.
+    private func textWidth(of words: Words) -> CGFloat {
+        min(bounds.width, ceil((words.text as NSString).size(withAttributes: [.font: words.font]).width))
     }
 
-    /// Draws the words, in the same place and cut short the same way as the
-    /// row draws them, as the mask's opaque part.
+    /// Draws the words across the view, cut short the same way as SwiftUI cuts
+    /// the text under them, as the mask's opaque part.
     private func drawMask() {
         let scale = window?.backingScaleFactor ?? 2
         guard let words, bounds.width >= 1, bounds.height >= 1 else {
@@ -206,30 +221,26 @@ final class TextShimmerView: NSView {
         }
         if let maskedFor, maskedFor.words == words, maskedFor.size == bounds.size, maskedFor.scale == scale { return }
         maskedFor = (words, bounds.size, scale)
-        guard let bitmap = NSBitmapImageRep(
-            bitmapDataPlanes: nil,
-            pixelsWide: Int((bounds.width * scale).rounded(.up)),
-            pixelsHigh: Int((bounds.height * scale).rounded(.up)),
-            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+        guard let context = CGContext(
+            data: nil,
+            width: Int((bounds.width * scale).rounded(.up)),
+            height: Int((bounds.height * scale).rounded(.up)),
+            bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else { return }
-        bitmap.size = bounds.size
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.lineBreakMode = .byTruncatingTail
-        NSGraphicsContext.saveGraphicsState()
-        if let context = NSGraphicsContext(bitmapImageRep: bitmap) {
-            // Top-down, as the row draws.
-            context.cgContext.translateBy(x: 0, y: bounds.height)
-            context.cgContext.scaleBy(x: 1, y: -1)
-            NSGraphicsContext.current = NSGraphicsContext(cgContext: context.cgContext, flipped: true)
-            (words.text as NSString).draw(
-                with: words.frame,
-                options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine],
-                attributes: [.font: words.font, .foregroundColor: NSColor.black, .paragraphStyle: paragraph]
-            )
-        }
-        NSGraphicsContext.restoreGraphicsState()
-        glyphs.contents = bitmap.cgImage
+        context.scaleBy(x: scale, y: scale)
+        // Core Text cuts the line short as SwiftUI does. AppKit's string
+        // drawing pulls the letters together first, which would leave the
+        // mask's letters a little to the left of SwiftUI's.
+        let attributes: [NSAttributedString.Key: Any] = [.font: words.font, .foregroundColor: NSColor.black]
+        let whole = CTLineCreateWithAttributedString(NSAttributedString(string: words.text, attributes: attributes))
+        let ellipsis = CTLineCreateWithAttributedString(NSAttributedString(string: "\u{2026}", attributes: attributes))
+        let line = CTLineCreateTruncatedLine(whole, Double(bounds.width), .end, ellipsis) ?? whole
+        // Core Graphics is bottom-up, and SwiftUI puts the line's baseline the
+        // font's ascender down from the top.
+        context.textPosition = CGPoint(x: 0, y: bounds.height - words.font.ascender)
+        CTLineDraw(line, context)
+        glyphs.contents = context.makeImage()
         glyphs.contentsScale = scale
     }
 }
