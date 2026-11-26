@@ -140,20 +140,22 @@ private struct NewBranchButton: View {
 
     var body: some View {
         let isAtRow = branch.newRefPlace != nil
+        let isOpenHere = Binding {
+            branch.isCreatingBranch && !isAtRow
+        } set: { isShown in
+            if !isShown { branch.isCreatingBranch = false }
+        }
         Button {
             branch.startNewBranch()
         } label: {
             Icon.newBranch.image
         }
-        .buttonStyle(.icon(isOn: branch.isCreatingBranch && !isAtRow))
+        .buttonStyle(.icon(isOn: isOpenHere.wrappedValue))
+        .opensOnPress(isOpenHere, open: branch.startNewBranch)
         .help(help)
         .accessibilityLabel("New Branch")
-        .popover(isPresented: Binding {
-            branch.isCreatingBranch && !isAtRow
-        } set: { isShown in
-            if !isShown { branch.isCreatingBranch = false }
-        }, arrowEdge: .bottom) {
-            NewBranchPopover(branch: branch, showWorktree: showWorktree)
+        .popover(isPresented: isOpenHere, arrowEdge: .bottom) {
+            NewBranchPopover(branch: branch, start: start, showWorktree: showWorktree, close: closeNewBranch)
         }
         // On views of their own, because a view is only sure of showing one popover.
         .background {
@@ -163,7 +165,7 @@ private struct NewBranchButton: View {
                 if !isShown { branch.newTagStart = nil }
             }, arrowEdge: .bottom) {
                 if let start = branch.newTagStart {
-                    NewTagPopover(branch: branch, start: start)
+                    NewTagPopover(branch: branch, start: start, close: closeNewTag)
                 }
             }
         }
@@ -176,7 +178,7 @@ private struct NewBranchButton: View {
                     branch.newRefPlace = nil
                 }
             }, place: branch.newRefPlace) {
-                NewBranchPopover(branch: branch, showWorktree: showWorktree)
+                NewBranchPopover(branch: branch, start: start, showWorktree: showWorktree, close: closeNewBranch)
             }
         }
         .background {
@@ -189,17 +191,32 @@ private struct NewBranchButton: View {
                 }
             }, place: branch.newRefPlace) {
                 if let start = branch.newTagStart {
-                    NewTagPopover(branch: branch, start: start)
+                    NewTagPopover(branch: branch, start: start, close: closeNewTag)
                 }
             }
         }
     }
 
+    /// What a new branch starts from, as in `main`.
+    private var start: String? {
+        NewWorktreePopover.start(of: worktree)
+    }
+
     /// Where the new branch starts, as in `New Branch from main`.
     private var help: String {
-        if let name = worktree.branch { return "New Branch from \(Ref.shortName(name))" }
-        if let head = worktree.head { return "New Branch from \(head.hex.prefix(8))" }
-        return "New Branch"
+        start.map { "New Branch from \($0)" } ?? "New Branch"
+    }
+
+    /// Cancel in the popover for a new branch, wherever it hangs.
+    private func closeNewBranch() {
+        branch.isCreatingBranch = false
+        branch.newRefPlace = nil
+    }
+
+    /// Cancel in the popover for a new tag.
+    private func closeNewTag() {
+        branch.newTagStart = nil
+        branch.newRefPlace = nil
     }
 }
 
@@ -658,12 +675,15 @@ private struct BranchCount: View {
 /// shows the exact command as it's typed.
 private struct NewBranchPopover: View {
     let branch: BranchModel
+    /// What the branch starts from when no commit or stash was chosen: the
+    /// worktree's branch, or its short hash with `HEAD` detached.
+    let start: String?
     let showWorktree: (String, ObjectID?) -> Void
+    let close: () -> Void
     @State private var name = ""
     @State private var inNewWorktree = false
     @State private var refusal: String?
     @State private var isCreating = false
-    @FocusState private var isNameFocused: Bool
 
     private var newBranch: NewBranch {
         NewBranch(name: name.trimmingCharacters(in: .whitespaces), inNewWorktree: inNewWorktree, startPoint: branch.newBranchStart?.commit)
@@ -673,9 +693,9 @@ private struct NewBranchPopover: View {
     /// since `git stash branch` can't make a worktree (decision 81).
     private var fromStash: StashDetails? { branch.newBranchStash }
 
-    private var title: String {
-        if let fromStash { return "New Branch from \(fromStash.name)" }
-        return branch.newBranchStart.map { "New Branch from \($0.label)" } ?? "New Branch"
+    private var subtitle: String? {
+        if let fromStash { return "From \(fromStash.name), where the stash was made" }
+        return (branch.newBranchStart?.label ?? start).map { "From \($0)" }
     }
 
     private var arguments: [String] {
@@ -684,38 +704,25 @@ private struct NewBranchPopover: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.system(size: 13, weight: .medium))
-                .lineLimit(1)
-                .truncationMode(.middle)
-            TextField("Name", text: $name)
-                .textFieldStyle(.roundedBorder)
-                .focused($isNameFocused)
-                .onSubmit(create)
-                .onChange(of: name) { refusal = nil }
+        NewRefForm(
+            title: "New branch",
+            subtitle: subtitle,
+            name: $name,
+            action: inNewWorktree ? "Create Worktree" : "Create Branch",
+            commands: [arguments],
+            emptyNote: "Type the branch's name",
+            refusal: refusal,
+            isCreating: isCreating,
+            create: create,
+            close: close
+        ) {
             if fromStash == nil {
-                Toggle("In a new worktree", isOn: $inNewWorktree)
-                    .toggleStyle(.checkbox)
-                    .onChange(of: inNewWorktree) { refusal = nil }
-            }
-            Text(BranchModel.command(arguments))
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .textSelection(.enabled)
-            if let refusal {
-                Text(refusal)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
+                NewRefSwitch(title: "In a new worktree", isOn: $inNewWorktree)
             }
         }
-        .padding(12)
-        .frame(width: 320)
+        .onChange(of: name) { refusal = nil }
+        .onChange(of: inNewWorktree) { refusal = nil }
         .onAppear {
-            isNameFocused = true
             if branch.startsInNewWorktree {
                 inNewWorktree = true
                 branch.startsInNewWorktree = false
@@ -744,16 +751,16 @@ private struct NewBranchPopover: View {
 }
 
 /// Puts a new tag on a commit someone chose in a menu, and shows the exact command
-/// as it's typed. It can push the tag too, which starts unchecked every time,
+/// as it's typed. It can push the tag too, which starts off every time,
 /// because pushing a tag can start a release.
 private struct NewTagPopover: View {
     let branch: BranchModel
     let start: BranchModel.NewRefStart
+    let close: () -> Void
     @State private var name = ""
     @State private var pushes = false
     @State private var refusal: String?
     @State private var isCreating = false
-    @FocusState private var isNameFocused: Bool
 
     private var newTag: NewTag {
         NewTag(name: name.trimmingCharacters(in: .whitespaces), commit: start.commit)
@@ -765,43 +772,23 @@ private struct NewTagPopover: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("New Tag on \(start.label)")
-                .font(.system(size: 13, weight: .medium))
-                .lineLimit(1)
-                .truncationMode(.middle)
-            TextField("Name", text: $name)
-                .textFieldStyle(.roundedBorder)
-                .focused($isNameFocused)
-                .onSubmit(create)
-                .onChange(of: name) { refusal = nil }
+        NewRefForm(
+            title: "New tag",
+            subtitle: "On \(start.label)",
+            name: $name,
+            action: "Create Tag",
+            commands: [newTag.arguments] + (pushRemote.map { [Push.tag(newTag.name, remote: $0).arguments] } ?? []),
+            emptyNote: "Type the tag's name",
+            refusal: refusal,
+            isCreating: isCreating,
+            create: create,
+            close: close
+        ) {
             if let remote = branch.tagRemote {
-                Toggle("Push to \(remote)", isOn: $pushes)
-                    .toggleStyle(.checkbox)
-            }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(BranchModel.command(newTag.arguments))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                if let pushRemote {
-                    Text(BranchModel.command(Push.tag(newTag.name, remote: pushRemote).arguments))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-            }
-            .font(.system(size: 11, design: .monospaced))
-            .foregroundStyle(.secondary)
-            .textSelection(.enabled)
-            if let refusal {
-                Text(refusal)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
+                NewRefSwitch(title: "Push to \(remote)", isOn: $pushes)
             }
         }
-        .padding(12)
-        .frame(width: 320)
-        .onAppear { isNameFocused = true }
+        .onChange(of: name) { refusal = nil }
     }
 
     private func create() {

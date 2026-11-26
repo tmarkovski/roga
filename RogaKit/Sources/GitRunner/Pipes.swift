@@ -203,13 +203,17 @@ final class PipeCollector: Sendable {
         var waiters: [CheckedContinuation<[UInt8], Never>] = []
     }
 
-    init(fileDescriptor: Int32, queue: DispatchQueue, limit: Int = 64 * 1024) {
+    /// - Parameter onData: Called on `queue` with each chunk as it arrives, for
+    ///   a command whose standard error says how far along it is, as
+    ///   `git clone --progress` does.
+    init(fileDescriptor: Int32, queue: DispatchQueue, limit: Int = 64 * 1024, onData: (@Sendable ([UInt8]) -> Void)? = nil) {
         self.limit = limit
         channel = DispatchIO(type: .stream, fileDescriptor: fileDescriptor, queue: queue) { _ in
             Darwin.close(fileDescriptor)
         }
         channel.setLimit(lowWater: 1)
         channel.read(offset: 0, length: Int.max, queue: queue) { [self] done, data, _ in
+            if let onData, let data, !data.isEmpty { onData(data.bytes) }
             let waiters = state.withLock { state -> [CheckedContinuation<[UInt8], Never>] in
                 if let data, !data.isEmpty {
                     state.bytes.append(contentsOf: data.bytes)

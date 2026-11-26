@@ -50,6 +50,7 @@ struct BranchAgentLine: View {
                 .onHover { isHovering = $0 }
             }
             .buttonStyle(.plain)
+            .opensOnPress($showsDetail)
             .help(help)
             .accessibilityLabel(help)
             .accessibilityHint("Shows what each agent in this worktree is doing")

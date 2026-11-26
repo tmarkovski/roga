@@ -178,6 +178,9 @@ public struct WorkspaceView: View {
     @State private var showsSettings = false
     /// The sidebar row whose popover for a new worktree is open (decision 82).
     @State private var newWorktreeRow: WorktreeSelection?
+    /// Whether Clone Repository… asked the sidebar for Add Repositories' clone
+    /// form (decision 113).
+    @State private var asksToClone = false
     /// The worktree whose popover for a new worktree is open on its tab, or on
     /// the button after the tabs for the main worktree (decision 95).
     @State private var newWorktreeTab: WorktreeSelection?
@@ -287,7 +290,7 @@ public struct WorkspaceView: View {
                 // lights and the sidebar's button sit over.
                 TitleRowDragArea()
                     .frame(height: TitleBar.height)
-                Sidebar(list: list, monitor: agentMonitor, selection: selection, showsSettings: $showsSettings, locate: locate, newWorktreeRow: $newWorktreeRow, createWorktree: createWorktree)
+                Sidebar(list: list, monitor: agentMonitor, selection: selection, showsSettings: $showsSettings, locate: locate, newWorktreeRow: $newWorktreeRow, createWorktree: createWorktree, asksToClone: $asksToClone)
             }
             .ignoresSafeArea(.container, edges: .top)
             .overlay(alignment: .trailing) {
@@ -373,6 +376,7 @@ public struct WorkspaceView: View {
         .focusedSceneValue(\.selection, selection)
         .focusedSceneValue(\.worktreeCommands, worktreeCommands)
         .focusedSceneValue(\.sidebarVisibility, $columns)
+        .focusedSceneValue(\.asksToClone, $asksToClone)
         .focusedSceneValue(\.refsPanelVisibility, refsPanelVisibility)
         .focusedSceneValue(\.showsSettings, $showsSettings)
         .environment(\.openSettings, openSettings)
@@ -474,6 +478,7 @@ public struct WorkspaceView: View {
                     Text("Open a repository to see its history.")
                 } actions: {
                     Button("Open Repository…", action: open)
+                    Button("Clone Repository…", action: cloneRepository)
                 }
             } else {
                 ContentUnavailableView {
@@ -506,6 +511,15 @@ public struct WorkspaceView: View {
                 Text(message)
             } actions: {
                 Button("Try Again") { Task { await list.refresh() } }
+            }
+        case .cloning(let job):
+            ContentUnavailableView {
+                Label("Cloning \(repository.name)", icon: .cloudDownload)
+            } description: {
+                Text(CloneLine(job: job).spoken)
+            } actions: {
+                Button("Cancel Clone") { list.cancelClone(repository) }
+                    .disabled(job.isCancelling)
             }
         case .open(let session):
             if let worktree = repository.worktrees.first(where: { $0.path == selected.worktree }) {
@@ -682,6 +696,12 @@ public struct WorkspaceView: View {
 
     private func open() {
         openRepository(list: list) { selection.wrappedValue = $0 }
+    }
+
+    /// Opens Add Repositories on its clone form. The sidebar shows it, since
+    /// the popover hangs from its row.
+    private func cloneRepository() {
+        asksToClone = true
     }
 
     private func locate(_ repository: ListedRepository) {

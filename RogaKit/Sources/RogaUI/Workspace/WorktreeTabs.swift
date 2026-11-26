@@ -104,9 +104,12 @@ struct WorktreeTabStrip: View {
             // worktree, which is where it's asked for most.
             tab
         } else {
-            tab.popover(isPresented: isMakingWorktree(from: selection), arrowEdge: .bottom) {
+            let isMaking = isMakingWorktree(from: selection)
+            tab.popover(isPresented: isMaking, arrowEdge: .bottom) {
                 NewWorktreePopover(start: NewWorktreePopover.start(of: worktree)) { name in
                     await actions.createWorktree(worktree.path, name)
+                } close: {
+                    isMaking.wrappedValue = false
                 }
             }
         }
@@ -504,10 +507,11 @@ private struct NewWorktreeTabButton: View {
             Icon.plus.image
         }
         .buttonStyle(.icon(isOn: isPresented))
+        .opensOnPress($isPresented)
         .help(NewWorktreePopover.title(startingFrom: start))
         .accessibilityLabel(NewWorktreePopover.title(startingFrom: start))
         .popover(isPresented: $isPresented, arrowEdge: .bottom) {
-            NewWorktreePopover(start: start, create: create)
+            NewWorktreePopover(start: start, create: create) { isPresented = false }
         }
     }
 }

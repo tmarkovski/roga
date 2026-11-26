@@ -239,10 +239,10 @@ public final class RepositoryList {
 
         let session = try await RepositorySession.start(location: Self.gitDirectoryLocation(found), git: git)
         let worktrees: [Worktree]
-        let owners: [String]
+        let remoteURLs: [String: String]
         do {
             worktrees = try await session.worktrees()
-            owners = try await session.owners()
+            remoteURLs = try await session.remoteURLs()
         } catch {
             await session.close()
             throw error
@@ -257,7 +257,8 @@ public final class RepositoryList {
             bookmark: Self.bookmark(for: found.commonDirectory),
             isExpanded: false
         ))
-        repository.owners = owners
+        repository.owners = RemoteAddress.owners(remoteURLs)
+        repository.remoteAddresses = Set(remoteURLs.values.map(RemoteAddress.comparable))
         repository.state = .open(session)
         repository.worktrees = worktrees
         repositories.append(repository)
@@ -280,6 +281,74 @@ public final class RepositoryList {
     func unlisted(_ clones: [LocalClone]) -> [LocalClone] {
         let listed = Set(repositories.map(\.path))
         return clones.filter { !listed.contains($0.path + "/.git") }
+    }
+
+    /// The folders a clone can go in, which are the ones Add Repositories looks
+    /// in: the folders listed repositories are in, with the one most of them
+    /// are in first, and then `folders`.
+    func cloneFolders(alsoLookingIn folders: [String] = []) -> [String] {
+        let counts = Dictionary(repositories.map { ($0.parentFolder, 1) }, uniquingKeysWith: +)
+        let listed = counts.keys.sorted { first, second in
+            counts[first] != counts[second] ? counts[first, default: 0] > counts[second, default: 0] : first < second
+        }
+        var seen: Set<String> = []
+        return (listed + folders).filter { seen.insert($0).inserted }
+    }
+
+    /// The listed repository, or the one being cloned, that has a remote at
+    /// `url`, however the URL is written.
+    func repository(withRemote url: String) -> ListedRepository? {
+        let address = RemoteAddress.comparable(url)
+        guard !address.isEmpty else { return nil }
+        return repositories.first { $0.remoteAddresses.contains(address) }
+    }
+
+    /// Clones a repository and adds it, then returns its main worktree to show
+    /// (decision 113). Its row is in the list while git runs, in the group of
+    /// the owner in its URL, and says how far along it is. It isn't saved
+    /// until it's done, since a clone that stops halfway leaves nothing.
+    ///
+    /// - Throws: `GitError` when git refuses, or `CancellationError` when the
+    ///   clone is cancelled from its row. Either way its row goes.
+    func clone(_ request: CloneRequest) async throws -> WorktreeSelection {
+        guard let git else { throw RepositoryListError.gitNotFound }
+        let job = CloneJob(request: request)
+        let repository = ListedRepository(saved: RepositoryStore.SavedRepository(
+            path: Self.comparablePath(request.destination) + "/.git",
+            bookmark: nil,
+            isExpanded: false
+        ))
+        repository.owners = RemoteAddress.owner(request.url).map { [$0] } ?? []
+        repository.remoteAddresses = [RemoteAddress.comparable(request.url)]
+        repository.state = .cloning(job)
+        repositories.append(repository)
+        // git can say how far along it is many times a second, and only the
+        // latest matters.
+        let (updates, continuation) = AsyncStream.makeStream(of: CloneProgress.self, bufferingPolicy: .bufferingNewest(1))
+        let showing = Task {
+            for await progress in updates { job.progress = progress }
+        }
+        let running = Task {
+            try await Cloning.run(request, git: git) { continuation.yield($0) }
+        }
+        job.stop = { running.cancel() }
+        let result = await running.result
+        continuation.finish()
+        await showing.value
+        if case .failure(let error) = result {
+            repositories.removeAll { $0 === repository }
+            throw error
+        }
+        await open(repository, git: git)
+        return resolve(repository.home) ?? repository.home
+    }
+
+    /// Stops a clone that's running. git deletes the folder it was making, and
+    /// the row goes once it has.
+    func cancelClone(_ repository: ListedRepository) {
+        guard case .cloning(let job) = repository.state, !job.isCancelling else { return }
+        job.isCancelling = true
+        job.stop()
     }
 
     /// Takes the repository out of the list and closes its session.
@@ -495,18 +564,23 @@ public final class RepositoryList {
             }
         case .missing, .failed:
             await open(repository, git: git)
+        case .cloning:
+            break
         }
     }
 
     /// Reads who owns the repository, in case its remotes changed. It keeps
     /// what it knew when git can't say.
     private func updateOwners(of repository: ListedRepository, session: RepositorySession) async {
-        let owners: [String]
+        let remoteURLs: [String: String]
         do {
-            owners = try await session.owners()
+            remoteURLs = try await session.remoteURLs()
         } catch {
             return
         }
+        let addresses = Set(remoteURLs.values.map(RemoteAddress.comparable))
+        if addresses != repository.remoteAddresses { repository.remoteAddresses = addresses }
+        let owners = RemoteAddress.owners(remoteURLs)
         if owners != repository.owners {
             repository.owners = owners
             save()
@@ -885,7 +959,12 @@ public final class RepositoryList {
     }
 
     private func save() {
-        store.save(RepositoryStore.Contents(repositories: repositories.map(\.saved), lastSelection: lastSelection))
+        // A clone that's running isn't listed once Roga quits, since what's in
+        // its folder by then may be nothing.
+        let saved = repositories.filter { repository in
+            if case .cloning = repository.state { false } else { true }
+        }
+        store.save(RepositoryStore.Contents(repositories: saved.map(\.saved), lastSelection: lastSelection))
     }
 
     /// The repository without the worktree it was found from, so that the
@@ -927,6 +1006,8 @@ public final class ListedRepository: Identifiable {
         case missing
         /// git couldn't open it. The message says why.
         case failed(String)
+        /// git is cloning it, and it opens once that's done (decision 113).
+        case cloning(CloneJob)
     }
 
     /// The repository's git directory, which identifies it.
@@ -939,6 +1020,10 @@ public final class ListedRepository: Identifiable {
     /// Who owns the repository, from its remotes' URLs, with `origin`'s owner
     /// first.
     fileprivate(set) var owners: [String]
+    /// Its remotes' URLs, as `RemoteAddress.comparable(_:)` has them, which
+    /// say whether a URL to clone is one the list has already. They aren't
+    /// saved, and a look reads them.
+    fileprivate(set) var remoteAddresses: Set<String> = []
     /// Who the repository's commits go out as, from its config, or nil until a
     /// look has read it (decision 103). Every worktree shares it.
     fileprivate(set) var identity: CommitIdentity?
@@ -1040,8 +1125,32 @@ public final class ListedRepository: Identifiable {
         if case .open(let session) = state { session } else { nil }
     }
 
+    /// The clone that's making it, while git runs.
+    var cloning: CloneJob? {
+        if case .cloning(let job) = state { job } else { nil }
+    }
+
     fileprivate var saved: RepositoryStore.SavedRepository {
         RepositoryStore.SavedRepository(path: path, bookmark: bookmark, isExpanded: isExpanded, keptWorktrees: keptWorktrees.isEmpty ? nil : keptWorktrees.sorted(), owner: owners.first, moreOwners: owners.count > 1 ? Array(owners.dropFirst()) : nil)
+    }
+}
+
+/// A clone that's running, which the row of the repository it's making shows
+/// (decision 113).
+@Observable
+final class CloneJob {
+    let request: CloneRequest
+    /// How far along it is, from what git last said.
+    fileprivate(set) var progress = CloneProgress()
+    /// Whether the person cancelled it, and git is deleting what it made.
+    fileprivate(set) var isCancelling = false
+    /// Stops git.
+    @ObservationIgnored fileprivate var stop: () -> Void = {}
+
+    init(request: CloneRequest, progress: CloneProgress = CloneProgress(), isCancelling: Bool = false) {
+        self.request = request
+        self.progress = progress
+        self.isCancelling = isCancelling
     }
 }
 
