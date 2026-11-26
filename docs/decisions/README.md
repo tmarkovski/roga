@@ -118,4 +118,5 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [108](0108-make-a-signing-key-and-say-which-signing-programs-are-here.md) | Make a signing key, and say which signing programs are here | Accepted |
 | [109](0109-keep-the-signature-line-in-place-and-let-checking-be-turned-off.md) | Keep the Signature line in place, and let checking be turned off | Partly superseded by [110](0110-line-up-settings-rows-on-their-middle-and-give-git-fewer-sections.md) |
 | [110](0110-line-up-settings-rows-on-their-middle-and-give-git-fewer-sections.md) | Line up Settings' rows on their middle, and give Git fewer sections | Accepted |
+| [111](0111-open-popovers-on-the-press-as-menus-do.md) | Open popovers on the press, as menus do | Accepted |
 | [113](0113-clone-from-a-url-in-add-repositories.md) | Clone from a URL in Add Repositories | Accepted |

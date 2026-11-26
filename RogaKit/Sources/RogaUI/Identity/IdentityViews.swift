@@ -150,6 +150,7 @@ struct IdentityButton: View {
                                signs: identity.signs)
             }
             .buttonStyle(.icon(isOn: isEditing))
+            .opensOnPress($isEditing)
             .help(words.tooltip)
             .accessibilityLabel("Commit Identity")
             .accessibilityValue(words.spoken)
@@ -256,6 +257,7 @@ struct CommitBoxIdentityLine: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .opensOnPress($isEditing)
         .onHover { isHovering = $0 }
         .help(words.tooltip)
         .accessibilityLabel("Commit Identity")

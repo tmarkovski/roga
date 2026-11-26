@@ -64,7 +64,7 @@ struct Sidebar: View {
         let groups = list.groups
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 2) {
-                SidebarCommandRow(title: "Add Repositories", icon: .plus, isOpen: isAddingRepositories, isEnabled: list.isConnected) {
+                SidebarCommandRow(title: "Add Repositories", icon: .plus, popover: $isAddingRepositories, isEnabled: list.isConnected) {
                     // With nothing listed and no folder picked, the popover
                     // has nowhere to look, so the row asks for a folder first.
                     if list.repositories.isEmpty && adding.pickedFolders.isEmpty {
@@ -397,6 +397,9 @@ private struct SidebarCommandRow: View {
     let title: String
     let icon: Icon
     var isOpen = false
+    /// The popover the row opens, if it opens one, which then opens as the
+    /// mouse button goes down, and keeps the row gray while it's open.
+    var popover: Binding<Bool>?
     var isEnabled = true
     /// The color of a row that stands out, as a new version does in the
     /// brand's orange.
@@ -404,6 +407,15 @@ private struct SidebarCommandRow: View {
     let action: () -> Void
 
     var body: some View {
+        if let popover {
+            row(isOpen: popover.wrappedValue)
+                .opensOnPress(popover, isEnabled: isEnabled, open: action)
+        } else {
+            row(isOpen: isOpen)
+        }
+    }
+
+    private func row(isOpen: Bool) -> some View {
         SidebarRow(isSelected: isOpen, isEnabled: isEnabled, agent: nil, action: action) {
             HStack(spacing: 8) {
                 icon.image

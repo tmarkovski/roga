@@ -77,6 +77,7 @@ struct GenerateButton<Choices: View>: View {
                     .frame(maxHeight: .infinity)
                     .contentShape(Rectangle())
             }
+            .opensOnPress($isChoosing)
             .disabled(!isEnabled)
             .help("Choose an Agent")
             .accessibilityLabel("Choose an Agent")
