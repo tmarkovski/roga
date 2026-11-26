@@ -2,6 +2,8 @@
 
 Accepted on 2026-11-25. This adds New SSH Key… and New OpenPGP Key… to the Key field from [decision 106](0106-offer-the-signing-keys-this-mac-has.md), fades a format in the identity popover's and Settings › Git's picker when its program isn't on this Mac, and adds the signing programs and gh to setup's Look Around from [decision 69](0069-set-roga-up-in-the-whole-window-the-first-time-it-runs.md). It came up while reviewing the work for decisions 105 to 107.
 
+Amended in place on 2026-11-25: the confirm puts the name and email the key is made for, and a new SSH key's file, in a gray card above what it says, rather than inside the sentence and the line under the title.
+
 ## Context
 
 Decision 106 lists the keys this Mac can sign with, but someone turning signing on may have none yet, and the line under the field could only tell them to run `ssh-keygen` or `gpg --full-generate-key` themselves.
@@ -14,7 +16,7 @@ Setup's Look Around is where Roga says what it found on this Mac and what it wou
 
 ## Decision
 
-**The line under the Key field ends with New SSH Key… or New OpenPGP Key…** in the accent, as Use Global and Trust This Key… are, for the format it shows, once the keys have been listed and when the format's program is here. It opens a confirm under the field that says what Roga makes and who could sign with it, and shows what it runs, as [decision 29](0029-dialogs-that-say-what-happens-and-show-the-command.md) asks:
+**The line under the Key field ends with New SSH Key… or New OpenPGP Key…** in the accent, as Use Global and Trust This Key… are, for the format it shows, once the keys have been listed and when the format's program is here. It opens a confirm under the field that says what Roga makes and who could sign with it, and shows what it runs, as [decision 29](0029-dialogs-that-say-what-happens-and-show-the-command.md) asks. A gray card at the top of the confirm, under its title, has the name and email the key is made for, so they can be checked before it's made, with each value in the text's color and its label in gray. An OpenPGP key has Name and Email, and Name is left out when the identity has none. An SSH key has Email, which is the key's comment, and File, since it keeps no name:
 
 - **SSH:** `ssh-keygen -q -t ed25519 -C email -N '' -f ~/.ssh/id_ed25519_signing`, in the first of `id_ed25519_signing`, `id_ed25519_signing_2` and so on that has no file in `~/.ssh`, so it never replaces a key and isn't one `ssh` tries when logging in. The new key then goes in the allowed signers file as Trust This Key… would add it ([decision 107](0107-trust-your-own-ssh-key-from-the-signature-line.md)), for the identity's email, so that git says the commits it signs are good.
 - **OpenPGP:** `gpg --batch --yes --passphrase '' --status-fd 1 --quick-generate-key 'Name <email>' ed25519 sign never`, with the program git config names. `--yes` makes it even when another key has the same user ID, and the key signs and doesn't expire.

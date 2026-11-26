@@ -23,8 +23,9 @@ struct KeyMaker {
 }
 
 /// New SSH Key… or New OpenPGP Key… from the Key field's menu (decision
-/// 108). First it says what Roga makes, and shows what it runs, as decision
-/// 29 asks. Once the key is made, it says where the key's public half can
+/// 108). First it says what Roga makes, with the name and email the key is
+/// for in a card of their own, and shows what it runs, as decision 29 asks.
+/// Once the key is made, it says where the key's public half can
 /// go so that the commits it signs show as verified: Add to GitHub runs gh
 /// when gh may add keys there, and otherwise Open GitHub or Open GitLab
 /// goes to the host's page, with Copy Public Key for pasting it there or
@@ -89,14 +90,17 @@ struct NewKeyPopover: View {
 
     private var confirmContent: some View {
         VStack(alignment: .leading, spacing: 0) {
-            header("New \(format.title) key", sub: "For signing commits as \(email)")
+            header("New \(format.title) key", sub: "For signing commits")
             Group {
                 switch planned {
                 case nil:
                     ProgressView().controlSize(.small)
                 case .ready(let plan):
-                    Text(Self.note(plan))
-                        .foregroundStyle(DialogColors.note)
+                    VStack(alignment: .leading, spacing: 10) {
+                        factsCard(plan)
+                        Text(Self.note(plan))
+                            .foregroundStyle(DialogColors.note)
+                    }
                 case .unavailable(let reason):
                     Text(reason)
                         .foregroundStyle(AgentColors.warn)
@@ -125,16 +129,33 @@ struct NewKeyPopover: View {
         return nil
     }
 
+    /// A line of the card above the note, as in `Email` and
+    /// `sam@rivera.dev`.
+    struct Fact: Equatable {
+        let label: String
+        let value: String
+    }
+
+    /// Who the key is for, and where a new SSH key goes, in the card above
+    /// the note, so that the name and email it's made with are plain before
+    /// it's made. An SSH key keeps only the email, as its comment.
+    static func facts(_ plan: NewSigningKey.Plan) -> [Fact] {
+        var facts: [Fact] = []
+        if !plan.name.isEmpty { facts.append(Fact(label: "Name", value: plan.name)) }
+        facts.append(Fact(label: "Email", value: plan.email))
+        if let file = plan.shownFile { facts.append(Fact(label: "File", value: file)) }
+        return facts
+    }
+
     /// What the confirm says Roga makes.
     static func note(_ plan: NewSigningKey.Plan) -> String {
         let unguarded = "without a passphrase, so git, Roga and agents can sign without asking"
         switch plan.format {
         case .ssh:
-            let file = plan.shownFile ?? "~/.ssh"
             let trust = plan.trust.map { " It also goes in \($0.shownFile), so git says your commits are good." } ?? ""
-            return "Roga makes an Ed25519 key in \(file), \(unguarded). Anyone who can read that file can sign as you.\(trust)"
+            return "Roga makes an Ed25519 key \(unguarded). Anyone who can read the file can sign as you.\(trust)"
         case .openPGP, .x509:
-            return "Roga makes an Ed25519 key for \(plan.userID) that doesn't expire, \(unguarded). Anyone who can use your GnuPG keyring can sign as you."
+            return "Roga makes an Ed25519 key that doesn't expire, \(unguarded). Anyone who can use your GnuPG keyring can sign as you."
         }
     }
 
@@ -303,6 +324,27 @@ struct NewKeyPopover: View {
     }
 
     // MARK: Parts
+
+    /// The name and email the key is made for, and an SSH key's file, with
+    /// the values in the text's color so that they stand out from the note.
+    private func factsCard(_ plan: NewSigningKey.Plan) -> some View {
+        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 4) {
+            ForEach(Self.facts(plan), id: \.label) { fact in
+                GridRow {
+                    Text(fact.label)
+                        .font(.system(size: 12))
+                        .foregroundStyle(DialogColors.note)
+                    Text(verbatim: fact.value)
+                        .font(.system(size: 13, weight: .medium))
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .padding(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(DialogColors.card, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
 
     private func header(_ title: String, sub: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {

@@ -403,7 +403,11 @@ struct IdentityTests {
 
     @Test func theNewKeyConfirmSaysWhatItMakesAndRuns() {
         let plan = sshPlan()
-        #expect(NewKeyPopover.note(plan) == "Roga makes an Ed25519 key in ~/.ssh/id_ed25519_signing, without a passphrase, so git, Roga and agents can sign without asking. Anyone who can read that file can sign as you. It also goes in ~/.ssh/allowed_signers, so git says your commits are good.")
+        #expect(NewKeyPopover.facts(plan) == [
+            .init(label: "Email", value: "sam@rivera.dev"),
+            .init(label: "File", value: "~/.ssh/id_ed25519_signing"),
+        ])
+        #expect(NewKeyPopover.note(plan) == "Roga makes an Ed25519 key without a passphrase, so git, Roga and agents can sign without asking. Anyone who can read the file can sign as you. It also goes in ~/.ssh/allowed_signers, so git says your commits are good.")
         #expect(NewKeyPopover.lines(plan) == [
             .program(plan.command),
             .command(["config", "--global", "gpg.ssh.allowedSignersFile", "~/.ssh/allowed_signers"]),
@@ -415,12 +419,17 @@ struct IdentityTests {
         let openPGP = NewSigningKey.Plan(
             format: .openPGP,
             email: "sam@rivera.dev",
+            name: "Sam Rivera",
             userID: "Sam Rivera <sam@rivera.dev>",
             program: "/opt/homebrew/bin/gpg",
             arguments: [],
             shownArguments: []
         )
-        #expect(NewKeyPopover.note(openPGP) == "Roga makes an Ed25519 key for Sam Rivera <sam@rivera.dev> that doesn't expire, without a passphrase, so git, Roga and agents can sign without asking. Anyone who can use your GnuPG keyring can sign as you.")
+        #expect(NewKeyPopover.facts(openPGP) == [
+            .init(label: "Name", value: "Sam Rivera"),
+            .init(label: "Email", value: "sam@rivera.dev"),
+        ])
+        #expect(NewKeyPopover.note(openPGP) == "Roga makes an Ed25519 key that doesn't expire, without a passphrase, so git, Roga and agents can sign without asking. Anyone who can use your GnuPG keyring can sign as you.")
     }
 
     @Test func theMadeKeySaysWhereItCanGo() {
