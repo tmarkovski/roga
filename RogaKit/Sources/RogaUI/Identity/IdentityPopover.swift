@@ -233,6 +233,12 @@ struct IdentityPopover: View {
     /// Each format's program and whether it's on this Mac, looked up each
     /// time the popover shows the format (decision 108).
     @State private var signingPrograms: SigningPrograms.Found?
+    /// Whether the keys or New Key… are open over the Key field.
+    @State private var isShowingKeyPopover = false
+    /// How tall the popover's content is.
+    @State private var height: CGFloat = 0
+    /// The height the popover keeps while the keys or New Key… are open.
+    @State private var heldHeight: CGFloat?
 
     /// Wide enough for Sign commits' four choices, each as wide as OpenPGP.
     static let width: CGFloat = 380
@@ -319,27 +325,26 @@ struct IdentityPopover: View {
                             .foregroundStyle(AgentColors.warn)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                    VStack(alignment: .leading, spacing: 6) {
-                        label([.signingKey], "Key", editor: editor)
-                        SigningKeyField(
-                            text: $editor.key,
-                            format: editor.format,
-                            listing: keyListings[editor.format],
-                            email: editor.email,
-                            hasDefaultKeyCommand: editor.identity.hasDefaultKeyCommand,
-                            width: Self.width - 2 * Self.inset,
-                            // No New Key… when the format's program isn't here.
-                            maker: signingPrograms?[editor.format].isFound == false ? nil : KeyMaker(
-                                list: list,
-                                repository: repository,
-                                name: editor.name,
-                                savesAtOnce: false
-                            ) { made in
-                                keyListings[made.format, default: SigningKeys.Listing(keys: [])].keys.append(made.key)
-                            }
-                        )
-                        .onSubmit { if !editor.changes.isEmpty { save(editor.changes) } }
-                    }
+                    SigningKeyField(
+                        text: $editor.key,
+                        format: editor.format,
+                        listing: keyListings[editor.format],
+                        email: editor.email,
+                        hasDefaultKeyCommand: editor.identity.hasDefaultKeyCommand,
+                        width: Self.width - 2 * Self.inset,
+                        // No New Key… when the format's program isn't here.
+                        maker: signingPrograms?[editor.format].isFound == false ? nil : KeyMaker(
+                            list: list,
+                            repository: repository,
+                            name: editor.name,
+                            savesAtOnce: false
+                        ) { made in
+                            keyListings[made.format, default: SigningKeys.Listing(keys: [])].keys.append(made.key)
+                        },
+                        label: label([.signingKey], "Key", editor: editor),
+                        isShowingPopover: $isShowingKeyPopover
+                    )
+                    .onSubmit { if !editor.changes.isEmpty { save(editor.changes) } }
                     .padding(.top, 2)
                 }
             }
@@ -381,8 +386,20 @@ struct IdentityPopover: View {
         }
         .frame(width: Self.width)
         .font(.system(size: 13))
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+        // While the keys or New Key… are open over the Key field, the
+        // popover keeps its height, and what would make it taller is cut
+        // off at its bottom until they've gone. A popover with another one
+        // open over it takes a new height only once that one has finished
+        // closing, and until then its content grew out of its top, so that
+        // the whole popover seemed to jump up toward its button and back.
+        .frame(height: heldHeight, alignment: .top)
+        .clipped()
         .background(DialogColors.surface)
         .background(NoFirstField())
+        .onChange(of: isShowingKeyPopover) {
+            heldHeight = isShowingKeyPopover ? height : nil
+        }
         // The keys are listed only while the Key field shows, once for each
         // format, since gpg can take a moment the first time.
         .task(id: editor.signs ? editor.format : nil) {

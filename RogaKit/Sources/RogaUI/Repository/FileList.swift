@@ -89,6 +89,10 @@ struct FileRows: View {
     /// scroll back to.
     static let top = "top of the files"
 
+    /// How tall every row is, a file's or a folder's, which is what lets the
+    /// lazy stack know its height, and the panel work out where a row is.
+    static let rowHeight = 24.0
+
     var body: some View {
         LazyVStack(alignment: .leading, spacing: 0) {
             ForEach(rows) { row in
@@ -126,7 +130,8 @@ extension ScrollViewProxy {
 
 /// What the button on a row of a worktree's files does: staging or unstaging it
 /// (decision 30). It shows while the pointer is over the row, in place of the
-/// row's line counts, so that nothing moves.
+/// row's line counts, so that nothing moves. When it's wider than the counts,
+/// the name and folder fade out before it (decision 114).
 struct FileRowAction {
     /// The icon, or nil for one that says what it does in words.
     let icon: Icon?
@@ -160,7 +165,8 @@ struct RowDiscard {
 /// A row's button: it fills with gray while the pointer is over it, and a little
 /// darker while it's selected. While the pointer is over it, the small buttons at
 /// the end of the row show, each filling with gray only under the pointer. The
-/// content hears whether they're covering it.
+/// content hears whether they're showing, and keeps its place while they do:
+/// whatever of it would reach them fades out before them (decision 114).
 private struct FileRowButton<Content: View>: View {
     var isSelected = false
     var accessoryIcon: Icon?
@@ -172,15 +178,22 @@ private struct FileRowButton<Content: View>: View {
     var discard: RowDiscard?
     var discardLabel = ""
     let action: () -> Void
-    @ViewBuilder var content: (_ isShowingAccessory: Bool) -> Content
+    @ViewBuilder var content: (_ isShowingButtons: Bool) -> Content
     @State private var isHovering = false
 
     var body: some View {
         ZStack(alignment: .trailing) {
             Button(action: action) {
-                content(isHovering && (performAccessory != nil || discard != nil))
+                content(isShowingButtons)
                     .padding(.horizontal, 8)
-                    .frame(height: 24)
+                    .mask(alignment: .trailing) {
+                        if isShowingButtons {
+                            FadeBeforeButtons(discardIcon: discard?.icon, accessory: accessory)
+                        } else {
+                            Rectangle()
+                        }
+                    }
+                    .frame(height: FileRows.rowHeight)
                     .background {
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
                             .fill(isSelected ? Palette.selection : isHovering ? Palette.hover : .clear)
@@ -190,42 +203,113 @@ private struct FileRowButton<Content: View>: View {
             .buttonStyle(.plain)
             // A double click also selects the row, which is what's wanted anyway.
             .simultaneousGesture(TapGesture(count: 2).onEnded { performAccessory?() })
-            if isHovering {
-                HStack(spacing: 2) {
+            if isShowingButtons {
+                HStack(spacing: RowButtons.spacing) {
                     if let discard {
                         Button(action: discard.perform) {
-                            discard.icon.image
-                                .font(.system(size: 13))
-                                .foregroundStyle(Palette.red)
-                                .frame(width: 20, height: 20)
+                            DiscardLabel(icon: discard.icon)
                         }
                         .buttonStyle(RowButtonStyle())
                         .help(discard.title)
                         .accessibilityLabel(discardLabel)
                     }
-                    if let performAccessory {
+                    if let performAccessory, let accessory {
                         Button(action: performAccessory) {
-                            if let accessoryIcon {
-                                accessoryIcon.image
-                                    .font(.system(size: 13))
-                                    .frame(width: 20, height: 20)
-                            } else {
-                                Text(accessoryTitle ?? "")
-                                    .font(.system(size: 12, weight: .medium))
-                                    .padding(.horizontal, 6)
-                                    .frame(height: 20)
-                            }
+                            AccessoryLabel(icon: accessory.icon, title: accessory.title)
                         }
                         .buttonStyle(RowButtonStyle())
-                        .help(accessoryHelp ?? accessoryTitle ?? "")
+                        .help(accessoryHelp ?? accessory.title)
                         .accessibilityLabel(accessoryLabel)
                     }
                 }
-                .padding(.trailing, 2)
+                .padding(.trailing, RowButtons.inset)
             }
         }
         .padding(.horizontal, 6)
         .onHover { isHovering = $0 }
+    }
+
+    private var isShowingButtons: Bool {
+        isHovering && (performAccessory != nil || discard != nil)
+    }
+
+    private var accessory: (icon: Icon?, title: String)? {
+        performAccessory == nil ? nil : (accessoryIcon, accessoryTitle ?? "")
+    }
+}
+
+/// Where the small buttons at the end of a row sit.
+private enum RowButtons {
+    /// The space between them.
+    static let spacing = 2.0
+    /// How far the last one is from the end of the row's fill.
+    static let inset = 2.0
+}
+
+/// What a row's content is masked with while its buttons show: whole up to 8
+/// points before the first button, and fading out over the 18 points before
+/// that, as a name in the sidebar does (decision 51). Text that ends sooner is
+/// untouched, so a row whose buttons fit in the place of its counts looks the
+/// same as it did. The buttons' labels are in it, hidden, so the fade ends where
+/// they begin, whether they're icons or words.
+private struct FadeBeforeButtons: View {
+    let discardIcon: Icon?
+    let accessory: (icon: Icon?, title: String)?
+
+    /// How far before the buttons the fade ends.
+    private static let gap = 8.0
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Rectangle()
+            LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
+                .frame(width: FadingText.fadeWidth)
+            Color.clear
+                .frame(width: Self.gap)
+            HStack(spacing: RowButtons.spacing) {
+                if let discardIcon {
+                    DiscardLabel(icon: discardIcon)
+                }
+                if let accessory {
+                    AccessoryLabel(icon: accessory.icon, title: accessory.title)
+                }
+            }
+            .fixedSize()
+            .hidden()
+            Color.clear
+                .frame(width: RowButtons.inset)
+        }
+    }
+}
+
+/// The label of a row's button for throwing away what it's about: its icon, in red.
+private struct DiscardLabel: View {
+    let icon: Icon
+
+    var body: some View {
+        icon.image
+            .font(.system(size: 13))
+            .foregroundStyle(Palette.red)
+            .frame(width: 20, height: 20)
+    }
+}
+
+/// The label of a row's last button: its icon, or its words when it has none.
+private struct AccessoryLabel: View {
+    let icon: Icon?
+    let title: String
+
+    var body: some View {
+        if let icon {
+            icon.image
+                .font(.system(size: 13))
+                .frame(width: 20, height: 20)
+        } else {
+            Text(title)
+                .font(.system(size: 12, weight: .medium))
+                .padding(.horizontal, 6)
+                .frame(height: 20)
+        }
     }
 }
 
@@ -318,7 +402,7 @@ struct FolderRow: View {
             discard: discard,
             discardLabel: "\(discard?.title ?? "") \(path)",
             action: toggle
-        ) { isShowingAccessory in
+        ) { isShowingButtons in
             HStack(spacing: 8) {
                 Chevron(pointsDown: !isCollapsed)
                     .frame(width: 12)
@@ -332,7 +416,7 @@ struct FolderRow: View {
                     LineCounts(added: lines.added, removed: lines.removed)
                         .font(.system(size: 12))
                         .fixedSize()
-                        .opacity(isShowingAccessory ? 0 : 1)
+                        .opacity(isShowingButtons ? 0 : 1)
                 }
             }
             .padding(.leading, indent(depth))
@@ -369,8 +453,8 @@ struct ChangedFileRow: View {
             discard: discard,
             discardLabel: "\(discard?.title ?? "") \(file.path)",
             action: select
-        ) { isShowingAccessory in
-            content(hidingCounts: isShowingAccessory, reservingRoom: isShowingAccessory && discard != nil)
+        ) { isShowingButtons in
+            content(hidingCounts: isShowingButtons)
                 .padding(.leading, indent(depth))
         }
         .help(description)
@@ -390,9 +474,8 @@ struct ChangedFileRow: View {
         }
     }
 
-    /// - Parameter reservingRoom: Whether two buttons cover the end of the row, which
-    ///   short counts have no room for, so that a long name stops before them.
-    private func content(hidingCounts: Bool, reservingRoom: Bool) -> some View {
+    /// - Parameter hidingCounts: Whether the buttons are showing in their place.
+    private func content(hidingCounts: Bool) -> some View {
         HStack(spacing: 8) {
             Text(file.status.letter)
                 .font(.system(size: 11.5, weight: .medium, design: .monospaced))
@@ -427,7 +510,6 @@ struct ChangedFileRow: View {
                             .monospacedDigit()
                             .foregroundStyle(label.isUncommitted ? AnyShapeStyle(Color.orange) : AnyShapeStyle(.secondary))
                             .fixedSize()
-                            .opacity(hidingCounts ? 0 : 1)
                     }
                 } else if let lines = file.lines {
                     if lines.added + lines.removed > 0 {
@@ -436,22 +518,16 @@ struct ChangedFileRow: View {
                         LineCounts(added: lines.added, removed: lines.removed)
                             .font(.system(size: 12))
                             .fixedSize()
-                            .opacity(hidingCounts ? 0 : 1)
                     } else if file.oldMode != file.newMode, file.oldMode != 0, file.newMode != 0 {
                         change("mode")
-                            .opacity(hidingCounts ? 0 : 1)
                     }
                 } else {
                     change("binary")
-                        .opacity(hidingCounts ? 0 : 1)
                 }
             }
-            .frame(minWidth: reservingRoom ? Self.roomForTwoButtons : nil, alignment: .trailing)
+            .opacity(hidingCounts ? 0 : 1)
         }
     }
-
-    /// How far into a row's content two small buttons reach from its end.
-    private static let roomForTwoButtons = 36.0
 
     private func change(_ text: String) -> some View {
         Text(text)

@@ -1,6 +1,6 @@
 # 106. Offer the signing keys this Mac has
 
-Accepted on 2026-11-25. This turns the Key field of the identity popover and of Settings › Git, from [decision 103](0103-show-who-commits-go-out-as-from-git-config.md), into a field that offers the keys this Mac can sign with. It's [issue 117](https://github.com/tmarkovski/roga/issues/117). [Decision 108](0108-make-a-signing-key-and-say-which-signing-programs-are-here.md) adds New SSH Key… and New OpenPGP Key… at the end of the line under the field. Amended in place on 2026-11-25: the keys open as cards with a radio rather than in a menu, which has room for each key's fingerprint.
+Accepted on 2026-11-25. This turns the Key field of the identity popover and of Settings › Git, from [decision 103](0103-show-who-commits-go-out-as-from-git-config.md), into a field that offers the keys this Mac can sign with. It's [issue 117](https://github.com/tmarkovski/roga/issues/117). [Decision 108](0108-make-a-signing-key-and-say-which-signing-programs-are-here.md) adds New SSH Key… and New OpenPGP Key…, at the end of the field's label in the identity popover and of the line under the field in Settings. Amended in place on 2026-11-25: the keys open as cards with a radio rather than in a menu, which has room for each key's fingerprint.
 
 ## Context
 
