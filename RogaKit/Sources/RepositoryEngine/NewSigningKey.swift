@@ -15,6 +15,9 @@ public enum NewSigningKey {
         /// The email the key is for: an SSH key's comment, and in an OpenPGP
         /// key's user ID.
         public var email: String
+        /// The name in an OpenPGP key's user ID, or empty when there's none,
+        /// as for an SSH key, which keeps only the email.
+        public var name: String
         /// An OpenPGP key's user ID, as in `Sam Rivera <sam@rivera.dev>`.
         public var userID: String
         /// The program that makes it, by its full path.
@@ -33,6 +36,7 @@ public enum NewSigningKey {
         public init(
             format: CommitIdentity.SigningFormat,
             email: String,
+            name: String = "",
             userID: String,
             program: String,
             arguments: [String],
@@ -43,6 +47,7 @@ public enum NewSigningKey {
         ) {
             self.format = format
             self.email = email
+            self.name = name
             self.userID = userID
             self.program = program
             self.arguments = arguments
@@ -181,7 +186,7 @@ public enum NewSigningKey {
             // --yes makes it even when a key has the same user ID, and
             // --status-fd says which key it made.
             let arguments = ["--batch", "--yes", "--passphrase", "", "--status-fd", "1", "--quick-generate-key", userID, "ed25519", "sign", "never"]
-            return .ready(Plan(format: .openPGP, email: email, userID: userID, program: gpg, arguments: arguments, shownArguments: arguments))
+            return .ready(Plan(format: .openPGP, email: email, name: name, userID: userID, program: gpg, arguments: arguments, shownArguments: arguments))
         }
     }
 

@@ -134,7 +134,7 @@ struct CloneForm: View {
         action: (title: String, help: String, perform: () -> Void)? = nil,
         @ViewBuilder content: () -> some View
     ) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Text(title)
                     .font(.system(size: 12, weight: .medium))

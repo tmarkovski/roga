@@ -1,6 +1,6 @@
 # 90. Fold Advanced into Git
 
-Accepted on 2026-11-16. This changes Settings' sidebar, which ended with an Advanced page, and the Git page.
+Accepted on 2026-11-16. This changes Settings' sidebar, which ended with an Advanced page, and the Git page. Partly superseded by [decision 110](0110-line-up-settings-rows-on-their-middle-and-give-git-fewer-sections.md), which puts Keep commit-graph files up to date beside Fetch when Roga becomes active, in a section called Background tasks, and moves Commit messages to the Agents page. The rest of this decision still holds.
 
 ## Context
 

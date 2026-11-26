@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import GitCore
 import IconUI
@@ -26,6 +27,16 @@ final class IdentityEditor {
     var signs: Bool { didSet { keepUsingGlobal(.signsCommits) } }
     var format: CommitIdentity.SigningFormat { didSet { keepUsingGlobal(.signingFormat) } }
     var key: String { didSet { keepUsingGlobal(.signingKey) } }
+    /// What the Sign commits choice says: nil for Off, or the format commits
+    /// are signed with. Off leaves the format as it is, so choosing it again
+    /// changes nothing.
+    var signing: CommitIdentity.SigningFormat? {
+        get { signs ? format : nil }
+        set {
+            if let newValue { format = newValue }
+            signs = newValue != nil
+        }
+    }
     /// Where Save writes. The repository's own config is the default, because
     /// writing the global config from one repository changes every other one
     /// that doesn't set its own.
@@ -111,35 +122,53 @@ final class IdentityEditor {
         signs ? Key.allCases : [.name, .email, .signsCommits]
     }
 
+    /// The settings the Sign commits choice shows: whether commits are
+    /// signed and, while they are, the format.
+    var signingKeys: [Key] {
+        signs ? [.signsCommits, .signingFormat] : [.signsCommits]
+    }
+
     /// Whether a field says something other than what was read.
     func isChanged(_ key: Key) -> Bool {
         value(key) != value(key, in: identity)
     }
 
     /// What Save runs, in order. A field that's emptied is removed from
-    /// where Save writes.
+    /// where Save writes. Use Global's removals run even when their field no
+    /// longer shows, as the format doesn't once Use Global turns signing off.
     var changes: [Change] {
-        shownKeys.compactMap { key in
+        let shown = shownKeys
+        return Key.allCases.compactMap { key in
             if usingGlobal.contains(key) { return .unset(key, in: .repository) }
-            guard isChanged(key) else { return nil }
+            guard shown.contains(key), isChanged(key) else { return nil }
             let value = value(key)
             return value.isEmpty ? .unset(key, in: place) : .set(key, value, in: place)
         }
     }
 
-    /// Where a field's value comes from, or where Save will put it once it
-    /// has changed.
+    /// Where a field's value comes from, as it was read.
     func originWords(_ key: Key) -> String {
-        if usingGlobal.contains(key) { return "the global value, once saved" }
-        if isChanged(key) {
-            let file = globalFiles.shownFile ?? "~/.gitconfig"
-            if value(key).isEmpty {
-                return place == .repository ? "removed from this repository once saved" : "removed from \(file) once saved"
-            }
-            return place == .repository ? "this repository's own, once saved" : "in \(file), once saved"
-        }
         guard let setting = setting(key) else { return key == .signingFormat ? "git's default" : "not set" }
         return IdentityWords.origin(setting.origin, globalFiles: globalFiles)
+    }
+
+    /// What a field's label says after its name: where its value comes from,
+    /// when that isn't the global config file, as in `set in this
+    /// repository` beside Use Global. A global value is the usual case, so
+    /// it says nothing. Neither does a value that isn't set, which the empty
+    /// field or Off already shows, or a field once it changes, since Save to
+    /// and the block along the bottom show what Save will do. So choosing
+    /// Off or a format never adds words beside Sign commits.
+    func labelWords(_ key: Key) -> String? {
+        guard !isChanged(key), !usingGlobal.contains(key), setting(key) != nil, !isFromGlobalFile(key) else { return nil }
+        return originWords(key)
+    }
+
+    /// Whether a field's value was read from the file `git config --global`
+    /// writes to.
+    private func isFromGlobalFile(_ key: Key) -> Bool {
+        guard let origin = setting(key)?.origin, origin.scope == .global, let file = origin.file else { return false }
+        return globalFiles.abbreviated(file) == globalFiles.shownFile
     }
 
     /// Why saving to the global config won't change this repository, when
@@ -179,11 +208,16 @@ final class IdentityEditor {
 }
 
 /// Changes who a repository's commits go out as, with `git config`
-/// (decision 103). It has Name, Email and Sign commits, with the format and
-/// the key under Sign commits while it's on, and each says where its value
-/// comes from. Save to chooses the repository's own config, which is the
-/// default, or the global config, and the block along its bottom shows the
-/// exact commands that Save runs (decision 29).
+/// (decision 103). It has three parts with room between them: Name and
+/// Email; Sign commits, one choice of Off or a format, with the key under it
+/// while commits are signed; and Save to beside the buttons, which chooses
+/// the repository's own
+/// config, the default, or the global config. A field says where its value
+/// comes from only when that isn't the global config file, as in `set in
+/// this repository` beside Use Global. The block along its bottom shows the exact
+/// commands that Save runs (decision 29). No field is selected when it
+/// opens, so that nothing is highlighted until someone clicks or presses
+/// Tab.
 struct IdentityPopover: View {
     let repository: ListedRepository
     let list: RepositoryList
@@ -200,8 +234,12 @@ struct IdentityPopover: View {
     /// time the popover shows the format (decision 108).
     @State private var signingPrograms: SigningPrograms.Found?
 
-    static let width: CGFloat = 340
+    /// Wide enough for Sign commits' four choices, each as wide as OpenPGP.
+    static let width: CGFloat = 380
     private static let inset: CGFloat = 16
+    /// The room between two parts, more than twice that between two fields
+    /// of one part.
+    private static let partSpacing: CGFloat = 32
 
     /// - Parameter editor: The fields to start from, for drawing the popover
     ///   partway through a change, or nil to start from the repository's
@@ -237,65 +275,78 @@ struct IdentityPopover: View {
                 Text("Commit identity")
                     .font(.system(size: 13, weight: .semibold))
                     .accessibilityAddTraits(.isHeader)
-                Text("For \(repository.name) and every worktree of it")
+                // Which repository, since Settings opens it from a list of
+                // them as well as from the repository's own window.
+                Text("For \(repository.name) and its worktrees")
                     .font(.system(size: 12))
                     .foregroundStyle(DialogColors.note)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
             }
-            .padding(EdgeInsets(top: 13, leading: Self.inset, bottom: 12, trailing: Self.inset))
+            .padding(EdgeInsets(top: 13, leading: Self.inset, bottom: 14, trailing: Self.inset))
+            // Who: the name and the email.
             VStack(alignment: .leading, spacing: 12) {
                 field(.name, "Name", text: $editor.name, placeholder: "Your Name", editor: editor)
                 field(.email, "Email", text: $editor.email, placeholder: "you@example.com", editor: editor)
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 6) {
-                        label(.signsCommits, "Sign commits", editor: editor)
-                        Toggle("Sign commits", isOn: $editor.signs.animation(.snappy(duration: 0.15)))
-                            .toggleStyle(.settings)
-                            .labelsHidden()
-                    }
-                    if editor.signs {
-                        SettingsSegments(
-                            selection: $editor.format,
-                            options: CommitIdentity.SigningFormat.allCases.map { ($0, $0.title) },
-                            fillsWidth: true,
-                            unavailable: { Self.unavailable($0, programs: signingPrograms, current: editor.identity.format) }
-                        )
-                        .accessibilityLabel("Format")
-                        if let warning = signingPrograms?[editor.format].warning {
-                            Text(warning)
-                                .font(.system(size: 12))
-                                .foregroundStyle(AgentColors.warn)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        VStack(alignment: .leading, spacing: 5) {
-                            label(.signingKey, "Key", editor: editor)
-                            SigningKeyField(
-                                text: $editor.key,
-                                format: editor.format,
-                                listing: keyListings[editor.format],
-                                email: editor.email,
-                                hasDefaultKeyCommand: editor.identity.hasDefaultKeyCommand,
-                                width: Self.width - 2 * Self.inset,
-                                // No New Key… when the format's program isn't here.
-                                maker: signingPrograms?[editor.format].isFound == false ? nil : KeyMaker(
-                                    list: list,
-                                    repository: repository,
-                                    name: editor.name,
-                                    savesAtOnce: false
-                                ) { made in
-                                    keyListings[made.format, default: SigningKeys.Listing(keys: [])].keys.append(made.key)
-                                }
-                            )
-                            .onSubmit { if !editor.changes.isEmpty { save(editor.changes) } }
-                        }
-                    }
-                }
+            }
+            .padding(.horizontal, Self.inset)
+            partGap
+            // How commits are signed: one choice, with Off first, so that
+            // the formats read as the answer to Sign commits rather than as
+            // three things to set up.
+            VStack(alignment: .leading, spacing: 10) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Save to")
-                        .font(.system(size: 12, weight: .medium))
-                    SettingsSegments(selection: $editor.place, options: [(.repository, "This Repository"), (.everyRepository, "Every Repository")], fillsWidth: true)
-                        .accessibilityLabel("Save to")
+                    label(editor.signingKeys, "Sign commits", editor: editor)
+                    // Without an animation, so the popover takes its new
+                    // height in one step. Animated, it grew or shrank around
+                    // its content, which moved toward the middle and back.
+                    SettingsSegments(
+                        selection: $editor.signing,
+                        options: Self.signingChoices,
+                        fillsWidth: true,
+                        unavailable: { choice in
+                            choice.flatMap {
+                                Self.unavailable($0, programs: signingPrograms, current: editor.identity.signs ? editor.identity.format : nil)
+                            }
+                        }
+                    )
+                    .accessibilityLabel("Sign commits")
                 }
-                .padding(.top, 2)
+                if editor.signs {
+                    if let warning = signingPrograms?[editor.format].warning {
+                        Text(warning)
+                            .font(.system(size: 12))
+                            .foregroundStyle(AgentColors.warn)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    VStack(alignment: .leading, spacing: 6) {
+                        label([.signingKey], "Key", editor: editor)
+                        SigningKeyField(
+                            text: $editor.key,
+                            format: editor.format,
+                            listing: keyListings[editor.format],
+                            email: editor.email,
+                            hasDefaultKeyCommand: editor.identity.hasDefaultKeyCommand,
+                            width: Self.width - 2 * Self.inset,
+                            // No New Key… when the format's program isn't here.
+                            maker: signingPrograms?[editor.format].isFound == false ? nil : KeyMaker(
+                                list: list,
+                                repository: repository,
+                                name: editor.name,
+                                savesAtOnce: false
+                            ) { made in
+                                keyListings[made.format, default: SigningKeys.Listing(keys: [])].keys.append(made.key)
+                            }
+                        )
+                        .onSubmit { if !editor.changes.isEmpty { save(editor.changes) } }
+                    }
+                    .padding(.top, 2)
+                }
+            }
+            .padding(.horizontal, Self.inset)
+            partGap
+            // Where Save writes, and what's in the way.
+            VStack(alignment: .leading, spacing: 12) {
                 if let note = editor.shadowNote {
                     Text(note)
                         .font(.system(size: 12))
@@ -309,21 +360,29 @@ struct IdentityPopover: View {
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                HStack(spacing: 8) {
+                    HStack(spacing: 2) {
+                        Text("Save to")
+                            .font(.system(size: 12))
+                            .foregroundStyle(DialogColors.note)
+                            .fixedSize()
+                        SettingsPopup(selection: $editor.place, options: [(.repository, "This Repository"), (.everyRepository, "Every Repository")])
+                            .accessibilityLabel("Save to")
+                    }
+                    Spacer(minLength: 0)
+                    DialogActionButton(button: .cancel(close))
+                    DialogActionButton(button: DialogButton(title: "Save", kind: .primary, isEnabled: !changes.isEmpty && !isSaving) {
+                        save(changes)
+                    })
+                }
             }
-            .padding(.horizontal, Self.inset)
-            HStack(spacing: 8) {
-                DialogActionButton(button: .cancel(close))
-                DialogActionButton(button: DialogButton(title: "Save", kind: .primary, isEnabled: !changes.isEmpty && !isSaving) {
-                    save(changes)
-                })
-            }
-            .frame(maxWidth: .infinity, alignment: .trailing)
-            .padding(EdgeInsets(top: 16, leading: Self.inset, bottom: 14, trailing: Self.inset))
+            .padding(EdgeInsets(top: 0, leading: Self.inset, bottom: 14, trailing: Self.inset))
             CommandBlock(lines: changes.isEmpty ? [.comment("Nothing to save yet")] : changes.map { .command($0.arguments) }, isCompact: true)
         }
         .frame(width: Self.width)
         .font(.system(size: 13))
         .background(DialogColors.surface)
+        .background(NoFirstField())
         // The keys are listed only while the Key field shows, once for each
         // format, since gpg can take a moment the first time.
         .task(id: editor.signs ? editor.format : nil) {
@@ -331,45 +390,64 @@ struct IdentityPopover: View {
             let format = editor.format
             if let listing = await list.signingKeys(format, for: repository) { keyListings[format] = listing }
         }
-        // In the background, with the formats it hasn't confirmed faded in
-        // the meantime (decision 108).
-        .task(id: editor.signs) {
-            guard editor.signs, signingPrograms == nil else { return }
+        // Each time the popover opens, since Sign commits always shows the
+        // formats, in the background, with the formats it hasn't confirmed
+        // faded in the meantime (decision 108).
+        .task {
+            guard signingPrograms == nil else { return }
             signingPrograms = await list.signingPrograms(for: repository)
         }
     }
 
+    /// Sign commits' choices: Off, then each format.
+    private static let signingChoices: [(value: CommitIdentity.SigningFormat?, title: String)] =
+        [(nil, "Off")] + CommitIdentity.SigningFormat.allCases.map { ($0, $0.title) }
+
     /// Why a format can't be chosen, while its program is being looked for
     /// or once it isn't found, or nil when it can. The format git signs with
-    /// now can always be chosen, so that the popover shows what's so.
+    /// now can always be chosen, so that the popover shows what's so. When
+    /// commits aren't signed, there's no such format, so git's default isn't
+    /// offered without gpg.
     static func unavailable(
         _ format: CommitIdentity.SigningFormat,
         programs: SigningPrograms.Found?,
-        current: CommitIdentity.SigningFormat
+        current: CommitIdentity.SigningFormat?
     ) -> String? {
         guard format != current else { return nil }
         guard let programs else { return "Looking for \(SigningPrograms.defaultName(format))…" }
         return programs[format].hint
     }
 
-    /// A field's label, where its value comes from, and Use Global when the
-    /// repository sets it itself.
-    private func label(_ key: IdentityEditor.Key, _ title: String, editor: IdentityEditor) -> some View {
-        HStack(spacing: 6) {
+    /// The room between two of the popover's parts, which sets them apart
+    /// without a line.
+    private var partGap: some View {
+        Color.clear.frame(height: Self.partSpacing)
+    }
+
+    /// A field's label, where its value comes from when that isn't the
+    /// global config file, and Use Global when the repository sets it itself.
+    /// Sign commits' label covers two settings, whether commits are signed
+    /// and the format, so it says the first one's words, and its Use Global
+    /// removes every one the repository sets.
+    private func label(_ keys: [IdentityEditor.Key], _ title: String, editor: IdentityEditor) -> some View {
+        let own = keys.filter(editor.canUseGlobal)
+        return HStack(spacing: 6) {
             Text(title)
                 .font(.system(size: 12, weight: .medium))
                 .fixedSize()
-            Text(editor.originWords(key))
-                .font(.system(size: 11.5))
-                .foregroundStyle(editor.isChanged(key) ? Color.primary : DialogColors.note)
-                .lineLimit(1)
-                .truncationMode(.middle)
+            if let words = keys.lazy.compactMap(editor.labelWords).first {
+                Text(words)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(DialogColors.note)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
             Spacer(minLength: 0)
-            if editor.canUseGlobal(key) {
-                Button("Use Global") { editor.useGlobal(key) }
+            if !own.isEmpty {
+                Button("Use Global") { own.forEach(editor.useGlobal) }
                     .buttonStyle(.contextual)
                     .fixedSize()
-                    .help(BranchModel.command(IdentityEditor.Change.unset(key, in: .repository).arguments))
+                    .help(own.map { BranchModel.command(IdentityEditor.Change.unset($0, in: .repository).arguments) }.joined(separator: "\n"))
             }
         }
     }
@@ -382,8 +460,8 @@ struct IdentityPopover: View {
         isMonospaced: Bool = false,
         editor: IdentityEditor
     ) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            label(key, title, editor: editor)
+        VStack(alignment: .leading, spacing: 6) {
+            label([key], title, editor: editor)
             SettingsTextField(text: text, placeholder: placeholder, width: Self.width - 2 * Self.inset, isMonospaced: isMonospaced)
                 .accessibilityLabel(title)
                 .onSubmit { if !editor.changes.isEmpty { save(editor.changes) } }
@@ -404,4 +482,21 @@ struct IdentityPopover: View {
             isSaving = false
         }
     }
+}
+
+/// Takes the popover's first focus, so that it doesn't select the Name
+/// field's text and highlight it when it opens. Tab still goes to the first
+/// field, and Escape still closes the popover.
+private struct NoFirstField: NSViewRepresentable {
+    final class Holder: NSView {
+        override var acceptsFirstResponder: Bool { true }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            window?.initialFirstResponder = self
+        }
+    }
+
+    func makeNSView(context: Context) -> Holder { Holder() }
+    func updateNSView(_ view: Holder, context: Context) {}
 }

@@ -8,19 +8,21 @@ import SwiftUI
 /// Settings › Agents (decision 89): Use agents, which turns everything about
 /// agents on or off, and while it's on, the agents Roga found and the ones
 /// someone added as commands, the default agent that Generate, Resolve and
-/// Fix run, and Status, the hooks through which Claude Code and Codex tell
-/// Roga what they're doing, for the sidebar's marks.
+/// Fix run, how Generate writes a commit message (decision 110), and Status,
+/// the hooks through which Claude Code and Codex tell Roga what they're
+/// doing, for the sidebar's marks.
 struct AgentsPage: View {
     let show: (SettingsDestination) -> Void
     @Environment(AgentProvider.self) private var agents
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 30) {
+        VStack(alignment: .leading, spacing: SettingsMetrics.sectionSpacing) {
             // With agents off it's the page's only row, with no heading over
             // it, and nothing else about agents shows.
             UsesAgentsRow()
             if agents.usesAgents {
                 AgentListSection(show: show)
+                CommitSection()
                 AgentStatusSection()
             }
         }
@@ -179,7 +181,7 @@ private struct AgentListRow<Detail: View>: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(alignment: .settingsFirstLine, spacing: 12) {
+            HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 8) {
                         AgentName(name: name, isDimmed: isDimmed)
@@ -194,7 +196,6 @@ private struct AgentListRow<Detail: View>: View {
                     .font(.system(size: 14))
                     .foregroundStyle(SettingsColors.note)
                     .frame(width: 24, height: 24)
-                    .alignmentGuide(.settingsFirstLine) { $0[VerticalAlignment.center] }
             }
             .padding(EdgeInsets(top: 10, leading: 14, bottom: 10, trailing: 12))
             .frame(minHeight: 58)
@@ -301,15 +302,14 @@ struct AgentStatusSection: View {
 
 /// An agent's hooks, in the list on the Agents page: whether they're
 /// installed and when Roga last heard from them, the button that installs or
-/// removes them, beside the agent's name so that it stays put as the words
-/// under the name change, and what went wrong, in red.
+/// removes them, on the middle of the row, and what went wrong, in red.
 private struct HookRow: View {
     let kind: AgentKind
     let line: HookLine
     let open: (AgentKind, HooksDialog.Action) -> Void
 
     var body: some View {
-        HStack(alignment: .settingsFirstLine, spacing: 12) {
+        HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 AgentName(name: kind.name, isDimmed: line.button == nil)
                 HookLineText(line: line, size: 12)
@@ -324,7 +324,6 @@ private struct HookRow: View {
                 // The page has a button for each agent, so VoiceOver's list
                 // of buttons needs the agent's name in each.
                 .accessibilityLabel(button.spokenTitle(kind))
-                .alignmentGuide(.settingsFirstLine) { $0[VerticalAlignment.center] }
             }
         }
         .padding(EdgeInsets(top: 10, leading: 14, bottom: 10, trailing: 12))
@@ -398,8 +397,7 @@ private struct ProgramLineText: View {
 }
 
 /// An agent's name at the top of its row, which is gray while Roga can't use
-/// the agent, because Roga didn't find it. The row's controls sit on the
-/// middle of its line.
+/// the agent, because Roga didn't find it.
 private struct AgentName: View {
     let name: String
     var isDimmed = false
@@ -408,7 +406,6 @@ private struct AgentName: View {
         Text(name)
             .fontWeight(.medium)
             .foregroundStyle(isDimmed ? SettingsColors.note : .primary)
-            .alignmentGuide(.settingsFirstLine) { $0[VerticalAlignment.center] }
     }
 }
 
@@ -538,19 +535,19 @@ enum AgentSummaries {
         case nil:
             (tone, text) = (.plain, "Checking…")
         case .notInstalled?:
-            let trust = kind == .codex ? " Codex asks you to trust a new hook the first time it runs." : ""
+            let trust = kind == .codex ? " Codex asks you to trust new hooks when they first run." : ""
             (tone, text) = (.plain, "Not installed.\(trust)")
         case .installed?:
             let last = heardSentence(heard, now: now, place: place).map { " " + $0 } ?? ""
             (tone, text) = (.installed, "\(HookLine.installed) (roga-hooks plugin).\(last)")
         case .needsTrust?:
-            (tone, text) = (.warn, "Installed, but Codex hasn't trusted it yet. Open /hooks in Codex to trust it.")
+            (tone, text) = (.warn, "Installed but not trusted. Open /hooks in Codex to trust it.")
         case .disabled?:
-            (tone, text) = (.warn, "Installed, but disabled in \(kind.name).")
+            (tone, text) = (.warn, "Installed but disabled in \(kind.name).")
         case .anotherCopy(let folder)?:
-            (tone, text) = (.warn, "Installed by another copy of Roga, from \(abbreviated(folder)).")
+            (tone, text) = (.warn, "Installed by another copy of Roga at \(abbreviated(folder)).")
         case .unknown(let words)?:
-            (tone, text) = (.warn, "Couldn't check whether it's installed: \(sentence(words))")
+            (tone, text) = (.warn, "Couldn't check installation: \(sentence(words))")
         }
 
         let action = agents.hookStatus[kind].map { AgentProvider.offeredAction($0, for: kind) }
@@ -615,11 +612,11 @@ enum AgentSummaries {
         case .starting, .listening:
             return nil
         case .anotherCopy:
-            return "Another copy of Roga is listening for the agents' hooks, so this one can't show their marks in the sidebar. Quit the other copy, then try again."
+            return "Another copy of Roga is receiving agent status. Quit the other copy and try again."
         case .failed(let words):
             let reason = sentence(abbreviatingPaths(in: words))
             let lead = reason.hasPrefix("Can't listen") ? "" : "Can't listen for the agents' hooks. "
-            return "\(lead)\(reason) Until then, the sidebar can't show the agents' marks."
+            return "\(lead)\(reason) Agent status won't appear in the sidebar."
         }
     }
 
