@@ -535,7 +535,7 @@ public actor RepositorySession {
     }
 
     /// Says how far a worktree's branch is from the main branch on the remote,
-    /// and which files merging that would conflict in (decision 118), at
+    /// and which files merging that would conflict in (decision 119), at
     /// utility priority, for when nobody waits for the answer.
     ///
     /// - Parameters:

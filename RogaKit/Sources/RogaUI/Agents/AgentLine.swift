@@ -99,7 +99,7 @@ struct AgentLine: Equatable {
         summary.sessions == 1 ? summary.hosts.first?.name ?? "An agent" : "\(summary.sessions) agents"
     }
 
-    /// What the branch row's two lines say (decision 118): who and what state
+    /// What the branch row's two lines say (decision 119): who and what state
     /// they're in over what they're doing, as in "Claude Code is working" and
     /// "6 min" over "Run the test suite", and "Claude Code needs approval"
     /// over "git push".

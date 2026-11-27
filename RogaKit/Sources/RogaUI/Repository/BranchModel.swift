@@ -288,7 +288,7 @@ final class BranchModel {
     /// its branch has no commits yet.
     private(set) var status: BranchStatus?
     /// How far the branch is from the main branch on the remote, which the
-    /// branch row says under the branch's name (decision 118), or nil when
+    /// branch row says under the branch's name (decision 119), or nil when
     /// the repository has no main branch, this is the main branch, or it
     /// hasn't been worked out yet.
     var mainDistance: MainDistance? {
@@ -1450,7 +1450,7 @@ final class BranchModel {
         return status.upstream != mainDistance.base
     }
 
-    /// The line under the branch's name in the branch row (decision 118), as
+    /// The line under the branch's name in the branch row (decision 119), as
     /// in `4 ahead, 12 behind origin/main`, and the part that's never cut,
     /// as in `2 files would conflict`, which is orange.
     ///

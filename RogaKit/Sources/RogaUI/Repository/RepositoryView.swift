@@ -155,7 +155,7 @@ struct CheckoutNote: View {
 
 /// History's part of the branch's row: its order, whose menu says how many
 /// commits history shows, which leaves the row's room to the agent (decision
-/// 118), and a note while history opens slowly.
+/// 119), and a note while history opens slowly.
 struct HistoryCommands: View {
     @Bindable var model: RepositoryModel
     /// How tall the order's button is, as tall as the row's other controls.

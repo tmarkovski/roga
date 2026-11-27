@@ -1,6 +1,6 @@
 /// How far a worktree's branch is from the main branch on the remote, as in
 /// `4 ahead, 12 behind origin/main`, which the branch row says under the
-/// branch's name (decision 118).
+/// branch's name (decision 119).
 ///
 /// It compares with the remote's branch rather than the local `main`, which
 /// goes stale unless someone pulls it, while the fetches Roga makes by itself

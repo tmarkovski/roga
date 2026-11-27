@@ -4,14 +4,14 @@ import SwiftUI
 /// The row under the tabs, at the top of the middle column, which says where the
 /// worktree's branch stands and acts on it (decision 95). It holds what the
 /// title row held before the tabs took that row: the branch, over how far it is
-/// from the main branch on the remote (decision 118), with its counts, which
+/// from the main branch on the remote (decision 119), with its counts, which
 /// pull and push (decision 19), then at the right end Fetch and New Branch, a
 /// thin line, and the order of history. It's as tall as a panel's header and
 /// lines up with the refs panel's. Who the commits go out as isn't here, since
 /// it's the whole repository's, and the title row has it (decision 105).
 ///
 /// After the counts, it says what the worktree's agent is doing, in two lines
-/// (decisions 100 and 118), except while Roga says what it's doing or just did,
+/// (decisions 100 and 119), except while Roga says what it's doing or just did,
 /// whose words come first.
 ///
 /// Every control in it is 36 points tall, as its two-line blocks need, so that

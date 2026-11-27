@@ -2,7 +2,7 @@ import GitCore
 import Testing
 
 /// Finding the main branch on the remote, and reading which files a merge of
-/// it would conflict in (decision 118).
+/// it would conflict in (decision 119).
 struct MainDistanceParserTests {
     func lines(_ lines: [String]) -> [UInt8] {
         Array(lines.map { $0.replacing("|", with: "\0") + "\n" }.joined().utf8)

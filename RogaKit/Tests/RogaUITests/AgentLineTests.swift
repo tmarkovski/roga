@@ -4,7 +4,7 @@ import Testing
 @testable import RogaUI
 
 /// What the branch row says about the agents in the worktree on screen
-/// (decision 100), in two lines (decision 118): who and what state over what
+/// (decision 100), in two lines (decision 119): who and what state over what
 /// they're doing, the mark or the light in the words, and the popover's
 /// sections in their order.
 struct AgentLineTests {
