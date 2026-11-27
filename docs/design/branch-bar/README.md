@@ -10,8 +10,9 @@ The boards draw the middle column at 680 points, as in the default window, and a
 - **A · Two lines** gives the branch and the agent two lines each in the row's 44 points, as a window's title and subtitle share a toolbar. The folder sits under the branch, cut in its middle so that its last part stays. The agent's state and how long sit over what it's doing, as in `Claude Code is working · 6 min` over `Run the test suite`, and the light runs through the second line.
 - **B · Labels** shrinks every part to a short label, the folder's last part, the branch, the counts and the agent's name and time, and moves the words into tooltips and popovers.
 - **C · Against main** keeps A's two lines, but the branch's second line says how far it is from `origin/main`, and the folder moves to the tooltip and the popover.
+- **D · C at one height** is C with every control in the row 36 points tall, as its two-line blocks are.
 
-In A, B and C the number of commits moves into the order's menu, which leaves the agent the room it shared with it, and the branch's menu becomes a popover about the checkout:
+In A to D the number of commits moves into the order's menu, which leaves the agent the room it shared with it, and the branch's menu becomes a popover about the checkout:
 
 - the branch's name, with a button to copy it, and whether this is the main worktree or a linked one,
 - the folder, with Show in Finder, Open in Terminal and Copy Path,
@@ -22,7 +23,7 @@ In A, B and C the number of commits moves into the order's menu, which leaves th
 
 Pull, Push, Fetch and New Branch aren't in it, since they're on the row and in the menu bar with their shortcuts. The agent's popover is decision 100's.
 
-After those come every option in twelve moments, in both appearances, the popovers drawn open, and a board to try every option and moment, where a click opens a popover and a hover shows the tooltip after macOS's delay.
+After those come a board that compares how tall each control's fill is, every option in twelve moments, in both appearances, the popovers drawn open, and a board to try every option and moment, where a click opens a popover and a hover shows the tooltip after macOS's delay.
 
 ## Suggested
 
@@ -41,9 +42,17 @@ For `main` itself the line says how far it is from `origin/main` and when Roga l
 
 B is the quietest option, but what the agent is doing would again take a hover and a wait, which is what decision 100 set out to fix.
 
+## One height for the row
+
+Today's row draws every control at 32 points: the branch's chip, the counts, the agent's line, and the icon buttons, Fetch, New Branch and the order. So the gray that fills a control under the pointer is the same height from one end of the row to the other. C's two-line blocks need 36 points, which leaves the counts between them 4 points shorter than their neighbours, and that reads as a misalignment as the pointer slides from the branch to `↑2` to the agent. The fills also mark where a click lands, so a steady height means the pointer doesn't drop into a smaller box partway along the row.
+
+D raises every control in the row to 36 points, which leaves 4 points above and below each fill in the 44-point row. The icon button style already takes a size. Squeezing the two-line blocks into 32 points instead would leave about 2 points above and below their text, which looks cramped beside the single-line buttons. The tabs in the row above stay at 32, since they're a different kind of control in a different row.
+
+An earlier version of these boards drew the counts at 28 points, where the app draws them at 32. They're 32 in every option now.
+
 ## What to watch in C
 
-The row now has two kinds of ahead and behind: the arrows against the upstream, and the words against `origin/main`. They're meant to read apart because they look and behave differently. The arrows are orange buttons that pull and push and go away when there's nothing to do. The words are gray and do nothing when clicked, since their click opens the popover with the rest of the branch. If people still mix them up, the words could name `main` and leave `origin/` to the popover.
+The row now has two kinds of ahead and behind: the arrows against the upstream, and the words against `origin/main`. They're meant to read apart because they look and behave differently. The arrows are orange buttons that pull and push and go away when there's nothing to do. The words are gray, and a click on them opens the branch's popover rather than doing anything to the branch. If people still mix them up, the words could name `main` and leave `origin/` to the popover.
 
 ## Click or hover
 

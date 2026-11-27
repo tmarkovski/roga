@@ -99,6 +99,7 @@ body{margin:0}
 .tw.h32>.fill{height:32px;margin-top:-16px}
 .tw.h36>.fill{height:36px;margin-top:-18px}
 .tw.h28>.fill{height:28px;margin-top:-14px;border-radius:7px}
+.tw.h36>.fill.even,.brow.even .tw.ow>.fill{height:36px;margin-top:-18px}
 .tw:hover>.fill{display:none}
 .chip{height:32px;display:flex;align-items:center;gap:5px;padding:0 7px 0 5px;border:0;border-radius:8px;background:none;color:var(--tx);font:inherit;min-width:0;max-width:100%}
 .chip:hover{background:var(--bhov)}
@@ -107,13 +108,13 @@ body{margin:0}
 .mono{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:12.5px}
 .g{color:var(--tx2)}
 .cnts{display:flex;align-items:center;flex:none}
-.cnt{height:28px;display:flex;align-items:center;gap:3px;padding:0 6px;border-radius:7px;color:var(--tx2);flex:none;font-variant-numeric:tabular-nums;border:0;background:none;font:inherit}
+.cnt{height:32px;min-width:32px;justify-content:center;display:flex;align-items:center;gap:3px;padding:0 6px;border-radius:8px;color:var(--tx2);flex:none;font-variant-numeric:tabular-nums;border:0;background:none;font:inherit}
 .cnt.act{color:var(--act)}
 .cnt:hover{background:var(--bhov)}
-.stk{height:28px;display:flex;align-items:center;gap:5px;padding:0 6px;border-radius:7px;color:var(--red);flex:none}
+.stk{height:32px;display:flex;align-items:center;gap:5px;padding:0 8px;border-radius:8px;color:var(--red);flex:none}
 .say{color:var(--tx2);margin-left:8px;flex:none}
 .undo{height:24px;padding:0 8px;margin-left:6px;border:0;border-radius:7px;background:none;color:var(--act);font:inherit;font-weight:500;flex:none}
-.al{height:28px;display:flex;align-items:center;gap:6px;padding:0 8px;border:0;border-radius:7px;background:none;color:var(--tx2);font:inherit;min-width:0;max-width:100%}
+.al{height:32px;display:flex;align-items:center;gap:6px;padding:0 8px;border:0;border-radius:8px;background:none;color:var(--tx2);font:inherit;min-width:0;max-width:100%}
 .al:hover{background:var(--bhov)}
 .al .w{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .al .t{flex:none}
@@ -121,10 +122,18 @@ body{margin:0}
 .al.fail{color:var(--red)}
 .rg{display:flex;align-items:center;gap:6px;flex:none;margin-left:12px}
 .ib{width:32px;height:32px;display:grid;place-items:center;border:0;border-radius:8px;background:none;color:var(--tx2);padding:0;flex:none}
+.ib:hover{background:var(--bhov)}
 .ib.sm{width:26px;height:26px;border-radius:6px}
 .vs{width:1px;height:18px;background:var(--line);margin:0 6px;flex:none}
 .nc{color:var(--tx2);font-size:12.5px}
 .narrow .nc.drop{display:none}
+/* D: every control in the row is as tall as C's two-line blocks. */
+.brow.even .cnt,.brow.even .stk{height:36px;min-width:36px}
+.brow.even .ib{width:36px;height:36px}
+.brow.even .rg{gap:3px}
+.brow.even .tw.ow>.pop,.brow.even .tw.ow>.cpop{top:calc(50% + 24px)}
+/* Every control's fill at once, as if the pointer were over each. */
+.brow.fills .chip,.brow.fills .cnt,.brow.fills .co,.brow.fills .ag,.brow.fills .al,.brow.fills .lb,.brow.fills .ib,.brow.fills .stk{background:var(--bhov)}
 
 .co,.ag{height:36px;display:flex;align-items:center;gap:8px;padding:0 9px 0 6px;border:0;border-radius:8px;background:none;color:var(--tx);font:inherit;min-width:0;max-width:100%;text-align:left}
 .co{max-width:300px}
@@ -145,7 +154,7 @@ body{margin:0}
 .shim{background:linear-gradient(90deg,var(--tx2) 0%,var(--tx2) 38%,var(--act) 50%,var(--tx2) 62%,var(--tx2) 100%);background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:bbshim 2.4s linear infinite}
 @keyframes bbshim{from{background-position:100% 0}to{background-position:0 0}}
 @media (prefers-reduced-motion:reduce){.shim{animation:none;background:none;color:var(--tx2)}}
-.lb{height:28px;display:flex;align-items:center;gap:5px;padding:0 7px;border:0;border-radius:7px;background:none;color:var(--tx);font:inherit;min-width:0;max-width:100%}
+.lb{height:32px;display:flex;align-items:center;gap:5px;padding:0 7px;border:0;border-radius:8px;background:none;color:var(--tx);font:inherit;min-width:0;max-width:100%}
 .lb:hover{background:var(--bhov)}
 .lb>.ic{color:var(--tx2)}
 .lb .w{min-width:0;overflow:hidden;text-overflow:ellipsis}
@@ -616,6 +625,7 @@ class Hooks:
     fl_click: str = ""
     ag_click: str = ""
     tip_on: str = ""      # "co", "fl", "ag", "cnt": a tooltip drawn open
+    row: str = ""         # classes for the row, as " fills" to draw every control's fill
 
     @staticmethod
     def open(which: str, pop: str) -> "Hooks":
@@ -639,12 +649,12 @@ def counts(s: Scene, h: Hooks) -> str:
         return f'<span class="stk">{TRI}<span>{esc(s.stuck)}</span>{CHEV}</span>'
     out = []
     if s.first_push:
-        out.append(wrap(f'<button class="cnt act" type="button" aria-label="Push for the First Time">{PUSH}</button>', "ow h28",
+        out.append(wrap(f'<button class="cnt act" type="button" aria-label="Push for the First Time">{PUSH}</button>', "ow h32",
                         tip=push_help(s), tip_on=h.tip_on == "cnt"))
     if s.behind:
-        out.append(wrap(f'<button class="cnt act" type="button">{PULL}{s.behind}</button>', "ow h28", tip=pull_help(s)))
+        out.append(wrap(f'<button class="cnt act" type="button">{PULL}{s.behind}</button>', "ow h32", tip=pull_help(s)))
     if s.ahead and not s.first_push:
-        out.append(wrap(f'<button class="cnt act" type="button">{PUSH}{s.ahead}</button>', "ow h28",
+        out.append(wrap(f'<button class="cnt act" type="button">{PUSH}{s.ahead}</button>', "ow h32",
                         tip=push_help(s), tip_on=h.tip_on == "cnt"))
     return f'<span class="cnts">{"".join(out)}</span>' if out else ""
 
@@ -682,11 +692,11 @@ def bar_today(s: Scene, h: Hooks, narrow: bool = False) -> str:
         t = f'<span class="t">&nbsp;· {esc(a.time)}</span>' if a.time and a.state != "finished" else ""
         btn = (f'<button class="al{tone_of(s)}" type="button"{h.ag_click}>{MARK[a.state]}'
                f'<span class="w">{esc(today_words(s))}</span>{t}</button>')
-        parts.append(wrap(btn, "aw h28", tip=f"{today_words(s)}" + (f" · {a.time}" if a.time else ""),
+        parts.append(wrap(btn, "aw h32", tip=f"{today_words(s)}" + (f" · {a.time}" if a.time else ""),
                           tip_on=h.tip_on == "ag", pop=h.ag_pop, fill=h.ag_fill))
     parts.append('<span class="sp"></span>')
     parts.append(right_end(s, count=True))
-    return f'<div class="brow{tight(s)}">{"".join(parts)}</div>'
+    return f'<div class="brow{tight(s)}{h.row}">{"".join(parts)}</div>'
 
 
 def agent_block(s: Scene, h: Hooks) -> str:
@@ -706,7 +716,8 @@ def agent_block(s: Scene, h: Hooks) -> str:
 
 
 def bar_two(s: Scene, h: Hooks, option: str) -> str:
-    """A: the branch over its folder. C: the branch over how far it is from main."""
+    """A: the branch over its folder. C: the branch over how far it is from
+    main. D: C, with every control in the row as tall as its two-line blocks."""
     icon = COMMIT16 if s.branch is None else BRANCH16
     second = folder_html(s) if option == "A" else relation_html(s)
     tip = summary(s) if option == "A" else f"{s.folder}\n{summary(s)}"
@@ -718,7 +729,8 @@ def bar_two(s: Scene, h: Hooks, option: str) -> str:
         parts.append(agent_block(s, h))
     parts.append('<span class="sp"></span>')
     parts.append(right_end(s, count=False))
-    return f'<div class="brow{tight(s)}">{"".join(parts)}</div>'
+    even = " even" if option == "D" else ""
+    return f'<div class="brow{tight(s)}{even}{h.row}">{"".join(parts)}</div>'
 
 
 def bar_labels(s: Scene, h: Hooks) -> str:
@@ -730,9 +742,9 @@ def bar_labels(s: Scene, h: Hooks) -> str:
     icon = COMMIT if s.branch is None else BRANCH
     br_name = (f'<span class="mono">{esc(s.head)}</span>' if s.branch is None else f'<span class="w">{esc(s.branch)}</span>')
     br = f'<button class="lb" type="button"{h.co_click}>{icon}{br_name}</button>'
-    parts = [wrap(fl, "fw h28", tip=s.folder + (f"\nLocked: {s.locked}" if s.locked else ""), tip_on=h.tip_on == "fl",
+    parts = [wrap(fl, "fw h32", tip=s.folder + (f"\nLocked: {s.locked}" if s.locked else ""), tip_on=h.tip_on == "fl",
                   pop=h.fl_pop, fill=h.fl_fill),
-             wrap(br, "bw h28", tip=summary(s), tip_on=h.tip_on == "co", pop=h.co_pop, fill=h.co_fill),
+             wrap(br, "bw h32", tip=summary(s), tip_on=h.tip_on == "co", pop=h.co_pop, fill=h.co_fill),
              counts(s, h), roga_words(s)]
     if s.speaks:
         a = s.lead
@@ -740,11 +752,11 @@ def bar_labels(s: Scene, h: Hooks) -> str:
         t = f'<span class="t">&nbsp;· {esc(a.time)}</span>' if a.time and a.state != "finished" else ""
         first, line, time, _ = two_lines(s)
         btn = f'<button class="lb{tone_of(s)}" type="button"{h.ag_click}>{MARK[a.state]}<span class="w">{esc(who)}</span>{t}</button>'
-        parts.append(wrap(btn, "aw h28", tip=f"{first}: {line}" + (f" · {time}" if time else ""),
+        parts.append(wrap(btn, "aw h32", tip=f"{first}: {line}" + (f" · {time}" if time else ""),
                           tip_on=h.tip_on == "ag", pop=h.ag_pop, fill=h.ag_fill))
     parts.append('<span class="sp"></span>')
     parts.append(right_end(s, count=False))
-    return f'<div class="brow{tight(s)}">{"".join(parts)}</div>'
+    return f'<div class="brow{tight(s)}{h.row}">{"".join(parts)}</div>'
 
 
 def bar(s: Scene, option: str, h: Hooks | None = None) -> str:
@@ -911,7 +923,8 @@ def cell(caption: str, sub: str, stage: str) -> str:
     return f'<div class="cell"><div class="cap">{esc(caption)} <i>· {esc(sub)}</i></div>{stage}</div>'
 
 
-OPTIONS = [("today", "Today"), ("A", "A · Two lines"), ("B", "B · Labels"), ("C", "C · Against main")]
+OPTIONS = [("today", "Today"), ("A", "A · Two lines"), ("B", "B · Labels"), ("C", "C · Against main"),
+           ("D", "D · C at one height")]
 
 
 def option_board(file: str, option: str, title: str) -> Board:
@@ -940,6 +953,28 @@ def board_states(dark: bool) -> Board:
             f'<div class="st-grid" style="grid-template-columns:{cols}">{"".join(cells)}</div></div>')
     title = "Every option, moment by moment" + (", dark" if dark else "")
     return Board("Bb-States-Dark.dc.html" if dark else "Bb-States.dc.html", title, w, h, page(title, body, w, h))
+
+
+def board_heights() -> Board:
+    """Today, C and D, as they look and with every control's fill showing at
+    once, which is what the pointer finds as it slides along the row."""
+    scene = Scene(agents=[RUN_TESTS], behind=3)
+    rows = [("today", "Today", "Every control 32 points"),
+            ("C", "C", "The two-line blocks 36, the rest 32"),
+            ("D", "D", "Every control 36 points")]
+    label_w = 270
+    cols = f"{label_w}px {WIDE}px {WIDE}px"
+    cells = ['<span class="st-h"></span>', '<span class="st-h">As it looks</span>',
+             '<span class="st-h">Every control\'s fill, as the pointer finds it</span>']
+    for option, label, sub in rows:
+        cells.append(f'<div class="st-l">{esc(label)}<i>{esc(sub)}</i></div>')
+        for row in ("", " fills"):
+            cells.append(f'<div class="mid" style="width:{WIDE}px;height:45px">{bar(scene, option, Hooks(row=row))}</div>')
+    w = 80 + label_w + 2 * (WIDE + 32)
+    h = 34 + 20 + 16 + len(rows) * (52 + 16) + 40   # a label's two lines are a little taller than the row
+    body = (f'<div class="board th-l" style="width:{w}px;height:{h}px;display:block">'
+            f'<div class="st-grid" style="grid-template-columns:{cols}">{"".join(cells)}</div></div>')
+    return Board("Bb-Heights.dc.html", "One height for the row", w, h, page("One height for the row", body, w, h))
 
 
 def board_popovers() -> Board:
@@ -1078,8 +1113,9 @@ def all_boards() -> list[list[Board]]:
         [option_board("Bb-Today.dc.html", "today", "Today"),
          option_board("Bb-A.dc.html", "A", "A · Two lines"),
          option_board("Bb-B.dc.html", "B", "B · Labels"),
-         option_board("Bb-C.dc.html", "C", "C · Against main")],
-        [board_popovers(), board_try()],
+         option_board("Bb-C.dc.html", "C", "C · Against main"),
+         option_board("Bb-D.dc.html", "D", "D · C at one height")],
+        [board_heights(), board_popovers(), board_try()],
         [board_states(False)],
         [board_states(True)],
     ]
@@ -1099,8 +1135,11 @@ INTROS = [
     "draws the middle column at 680 points, as in the default window, and at 480, with Claude Code running the tests "
     "in agent/fix-login. A gives the branch and the agent two lines each in the row's 44 points, with the folder under "
     "the branch. B shrinks every part to a label and leaves the words to tooltips and popovers. C keeps A's two lines "
-    "but puts how far the branch is from origin/main under it, and leaves the folder to the tooltip and the popover.",
-    "In A, B and C a click on the branch opens a popover about the checkout instead of the menu: the folder with Show in "
+    "but puts how far the branch is from origin/main under it, and leaves the folder to the tooltip and the popover. "
+    "D is C with every control in the row as tall as its two-line blocks.",
+    "The first board shows how tall each control's fill is in today's row, in C and in D, as they look and with every "
+    "fill showing at once. In A to D a click on the branch opens a popover about the checkout instead of the menu: the "
+    "folder with Show in "
     "Finder, Open in Terminal and Copy Path, the upstream and when Roga last fetched, how far the branch is from "
     "origin/main and which files a merge of it would conflict in, with Rebase and Merge, the lock, and Switch Branch and "
     "Rename. Pull, Push, Fetch and New Branch stay on the row, and in the menu bar's Branch menu with their shortcuts. "
@@ -1120,7 +1159,9 @@ EXTRA_NOTES = {
                 "cleanly, says how far behind only when it isn't zero, and turns orange only when git merge-tree "
                 "--write-tree says a merge would conflict. It compares with origin/main rather than the local main, "
                 "which goes stale unless someone pulls it. Two lines still fit in the row's 44 points, so history "
-                "doesn't move down. B is the quietest, but what the agent is doing would again take a hover.",
+                "doesn't move down. B is the quietest, but what the agent is doing would again take a hover. D is C "
+                "with every control 36 points tall, so the fills under the pointer match from one end of the row to "
+                "the other, as today's do at 32.",
     },
     "nBbHover": {
         "x": 1080, "row": 1, "w": 900,
@@ -1134,9 +1175,9 @@ EXTRA_NOTES = {
         "x": 1080, "row": 2, "w": 900,
         "text": "What to watch in C: the row now has two kinds of ahead and behind, the arrows against the upstream and "
                 "the words against origin/main. They're meant to read apart because they look and behave differently. "
-                "The arrows are buttons that pull and push and go away when there's nothing to do, and the words are "
-                "gray and do nothing when clicked. If people still mix them up, the words could say main's name only "
-                "and leave origin/ to the popover.",
+                "The arrows are buttons that pull and push and go away when there's nothing to do. The words are "
+                "gray, and a click on them opens the branch's popover rather than doing anything to the branch. If "
+                "people still mix them up, the words could say main's name only and leave origin/ to the popover.",
     },
 }
 
@@ -1155,6 +1196,14 @@ NOTES = {
                     "work it holds, and how far behind once it's behind at all, both in gray. Only a merge that would "
                     "conflict is orange, and that part is never cut. The folder moves to the tooltip and the popover. For "
                     "main itself the line says how far it is from origin/main and when Roga fetched.",
+    "Bb-D.dc.html": "D is C with every control in the row 36 points tall: the counts, Fetch, New Branch and the order "
+                    "as well as the branch and the agent. Today's row draws every control at 32, so the fills under "
+                    "the pointer match as it slides along the row. C's two-line blocks need 36, which leaves the counts "
+                    "between them shorter than their neighbours. The icon button style already takes a size.",
+    "Bb-Heights.dc.html": "The boards before this one drew the counts at 28 points, where the app draws them at 32, "
+                          "and they're 32 now. In C the counts are still 4 points shorter than the blocks on either "
+                          "side of them, which is easiest to see with every fill showing. D evens them out at 36, which "
+                          "leaves 4 points above and below each fill in the 44-point row.",
     "Bb-Popovers.dc.html": "The branch's popover holds what the row has no room for and the actions the row doesn't have. "
                            "The Main section is marked new, since Roga doesn't work out how far a branch is from "
                            "origin/main, or whether merging it would conflict, today. The agent's popover is decision "
