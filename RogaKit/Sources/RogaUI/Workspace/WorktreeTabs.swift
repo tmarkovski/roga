@@ -360,9 +360,12 @@ private struct WorktreeTab: View {
                     // Claude app, rather than falling below it.
                     shape.fill(Self.fill)
                         .shadow(color: .black.opacity(colorScheme == .dark ? 0.4 : 0.12), radius: 2)
-                } else if let glow {
+                }
+                // Over the shown tab's fill too, so that a lit tab looks the
+                // same whichever it is.
+                if let glow {
                     shape.fill(glow.opacity(0.14))
-                } else if isHovering && canSelect {
+                } else if isHovering && canSelect && !isSelected {
                     shape.fill(Palette.hover)
                 }
             }
