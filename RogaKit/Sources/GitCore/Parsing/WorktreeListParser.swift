@@ -47,6 +47,7 @@ public enum WorktreeListParser {
                 current?.isPrunable = true
             case "locked":
                 current?.isLocked = true
+                current?.lockReason = value.isEmpty ? nil : String(decoding: value, as: UTF8.self)
             default:
                 break
             }

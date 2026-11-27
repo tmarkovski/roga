@@ -1048,7 +1048,8 @@ private struct WorktreeRow: View {
                 words: isDeleting ? "Deleting…" : worktree.isPrunable ? "Folder missing" : nil,
                 count: uncommittedFiles,
                 hasConflicts: hasConflicts,
-                failure: statusFailure
+                failure: statusFailure,
+                lock: worktree.lockHelp
             )
         } commands: {
             RowMenu(entries: menu)
@@ -1058,7 +1059,7 @@ private struct WorktreeRow: View {
         .help(worktree.path)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(worktree.title)
-        .accessibilityValue([subtitle, unfinished?.title, agent?.description, uncommittedFilesDescription(uncommittedFiles, hasConflicts: hasConflicts), statusFailure?.spoken].compactMap(\.self).joined(separator: ", "))
+        .accessibilityValue([subtitle, unfinished?.title, agent?.description, worktree.isLocked ? "Locked" : nil, uncommittedFilesDescription(uncommittedFiles, hasConflicts: hasConflicts), statusFailure?.spoken].compactMap(\.self).joined(separator: ", "))
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction(.default) {
             if canSelect { select() }
@@ -1173,14 +1174,17 @@ extension FocusedValues {
 }
 
 /// What a row says just before its mark's place: words about the row itself,
-/// such as Missing or Deleting…, or else its count. Whatever comes, as when a
-/// look finishes counting, comes in where it goes rather than appearing at
-/// once, and a count that changes rolls to its new number (decision 99).
+/// such as Missing or Deleting…, or else a gray lock for a locked worktree and
+/// its count. Whatever comes, as when a look finishes counting, comes in where
+/// it goes rather than appearing at once, and a count that changes rolls to its
+/// new number (decision 99).
 private struct RowLabel: View {
     var words: String?
     let count: Int
     let hasConflicts: Bool
     let failure: StatusFailureNote?
+    /// The lock's tooltip, for a locked worktree.
+    var lock: String?
     @Environment(\.accessibilityReduceMotion) private var reducesMotion
 
     /// Everything it shows, which it animates the changes of.
@@ -1189,9 +1193,11 @@ private struct RowLabel: View {
         var count: Int
         var hasConflicts: Bool
         var failure: StatusFailureNote?
+        var isLocked: Bool
     }
 
     var body: some View {
+        let hasCount = count > 0 || failure != nil
         HStack(spacing: 0) {
             if let words {
                 Text(words)
@@ -1199,12 +1205,22 @@ private struct RowLabel: View {
                     .foregroundStyle(.secondary)
                     .padding(.trailing, 7)
                     .transition(SidebarMotion.label(reducesMotion))
-            } else if count > 0 || failure != nil {
-                UncommittedCount(count: count, hasConflicts: hasConflicts, failure: failure)
-                    .transition(SidebarMotion.label(reducesMotion))
+            } else {
+                if let lock {
+                    Icon.lock.image
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                        .padding(.trailing, hasCount ? 5 : 7)
+                        .help(lock)
+                        .transition(SidebarMotion.label(reducesMotion))
+                }
+                if hasCount {
+                    UncommittedCount(count: count, hasConflicts: hasConflicts, failure: failure)
+                        .transition(SidebarMotion.label(reducesMotion))
+                }
             }
         }
-        .animation(SidebarMotion.arrival(reducesMotion), value: Shown(words: words, count: count, hasConflicts: hasConflicts, failure: failure))
+        .animation(SidebarMotion.arrival(reducesMotion), value: Shown(words: words, count: count, hasConflicts: hasConflicts, failure: failure, isLocked: lock != nil))
     }
 }
 
@@ -1467,5 +1483,12 @@ extension Worktree {
         if let branch { return Ref.shortName(branch) }
         if let head { return "detached at " + head.hex.prefix(8) }
         return "HEAD"
+    }
+
+    /// The tooltip of a locked worktree's lock, with the reason the lock gives,
+    /// or nil when it isn't locked.
+    var lockHelp: String? {
+        guard isLocked else { return nil }
+        return lockReason.map { "Locked: " + $0 } ?? "Locked"
     }
 }
