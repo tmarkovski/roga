@@ -1,4 +1,4 @@
-# 119. Say how far the branch is from main, and make its menu a popover
+# 120. Say how far the branch is from main, and make its menu a popover
 
 Accepted on 2026-11-27. This changes the branch row under the tabs from [decision 95](0095-a-repositorys-worktrees-as-tabs.md) and the agent's line in it from [decision 100](0100-say-what-the-worktrees-agent-is-doing-in-the-branch-row.md). The branch's name gets a second line that says how far the branch is from the main branch on the remote, the agent's line becomes two lines, every control in the row becomes 36 points tall, history's number of commits moves into the order's menu, and the branch's menu becomes a popover about the checkout.
 

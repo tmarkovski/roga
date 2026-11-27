@@ -5,7 +5,7 @@ import Testing
 @testable import RogaUI
 
 /// What the line under the branch's name and its popover say about how far the
-/// branch is from the main branch on the remote (decision 119).
+/// branch is from the main branch on the remote (decision 120).
 extension BranchModelTests {
     /// A model of the work clone once it has looked, and worked out how far
     /// its branch is from `origin/main`.

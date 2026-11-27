@@ -38,15 +38,50 @@ public struct BranchDetails: Sendable, Hashable {
     public var date: Int64?
     /// The folder of the worktree that has it checked out, if any has.
     public var worktree: String?
-    /// How far it is from the branch it's compared with, if there's one.
+    /// Whether that worktree is locked, which often means an agent is working
+    /// in it.
+    public var isWorktreeLocked: Bool
+    /// How far it is from the branch it's compared with, if there's one: its
+    /// upstream, or without one, the main branch.
     public var comparison: BranchComparison?
+    /// The full name of its upstream, as in `refs/remotes/origin/main`, while
+    /// the remote still has it.
+    public var upstream: String?
+    /// The full name of an upstream that's gone from its remote, as after a
+    /// fetch that prunes once a pull request is merged.
+    public var goneUpstream: String?
+    /// How far it is from the main branch, whether or not it has an upstream.
+    /// Nil for the main branch itself, and without one.
+    public var main: BranchComparison?
+    /// Whether its work is all in the main branch already: it has no commits
+    /// that the main branch, its upstream or the remote's main branch doesn't,
+    /// and it has moved since it was made. That second part comes from its
+    /// reflog, and keeps a branch that was just made from an older main
+    /// branch from counting before it has a commit of its own.
+    public var isMerged: Bool
 
-    public init(name: String, tip: ObjectID, date: Int64? = nil, worktree: String? = nil, comparison: BranchComparison? = nil) {
+    public init(
+        name: String,
+        tip: ObjectID,
+        date: Int64? = nil,
+        worktree: String? = nil,
+        isWorktreeLocked: Bool = false,
+        comparison: BranchComparison? = nil,
+        upstream: String? = nil,
+        goneUpstream: String? = nil,
+        main: BranchComparison? = nil,
+        isMerged: Bool = false
+    ) {
         self.name = name
         self.tip = tip
         self.date = date
         self.worktree = worktree
+        self.isWorktreeLocked = isWorktreeLocked
         self.comparison = comparison
+        self.upstream = upstream
+        self.goneUpstream = goneUpstream
+        self.main = main
+        self.isMerged = isMerged
     }
 
     public var shortName: String { Ref.shortName(name) }
@@ -124,12 +159,22 @@ public struct RemoteBranchDetails: Sendable, Hashable {
     public var tip: ObjectID
     /// When the tip was committed, in seconds since 1970.
     public var date: Int64?
+    /// How far it is from the main branch, as for a local branch. Nil without
+    /// a main branch.
+    public var main: BranchComparison?
+    /// Whether its work is all in the main branch already: it has no commits
+    /// that the main branch, its upstream or the remote's main branch doesn't,
+    /// and the main branch has moved on past it. It's never true of a remote's
+    /// own main branch.
+    public var isMerged: Bool
 
-    public init(name: String, shortName: String? = nil, tip: ObjectID, date: Int64? = nil) {
+    public init(name: String, shortName: String? = nil, tip: ObjectID, date: Int64? = nil, main: BranchComparison? = nil, isMerged: Bool = false) {
         self.name = name
         self.shortName = shortName ?? Ref.shortName(name)
         self.tip = tip
         self.date = date
+        self.main = main
+        self.isMerged = isMerged
     }
 }
 

@@ -62,7 +62,7 @@ The boards keep the detail behind clicks, with a tooltip on every part for a qui
 
 ## Built
 
-D is built, as [decision 119](../../decisions/0119-say-how-far-the-branch-is-from-main-and-make-its-menu-a-popover.md) describes, and it settled what these boards left open:
+D is built, as [decision 120](../../decisions/0120-say-how-far-the-branch-is-from-main-and-make-its-menu-a-popover.md) describes, and it settled what these boards left open:
 
 - **Which branch is main.** It's the one `origin/HEAD` names, or another remote's `HEAD`, or else a local `main` or `master` through its upstream. A branch whose upstream is that branch says what its upstream is, as `main` does.
 - **Orange without a conflict.** There's none, however far behind the branch is, since the count already says it.

@@ -22,6 +22,8 @@ struct RefDetailsParserTests {
         #expect(entries.map(\.upstream) == [
             "refs/remotes/origin/main", "refs/remotes/origin/behind", "refs/remotes/origin/both", "refs/remotes/origin/even", nil, nil,
         ])
+        // A gone upstream keeps its name, for the tooltip.
+        #expect(entries.map(\.goneUpstream) == [nil, nil, nil, nil, "refs/remotes/origin/gone", nil])
         #expect(entries.map(\.upstreamCounts) == [
             .init(ahead: 4, behind: 0), .init(ahead: 0, behind: 2), .init(ahead: 1, behind: 12), .init(ahead: 0, behind: 0), nil, nil,
         ])
@@ -80,6 +82,26 @@ struct RefDetailsParserTests {
             TagDetails(name: "refs/tags/on-a-tree"),
             TagDetails(name: "refs/tags/on-a-tag", date: 1_700_000_003),
         ])
+    }
+
+    @Test func readsHowFarEachRemoteBranchIsFromTheMainBranch() throws {
+        let id = try #require(ObjectID(hex: commit))
+        let otherID = try #require(ObjectID(hex: other))
+        let format = RemoteAndTagListParser.remoteBranchFormat(comparingWith: id, alsoAheadOf: [otherID])
+        #expect(format.hasSuffix("%(symref)%00%(ahead-behind:\(commit))%00%(ahead-behind:\(other))"))
+        #expect(RemoteAndTagListParser.remoteBranchFormat(comparingWith: nil) == RemoteAndTagListParser.format)
+
+        let output = line("refs/remotes/origin/HEAD", commit, "commit", "", "", "1700000000", "refs/remotes/origin/main", "", "")
+            + line("refs/remotes/origin/main", commit, "commit", "", "", "1700000000", "", "1 0", "0 2")
+            + line("refs/remotes/origin/done", commit, "commit", "", "", "1700000000", "", "0 4", "0 6")
+        let result = try RemoteAndTagListParser.parse(output, counts: 2)
+        #expect(result.remoteBranches.map(\.name) == ["refs/remotes/origin/main", "refs/remotes/origin/done"])
+        // Ahead by the fewest, as for a local branch, and behind the main branch.
+        #expect(result.mainCounts == [
+            "refs/remotes/origin/main": .init(ahead: 0, behind: 0),
+            "refs/remotes/origin/done": .init(ahead: 0, behind: 4),
+        ])
+        #expect(throws: ParseError.self) { try RemoteAndTagListParser.parse(output, counts: 1) }
     }
 
     @Test func readsTheFirstURLOfEachRemote() throws {

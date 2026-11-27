@@ -2,7 +2,7 @@ import GitCore
 import GitRunner
 
 /// Works out how far a worktree's branch is from the main branch on the
-/// remote, and whether merging that would conflict (decision 119). Nobody
+/// remote, and whether merging that would conflict (decision 120). Nobody
 /// waits for it, so it runs at utility priority, and like `BranchStatusLoader`
 /// it may not start a download.
 enum MainDistanceLoader {

@@ -4,7 +4,7 @@ import IconUI
 import SwiftUI
 
 /// What the agent in the worktree on screen is doing, after the counts in the
-/// branch row (decision 100), in two lines (decision 119): who and what state
+/// branch row (decision 100), in two lines (decision 120): who and what state
 /// they're in, with how long, over what they're doing, as in `Claude Code is
 /// working · 6 min` over `Run the test suite`. While an agent works, a light in
 /// Roga's orange runs through the second line, since the worktree's tab turns a

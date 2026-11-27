@@ -254,19 +254,131 @@ struct RefsModelTests {
         ])
     }
 
-    @Test func aBranchSaysWhereItIsAndHowFarItIs() {
-        var row = branch("agent/fix-login", date: 1_000)
+    func id(_ hex: String) -> ObjectID { ObjectID(hex: hex)! }
+
+    /// Branches as this repository had them when decision 119 was drawn.
+    var shimmer: BranchDetails {
+        BranchDetails(
+            name: "refs/heads/tm/agent-line-shimmer", tip: id, date: 1_000,
+            worktree: "/work/agent-chip-shimmer", isWorktreeLocked: true,
+            comparison: BranchComparison(other: "origin/tm/agent-line-shimmer", ahead: 0, behind: 0),
+            upstream: "refs/remotes/origin/tm/agent-line-shimmer",
+            main: BranchComparison(other: "main", ahead: 0, behind: 1),
+            isMerged: true
+        )
+    }
+
+    var separator: BranchDetails {
+        let fromMain = BranchComparison(other: "main", ahead: 1, behind: 120)
+        return BranchDetails(name: "refs/heads/tm/code-font-separator", tip: id, date: 1_000, comparison: fromMain, main: fromMain)
+    }
+
+    var reported: BranchDetails {
+        let fromMain = BranchComparison(other: "main", ahead: 0, behind: 103)
+        return BranchDetails(
+            name: "refs/heads/tm/report-an-issue", tip: id, date: 1_000, comparison: fromMain,
+            goneUpstream: "refs/remotes/origin/tm/report-an-issue", main: fromMain, isMerged: true
+        )
+    }
+
+    var main: BranchDetails {
+        BranchDetails(
+            name: "refs/heads/main", tip: id, date: 1_000,
+            comparison: BranchComparison(other: "origin/main", ahead: 0, behind: 9), upstream: "refs/remotes/origin/main"
+        )
+    }
+
+    @Test func aBranchsRowSaysItsCountsOrThatItsMerged() {
+        #expect(shimmer.rowState(isCurrent: true) == .checkedOut)
+        #expect(shimmer.rowState(isCurrent: false) == .merged)
+        // Behind its upstream, in the tabs' gray.
+        #expect(main.rowState(isCurrent: false) == .counts(behind: 9, ahead: 0))
+        // Without an upstream, only what main doesn't have counts, and how
+        // far behind main it is goes to the tooltip.
+        #expect(separator.rowState(isCurrent: false) == .counts(behind: 0, ahead: 1))
+        #expect(reported.rowState(isCurrent: false) == .merged)
+        #expect(branch("quiet").rowState(isCurrent: false) == .quiet)
+    }
+
+    @Test func aMergedBranchsNameIsGrayUnlessSomethingHasItCheckedOut() {
+        #expect(reported.isDone(isCurrent: false))
+        #expect(!reported.isDone(isCurrent: true))
+        #expect(!shimmer.isDone(isCurrent: false))
+        #expect(!separator.isDone(isCurrent: false))
+    }
+
+    @Test func aBranchsTooltipSaysWhereItIsAndHowFarItIs() {
         let now = Date(timeIntervalSince1970: 1_000 + 7_200)
-        #expect(row.subtitle(isCurrent: false, now: now).contains("2 hours ago"))
+        let lines = shimmer.details(isCurrent: false, now: now)
+        #expect(Array(lines.dropLast()) == [
+            "In the worktree agent-chip-shimmer, which is locked",
+            "Up to date with origin/tm/agent-line-shimmer",
+            "Merged into main",
+        ])
+        #expect(lines.last?.contains("2 hours ago") == true)
+        #expect(shimmer.details(isCurrent: true, now: now).first == "Checked out here")
+        #expect(separator.details(isCurrent: false, now: now).dropLast() == ["No upstream", "1 ahead, 120 behind main"])
+        #expect(reported.details(isCurrent: false, now: now).dropLast() == ["Its upstream, origin/tm/report-an-issue, is gone", "Merged into main"])
+        #expect(main.details(isCurrent: false, now: now).dropLast() == ["9 behind origin/main"])
+    }
 
-        row.worktree = "/work/agents/fix-login"
-        #expect(row.subtitle(isCurrent: false, now: now) == "in fix-login")
-        // The checkmark says that already.
-        #expect(row.subtitle(isCurrent: true, now: now).contains("2 hours ago"))
+    @Test func aRemoteBranchsTooltipSaysWhichBranchesTrackIt() {
+        let now = Date(timeIntervalSince1970: 1_000 + 7_200)
+        let merged = RemoteBranchDetails(
+            name: "refs/remotes/origin/tm/x", shortName: "tm/x", tip: id, date: 1_000,
+            main: BranchComparison(other: "main", ahead: 0, behind: 4), isMerged: true
+        )
+        #expect(merged.details(trackedBy: ["tm/x"], now: now).dropLast() == ["Tracked by tm/x", "Merged into main"])
+        #expect(merged.details(trackedBy: [], now: now).first == "No branch here tracks it")
+        #expect(merged.details(trackedBy: ["a", "b", "c"], now: now).first == "Tracked by a and 2 more")
+    }
 
-        row.comparison = BranchComparison(other: "main", ahead: 3, behind: 2)
-        #expect(row.subtitle(isCurrent: false, now: now) == "in fix-login · 3 ahead, 2 behind main")
-        #expect(row.subtitle(isCurrent: true, now: now) == "3 ahead, 2 behind main")
+    @Test func pointingAtABranchLightsUpItsUpstreamAndItsTab() {
+        let details = RefDetails(
+            currentBranch: "refs/heads/main",
+            branches: [main, shimmer, separator],
+            remotes: [RemoteDetails(name: "origin", branches: [
+                remoteBranch("main"),
+                remoteBranch("tm/agent-line-shimmer"),
+                remoteBranch("tm/gone-from-the-list"),
+            ])]
+        )
+        // A local branch: its upstream's row and its worktree's tab.
+        #expect(RefsModel.links(for: .ref(shimmer.name), in: details) == RefsModel.Links(
+            refs: ["refs/remotes/origin/tm/agent-line-shimmer"], worktree: "/work/agent-chip-shimmer"
+        ))
+        // A remote branch: the branches that track it, and their tab.
+        #expect(RefsModel.links(for: .ref("refs/remotes/origin/tm/agent-line-shimmer"), in: details) == RefsModel.Links(
+            refs: [shimmer.name], worktree: "/work/agent-chip-shimmer"
+        ))
+        // The current branch lights up in its green.
+        #expect(RefsModel.links(for: .ref("refs/remotes/origin/main"), in: details).isCurrent)
+        #expect(RefsModel.links(for: .ref(main.name), in: details).isCurrent)
+        // A tab: its branch's row.
+        #expect(RefsModel.links(for: .worktree("/work/agent-chip-shimmer"), in: details) == RefsModel.Links(refs: [shimmer.name]))
+        // Nothing goes with a branch that has no upstream and no worktree.
+        #expect(RefsModel.links(for: .ref(separator.name), in: details) == RefsModel.Links())
+        #expect(RefsModel.links(for: nil, in: details) == RefsModel.Links())
+    }
+
+    @Test func aPillNamesARowOutOfViewAndPointsTowardIt() {
+        let links = RefsModel.Links(refs: ["refs/remotes/origin/tm/x"], worktree: nil, isCurrent: true)
+        let order = ["refs/heads/main": 0, "refs/heads/tm/x": 1, "refs/remotes/origin/main": 2, "refs/remotes/origin/tm/x": 3]
+        #expect(RefsModel.pill(for: links, visible: ["refs/heads/main", "refs/heads/tm/x"], order: order)
+            == RefsModel.Pill(name: "origin/tm/x", isBelow: true, isCurrent: true))
+        #expect(RefsModel.pill(for: links, visible: ["refs/remotes/origin/tm/x"], order: order) == nil)
+        let up = RefsModel.Links(refs: ["refs/heads/main"])
+        #expect(RefsModel.pill(for: up, visible: ["refs/remotes/origin/tm/x"], order: order)?.isBelow == false)
+        // A remote branch in a closed folder is still below.
+        #expect(RefsModel.pill(for: RefsModel.Links(refs: ["refs/remotes/origin/hidden"]), visible: [], order: order)?.isBelow == true)
+        #expect(RefsModel.pill(for: RefsModel.Links(), visible: [], order: order) == nil)
+    }
+
+    @Test func theButtonDeletesTheMergedBranchesNoWorktreeHas() {
+        var current = reported
+        current.name = "refs/heads/tm/current"
+        let details = RefDetails(currentBranch: current.name, branches: [shimmer, separator, reported, current, main])
+        #expect(RefsModel.deletableMergedBranches(in: details).map(\.name) == [reported.name])
     }
 
     @Test(arguments: [

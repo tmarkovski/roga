@@ -33,7 +33,7 @@ struct BranchControl: View {
 
 /// The branch's name, with the branch's icon before it, over how far the
 /// branch is from the main branch on the remote, as in `4 ahead, 12 behind
-/// origin/main` (decision 119). A click opens the popover about the checkout,
+/// origin/main` (decision 120). A click opens the popover about the checkout,
 /// on the press (decision 111), and its tooltip has the worktree's folder.
 ///
 /// The icon is the branch's even for a detached `HEAD`, as the chip before
@@ -152,7 +152,7 @@ private struct BranchBlock: View {
 
 /// What a click on the branch opens, in place of the menu that had Pull, Push,
 /// Fetch and New Branch, which are on the row and in the menu bar's Branch menu
-/// (decision 119). It says what the row has no room for: whose worktree this
+/// (decision 120). It says what the row has no room for: whose worktree this
 /// is, its folder and what can be done there, its lock, its upstream, and how
 /// far the branch is from the main branch on the remote, with Rebase and Merge
 /// while that has commits the branch doesn't. Switch Branch… is at its foot,
@@ -366,7 +366,7 @@ struct CheckoutPopover: View {
 
 /// Fetch and New Branch, as icons at the right end of the branch's row, before
 /// history's commands (decisions 45 and 95), as tall as everything else in the
-/// row (decision 119). They stay where they are while the branch's name and
+/// row (decision 120). They stay where they are while the branch's name and
 /// counts change. The menu bar's Branch menu has both as well.
 struct BranchButtons: View {
     let branch: BranchModel
@@ -500,7 +500,7 @@ private struct NewBranchButton: View {
 
 /// What clicking a count opens when a click can't run straight away, and the
 /// commands in the menu bar's Branch menu. The branch's own menu had them too,
-/// until its popover replaced it (decision 119).
+/// until its popover replaced it (decision 120).
 struct BranchMenuItems: View {
     let branch: BranchModel
     let switchBranch: (() -> Void)?

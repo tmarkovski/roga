@@ -6,7 +6,7 @@ import Testing
 @testable import RepositoryEngine
 
 /// How far a worktree's branch is from the main branch on the remote, and
-/// whether merging that would conflict (decision 119), against real git.
+/// whether merging that would conflict (decision 120), against real git.
 @Suite(.timeLimit(.minutes(1)))
 struct MainDistanceTests {
     struct Clones {

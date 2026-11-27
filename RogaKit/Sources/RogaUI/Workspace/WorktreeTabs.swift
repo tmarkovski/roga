@@ -92,12 +92,20 @@ struct WorktreeTabStrip: View {
         let worktree = facts.worktree
         let selection = self.selection(of: worktree)
         let menu = self.menu(for: worktree, selection: selection)
+        let refs = model?.refs
         let tab = WorktreeTab(
             facts: facts,
             title: worktree.isMain ? repository.name : nil,
             isSelected: worktree.path == shown,
             help: WorktreeTabs.help(for: facts, repositoryName: worktree.isMain ? repository.name : nil, index: index, now: now),
-            menu: menu
+            menu: menu,
+            // A branch the pointer rests on in the refs panel lights up the
+            // tab of the worktree that has it, and the pointer on a tab lights
+            // up its branch's row (decision 119).
+            glow: refs.flatMap { $0.links.worktree == worktree.path ? $0.linkColor : nil },
+            pointing: { isOn in
+                if isOn { refs?.point(at: .worktree(worktree.path)) } else { refs?.stopPointing(at: .worktree(worktree.path)) }
+            }
         ) {
             actions.show(worktree.path)
         }
@@ -289,6 +297,10 @@ private struct WorktreeTab: View {
     let isSelected: Bool
     let help: String
     let menu: [RefMenu.Entry]
+    /// The color it glows in while a branch it has lights it up.
+    var glow: Color?
+    /// Says when the pointer comes onto the tab and leaves it.
+    var pointing: (Bool) -> Void = { _ in }
     let select: () -> Void
     @State private var isHovering = false
     @Environment(\.colorScheme) private var colorScheme
@@ -348,15 +360,24 @@ private struct WorktreeTab: View {
                     // Claude app, rather than falling below it.
                     shape.fill(Self.fill)
                         .shadow(color: .black.opacity(colorScheme == .dark ? 0.4 : 0.12), radius: 2)
-                } else if isHovering && canSelect {
+                }
+                // Over the shown tab's fill too, so that a lit tab looks the
+                // same whichever it is.
+                if let glow {
+                    shape.fill(glow.opacity(0.14))
+                } else if isHovering && canSelect && !isSelected {
                     shape.fill(Palette.hover)
                 }
             }
             .overlay {
-                if isSelected {
+                if let glow {
+                    TabGlow(color: glow, shape: shape)
+                        .transition(.opacity)
+                } else if isSelected {
                     shape.strokeBorder(Self.edge)
                 }
             }
+            .animation(.easeOut(duration: 0.15), value: glow)
             .contentShape(shape)
         }
         .buttonStyle(SelectsOnPress { if canSelect { select() } })
@@ -368,7 +389,10 @@ private struct WorktreeTab: View {
         }
         .overlay { RefMenuArea(entries: menu) }
         .opacity(facts.isDeleting ? 0.5 : 1)
-        .onHover { isHovering = $0 }
+        .onHover { isHovering in
+            self.isHovering = isHovering
+            pointing(isHovering)
+        }
         .help(help)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title.map { "Repository \($0)" } ?? worktree.title)
@@ -396,6 +420,63 @@ private struct WorktreeTab: View {
     private static func shortestLabelWidth(_ name: String) -> CGFloat {
         let width = (name as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 13)]).width.rounded(.up)
         return min(width, 36)
+    }
+}
+
+/// The ring a tab wears while a branch the pointer rests on in the refs panel
+/// lights it up (decision 119), in the branch's color, with a soft light around
+/// it. It pulses once as it arrives: the ring starts twice as thick, and a
+/// second ring spreads out from it and fades. Then it holds still, so that it
+/// catches the eye across the window without moving at the edge of it the way
+/// an agent's ring does. With Reduce Motion it's there without the pulse.
+///
+/// The title row clips the tabs 6 points above and below them, so nothing here
+/// reaches further out than that.
+private struct TabGlow: View {
+    let color: Color
+    let shape: RoundedRectangle
+    /// How far through its pulse the ring is, from 0 as it arrives to 1.
+    @State private var pulse: CGFloat = 0
+    @Environment(\.accessibilityReduceMotion) private var reducesMotion
+
+    /// How far the spreading ring goes out from the tab before it's gone.
+    private static let reach: CGFloat = 5
+
+    var body: some View {
+        ZStack {
+            shape.strokeBorder(color, lineWidth: 1.5)
+                .shadow(color: color.opacity(0.5), radius: 3)
+            // The ring's extra thickness as it arrives.
+            shape.strokeBorder(color, lineWidth: 3)
+                .opacity(1 - pulse)
+            TabRipple(cornerRadius: shape.cornerSize.width, spread: pulse * Self.reach)
+                .stroke(color, lineWidth: 2)
+                .opacity((1 - pulse) * 0.8)
+        }
+        .onAppear {
+            guard !reducesMotion else {
+                pulse = 1
+                return
+            }
+            withAnimation(.easeOut(duration: 0.8)) { pulse = 1 }
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+/// A tab's outline moved out by `spread` on every side, which can animate.
+private nonisolated struct TabRipple: Shape {
+    let cornerRadius: CGFloat
+    var spread: CGFloat
+
+    var animatableData: CGFloat {
+        get { spread }
+        set { spread = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        RoundedRectangle(cornerRadius: cornerRadius + spread, style: .continuous)
+            .path(in: rect.insetBy(dx: -spread, dy: -spread))
     }
 }
 
