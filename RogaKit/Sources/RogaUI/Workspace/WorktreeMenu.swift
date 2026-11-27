@@ -171,7 +171,7 @@ enum WorktreeMenu {
         }
         if let upstream = facts.upstream {
             if upstream.isGone {
-                details.append(RefMenu.Detail("Upstream gone"))
+                details.append(RefMenu.Detail("Upstream missing"))
             } else if let counts = counts(upstream) {
                 details.append(RefMenu.Detail(counts))
             }

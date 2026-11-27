@@ -198,7 +198,7 @@ struct AgentLine: Equatable {
     /// One session's whole line, under its name: what it's doing or wants
     /// allowed, or the first line of its reply.
     static func detail(of agent: WorktreeAgent) -> String? {
-        if agent.phase == .finished(failed: true) { return agent.activity ?? "Its turn ended with an error." }
+        if agent.phase == .finished(failed: true) { return agent.activity ?? "The agent's turn failed." }
         return agent.activity
     }
 

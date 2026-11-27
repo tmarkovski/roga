@@ -26,12 +26,12 @@ nonisolated extension DiffFile {
             guard case .counted(let ahead, let behind) = submodule.distance else { return nil }
             switch (ahead, behind) {
             case (0, 0): return nil
-            case (_, 0): return SubmoduleLabel(text: counted(ahead, "commit"), spoken: "\(counted(ahead, "commit")) forward")
-            case (0, _): return SubmoduleLabel(text: "\(counted(behind, "commit")) back", spoken: "\(counted(behind, "commit")) back")
+            case (_, 0): return SubmoduleLabel(text: counted(ahead, "commit"), spoken: "\(counted(ahead, "commit")) ahead")
+            case (0, _): return SubmoduleLabel(text: "\(counted(behind, "commit")) behind", spoken: "\(counted(behind, "commit")) behind")
             default:
                 return SubmoduleLabel(
-                    text: "\(ahead.formatted()) forward, \(behind.formatted()) back",
-                    spoken: "\(counted(ahead, "commit")) forward and \(behind.formatted()) back"
+                    text: "\(ahead.formatted()) ahead, \(behind.formatted()) behind",
+                    spoken: "\(counted(ahead, "commit")) ahead and \(behind.formatted()) behind"
                 )
             }
         }
@@ -39,9 +39,9 @@ nonisolated extension DiffFile {
             guard checkout.hasFilesInside else { return nil }
             // Status says there are some before anything has counted them.
             guard let files = submodule.filesInside else {
-                return SubmoduleLabel(text: "files inside", spoken: "uncommitted files inside", isUncommitted: true)
+                return SubmoduleLabel(text: "Uncommitted changes", spoken: "Uncommitted changes in submodule", isUncommitted: true)
             }
-            return SubmoduleLabel(text: "\(counted(files, "file")) inside", spoken: "\(counted(files, "uncommitted file")) inside", isUncommitted: true)
+            return SubmoduleLabel(text: counted(files, "changed file"), spoken: "\(counted(files, "uncommitted file")) in submodule", isUncommitted: true)
         }
         switch submodule.distance {
         case .counted(let ahead, let behind):
@@ -57,7 +57,7 @@ nonisolated extension DiffFile {
                 )
             }
         case .commitMissing:
-            return SubmoduleLabel(text: "not fetched", spoken: "the commit that's recorded isn't fetched")
+            return SubmoduleLabel(text: "not fetched", spoken: "recorded commit unavailable locally")
         case .notCheckedOut, nil:
             return nil
         }
@@ -184,7 +184,7 @@ nonisolated struct SubmoduleReport: Equatable {
             if let to = details.to {
                 add("Added at \(short(to))")
             } else if let from = details.from {
-                add("Removed · it was at \(short(from))")
+                add("Removed · Previous commit \(short(from))")
             }
             return
         }
@@ -195,19 +195,19 @@ nonisolated struct SubmoduleReport: Equatable {
             notes.append("\(path) isn't checked out in this worktree, so its commits can't be listed.")
         case .commitMissing:
             add(move)
-            notes.append("The copy of \(path) that's checked out in this worktree doesn't have both of these commits, so the commits between them can't be listed.")
+            notes.append("The local copy of \(path) is missing one or both commits. Fetch the missing commits to see the changes between them.")
         case .counted(let ahead, let behind):
             switch (ahead, behind) {
             case (0, 0):
                 add(move)
             case (_, 0):
-                add("\(move) · \(counted(ahead, "commit")) forward", commits: details.added, of: ahead)
+                add("\(move) · \(counted(ahead, "commit")) ahead", commits: details.added, of: ahead)
             case (0, _):
-                add("\(move) · \(counted(behind, "commit")) back", goesBack: true, commits: details.removed, of: behind)
-                notes.append(behind == 1 ? "This commit isn't recorded any more." : "These \(behind.formatted()) commits aren't recorded any more.")
+                add("\(move) · \(counted(behind, "commit")) behind", goesBack: true, commits: details.removed, of: behind)
+                notes.append(behind == 1 ? "This commit is absent from the new submodule revision." : "These \(behind.formatted()) commits are absent from the new submodule revision.")
             default:
-                add("\(move) · \(counted(ahead, "commit")) forward, \(behind.formatted()) back", goesBack: true, commits: details.added, of: ahead)
-                add("\(counted(behind, "commit")) that \(behind == 1 ? "isn't" : "aren't") recorded any more", goesBack: true, commits: details.removed, of: behind)
+                add("\(move) · \(counted(ahead, "commit")) ahead, \(behind.formatted()) behind", goesBack: true, commits: details.added, of: ahead)
+                add("\(counted(behind, "commit")) absent from the new revision", goesBack: true, commits: details.removed, of: behind)
             }
             if let note = Self.unpushedNote(details, ahead: ahead, name: name) { notes.append(note) }
         }
@@ -222,7 +222,7 @@ nonisolated struct SubmoduleReport: Equatable {
             return
         }
         let files = details.filesInside
-        let filesBand = "\(counted(files.count, "uncommitted file")) inside"
+        let filesBand = "\(counted(files.count, "uncommitted file")) in submodule"
         var updates = false
         switch details.distance {
         case .counted(let ahead, let behind):
@@ -233,7 +233,7 @@ nonisolated struct SubmoduleReport: Equatable {
                     notes.append("There's nothing to update or stage.")
                 } else {
                     add("\(filesBand) · checked out at \(short(checkedOut)), as recorded", files: files)
-                    notes.append("These are committed inside \(name) rather than in this repository, so there's nothing here to stage.")
+                    notes.append("Stage and commit these changes in \(name).")
                 }
                 return
             case (_, 0):
@@ -242,7 +242,7 @@ nonisolated struct SubmoduleReport: Equatable {
             case (0, _):
                 add("Checked out at \(short(checkedOut)) · \(counted(behind, "commit")) behind what's recorded", commits: details.removed, of: behind)
                 let these = behind == 1 ? "this commit" : "these \(behind.formatted()) commits"
-                notes.append("Update checks out \(short(recorded)), which is what's recorded. Staging the row instead would record \(short(checkedOut)), without \(these).")
+                notes.append("Update checks out the recorded commit \(short(recorded)). Stage records \(short(checkedOut)), which lacks \(these).")
                 updates = true
             default:
                 add(
@@ -256,7 +256,7 @@ nonisolated struct SubmoduleReport: Equatable {
             }
             if let note = Self.unpushedNote(details, ahead: ahead, name: name) { notes.append(note) }
         case .commitMissing:
-            add("Checked out at \(short(checkedOut)) · \(short(recorded)) is recorded, and this checkout doesn't have it yet")
+            add("Checked out at \(short(checkedOut)) · Recorded commit \(short(recorded)) is missing locally")
             notes.append("Update fetches \(short(recorded)) and checks it out. Staging the row instead would record \(short(checkedOut)).")
             updates = true
         case .notCheckedOut:
@@ -268,8 +268,8 @@ nonisolated struct SubmoduleReport: Equatable {
             add(filesBand, files: files)
             notes.append(
                 updates
-                    ? "The uncommitted files are \(name)'s own. git won't update over one that's in the way."
-                    : "The uncommitted files are \(name)'s own, and staging leaves them as they are."
+                    ? "\(name) has uncommitted changes. Git won't update the submodule if doing so would overwrite them."
+                    : "Staging records the submodule commit. Stage file changes in \(name)."
             )
         }
     }
@@ -279,17 +279,7 @@ nonisolated struct SubmoduleReport: Equatable {
     /// anyone else until they're pushed.
     private static func unpushedNote(_ details: SubmoduleDetails, ahead: Int, name: String) -> String? {
         guard let unpushed = details.unpushed, unpushed > 0, ahead > 0 else { return nil }
-        let which: String
-        if unpushed < ahead {
-            which = "\(unpushed.formatted()) of these commits \(unpushed == 1 ? "isn't" : "aren't")"
-        } else {
-            switch ahead {
-            case 1: which = "This commit isn't"
-            case 2: which = "Neither commit is"
-            default: which = "None of these commits is"
-            }
-        }
-        return "\(which) on any of \(name)'s remotes yet, so push \(name) before this branch."
+        return "Push \(counted(unpushed, "commit")) from \(name) before pushing this branch."
     }
 }
 

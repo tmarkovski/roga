@@ -131,7 +131,7 @@ final class CommitCellView: NSView {
 
     /// What the shield after a signed commit's short ID says under the
     /// pointer, since it can't say whether the signature is good.
-    static let signedMarkToolTip = "Signed. Select the commit to check the signature."
+    static let signedMarkToolTip = "Signed commit. Select it to verify the signature."
 
     /// Gives each badge and the shield a tooltip, since they're drawn rather
     /// than being views.

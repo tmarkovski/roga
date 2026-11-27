@@ -232,9 +232,9 @@ import Testing
     }
 
     @Test func wordsFollowHowManyAreYours() {
-        #expect(PullPicture.summary(of: .rebase, yours: 1) == "A straight line, and your commit gets a new hash.")
-        #expect(PullPicture.summary(of: .rebase, yours: 2) == "A straight line, and your commits get new hashes.")
-        #expect(PullPicture.summary(of: .merge, yours: 1) == "A merge commit joins them, and your commit keeps its hash.")
-        #expect(PullPicture.summary(of: .merge, yours: 2) == "A merge commit joins them, and your commits keep their hashes.")
+        #expect(PullPicture.summary(of: .rebase, yours: 1) == "Reapplies your commit on top of the upstream branch with a new hash.")
+        #expect(PullPicture.summary(of: .rebase, yours: 2) == "Reapplies your commits on top of the upstream branch with new hashes.")
+        #expect(PullPicture.summary(of: .merge, yours: 1) == "Combines both branches in a merge commit. Existing commit hashes stay the same.")
+        #expect(PullPicture.summary(of: .merge, yours: 2) == "Combines both branches in a merge commit. Existing commit hashes stay the same.")
     }
 }

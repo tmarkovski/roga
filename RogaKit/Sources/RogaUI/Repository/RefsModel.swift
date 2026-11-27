@@ -699,7 +699,7 @@ extension BranchDetails {
         if upstream != nil, let comparison {
             lines.append(comparison.summary.capitalizedFirst)
         } else if let goneUpstream {
-            lines.append("Its upstream, \(Ref.shortName(goneUpstream)), is gone")
+            lines.append("Upstream branch \(Ref.shortName(goneUpstream)) is missing")
         } else if main != nil {
             lines.append("No upstream")
         }

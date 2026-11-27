@@ -66,7 +66,7 @@ func openRepository(list: RepositoryList, select: @escaping (WorktreeSelection) 
 /// it was, so it mends them straight away, since there's nothing to choose.
 @MainActor
 func locateRepository(_ repository: ListedRepository, list: RepositoryList, select: @escaping (WorktreeSelection) -> Void) {
-    guard let folder = chooseRepositoryFolder(message: "Where is \(repository.name) now?", near: repository.folder) else { return }
+    guard let folder = chooseRepositoryFolder(message: "Choose the current folder for \(repository.name).", near: repository.folder) else { return }
     Task {
         let selection: WorktreeSelection
         do {

@@ -36,8 +36,8 @@ enum SetupWords {
     static func pathLook(_ searchPath: (path: String, fromLoginShell: Bool)?, shell: String) -> Look {
         guard let searchPath else { return Look(name: "Shell PATH", state: .looking, detail: "Reading from \(shellName(shell))…") }
         let detail = searchPath.fromLoginShell
-            ? "Read from your login shell, \(shellName(shell))"
-            : "Login shell PATH unavailable; using Roga's environment"
+            ? "From your \(shellName(shell)) login shell"
+            : "Couldn't read the login shell's PATH. Using Roga's PATH."
         return Look(name: "Shell PATH", state: .found, detail: detail)
     }
 
@@ -65,7 +65,7 @@ enum SetupWords {
     /// so it reads as found out rather than as missing.
     static func agentLook(_ kind: AgentKind, lookup: AgentLookup?, survey: AgentSurvey?, hasGit: Bool, gitFailed: Bool) -> Look {
         guard hasGit else {
-            return Look(name: kind.name, state: .waiting, detail: gitFailed ? "After Git" : "")
+            return Look(name: kind.name, state: .waiting, detail: gitFailed ? "Waiting for Git" : "")
         }
         guard let lookup else { return Look(name: kind.name, state: .looking, detail: "Looking…") }
         let found = count(survey?.copies.count ?? 1, "found")
@@ -101,7 +101,7 @@ enum SetupWords {
     static func signingLooks(_ tools: SigningTools?, hasGit: Bool, gitFailed: Bool) -> [Look] {
         let names = ["SSH", "GnuPG", "GitHub CLI"]
         guard hasGit else {
-            return names.map { Look(name: $0, state: .waiting, detail: gitFailed ? "After Git" : "") }
+            return names.map { Look(name: $0, state: .waiting, detail: gitFailed ? "Waiting for Git" : "") }
         }
         guard let tools else { return names.map { Look(name: $0, state: .looking, detail: "Looking…") } }
         func look(_ name: String, _ tool: SigningTools.Tool, use: String, missing: String) -> Look {
@@ -132,7 +132,7 @@ enum SetupWords {
         "Git \(installation.version) is ready"
     }
 
-    static let gitSub = "Roga runs the Git on your Mac, with your own configuration, and needs \(minimumGit) or newer."
+    static let gitSub = "Roga uses your Mac's Git installation and settings. Git \(minimumGit) or later is required."
 
     /// The oldest git Roga runs, as people say it: 2.45.
     static var minimumGit: String {
@@ -145,19 +145,19 @@ enum SetupWords {
         guard let recommended = survey.recommended else { return [] }
         var lines: [String] = []
         if survey.copies.count == 1 {
-            lines.append("It's the only Git found.")
+            lines.append("Roga found one Git installation.")
         } else {
             let which = ProgramSource.isInPath(recommended.executable, searchPath: survey.searchPath)
-                ? "the first one in your PATH that's new enough"
-                : "the first one that works, though it isn't in your PATH"
-            lines.append("Found \(survey.copies.count) Gits. This is \(which).")
+                ? "the first compatible version in your PATH"
+                : "a compatible version outside your PATH"
+            lines.append("Found \(survey.copies.count) Git installations. Roga selected \(which).")
         }
         if let first = survey.copies.first(where: { $0.executable == survey.firstInPath }), !first.isUsable {
             let source = ProgramSource.of(first.executable, developerToolsFolder: survey.developerToolsFolder, home: home)
             if let version = first.version {
-                lines.append("Your terminal runs the one \(source.phrase), which is \(version.major).\(version.minor) and too old.")
+                lines.append("Your terminal uses Git \(version.major).\(version.minor) \(source.phrase). Roga requires a newer version.")
             } else {
-                lines.append("Your terminal runs the one \(source.phrase), which didn't say its version.")
+                lines.append("Roga couldn't read the version of the Git installation your terminal uses \(source.phrase).")
             }
         }
         return lines
@@ -178,14 +178,14 @@ enum SetupWords {
 
     static func noGit(found: Int, developerToolsMissing: Bool) -> NoGit {
         let foundWords = switch found {
-        case 0: "None was found on this Mac."
-        case 1: "The only one found is older than that."
-        default: "The ones found are older than that."
+        case 0: "Roga couldn't find Git."
+        case 1: "The Git installation on this Mac is incompatible."
+        default: "None of the detected Git installations are compatible."
         }
         if developerToolsMissing {
             return NoGit(
                 heading: "Roga needs Git \(minimumGit) or newer",
-                sub: "\(foundWords) Apple's comes with the Command Line Tools, which take a few minutes to install.",
+                sub: "\(foundWords) Install Apple's Command Line Tools to get Git.",
                 say: "opens Apple's installer using this command:",
                 note: "Homebrew Git is also supported. Install Git or select an existing installation, then Rescan.",
                 offersTools: true
@@ -230,12 +230,11 @@ enum SetupWords {
     /// has more than one, since that's what the menus are for.
     static func copiesHint(_ counts: [(kind: AgentKind, copies: Int)]) -> String? {
         guard counts.contains(where: { $0.copies > 1 }) else { return nil }
-        let words = counts.enumerated().map { index, count in
-            index == 0
-                ? "\(count.copies) \(count.copies == 1 ? "copy" : "copies") of \(count.kind.name)"
-                : "\(count.copies) of \(count.kind.name)"
+        let words = counts.map { count in
+            "\(count.kind.name) (\(count.copies))"
         }
-        return "Found \(and(words)). \(counts.count > 1 ? "The button on each row lists them all" : "The button on its row lists them all")."
+        let menu = counts.count > 1 ? "each agent's menu" : "the agent's menu"
+        return "Found \(and(words)). Choose a version from \(menu)."
     }
 
     // MARK: Hooks
@@ -243,7 +242,7 @@ enum SetupWords {
     static let hooksHeading = "Agent status"
     static let hooksSub = "Install hooks to show working, waiting and finished states beside each worktree in the sidebar."
     static let hooksInstalled = "The roga-hooks plugin is installed. Manage hooks in Settings › Agents."
-    static let noHelper = "Hook installation unavailable: roga helper missing."
+    static let noHelper = "Roga couldn't find the helper needed to install hooks."
 
     /// What an agent's row on the Hooks screen says.
     struct HookRow: Equatable {
@@ -277,7 +276,7 @@ enum SetupWords {
             row = HookRow(status: "Checking…", mark: .spinner)
         case .notInstalled?:
             row = HookRow(status: "Not installed")
-            if kind == .codex { row.notes = ["Asks you to trust the hooks before it runs them."] }
+            if kind == .codex { row.notes = ["Codex will ask you to approve the hooks before running them."] }
         case .installed?:
             let works = switch kind {
             case .claude: "Active in new sessions."
@@ -306,7 +305,7 @@ enum SetupWords {
             row = HookRow(
                 status: "Installed by another copy of Roga",
                 mark: .warn,
-                notes: ["\(kind.name) runs the hooks of another copy of Roga, from \(AgentSummaries.abbreviated(folder)). \(fix)"],
+                notes: ["\(kind.name) is using hooks installed by the copy of Roga at \(AgentSummaries.abbreviated(folder)). \(fix)"],
                 checksAgain: kind == .codex
             )
         case .unknown(let words)?:

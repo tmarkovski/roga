@@ -442,7 +442,7 @@ final class SelectedChanges {
     func putConflictsBack(in file: DiffFile) {
         agentWork[file.path] = nil
         if let progress = conflicts.progress(of: file.path), !progress.choices.isEmpty {
-            update(file, failure: "Can't put the conflicts back in \(file.name)") { progress in
+            update(file, failure: "Can't undo conflict resolution in \(file.name)") { progress in
                 progress.choices = [:]
                 progress.writtenBy = [:]
                 progress.shownSides = []
@@ -457,7 +457,7 @@ final class SelectedChanges {
             do {
                 try await session.putConflictsBack(in: file.path, in: worktree)
             } catch {
-                onFailure?("Can't put the conflicts back in \(file.name)", error)
+                onFailure?("Can't undo conflict resolution in \(file.name)", error)
             }
             refresh()
         }
@@ -737,9 +737,9 @@ final class SelectedChanges {
         case .discard(let files, let group):
             remember(try await session.discard(files, from: group, in: worktree), words: IndexChange.words(discarding: files, from: group))
         case .discardHunk(let hunk, let file, _):
-            remember(try await session.discard(hunk, in: worktree), words: ("Discarded a hunk of \(file.name)", "Brought back a hunk of \(file.name)"))
+            remember(try await session.discard(hunk, in: worktree), words: ("Discarded a hunk of \(file.name)", "Restored discarded hunk in \(file.name)"))
         case .discardEverything(let files):
-            remember(try await session.discardEverything(trashing: files, in: worktree), words: ("Discarded all changes", "Brought back the changes"))
+            remember(try await session.discardEverything(trashing: files, in: worktree), words: ("Discarded all changes", "Restored discarded changes"))
         case .bringBack(let discard):
             try await session.bringBack(discard.changes, in: worktree)
             hunkTakenFrom = nil
@@ -887,7 +887,7 @@ private enum IndexChange {
         let isOne = files.count == 1
         let named = isOne ? files[0].name : "\(files.count.formatted()) files"
         let goToTrash = files.allSatisfy { group.discarding($0) == .trash }
-        return (goToTrash ? "Moved \(named) to the Trash" : "Discarded \(named)", "Brought back \(named)")
+        return (goToTrash ? "Moved \(named) to the Trash" : "Discarded \(named)", "Restored \(named)")
     }
 
     /// This and the next one as one, if they're the same kind.

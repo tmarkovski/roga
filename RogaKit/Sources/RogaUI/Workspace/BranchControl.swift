@@ -228,7 +228,7 @@ struct CheckoutPopover: View {
                     Divider()
                     section("Locked") {
                         Text(worktree.lockReason ?? "No reason given")
-                        detail("git worktree remove refuses it until it's unlocked")
+                        detail("Unlock this worktree before deleting it.")
                         buttons {
                             Button("Unlock") {
                                 close()
@@ -304,7 +304,7 @@ struct CheckoutPopover: View {
                 if worktree.branch == nil, let head = worktree.head {
                     Text(head.hex.prefix(8))
                         .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                    Text("Detached HEAD, not on a branch")
+                    Text("Detached HEAD")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                 } else {
@@ -1086,7 +1086,7 @@ private struct NewBranchPopover: View {
     private var fromStash: StashDetails? { branch.newBranchStash }
 
     private var subtitle: String? {
-        if let fromStash { return "From \(fromStash.name), where the stash was made" }
+        if let fromStash { return "Starts at the original commit for \(fromStash.name) and applies its changes." }
         return (branch.newBranchStart?.label ?? start).map { "From \($0)" }
     }
 
@@ -1099,6 +1099,7 @@ private struct NewBranchPopover: View {
         NewRefForm(
             title: "New branch",
             subtitle: subtitle,
+            subtitleLineLimit: fromStash == nil ? 1 : 2,
             name: $name,
             action: inNewWorktree ? "Create Worktree" : "Create Branch",
             commands: [arguments],
@@ -1109,7 +1110,7 @@ private struct NewBranchPopover: View {
             close: close
         ) {
             if fromStash == nil {
-                NewRefSwitch(title: "In a new worktree", isOn: $inNewWorktree)
+                NewRefSwitch(title: "Create in a new worktree", isOn: $inNewWorktree)
             }
         }
         .onChange(of: name) { refusal = nil }
@@ -1168,7 +1169,7 @@ private struct RenameBranchPopover: View {
     var body: some View {
         NewRefForm(
             title: "Rename branch",
-            subtitle: "Here only. Nothing on a remote changes.",
+            subtitle: "Only the local branch is renamed.",
             name: $name,
             action: "Rename Branch",
             commands: [rename.arguments],

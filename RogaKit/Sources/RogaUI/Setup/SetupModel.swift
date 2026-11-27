@@ -33,8 +33,8 @@ public final class SetupModel {
         /// Choose git.
         var subject: String {
             switch self {
-            case .welcome: "Initial commit"
-            case .looking: "Look around"
+            case .welcome: "Welcome"
+            case .looking: "Check installed tools"
             case .git: "Choose git"
             case .agents: "Add agents"
             case .hooks: "Install hooks"

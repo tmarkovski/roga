@@ -240,13 +240,13 @@ enum SettingsItem: CaseIterable {
         case .colors:
             "Used for the commit graph, branches, diffs and commands."
         case .animatesHouse:
-            "Shows the house in the title row and on the Fetch button while Git works."
+            "Shows the house during Git operations in the title row and on the Fetch button."
         case .animationSpeed:
             "House animation speed during Git operations."
         case .identityRepositories:
             "Repositories with a different name or email, or with identity problems."
         case .checksSignatures:
-            "Verifies the selected commit's signature with gpg or ssh-keygen. When off, click Check to verify."
+            "Automatically verifies signatures with gpg or ssh-keygen. To verify manually, select a commit and click Check."
         case .fetchesByItself:
             "At most once a minute. Only remote-tracking branches are updated."
         case .matchesStyle:

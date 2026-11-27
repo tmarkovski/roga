@@ -325,7 +325,7 @@ struct ReplayView: View {
         case .loading:
             VStack(spacing: 10) {
                 ProgressView().controlSize(.small)
-                Text("Working out the history of \(model.branchName)…").foregroundStyle(.secondary)
+                Text("Loading history for \(model.branchName)…").foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .nothing:

@@ -162,7 +162,7 @@ nonisolated enum ProgramChoices {
                 }
             } else if copy.version != nil {
                 tag = .tooOld
-                why = (isFirst ? "Your terminal runs this one, but " : "") + "\(minimum.major).\(minimum.minor) or later is required."
+                why = (isFirst ? "Your terminal uses this installation. Git " : "") + "\(minimum.major).\(minimum.minor) or later is required."
             } else {
                 tag = .unusable
                 why = isFirst ? "Default in PATH; version unavailable." : "Version unavailable."
@@ -276,21 +276,21 @@ nonisolated enum ProgramChoices {
     /// Why Roga can't use a copy of an agent, without its path, which the
     /// menu shows on the line above.
     static func reason(_ skipped: SkippedAgent, terminalRunsIt: Bool) -> (ProgramChoice.Tag, String) {
-        let lead = terminalRunsIt ? "Your terminal runs this one, but " : ""
+        let lead = terminalRunsIt ? "Your terminal uses this installation. " : ""
         func sentence(_ words: String) -> String {
-            lead.isEmpty ? words.prefix(1).uppercased() + words.dropFirst() : lead + words
+            lead + words
         }
         switch skipped.reason {
         case .tooOld:
             return (.tooOld, sentence("\(skipped.kind.minimumVersion) or later is required."))
         case .timedOut:
             let limit = AgentInstallation.probeTimeLimit.formatted(.units(allowed: [.seconds], width: .wide))
-            return (.unusable, sentence("it didn't say its version within \(limit)."))
+            return (.unusable, sentence("The version check timed out after \(limit)."))
         case .noVersion(let status, _):
             switch status {
-            case nil: return (.unusable, sentence("it couldn't be started."))
-            case .exited(0)?: return (.unusable, sentence("it didn't print a readable version."))
-            default: return (.unusable, sentence("it stopped before saying its version."))
+            case nil: return (.unusable, sentence("The program couldn't be started."))
+            case .exited(0)?: return (.unusable, sentence("Roga couldn't read the reported version."))
+            default: return (.unusable, sentence("The program exited before reporting its version."))
             }
         }
     }
@@ -375,7 +375,7 @@ nonisolated struct ProgramRowContent: Equatable {
             return ProgramRowContent(
                 name: "Git",
                 status: .warning("Not found"),
-                line: "Can't find or run \(ProgramSource.abbreviated(path, home: home)), which you chose.",
+                line: "Can't find or run the selected Git at \(ProgramSource.abbreviated(path, home: home)).",
                 tone: .warn,
                 select: .menu(source(path))
             )
@@ -457,7 +457,7 @@ nonisolated struct ProgramRowContent: Equatable {
             return ProgramRowContent(
                 name: kind.name,
                 status: .warning("Not found"),
-                line: "Can't find or run \(path(chosen)), which you chose.",
+                line: "Can't find or run the selected agent at \(path(chosen)).",
                 tone: .warn,
                 select: .menu(source(chosen))
             )

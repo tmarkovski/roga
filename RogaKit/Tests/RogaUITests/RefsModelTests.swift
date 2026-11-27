@@ -318,7 +318,7 @@ struct RefsModelTests {
         #expect(lines.last?.contains("2 hours ago") == true)
         #expect(shimmer.details(isCurrent: true, now: now).first == "Checked out here")
         #expect(separator.details(isCurrent: false, now: now).dropLast() == ["No upstream", "1 ahead, 120 behind main"])
-        #expect(reported.details(isCurrent: false, now: now).dropLast() == ["Its upstream, origin/tm/report-an-issue, is gone", "Merged into main"])
+        #expect(reported.details(isCurrent: false, now: now).dropLast() == ["Upstream branch origin/tm/report-an-issue is missing", "Merged into main"])
         #expect(main.details(isCurrent: false, now: now).dropLast() == ["9 behind origin/main"])
     }
 

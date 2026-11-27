@@ -390,7 +390,7 @@ nonisolated public enum DiffTextBuilder {
         return document
     }
 
-    private static let cutLineNote = " … This line is too long to show the rest."
+    private static let cutLineNote = " … Line truncated"
 
     /// The part of a line to show, which is all of it unless it's very long.
     private static func shownBytes(of bytes: ArraySlice<UInt8>) -> (bytes: ArraySlice<UInt8>, isCut: Bool) {

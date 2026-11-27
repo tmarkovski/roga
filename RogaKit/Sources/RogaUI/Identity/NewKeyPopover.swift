@@ -105,7 +105,7 @@ struct NewKeyPopover: View {
             failureLine
             HStack(spacing: 8) {
                 DialogActionButton(button: .cancel(close))
-                DialogActionButton(button: DialogButton(title: "Make Key", kind: .primary, isEnabled: plan != nil && !isMaking, action: make))
+                DialogActionButton(button: DialogButton(title: "Create Key", kind: .primary, isEnabled: plan != nil && !isMaking, action: make))
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
             .padding(EdgeInsets(top: 14, leading: Self.inset, bottom: 12, trailing: Self.inset))
@@ -145,7 +145,7 @@ struct NewKeyPopover: View {
         let unguarded = "without a passphrase, so git, Roga and agents can sign without asking"
         switch plan.format {
         case .ssh:
-            let trust = plan.trust.map { " It also goes in \($0.shownFile), so git says your commits are good." } ?? ""
+            let trust = plan.trust.map { " Roga adds the public key to \($0.shownFile) so Git can verify your signatures." } ?? ""
             return "Roga makes an Ed25519 key \(unguarded). Anyone who can read the file can sign as you.\(trust)"
         case .openPGP, .x509:
             return "Roga makes an Ed25519 key that doesn't expire, \(unguarded). Anyone who can use your GnuPG keyring can sign as you."
@@ -184,7 +184,7 @@ struct NewKeyPopover: View {
 
     private func madeContent(_ made: NewSigningKey.Made) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            header("Key made", sub: made.shownPublicKeyFile ?? made.key.title)
+            header("Key created", sub: made.shownPublicKeyFile ?? made.key.title)
             KeyHostsContent(
                 key: made,
                 hosting: hosting,
@@ -198,7 +198,7 @@ struct NewKeyPopover: View {
 
     /// What the popover says once the key is made, above the hosts.
     static func madeNotes(_ made: NewSigningKey.Made, savesAtOnce: Bool) -> [KeyHostsContent.Note] {
-        var notes = [KeyHostsContent.Note(text: savesAtOnce ? "Commits are signed with it now." : "It's in the Key field. Save to sign commits with it.")]
+        var notes = [KeyHostsContent.Note(text: savesAtOnce ? "Future commits will use this signing key." : "Save to use this key for signing commits.")]
         if let trustFailure = made.trustFailure {
             notes.append(KeyHostsContent.Note(text: "Roga couldn't add it to the allowed signers file: \(trustFailure)", isWarning: true))
         }

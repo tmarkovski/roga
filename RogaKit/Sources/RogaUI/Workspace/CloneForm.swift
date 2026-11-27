@@ -187,18 +187,18 @@ struct CloneForm: View {
     /// instead.
     @ViewBuilder private func note(problem: CloneRequest.Problem?, existing: ListedRepository?) -> some View {
         if let request, problem == .destinationExists {
-            Text("Something called \(request.name) is already in that folder. Choose another name or folder.")
+            Text("\(request.name) already exists in this folder. Choose a different name or location.")
                 .font(.system(size: 12))
                 .foregroundStyle(AgentColors.warn)
                 .fixedSize(horizontal: false, vertical: true)
         } else if problem == .nameIsNotAFolder {
-            Text("The name has to be one folder, without a slash.")
+            Text("Enter a folder name without slashes.")
                 .font(.system(size: 12))
                 .foregroundStyle(AgentColors.warn)
                 .fixedSize(horizontal: false, vertical: true)
         } else if let existing {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(existing.cloning == nil ? "The sidebar already has \(existing.name) from this URL." : "\(existing.name) is already being cloned from this URL.")
+                Text(existing.cloning == nil ? "\(existing.name) is already in the sidebar." : "\(existing.name) is already being cloned from this URL.")
                     .font(.system(size: 12))
                     .foregroundStyle(DialogColors.note)
                     .fixedSize(horizontal: false, vertical: true)
@@ -264,7 +264,7 @@ struct CloneLine: Equatable {
     }
 
     var help: String {
-        isCancelling ? "git is stopping, and deleting what it cloned." : "git is cloning this repository. Its menu can cancel the clone."
+        isCancelling ? "Cancelling the clone and removing downloaded files." : "Cloning this repository. To cancel, open its sidebar menu."
     }
 
     /// What VoiceOver says.

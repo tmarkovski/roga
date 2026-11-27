@@ -26,10 +26,10 @@ struct ConflictNamingTests {
 
     @Test func aMergeNamesTheBranchAndWhatsMergedIn() {
         let sides = naming.sides(oursLabel: "HEAD", theirsLabel: "origin/main")
-        #expect(sides.ours == .init(name: "main", detail: "a17f9d3 · Add a retry button", keepTitle: "Keep main's", keptTitle: "Kept main's"))
+        #expect(sides.ours == .init(name: "main", detail: "a17f9d3 · Add a retry button", keepTitle: "Keep version from main", keptTitle: "Kept version from main"))
         #expect(sides.theirs.name == "origin/main")
         #expect(sides.theirs.detail == "86b3386 · Show the error")
-        #expect(sides.theirs.keepTitle == "Keep origin/main's")
+        #expect(sides.theirs.keepTitle == "Keep version from origin/main")
     }
 
     @Test func aPullThatMergesNamesTheUpstreamForItsHash() {
@@ -48,8 +48,8 @@ struct ConflictNamingTests {
         #expect(sides.ours.name == "origin/main")
         #expect(sides.ours.detail == "86b3386 · Show the error")
         #expect(sides.theirs.name == "a17f9d3")
-        #expect(sides.theirs.detail == "your commit being rebased · Add a retry button")
-        #expect(sides.theirs.keepTitle == "Keep a17f9d3's")
+        #expect(sides.theirs.detail == "Commit being rebased · Add a retry button")
+        #expect(sides.theirs.keepTitle == "Keep version from a17f9d3")
     }
 
     @Test func aRebaseFurtherAlongSaysSo() {
@@ -62,8 +62,8 @@ struct ConflictNamingTests {
 
     @Test func aRevertNamesTheRevert() {
         let sides = naming.sides(oursLabel: "HEAD", theirsLabel: "parent of 86b3386 (Show the error)")
-        #expect(sides.theirs == .init(name: "The revert", detail: "taking out 86b3386 · Show the error", keepTitle: "Keep the revert", keptTitle: "Kept the revert"))
-        #expect(naming.sides(oursLabel: "HEAD", theirsLabel: "parent of " + theirs.hex).theirs.detail == "taking out 86b3386 · Show the error")
+        #expect(sides.theirs == .init(name: "Revert", detail: "Reverting 86b3386 · Show the error", keepTitle: "Keep the revert", keptTitle: "Kept the revert"))
+        #expect(naming.sides(oursLabel: "HEAD", theirsLabel: "parent of " + theirs.hex).theirs.detail == "Reverting 86b3386 · Show the error")
     }
 
     @Test func aStashPopNamesYourChanges() {

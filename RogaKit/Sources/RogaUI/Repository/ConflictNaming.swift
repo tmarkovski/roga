@@ -67,10 +67,10 @@ struct ConflictNaming {
         if label.hasPrefix("parent of ") {
             let reverted = String(label.dropFirst("parent of ".count))
             let commit = Self.commitLabel(reverted).map { "\($0.hash) · \($0.subject)" } ?? ObjectID(hex: reverted).map(describe) ?? reverted
-            return ConflictSides.Side(name: "The revert", detail: "taking out \(commit)", keepTitle: "Keep the revert", keptTitle: "Kept the revert")
+            return ConflictSides.Side(name: "Revert", detail: "Reverting \(commit)", keepTitle: "Keep the revert", keptTitle: "Kept the revert")
         }
         if let commit = Self.commitLabel(label) {
-            let detail = if case .rebase = work { "your commit being rebased · \(commit.subject)" } else { commit.subject }
+            let detail = if case .rebase = work { "Commit being rebased · \(commit.subject)" } else { commit.subject }
             return named(commit.hash, detail: detail)
         }
         if let id = ObjectID(hex: label) {
@@ -80,7 +80,7 @@ struct ConflictNaming {
     }
 
     private func named(_ name: String, detail: String) -> ConflictSides.Side {
-        ConflictSides.Side(name: name, detail: detail, keepTitle: "Keep \(name)'s", keptTitle: "Kept \(name)'s")
+        ConflictSides.Side(name: name, detail: detail, keepTitle: "Keep version from \(name)", keptTitle: "Kept version from \(name)")
     }
 
     /// A commit's short hash and subject, or only the hash when its subject isn't known.

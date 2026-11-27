@@ -108,7 +108,7 @@ struct SubmodulePanelTests {
         #expect(report.sections.map(\.goesBack) == [false])
         #expect(report.sections[0].commits.map(\.subject) == ["Parser commit 5", "Parser commit 4", "Parser commit 3"])
         #expect(report.notes == [
-            "Update checks out \(short(world.commits[4])), which is what's recorded. Staging the row instead would record \(short(world.commits[1])), without these 3 commits.",
+            "Update checks out the recorded commit \(short(world.commits[4])). Stage records \(short(world.commits[1])), which lacks these 3 commits.",
         ])
 
         // Space goes down a list without reading each row, so it leaves this one.
@@ -135,11 +135,11 @@ struct SubmodulePanelTests {
         await settled(work)
         let staged = try row(.staged, work)
         #expect(staged.newID?.hex == world.commits[1])
-        #expect(staged.submoduleLabel == SubmoduleLabel(text: "3 commits back", spoken: "3 commits back"))
+        #expect(staged.submoduleLabel == SubmoduleLabel(text: "3 commits behind", spoken: "3 commits behind"))
         let report = try report(work)
-        #expect(report.sections.map(\.band) == ["\(short(world.commits[4])) → \(short(world.commits[1])) · 3 commits back"])
+        #expect(report.sections.map(\.band) == ["\(short(world.commits[4])) → \(short(world.commits[1])) · 3 commits behind"])
         #expect(report.sections.map(\.goesBack) == [true])
-        #expect(report.notes == ["These 3 commits aren't recorded any more."])
+        #expect(report.notes == ["These 3 commits are absent from the new submodule revision."])
     }
 
     @Test func aCheckoutWithNewCommitsStagesAndSaysTheyArentPushed() async throws {
@@ -157,7 +157,7 @@ struct SubmodulePanelTests {
         #expect(report.sections[0].commits.map(\.subject) == ["Local two", "Local one"])
         #expect(report.notes == [
             "Stage records \(short(local)).",
-            "Neither commit is on any of parser's remotes yet, so push parser before this branch.",
+            "Push 2 commits from parser before pushing this branch.",
         ])
 
         work.changes.toggleSelectedFile()
@@ -168,11 +168,11 @@ struct SubmodulePanelTests {
         #expect(try self.row(.staged, work).submoduleLabel?.text == "2 commits")
         await settled(work)
         #expect(paths(try await work.model.session.status(in: world.parent).staged) == [path])
-        #expect(try self.row(.staged, work).submoduleLabel == SubmoduleLabel(text: "2 commits", spoken: "2 commits forward"))
+        #expect(try self.row(.staged, work).submoduleLabel == SubmoduleLabel(text: "2 commits", spoken: "2 commits ahead"))
         #expect(work.file.group == .staged)
         report = try self.report(work)
-        #expect(report.sections.map(\.band) == ["\(short(world.commits[4])) → \(short(local)) · 2 commits forward"])
-        #expect(report.notes == ["Neither commit is on any of parser's remotes yet, so push parser before this branch."])
+        #expect(report.sections.map(\.band) == ["\(short(world.commits[4])) → \(short(local)) · 2 commits ahead"])
+        #expect(report.notes == ["Push 2 commits from parser before pushing this branch."])
 
         // Unstaging it puts the row back as it was.
         work.changes.toggleSelectedFile()
@@ -189,13 +189,13 @@ struct SubmodulePanelTests {
         try await open(work)
 
         let row = try row(.unstaged, work)
-        #expect(row.submoduleLabel == SubmoduleLabel(text: "2 files inside", spoken: "2 uncommitted files inside", isUncommitted: true))
+        #expect(row.submoduleLabel == SubmoduleLabel(text: "2 changed files", spoken: "2 uncommitted files in submodule", isUncommitted: true))
         #expect(row.submoduleStaging == .nothingToStage)
         let report = try report(work)
-        #expect(report.sections.map(\.band) == ["2 uncommitted files inside · checked out at \(short(world.commits[4])), as recorded"])
+        #expect(report.sections.map(\.band) == ["2 uncommitted files in submodule · checked out at \(short(world.commits[4])), as recorded"])
         #expect(report.sections[0].files.map(\.path) == ["Notes.md", "lib.txt"])
         #expect(report.sections[0].commits.isEmpty)
-        #expect(report.notes == ["These are committed inside parser rather than in this repository, so there's nothing here to stage."])
+        #expect(report.notes == ["Stage and commit these changes in parser."])
 
         // Nothing stages it: not Space, and not Stage All, which has nothing to
         // say about it either.
@@ -221,22 +221,22 @@ struct SubmodulePanelTests {
         let report = try report(work)
         #expect(report.sections.map(\.band) == [
             "Checked out at \(short(local)) · 1 new commit since \(short(world.commits[4]))",
-            "1 uncommitted file inside",
+            "1 uncommitted file in submodule",
         ])
         #expect(report.sections[1].files.map(\.path) == ["Notes.md"])
         #expect(report.notes == [
             "Stage records \(short(local)).",
-            "This commit isn't on any of parser's remotes yet, so push parser before this branch.",
-            "The uncommitted files are parser's own, and staging leaves them as they are.",
+            "Push 1 commit from parser before pushing this branch.",
+            "Staging records the submodule commit. Stage file changes in parser.",
         ])
 
         work.changes.toggleSelectedFile()
         // The file inside stays under Unstaged, as git will say too.
         #expect(paths(work.changes.loaded?.staged) == [path])
-        #expect(try row(.unstaged, work).submoduleLabel?.text == "1 file inside")
+        #expect(try row(.unstaged, work).submoduleLabel?.text == "1 changed file")
         await settled(work)
         #expect(paths(work.changes.loaded?.staged) == [path])
-        #expect(try row(.unstaged, work).submoduleLabel?.text == "1 file inside")
+        #expect(try row(.unstaged, work).submoduleLabel?.text == "1 changed file")
         #expect(try row(.unstaged, work).submoduleStaging == .nothingToStage)
     }
 
@@ -353,10 +353,10 @@ struct SubmodulePanelTests {
         try await select(world.forward, work)
 
         let row = try #require(work.model.selectedCommit.files.all.first { $0.path == path })
-        #expect(row.submoduleLabel == SubmoduleLabel(text: "3 commits", spoken: "3 commits forward"))
+        #expect(row.submoduleLabel == SubmoduleLabel(text: "3 commits", spoken: "3 commits ahead"))
         #expect(work.file.file?.path == path)
         let report = try report(work)
-        #expect(report.sections.map(\.band) == ["\(short(world.commits[1])) → \(short(world.commits[4])) · 3 commits forward"])
+        #expect(report.sections.map(\.band) == ["\(short(world.commits[1])) → \(short(world.commits[4])) · 3 commits ahead"])
         #expect(report.sections.map(\.goesBack) == [false])
         #expect(report.sections[0].commits.map(\.subject) == ["Parser commit 5", "Parser commit 4", "Parser commit 3"])
         #expect(report.sections[0].commits.map(\.author) == ["Sam Lee", "Sam Lee", "Sam Lee"])
@@ -372,12 +372,12 @@ struct SubmodulePanelTests {
         try await select(world.back, work)
 
         let row = try #require(work.model.selectedCommit.files.all.first { $0.path == path })
-        #expect(row.submoduleLabel == SubmoduleLabel(text: "1 commit back", spoken: "1 commit back"))
+        #expect(row.submoduleLabel == SubmoduleLabel(text: "1 commit behind", spoken: "1 commit behind"))
         let report = try report(work)
-        #expect(report.sections.map(\.band) == ["\(short(world.commits[4])) → \(short(world.commits[3])) · 1 commit back"])
+        #expect(report.sections.map(\.band) == ["\(short(world.commits[4])) → \(short(world.commits[3])) · 1 commit behind"])
         #expect(report.sections.map(\.goesBack) == [true])
         #expect(report.sections[0].commits.map(\.subject) == ["Parser commit 5"])
-        #expect(report.notes == ["This commit isn't recorded any more."])
+        #expect(report.notes == ["This commit is absent from the new submodule revision."])
     }
 
     @Test func aCommitThatAddsASubmoduleSaysWhere() async throws {
@@ -438,21 +438,21 @@ struct SubmoduleWordsTests {
             text: "2 new, 3 behind", spoken: "2 new commits, and 3 behind what's recorded"
         ))
         #expect(row([.commitChanged], .commitMissing).submoduleLabel == SubmoduleLabel(
-            text: "not fetched", spoken: "the commit that's recorded isn't fetched"
+            text: "not fetched", spoken: "recorded commit unavailable locally"
         ))
         #expect(row([.commitChanged, .modifiedFiles], .counted(ahead: 0, behind: 1_200), files: 4).submoduleLabel?.text == "1,200 behind")
         // Status says there are files inside before anything has counted them.
         #expect(row([.untrackedFiles], nil).submoduleLabel == SubmoduleLabel(
-            text: "files inside", spoken: "uncommitted files inside", isUncommitted: true
+            text: "Uncommitted changes", spoken: "Uncommitted changes in submodule", isUncommitted: true
         ))
-        #expect(row([.modifiedFiles], .counted(ahead: 0, behind: 0), files: 1).submoduleLabel?.text == "1 file inside")
+        #expect(row([.modifiedFiles], .counted(ahead: 0, behind: 0), files: 1).submoduleLabel?.text == "1 changed file")
         #expect(row([], .counted(ahead: 0, behind: 0)).submoduleLabel == nil)
 
         // Everywhere else, between two commits that are recorded.
         #expect(row(nil, nil).submoduleLabel == nil)
         #expect(row(nil, .counted(ahead: 1, behind: 0)).submoduleLabel?.text == "1 commit")
         #expect(row(nil, .counted(ahead: 2, behind: 3)).submoduleLabel == SubmoduleLabel(
-            text: "2 forward, 3 back", spoken: "2 commits forward and 3 back"
+            text: "2 ahead, 3 behind", spoken: "2 commits ahead and 3 behind"
         ))
         #expect(row(nil, .notCheckedOut).submoduleLabel == nil)
         #expect(row(nil, .commitMissing).submoduleLabel == nil)
@@ -473,14 +473,14 @@ struct SubmoduleWordsTests {
         #expect(report.sections.map(\.goesBack) == [false, false])
         #expect(report.notes == [
             "Updating would check out 11111111, without the 2 new commits, and staging would record 22222222, without the other 3. To keep both, merge or rebase inside parser first.",
-            "1 of these commits isn't on any of parser's remotes yet, so push parser before this branch.",
+            "Push 1 commit from parser before pushing this branch.",
         ])
     }
 
     @Test func thePanelSaysWhenTheRecordedCommitIsntFetched() {
         let details = SubmoduleDetails(from: one, to: two, comparesCheckout: true, distance: .commitMissing)
         let report = SubmoduleReport(details, path: "parser")
-        #expect(report.sections.map(\.band) == ["Checked out at 22222222 · 11111111 is recorded, and this checkout doesn't have it yet"])
+        #expect(report.sections.map(\.band) == ["Checked out at 22222222 · Recorded commit 11111111 is missing locally"])
         #expect(report.notes == ["Update fetches 11111111 and checks it out. Staging the row instead would record 22222222."])
     }
 
@@ -489,7 +489,7 @@ struct SubmoduleWordsTests {
             from: one, to: two, comparesCheckout: false, distance: .counted(ahead: 2, behind: 1), added: commits(2), removed: commits(1)
         )
         var report = SubmoduleReport(details, path: "vendor/parser")
-        #expect(report.sections.map(\.band) == ["11111111 → 22222222 · 2 commits forward, 1 back", "1 commit that isn't recorded any more"])
+        #expect(report.sections.map(\.band) == ["11111111 → 22222222 · 2 commits ahead, 1 behind", "1 commit absent from the new revision"])
         #expect(report.sections.map(\.goesBack) == [true, true])
         #expect(report.notes.isEmpty)
 
@@ -497,14 +497,14 @@ struct SubmoduleWordsTests {
         details.distance = .counted(ahead: 1_502, behind: 0)
         details.removed = []
         report = SubmoduleReport(details, path: "vendor/parser")
-        #expect(report.sections.map(\.band) == ["11111111 → 22222222 · 1,502 commits forward"])
+        #expect(report.sections.map(\.band) == ["11111111 → 22222222 · 1,502 commits ahead"])
         #expect(report.sections.map(\.moreCommits) == [1_500])
 
         details = SubmoduleDetails(from: one, to: nil, comparesCheckout: false, distance: .notCheckedOut)
-        #expect(SubmoduleReport(details, path: "vendor/parser").sections.map(\.band) == ["Removed · it was at 11111111"])
+        #expect(SubmoduleReport(details, path: "vendor/parser").sections.map(\.band) == ["Removed · Previous commit 11111111"])
         details = SubmoduleDetails(from: one, to: two, comparesCheckout: false, distance: .commitMissing)
         #expect(SubmoduleReport(details, path: "vendor/parser").notes == [
-            "The copy of vendor/parser that's checked out in this worktree doesn't have both of these commits, so the commits between them can't be listed.",
+            "The local copy of vendor/parser is missing one or both commits. Fetch the missing commits to see the changes between them.",
         ])
     }
 

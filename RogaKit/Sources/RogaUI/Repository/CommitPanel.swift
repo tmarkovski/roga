@@ -53,7 +53,7 @@ struct CommitPanel: View {
             // Putting a stash back is usually what comes next, so it's orange.
             // Keeping it in the list too is in its menu (decision 81).
             if let stash = commit.stash {
-                Button("Put Back") { model.putBack(stash) }
+                Button("Pop Stash") { model.putBack(stash) }
                     .buttonStyle(.diffHeader(isNext: true))
                     .disabled(model.branch.isBusy)
                     .help("Put the changes back and delete the stash")
@@ -65,7 +65,7 @@ struct CommitPanel: View {
             case nil:
                 note("Select a commit to view its changes.")
             case .scattered(let count):
-                note("These \(count.formatted()) commits aren't one after another on one line, so they don't make one diff. Select a run of commits, or two to compare.")
+                note("To see a combined diff, select consecutive commits. To compare two commits, select just those two.")
             case .submodule(let submodule):
                 ScrollView {
                     SubmoduleSummary(submodule: submodule)
@@ -489,7 +489,7 @@ private struct ComparisonSummary: View {
         switch comparison.kind {
         case .run(let count, let oldest):
             HStack(spacing: 4) {
-                Text("All \(count.formatted()) as one diff, from")
+                Text("Combined diff for \(count.formatted()) commits, starting at")
                 link(oldest)
                 Text("to")
                 link(comparison.to)
@@ -516,7 +516,7 @@ private struct ComparisonSummary: View {
                         link(base)
                     }
                 } else {
-                    Text("It has no commit in common with \(other), so this is everything in it.")
+                    Text("No common ancestor with \(other). Showing the full diff.")
                 }
             }
             .font(.system(size: 12))

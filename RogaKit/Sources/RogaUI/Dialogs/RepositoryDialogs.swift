@@ -210,7 +210,7 @@ extension RepositoryModel {
             ? "1 commit isn't on \(holders), so it would be lost."
             : "\(commitSwitch.lostCount.formatted()) commits aren't on \(holders), so they would be lost."
         let rows = DialogContent.commitRows(pending.commits, total: commitSwitch.lostCount)
-        var notes: [DialogText] = ["\(code: "git reflog") can still find \(commitSwitch.lostCount == 1 ? "it" : "them") for a while."]
+        var notes: [DialogText] = ["You can recover \(commitSwitch.lostCount == 1 ? "the commit" : "these commits") with \(code: "git reflog") for a limited time."]
         var terminal: [TerminalLine] = [.command(commitSwitch.arguments)]
         var buttons = [DialogButton.cancel(cancel)]
 
@@ -222,7 +222,7 @@ extension RepositoryModel {
             return DialogContent(
                 id: "commitSwitch",
                 title: "Switch to \(branch ?? short)?",
-                message: .sentences(["\(code: "HEAD") isn't on a branch.", lost]),
+                message: .sentences(["You're in detached \(code: "HEAD") state.", lost]),
                 cards: rows.isEmpty ? [] : [rows],
                 note: .sentences(notes),
                 terminal: terminal,
@@ -247,7 +247,7 @@ extension RepositoryModel {
                 terminal.insert(.command(push.arguments), at: 0)
                 buttons.append(DialogButton(title: "Push, Then Reset", kind: .primary) { [weak self] in self?.pushThenConfirmCommitSwitch() })
             } else if let upstream = branch.status?.upstream.map(Ref.shortName) {
-                notes.append("Pushing first isn't offered, because git would reject it: \(code: upstream) has commits that \(code: name) doesn't.")
+                notes.append("You can't push before resetting because \(code: upstream) has commits that \(code: name) is missing.")
             }
             return DialogContent(
                 id: "commitSwitch",
@@ -271,24 +271,24 @@ extension RepositoryModel {
         let head: DialogText = "\(code: "HEAD")"
         let onto: DialogText = history?.refs.currentBranch.map { "\(code: Ref.shortName($0))" } ?? head
 
-        var sentences: [DialogText] = ["This undoes what \(code: short) changed, on \(onto)."]
+        var sentences: [DialogText] = ["Reverses the changes from \(code: short) on \(onto)."]
         if revert.isMerge {
             let first = String(revert.parents[0].hex.prefix(8))
             let others = revert.parents.dropFirst().map { String($0.hex.prefix(8)) }
             let merged: DialogText = others.count == 1 ? "\(code: others[0])" : "its other parents"
-            sentences.append("It's a merge, so this keeps the side of its first parent, \(code: first), and takes out what came from \(merged). git still counts those commits as merged, so merging them again won't bring them back.")
+            sentences.append("This reverses the changes from \(merged) relative to the merge's first parent, \(code: first). Git still treats those commits as merged, so merging again won't restore their changes.")
         }
         if !revert.headContains {
-            sentences.append("\(head) doesn't contain \(code: short), so git takes its changes out of whatever \(head) has. That only makes sense if they got there another way, such as a cherry-pick.")
+            sentences.append("\(code: short) isn't in the history of \(head). Revert it only if the same changes reached this branch another way, such as a cherry-pick.")
         }
         if !revert.canCommit {
             let staged = revert.stagedCount == 1 ? "1 file is staged" : "\(revert.stagedCount.formatted()) files are staged"
             sentences.append("\(staged), and git only commits a revert when nothing is, so this adds the reversed changes to \(revert.stagedCount == 1 ? "it" : "them").")
         }
 
-        var notes: [DialogText] = ["Leave Uncommitted stages the reversed changes, with git's message ready to commit."]
+        var notes: [DialogText] = ["Leave Uncommitted stages the revert and fills in the commit message."]
         if revert.hasCommitHooks {
-            notes.append("git commits a revert without your pre-commit and commit-msg hooks, which run when you commit from the box.")
+            notes.append("Git skips pre-commit and commit-msg hooks when it creates a revert commit. To run them, choose Leave Uncommitted and commit from Roga.")
         }
 
         let way: CommitRevert.Way = revert.canCommit ? .committing : .leavingUncommitted
@@ -418,8 +418,8 @@ extension BranchModel {
             : "is partway through a \(what), with \(files) in conflict."
         var sentences = [subject, inConflict, "You can resolve them here, or undo the \(started)."]
         if conflict.stagedBefore > 0 {
-            let staged = conflict.stagedBefore == 1 ? "the 1 file that was" : "the \(conflict.stagedBefore.formatted()) files that were"
-            sentences.append("Undoing it also takes back \(staged) staged before.")
+            let staged = conflict.stagedBefore == 1 ? "1 file" : "\(conflict.stagedBefore.formatted()) files"
+            sentences.append("Undo also discards the changes in \(staged) staged before the revert.")
         }
         var undo = [conflict.work.abortArguments]
         if let aside = conflict.aside {
@@ -461,17 +461,17 @@ extension BranchModel {
         let aside = conflict.aside
         let noun = conflict.noun
         let branch = aside.branch.map(Ref.shortName) ?? "HEAD"
-        let (did, against): (DialogText, String) = switch aside.move {
-        case .pull: ("pulling into \(code: branch)", "what came in")
-        case .merge(let other): ("merging \(code: other) into \(code: branch)", "what came in")
-        case .rebase(let other): ("rebasing \(code: branch) onto \(code: other)", "what's there")
-        case .cherryPick(let commit): ("applying \(code: String(commit.hex.prefix(8))) to \(code: branch)", "what it changed")
-        case .reset(let commit): ("moving \(code: branch) to \(code: String(commit.hex.prefix(8)))", "what's there")
-        case .detach(let commit): ("switching to \(code: String(commit.hex.prefix(8)))", "what's there")
+        let operation: DialogText = switch aside.move {
+        case .pull: "pulling into \(code: branch)"
+        case .merge(let other): "merging \(code: other) into \(code: branch)"
+        case .rebase(let other): "rebasing \(code: branch) onto \(code: other)"
+        case .cherryPick(let commit): "applying \(code: String(commit.hex.prefix(8))) to \(code: branch)"
+        case .reset(let commit): "resetting \(code: branch) to \(code: String(commit.hex.prefix(8)))"
+        case .detach(let commit): "switching to \(code: String(commit.hex.prefix(8)))"
         }
         let files = conflict.files.count == 1 ? "1 file" : "\(conflict.files.count.formatted()) files"
         let sentences: [DialogText] = [
-            "After \(did), your uncommitted changes were put back, but in \(files) they conflict with \(against).",
+            "Restoring your uncommitted changes after \(operation) caused conflicts in \(files).",
             "You can resolve them here, or undo the \(noun).",
         ]
         let note: DialogText? = .sentences([
@@ -513,16 +513,16 @@ extension BranchModel {
         let files = isOne ? "1 file" : "\(conflict.files.count.formatted()) files"
         let conflicts = isOne ? "the conflict" : "the conflicts"
         let sentences: [DialogText] = [
-            "\(code: conflict.name) was put back, but in \(files) it conflicts with what's in the worktree now.",
-            conflict.indexBefore == nil ? "You can resolve \(conflicts) here." : "You can resolve \(conflicts) here, or undo putting the stash back.",
+            "Applying \(code: conflict.name) conflicted with \(files) in the worktree.",
+            conflict.indexBefore == nil ? "You can resolve \(conflicts) here." : "Resolve \(conflicts) or undo the stash application.",
         ]
         var notes: [DialogText] = []
         if conflict.indexBefore != nil {
-            notes.append("Undo takes the files the stash had back to how they were, and leaves your other changes alone.")
+            notes.append("Undo restores the affected files to their state before the stash was applied.")
         }
         notes.append(conflict.keeping
-            ? "The stash stays in the list, as you asked."
-            : "git keeps the stash in the list when there's a conflict, so nothing is lost. Delete it from its menu once \(conflicts) \(isOne ? "is" : "are") resolved.")
+            ? "The stash will be kept."
+            : "Git keeps the stash when there are conflicts. Delete it from the stash menu after resolving \(conflicts).")
         let rows = Self.fileRows(conflict.files)
         let leave = { [weak self] in self?.stashConflict = nil; return () }
         let resolve = { [weak self] in
@@ -537,7 +537,7 @@ extension BranchModel {
         buttons.append(DialogButton(title: "Resolve", kind: .primary, action: resolve))
         return DialogContent(
             id: "stashConflict",
-            title: "Putting the stash back stopped on a conflict",
+            title: "Stash application has conflicts",
             message: .sentences(sentences),
             cards: rows.isEmpty ? [] : [rows],
             note: .sentences(notes),
@@ -562,11 +562,11 @@ extension BranchModel {
     private func dialog(forAborting work: StoppedWork) -> DialogContent {
         let what = work.noun
         let cancel = { [weak self] in self?.pendingAbort = nil; return () }
-        var message: DialogText = "This goes back to before the \(what), and any conflicts you've resolved are lost."
+        var message: DialogText = "Aborting restores the state before the \(what) and discards any conflict resolutions."
         var cards: [[DialogRow]] = []
         var note: DialogText?
         if case .revert = work {
-            message = "This takes everything that's staged back to \(code: "HEAD"), in the index and in the files, including anything that was staged before the revert. Any conflicts you've resolved are lost too."
+            message = "Aborting resets staged files to \(code: "HEAD") in the index and worktree. This discards changes staged before the revert and any conflict resolutions."
             let staged = stagedFiles()
             if staged > 0 {
                 cards = [[staged == 1 ? .fact("1 staged file", "goes back to HEAD") : .fact("\(staged.formatted()) staged files", "go back to HEAD")]]
@@ -595,11 +595,11 @@ extension BranchModel {
         let note: DialogText
         if push.count > 0 {
             let commits = push.count == 1 ? "1 commit" : "\(push.count.formatted()) commits"
-            message = "This overwrites \(commits) on \(code: push.upstream), and your branch takes \(push.count == 1 ? "its place" : "their place")."
-            note = "git refuses if \(code: push.upstream) has commits that \(code: push.branch) never had."
+            message = "This replaces \(code: push.upstream) with \(code: push.branch), removing \(commits) from the remote branch."
+            note = "Git rejects the force push if \(code: push.upstream) has commits that \(code: push.branch) has never contained."
         } else {
-            message = "This replaces \(code: push.upstream) with \(code: push.branch). It has no commits that \(code: push.branch) doesn't, so none are lost."
-            note = "git refuses if \(code: push.upstream) has moved since your branch last had it."
+            message = "This replaces \(code: push.upstream) with \(code: push.branch). All remote commits are already in \(code: push.branch)."
+            note = "Git rejects the force push if \(code: push.upstream) differs from your local remote-tracking branch."
         }
         let rows = DialogContent.commitRows(push.commits, total: push.count)
         return DialogContent(
@@ -624,8 +624,8 @@ extension BranchModel {
         var sentences: [DialogText] = ["This removes \(code: removal.name) from this repository. Nothing changes on the remote itself."]
         switch removal.branchCount {
         case 0: break
-        case 1: sentences.append("Its remote branch goes from here too, and adding the remote back and fetching brings it again.")
-        default: sentences.append("Its \(removal.branchCount.formatted()) remote branches go from here too, and adding the remote back and fetching brings them again.")
+        case 1: sentences.append("Roga also removes the local remote-tracking branch. Add the remote again and fetch to restore it.")
+        default: sentences.append("Roga also removes the \(removal.branchCount.formatted()) local remote-tracking branches. Add the remote again and fetch to restore them.")
         }
         var rows: [DialogRow] = []
         if !removal.branches.isEmpty {
@@ -692,14 +692,14 @@ extension BranchModel {
         let title: String
         if case .remote(let remote, let branch) = deletion.place {
             title = "Delete \(branch) from \(remote)?"
-            sentences.append("This deletes the branch on \(code: remote), for everyone who uses it.")
+            sentences.append("The branch will be deleted from \(code: remote) for everyone.")
         } else {
             title = "Delete \(deletion.shortName)?"
         }
         switch deletion.lostCount {
         case 0: sentences.append("Its commits are all on other branches or tags, so none are lost.")
-        case 1: sentences.append("1 commit isn't on any other branch or tag, so it goes too.")
-        default: sentences.append("\(deletion.lostCount.formatted()) commits aren't on any other branch or tag, so they go too.")
+        case 1: sentences.append("Deleting this branch leaves 1 commit without a branch or tag.")
+        default: sentences.append("Deleting this branch leaves \(deletion.lostCount.formatted()) commits without a branch or tag.")
         }
         let rows = DialogContent.commitRows(pending.commits, total: deletion.lostCount)
         return DialogContent(
@@ -735,7 +735,7 @@ extension BranchModel {
             + deletion.branches.filter { !choice.picked.contains($0.ref) }.map { TerminalLine.room($0.arguments) }
         return DialogContent(
             id: "branchChoice",
-            title: choice.mergedInto == nil ? "Delete which branches?" : "Delete merged branches?",
+            title: choice.mergedInto == nil ? "Choose branches to delete" : "Delete merged branches?",
             switches: deletion.branches.enumerated().map { index, branch in
                 let others = deletion.branches.filter { $0.ref != branch.ref }
                 let detail: DialogText = if let main = choice.mergedInto, branch.place == .local, deletion.lostCount == 0 {
@@ -782,7 +782,7 @@ extension BranchModel {
         return DialogContent(
             id: "pull",
             title: "Pull \(theirs) into \(choice.branch)",
-            message: "\(code: choice.branch) and \(code: choice.upstream) have moved apart. \(code: choice.upstream) has \(theirs) that \(code: choice.branch) doesn't, and \(code: choice.branch) has \(choice.ahead.formatted()) of its own.",
+            message: "\(code: choice.branch) is \(choice.ahead.formatted()) ahead and \(choice.behind.formatted()) behind \(code: choice.upstream). Choose how to combine their commits.",
             terminal: terminal,
             buttons: [
                 .cancel(cancel),
@@ -824,13 +824,13 @@ extension WorktreeDeletionModel {
         var facts: [DialogRow] = []
         if deletion.uncommittedFiles > 0 {
             facts.append(deletion.uncommittedFiles == 1
-                ? .fact("1 uncommitted file", "goes with the folder")
-                : .fact("\(deletion.uncommittedFiles.formatted()) uncommitted files", "go with the folder"))
+                ? .fact("1 uncommitted file", "will be deleted")
+                : .fact("\(deletion.uncommittedFiles.formatted()) uncommitted files", "will be deleted"))
         }
         if deletion.ignoredCount > 0 {
             let others = deletion.ignoredCount - deletion.ignored.count
             let names = deletion.ignored.joined(separator: ", ")
-            facts.append(.fact("Files git ignores", names + (others > 0 ? " and \(others.formatted()) more" : "")))
+            facts.append(.fact("Ignored files", names + (others > 0 ? " and \(others.formatted()) more" : "")))
         }
         // The words above the card only speak for what's certainly lost.
         let losesSomething = !facts.isEmpty
@@ -842,15 +842,15 @@ extension WorktreeDeletionModel {
 
         var sentences: [DialogText] = []
         if deletion.isLocked {
-            sentences.append("It's locked, which often means an agent is still working in it. Git only removes a locked worktree when it's forced twice.")
+            sentences.append("This worktree is locked and may still be in use. Deleting it requires two force flags.")
         }
         if deletion.hasSubmodules {
             // The lock's sentence has already said it's forced.
             sentences.append(deletion.isLocked
-                ? "Forcing it also takes its submodules, and nothing has looked inside them, so anything that's only there goes too."
-                : "Git only removes a worktree with submodules when it's forced. Nothing has looked inside them, so anything that's only there goes too.")
+                ? "Force-deleting also removes the submodules and any changes stored only in this worktree."
+                : "Deleting a worktree with submodules requires force. Any changes stored only in its submodules will be lost.")
         }
-        if losesSomething { sentences.append("These can't be brought back:") }
+        if losesSomething { sentences.append("The listed files will be deleted.") }
 
         var switches: [DialogSwitch] = []
         if let branch = choice.branch {
@@ -896,7 +896,7 @@ extension WorktreeDeletionModel {
             cards: facts.isEmpty ? [] : [facts],
             switches: switches,
             cardsAfterSwitches: commits.isEmpty ? [] : [commits],
-            note: deletion.lockReason.map { "The reason given for the lock: \($0)" },
+            note: deletion.lockReason.map { "Lock reason · \($0)" },
             terminal: terminal,
             buttons: [
                 .cancel(cancel),
@@ -924,8 +924,8 @@ extension DialogText {
     /// What a switch for deleting a remote branch says.
     static func ofDeletingRemoteBranch(_ deletion: BranchDeletion) -> DialogText {
         if case .remote(let remote, _) = deletion.place {
-            return "This deletes the branch on \(code: remote), for everyone who uses it."
+            return "The branch will be deleted from \(code: remote) for everyone."
         }
-        return "Its remote isn't configured any more, so only this repository's copy goes."
+        return "The remote is no longer configured. This removes the local remote-tracking branch."
     }
 }

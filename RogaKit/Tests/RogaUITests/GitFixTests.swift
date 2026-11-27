@@ -231,7 +231,7 @@ struct GitFixTests {
         work.fix.start(command: ["pull"], said: "fatal: no", with: setup())
         let answer = try await work.settledDialog()
         #expect(try button("Run", in: answer).kind == .destructive)
-        #expect(answer.note?.plain.contains("may discard work that Git cannot recover") == true)
+        #expect(answer.note?.plain.contains("may permanently discard changes") == true)
     }
 
     @Test func anAnswerWithNoCommandsOffersNothing() async throws {
@@ -253,7 +253,7 @@ struct GitFixTests {
         let done = try await work.settledDialog()
         #expect(done.title == "The commands stopped partway")
         #expect(done.message?.plain.contains("git rm --cached nope") == true)
-        #expect(done.message?.plain.contains("The command after it didn't run.") == true)
+        #expect(done.message?.plain.contains("The remaining command was skipped.") == true)
         #expect(done.terminal.filter { if case .ran = $0 { true } else { false } }.count == 1)
         #expect(try await work.git("ls-files", "--stage").contains("160000"))
     }

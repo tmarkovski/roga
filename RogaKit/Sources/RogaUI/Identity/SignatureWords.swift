@@ -348,12 +348,12 @@ struct TrustKeyPopover: View {
                 Text("Trust this key")
                     .font(.system(size: 13, weight: .semibold))
                     .accessibilityAddTraits(.isHeader)
-                Text("For checking the commits it signs")
+                Text("Verify commits signed with this key")
                     .font(.system(size: 12))
                     .foregroundStyle(DialogColors.note)
             }
             .padding(EdgeInsets(top: 13, leading: Self.inset, bottom: 8, trailing: Self.inset))
-            Text("\(offer.localKey.title) is one of this Mac's keys. Once the allowed signers file lists it for \(offer.email), git says the commits it signs are good.")
+            Text("Add \(offer.localKey.title) to Git's allowed signers file to verify commits it signs for \(offer.email).")
                 .font(.system(size: 12))
                 .foregroundStyle(DialogColors.note)
                 .fixedSize(horizontal: false, vertical: true)
@@ -506,21 +506,21 @@ struct SignatureWords: Equatable {
         switch check.result {
         case .good:
             if let signer = check.signer, !email.isEmpty, !signer.localizedCaseInsensitiveContains(email) {
-                self.init(icon: .shieldCheck, title: "Good signature from \(Self.name(signer))", help: who, tone: .good)
+                self.init(icon: .shieldCheck, title: "Valid signature from \(Self.name(signer))", help: who, tone: .good)
             } else {
-                self.init(icon: .shieldCheck, title: "Good \(format.title) signature", help: who, tone: .good)
+                self.init(icon: .shieldCheck, title: "Valid \(format.title) signature", help: who, tone: .good)
             }
         case .untrusted:
             let why = format == .ssh
                 ? "The allowed signers file doesn't list \(offer.map { "\($0.localKey.title), one of this Mac's keys" } ?? "this key")."
                 : "gpg doesn't trust this key enough to say whose it is."
-            self.init(icon: .shieldQuestionMark, title: "Good signature, key not trusted", help: [why, who].compactMap(\.self).joined(separator: " "), tone: .plain)
+            self.init(icon: .shieldQuestionMark, title: "Valid signature, untrusted key", help: [why, who].compactMap(\.self).joined(separator: " "), tone: .plain)
         case .expired:
-            self.init(icon: .shieldAlert, title: "Good signature, expired key", help: who, tone: .warning)
+            self.init(icon: .shieldAlert, title: "Valid signature, expired key", help: who, tone: .warning)
         case .revoked:
             self.init(icon: .shieldAlert, title: "Signed with a revoked key", help: who, tone: .bad)
         case .bad:
-            self.init(icon: .shieldAlert, title: "Bad signature", help: "The signature doesn't match this commit. It was made for other contents, or with another key than it names.", tone: .bad)
+            self.init(icon: .shieldAlert, title: "Bad signature", help: "The signature doesn't match the commit or the signing key.", tone: .bad)
         case .missingKey:
             self.init(icon: .shieldQuestionMark, title: "Signed with a key not on this Mac", help: "git can't check it without the \(format.title) key.", tone: .plain)
         case .notChecked:

@@ -56,7 +56,7 @@ extension MetroMap {
             let day = highlights.days[busiest]
             let value = "\(weekdayFormatter.string(from: day.start)), \(dayFormatter.string(from: day.start))"
             // Saying how often only means something for a day with many.
-            let often = day.commits >= 12 ? ", one for every \(24 * 60 / day.commits) minutes of the day" : ""
+            let often = day.commits >= 12 ? ", averaging one commit every \(24 * 60 / day.commits) minutes" : ""
             beats.append(TourBeat(focus: .day(busiest), eyebrow: "THE BUSIEST DAY", value: value, detail: "\(day.commits.formatted()) commits\(often)"))
         }
         if let index = highlights.longestBranch {

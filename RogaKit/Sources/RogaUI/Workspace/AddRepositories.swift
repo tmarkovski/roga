@@ -94,7 +94,7 @@ struct AddRepositories: View {
     @ViewBuilder private var clonesOnThisMac: some View {
         VStack(alignment: .leading, spacing: 0) {
             filterField
-            Text("Clones found in the folders you’ve already added from.")
+            Text("Local repositories from folders you’ve used before.")
                 .font(.system(size: 12))
                 .foregroundStyle(DialogColors.note)
                 .fixedSize(horizontal: false, vertical: true)
@@ -177,7 +177,7 @@ struct AddRepositories: View {
                 .controlSize(.small)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if visible.isEmpty {
-            Text(filter.isEmpty ? "There’s nothing more to add from these folders." : "No clones match the filter.")
+            Text(filter.isEmpty ? "No more repositories found in these folders." : "No clones match the filter.")
                 .font(.system(size: 13))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
