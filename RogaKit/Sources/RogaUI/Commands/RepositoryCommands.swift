@@ -323,6 +323,8 @@ public struct RepositoryCommands: Commands {
                     .disabled(true)
                 Button("Switch Branch…") {}
                     .disabled(true)
+                Button("Rename Branch…") {}
+                    .disabled(true)
             }
             Divider()
             // It names the branch it compares with, as the refs panel's button does.

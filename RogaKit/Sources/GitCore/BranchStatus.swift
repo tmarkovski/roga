@@ -21,6 +21,9 @@ public struct BranchStatus: Sendable, Hashable {
     /// What `branch.<name>.rebase` or `pull.rebase` says, or nil when neither
     /// is set.
     public var pullRebase: String?
+    /// What its upstream is called on the remote, as `refs/heads/fix-login`,
+    /// when it tracks a branch on a remote that's configured.
+    public var upstreamOnRemote: String?
 
     public init(
         branch: String,
@@ -30,7 +33,8 @@ public struct BranchStatus: Sendable, Hashable {
         behind: Int = 0,
         remote: String? = nil,
         pushRemote: String? = nil,
-        pullRebase: String? = nil
+        pullRebase: String? = nil,
+        upstreamOnRemote: String? = nil
     ) {
         self.branch = branch
         self.upstream = upstream
@@ -40,6 +44,7 @@ public struct BranchStatus: Sendable, Hashable {
         self.remote = remote
         self.pushRemote = pushRemote
         self.pullRebase = pullRebase
+        self.upstreamOnRemote = upstreamOnRemote
     }
 
     /// Whether git would have to combine the branch with its upstream to pull,
@@ -60,6 +65,23 @@ public struct BranchStatus: Sendable, Hashable {
     public var push: Push? {
         if upstream == nil { return pushRemote.map(Push.firstTime) }
         return ahead > 0 && behind == 0 ? .toUpstream : nil
+    }
+
+    /// What clicking to push runs, knowing which branch is main. A branch whose
+    /// upstream is called something else on the remote, as after Rename
+    /// Branch…, pushes to it by that name (decision 120), since a plain `git
+    /// push` refuses then under `push.default=simple`, which is git's default.
+    /// A branch whose upstream is the main branch keeps the plain one, which
+    /// refuses, so that `↑` can't put its commits on main, and so does any
+    /// branch while there's no telling which branch is main.
+    ///
+    /// - Parameter main: The main branch's full name, as
+    ///   `refs/remotes/origin/main`, or nil when that isn't known.
+    public func push(main: String?) -> Push? {
+        guard let push, push == .toUpstream, let main, let upstream, upstream != main,
+              let remote, let onRemote = upstreamOnRemote, onRemote.hasPrefix(Ref.branchPrefix), onRemote != branch
+        else { return push }
+        return .otherBranch(Ref.shortName(branch), remote: remote, onRemote: Ref.shortName(onRemote))
     }
 }
 
@@ -151,8 +173,10 @@ public enum Push: Sendable, Hashable {
     /// (decision 20): a lease alone trusts the remote branch as it was last
     /// fetched, which may have brought in commits nobody has seen.
     case forceWithLease
-    /// A branch other than the one checked out, to the remote branch it tracks.
-    /// `onRemote` is what that's called there, when it isn't called the same.
+    /// A branch by its short name, to the remote branch it tracks: one other
+    /// than the one checked out, or the one checked out when its upstream is
+    /// called something else on the remote (decision 120). `onRemote` is what
+    /// that's called there, when it isn't called the same.
     case otherBranch(String, remote: String, onRemote: String?)
     /// A branch other than the one checked out, to a remote that doesn't have it
     /// yet, which becomes its upstream.
@@ -216,6 +240,40 @@ public struct NewBranch: Sendable, Hashable {
 
     public var arguments: [String] {
         (inNewWorktree ? ["worktree", "add", "-b", name, folder] : ["switch", "-c", name]) + (startPoint.map { [$0.hex] } ?? [])
+    }
+}
+
+/// A new name for a branch, which renames it here and nowhere else (decision
+/// 120). git takes its upstream, its reflog and its settings along, so it
+/// keeps tracking the same remote branch, which keeps its name, and a
+/// worktree that has it checked out stays on it.
+public struct BranchRename: Sendable, Hashable {
+    /// What's wrong with the new name before git sees it.
+    public enum Problem: Sendable, Hashable {
+        /// It starts with a hyphen, which git would take for an option.
+        case startsWithHyphen
+    }
+
+    /// The branch's short name.
+    public var branch: String
+    /// The short name it gets.
+    public var name: String
+
+    public init(branch: String, name: String) {
+        self.branch = branch
+        self.name = name
+    }
+
+    /// Whether it would keep the name it has, which runs nothing.
+    public var keepsName: Bool { name == branch }
+
+    public var problem: Problem? {
+        name.hasPrefix("-") ? .startsWithHyphen : nil
+    }
+
+    /// `-m` rather than `-M`, so that git refuses a name another branch has.
+    public var arguments: [String] {
+        ["branch", "-m", branch, name]
     }
 }
 

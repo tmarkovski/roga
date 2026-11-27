@@ -363,6 +363,33 @@ struct HistoryMenuTests {
         #expect(rows.suffix(4) == ["Create ▸", "Copy ▸", "-", "Delete…"])
     }
 
+    @Test func aLocalBranchCanBeRenamedNextToDeletingIt() {
+        var renamed = 0
+        var actions = HistoryMenu.Actions()
+        actions.rename = { renamed += 1 }
+        actions.delete = HistoryMenu.Delete(title: "Delete…", isEnabled: true) {}
+        let all = entries(target(ref: feature), situation, actions: actions)
+        #expect(titles(all).suffix(4) == ["Copy ▸", "-", "Rename…", "Delete…"])
+        for case let .command(name, _, _, _, action) in all where name.plain == "Rename…" { action() }
+        #expect(renamed == 1)
+    }
+
+    @Test func renamingWaitsForWhatsRunning() {
+        var situation = situation
+        situation.isBusy = true
+        var actions = HistoryMenu.Actions()
+        actions.rename = {}
+        #expect(isEnabled("Rename…", in: entries(target(ref: feature), situation, actions: actions)) == false)
+    }
+
+    @Test func onlyALocalBranchCanBeRenamed() {
+        var actions = HistoryMenu.Actions()
+        actions.rename = {}
+        for ref in ["refs/remotes/origin/feature", "refs/tags/v1"] {
+            #expect(!titles(entries(target(ref: ref), situation, actions: actions)).contains("Rename…"), "\(ref)")
+        }
+    }
+
     @Test func whatMovesHeadWaitsForWhatsRunningButCopyDoesnt() {
         var situation = situation
         situation.canChange = false

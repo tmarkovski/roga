@@ -92,6 +92,9 @@ enum HistoryMenu {
         var copy: (String) -> Void = { _ in }
         var review: () -> Void = {}
         var replay: (() -> Void)?
+        /// Opens the popover that renames the target's branch, when it's a local
+        /// branch (decision 120).
+        var rename: (() -> Void)?
         var delete: Delete?
     }
 
@@ -114,7 +117,7 @@ enum HistoryMenu {
             moreRows(target, name, situation, actions),
             // A group of its own, so it isn't lost at the end of More.
             actions.replay.map { [.command("Replay history", action: $0)] } ?? [],
-            actions.delete.map { [.command(RefMenu.Title($0.title), isDestructive: true, isEnabled: $0.isEnabled, action: $0.action)] } ?? [],
+            renamingAndDeleting(target, situation, actions),
         ]
         let heading: RefMenu.Title = target.refIsBranch ? .branch(name ?? target.shortID) : RefMenu.Title(name ?? target.shortID)
         var entries: [RefMenu.Entry] = [.header(heading)]
@@ -123,6 +126,19 @@ enum HistoryMenu {
             entries += section
         }
         return entries
+    }
+
+    /// Renaming a local branch and deleting what the menu acts on, together at
+    /// the end, since both are about the name rather than the commits.
+    private static func renamingAndDeleting(_ target: Target, _ situation: Situation, _ actions: Actions) -> [RefMenu.Entry] {
+        var rows: [RefMenu.Entry] = []
+        if target.refIsLocalBranch, let rename = actions.rename {
+            rows.append(.command("Rename…", isEnabled: !situation.isBusy, action: rename))
+        }
+        if let delete = actions.delete {
+            rows.append(.command(RefMenu.Title(delete.title), isDestructive: true, isEnabled: delete.isEnabled, action: delete.action))
+        }
+        return rows
     }
 
     /// What the rows call where `HEAD` is, which is only bold when it's a branch.
@@ -390,6 +406,11 @@ extension RepositoryModel {
             if let upstream {
                 actions.fastForwardBranch = { [weak self] in self?.branch.fastForward(branch: ref, toUpstream: upstream.name) }
             }
+        }
+        if let ref = target.ref, target.refIsLocalBranch {
+            // The status knows the current branch's upstream before the refs do.
+            let upstream = ref == history?.refs.currentBranch ? branch.status?.upstream : relation(of: ref)?.upstream?.name
+            actions.rename = { [weak self] in self?.branch.startRename(of: ref, upstream: upstream, from: MenuAnchor.current) }
         }
         if let ref = target.ref, target.refIsTag, let remote = branch.tagRemote {
             actions.pushTag = { [weak self] in self?.branch.push(tag: Ref.shortName(ref), to: remote) }

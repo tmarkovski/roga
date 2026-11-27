@@ -3,33 +3,39 @@ import SwiftUI
 
 /// The row under the tabs, at the top of the middle column, which says where the
 /// worktree's branch stands and acts on it (decision 95). It holds what the
-/// title row held before the tabs took that row: the branch's chip with its
-/// counts, which pull and push (decision 19), then at the right end Fetch and
-/// New Branch, a thin line, and history's number of commits and commands. It's
-/// as tall as a panel's header and lines up with the refs panel's. Who the
-/// commits go out as isn't here, since it's the whole repository's, and the
-/// title row has it (decision 105).
+/// title row held before the tabs took that row: the branch, over how far it is
+/// from the main branch on the remote (decision 120), with its counts, which
+/// pull and push (decision 19), then at the right end Fetch and New Branch, a
+/// thin line, and the order of history. It's as tall as a panel's header and
+/// lines up with the refs panel's. Who the commits go out as isn't here, since
+/// it's the whole repository's, and the title row has it (decision 105).
 ///
-/// After the counts, it says what the worktree's agent is doing (decision 100),
-/// except while Roga says what it's doing or just did, whose words come first.
+/// After the counts, it says what the worktree's agent is doing, in two lines
+/// (decisions 100 and 119), except while Roga says what it's doing or just did,
+/// whose words come first.
 ///
-/// When the row is short of room, the agent's words are cut short first, then
-/// the number of commits goes, then the branch's name is cut short. The counts,
-/// Fetch and New Branch stay. In a narrow column, the number of commits goes as
-/// soon as an agent has something to say.
+/// Every control in it is 36 points tall, as its two-line blocks need, so that
+/// the gray that fills one under the pointer is the same height from one end of
+/// the row to the other. When the row is short of room, the agent's words are
+/// cut short first, and its first line gives way to its name, which stays
+/// whole, then the line under the branch's name is cut short, and then the
+/// name. The counts, Fetch and New Branch stay.
 struct BranchBar: View {
     let model: RepositoryModel
     let worktree: Worktree
     let monitor: AgentMonitor
     let list: RepositoryList
+    /// The repository's name, for the branch's popover.
+    let repositoryName: String
     /// Goes to the refs panel's filter, or nil when the refs panel doesn't fit.
     let switchBranch: (() -> Void)?
+    /// Takes the worktree's lock off, from the branch's popover.
+    let unlock: () -> Void
     /// Shows one of the repository's worktrees in the window.
     let showWorktree: (String, ObjectID?) -> Void
     /// Whether the row shows what agents are doing. It follows the sidebar's
     /// marks, so that turning agents off hides it too.
     var marks = AgentMarksSetting()
-    @State private var width: CGFloat = 0
 
     /// The space between the branch's buttons and the line after them, and
     /// after the line, so that it has about 14 points on each side between New
@@ -38,10 +44,9 @@ struct BranchBar: View {
     /// How tall the line after the branch's buttons is, about as tall as their
     /// icons.
     private static let lineHeight = 18.0
-    /// How wide the row can be and still have room for the agent's words
-    /// beside history's number of commits. Under it, the number goes while an
-    /// agent has something to say.
-    static let widthForCommitCount: CGFloat = 600
+    /// How tall every control in the row is, which leaves 4 points above and
+    /// below each in the row's 44.
+    static let controlHeight: CGFloat = 36
 
     var body: some View {
         let line = agentLine
@@ -54,7 +59,7 @@ struct BranchBar: View {
                     .lineLimit(1)
                     .padding(.leading, 5)
             } else {
-                BranchControl(branch: model.branch, worktree: worktree, switchBranch: switchBranch, showWorktree: showWorktree)
+                BranchControl(branch: model.branch, worktree: worktree, repositoryName: repositoryName, switchBranch: switchBranch, unlock: unlock)
                     .layoutPriority(1)
             }
             if showsLine, let line {
@@ -85,7 +90,7 @@ struct BranchBar: View {
                             .padding(.horizontal, Self.lineGap)
                             .accessibilityHidden(true)
                     }
-                    HistoryCommands(model: model, showsCommitCount: line == nil || width >= Self.widthForCommitCount)
+                    HistoryCommands(model: model, controlHeight: Self.controlHeight)
                 }
             }
         }
@@ -95,7 +100,6 @@ struct BranchBar: View {
         .frame(height: PanelSplitLayout.headerHeight)
         .frame(maxWidth: .infinity)
         .animation(.easeOut(duration: 0.2), value: showsLine)
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .background(Palette.surface)
         .overlay(alignment: .bottom) {
             Rectangle()

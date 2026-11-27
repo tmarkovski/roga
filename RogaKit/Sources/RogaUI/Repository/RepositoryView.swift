@@ -153,14 +153,13 @@ struct CheckoutNote: View {
     }
 }
 
-/// History's part of the branch's row: how many commits it shows, and its
-/// commands. The number of commits goes when the row is short of room, after
-/// the agent's words are cut short and before the branch's name is.
+/// History's part of the branch's row: its order, whose menu says how many
+/// commits history shows, which leaves the row's room to the agent (decision
+/// 119), and a note while history opens slowly.
 struct HistoryCommands: View {
     @Bindable var model: RepositoryModel
-    /// Whether the number of commits may show, which the branch row turns off
-    /// in a narrow column while an agent has something to say (decision 100).
-    var showsCommitCount = true
+    /// How tall the order's button is, as tall as the row's other controls.
+    var controlHeight: CGFloat = 32
 
     var body: some View {
         HStack(spacing: 4) {
@@ -180,35 +179,19 @@ struct HistoryCommands: View {
                 .help(explanation)
                 .padding(.trailing, 4)
             }
-            if showsCommitCount {
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 8) {
-                        commitCount
-                        orderMenu
-                    }
-                    orderMenu
-                }
-            } else {
-                orderMenu
-            }
-        }
-    }
-
-    /// Every commit history shows, from every branch, remote branch and tag,
-    /// rather than the branch's, so it goes with history's commands.
-    @ViewBuilder private var commitCount: some View {
-        if let commits = model.commitCountDescription {
-            Text(commits)
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .fixedSize()
-                .help("History shows \(commits), from every branch, remote branch and tag")
+            orderMenu
         }
     }
 
     private var orderMenu: some View {
         Menu {
+            // Every commit history shows, from every branch, remote branch
+            // and tag, rather than the branch's, so it goes with history's
+            // order.
+            if let commits = model.commitCountDescription {
+                Text("History shows \(commits)")
+                Divider()
+            }
             Picker("Order", selection: $model.sort) {
                 Text("Topological order").tag(HistoryOrder.Sort.topological)
                 Text("Date order").tag(HistoryOrder.Sort.date)
@@ -217,7 +200,7 @@ struct HistoryCommands: View {
         } label: {
             // The refs panel's icon for sorting, since this orders history
             // rather than leaving anything out.
-            HoverIcon { Icon.sort.image }
+            HoverIcon(size: controlHeight) { Icon.sort.image }
         }
         .menuStyle(.button)
         .buttonStyle(.plain)

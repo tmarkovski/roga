@@ -42,7 +42,9 @@ enum BranchStatusLoader {
             behind: entry.counts.behind,
             remote: remote,
             pushRemote: entry.pushRemote.flatMap { names.contains($0) ? $0 : nil } ?? remote,
-            pullRebase: branchSetting ?? pullSetting
+            pullRebase: branchSetting ?? pullSetting,
+            // Only for a remote that's configured, which is the one `remote` is then.
+            upstreamOnRemote: tracked == nil ? nil : entry.upstreamOnRemote
         )
     }
 

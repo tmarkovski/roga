@@ -4,8 +4,9 @@ import Testing
 @testable import RogaUI
 
 /// What the branch row says about the agents in the worktree on screen
-/// (decision 100): the sidebar's words, the mark or the light in the words,
-/// and the popover's sections in their order.
+/// (decision 100), in two lines (decision 120): who and what state over what
+/// they're doing, the mark or the light in the words, and the popover's
+/// sections in their order.
 struct AgentLineTests {
     let start = Date(timeIntervalSince1970: 1_800_000_000)
 
@@ -24,8 +25,8 @@ struct AgentLineTests {
 
     @Test func anAgentAtWorkSaysWhatItsDoingAndForHowLong() throws {
         let line = try #require(AgentLine([agent("a", .working, "Run the test suite"), agent("b", .idle)]))
-        #expect(line.parts(now: minutes(6)) == ("Run the test suite", "6 min"))
-        #expect(line.parts(now: start) == ("Run the test suite", nil))
+        #expect(line.lines(now: minutes(6)) == ("Claude Code is working", "Claude Code", "6 min", "Run the test suite"))
+        #expect(line.lines(now: start).time == nil)
         // The words shimmer rather than following a second ring under the
         // tab's.
         #expect(line.mark == nil)
@@ -38,20 +39,24 @@ struct AgentLineTests {
 
     @Test func anAgentThatHasntSaidAnythingIsNamed() throws {
         let line = try #require(AgentLine([agent("a", .working)]))
-        #expect(line.parts(now: start) == ("Claude Code is working", nil))
+        #expect(line.lines(now: start) == ("Claude Code is working", "Claude Code", nil, nil))
     }
 
     @Test func anAgentThatWaitsIsInAmber() throws {
         let line = try #require(AgentLine([agent("a", .waiting(.permission), host: .codex, "git push")]))
-        #expect(line.parts(now: minutes(2)) == ("Approval required: git push", "2 min"))
+        #expect(line.lines(now: minutes(2)) == ("Codex needs approval", "Codex", "2 min", "git push"))
         #expect(line.isWaiting)
         #expect(!line.shimmers)
         #expect(line.mark == .agent(.waiting(.permission)))
     }
 
-    @Test func severalSessionsAtWorkAreCounted() throws {
+    /// Two agents are named, and the one at work longest says what it's
+    /// doing.
+    @Test func severalSessionsAtWorkAreNamedOrCounted() throws {
         let line = try #require(AgentLine([agent("a", .working, at: 60, "Edit a.swift"), agent("b", .working, host: .codex, "Read b.swift")]))
-        #expect(line.parts(now: minutes(6)) == ("2 agents working", "6 min"))
+        #expect(line.lines(now: minutes(6)) == ("Claude Code and Codex are working", "2 agents", "6 min", "Read b.swift"))
+        let three = try #require(AgentLine([agent("a", .working), agent("b", .working), agent("c", .working, host: .codex)]))
+        #expect(three.lines(now: start).state == "3 agents are working")
     }
 
     /// With another session doing something else, a bare "git push" wouldn't
@@ -62,7 +67,9 @@ struct AgentLineTests {
             agent("b", .waiting(.permission), host: .codex, at: 120, "git push"),
             agent("c", .finished(failed: false), "Added the tooltip"),
         ]))
-        #expect(line.parts(now: minutes(3)) == ("Codex needs approval: git push", "1 min"))
+        // The second line says what the most urgent of the others is doing,
+        // and in a narrow column the first counts them.
+        #expect(line.lines(now: minutes(3)) == ("Codex needs approval", "Codex +2", "1 min", "git push · Claude Code is working"))
         #expect(line.isWaiting)
         // The line speaks for the one that waits, so its words don't shimmer
         // while Claude Code works.
@@ -73,7 +80,7 @@ struct AgentLineTests {
 
     @Test func aFinishedAgentShowsItsReplyAfterACheck() throws {
         let line = try #require(AgentLine([agent("a", .finished(failed: false), "Added the line to the tooltip")]))
-        #expect(line.parts(now: minutes(30)) == ("Added the line to the tooltip", nil))
+        #expect(line.lines(now: minutes(30)) == ("Claude Code finished", "Claude Code", nil, "Added the line to the tooltip"))
         #expect(line.mark == .finished)
         #expect(!line.shimmers)
     }
@@ -82,7 +89,7 @@ struct AgentLineTests {
         let line = try #require(AgentLine([agent("a", .finished(failed: true))]))
         #expect(line.hasFailed)
         #expect(line.mark == .failed)
-        #expect(line.parts(now: minutes(5)) == ("Claude Code stopped with an error", nil))
+        #expect(line.lines(now: minutes(5)) == ("Claude Code stopped with an error", "Claude Code", nil, "Its turn ended with an error."))
         #expect(line.help(now: minutes(5)) == "Claude Code stopped with an error")
         // One that failed among others that finished is counted with them.
         let both = try #require(AgentLine([agent("a", .finished(failed: true)), agent("b", .finished(failed: false), host: .codex, "Done")]))

@@ -4,15 +4,19 @@ import IconUI
 import SwiftUI
 
 /// What the agent in the worktree on screen is doing, after the counts in the
-/// branch row (decision 100), as in `Run the test suite · 6 min`. It's the
-/// sidebar's second line, in gray, with a light in Roga's orange running
-/// through its words while an agent works. Otherwise a mark comes first, and
-/// the words are in amber while an agent waits for you. When the row is short
-/// of room, the words are cut at their end and the mark and how long stay.
+/// branch row (decision 100), in two lines (decision 120): who and what state
+/// they're in, with how long, over what they're doing, as in `Claude Code is
+/// working · 6 min` over `Run the test suite`. While an agent works, a light in
+/// Roga's orange runs through the second line, since the worktree's tab turns a
+/// ring a few points above. Otherwise the first line starts with a mark, and
+/// it's amber while an agent waits for you and red when its turn ended with an
+/// error. When the row is short of room, the second line is cut at its end, and
+/// the first gives way to the agent's name alone.
 ///
-/// It's a button: it fills with gray under the pointer, as the counts do,
-/// and a click opens a popover with a section for each session. It redraws as
-/// an agent reaches another minute, and with each new line.
+/// It's a button, 36 points tall like everything else in the row: it fills
+/// with gray under the pointer, as the counts do, and a click opens a popover
+/// with a section for each session. It redraws as an agent reaches another
+/// minute, and with each new line.
 struct BranchAgentLine: View {
     let line: AgentLine
     let monitor: AgentMonitor
@@ -20,41 +24,56 @@ struct BranchAgentLine: View {
     @State private var isHovering = false
     @State private var showsDetail = false
 
-    /// The words' font, as AppKit has it, which the light draws them in again
-    /// to light them up.
-    private static let font = NSFont.systemFont(ofSize: 13)
+    /// The second line's font, as AppKit has it, which the light draws the
+    /// words in again to light them up.
+    private static let wordsFont = NSFont.systemFont(ofSize: 11)
 
     var body: some View {
         TimelineView(WholeMinutes(of: [line.summary])) { context in
-            let parts = line.parts(now: context.date)
+            let lines = line.lines(now: context.date)
             let help = line.help(now: context.date)
             Button {
                 showsDetail.toggle()
             } label: {
-                HStack(spacing: 6) {
-                    if let mark = line.mark {
-                        AgentLineMark(mark: mark)
-                    }
+                VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 0) {
-                        Text(parts.words)
-                            .truncationMode(.tail)
-                            .overlay {
-                                if line.shimmers {
-                                    TextShimmer(text: parts.words, font: Self.font)
-                                }
-                            }
-                        if let time = parts.time {
+                        if let mark = line.mark {
+                            AgentLineMark(mark: mark, size: 13)
+                                .padding(.trailing, 6)
+                        }
+                        // The name alone stays whole, so that in a narrow
+                        // column the line under the branch's name is cut
+                        // short before it.
+                        ViewThatFits(in: .horizontal) {
+                            Text(lines.state)
+                            Text(lines.short)
+                                .fixedSize()
+                        }
+                        if let time = lines.time {
                             Text(" · \(time)")
                                 .monospacedDigit()
+                                .foregroundStyle(.secondary)
                                 .fixedSize()
                         }
                     }
-                    .foregroundStyle(line.isWaiting ? AnyShapeStyle(AgentColors.warn) : AnyShapeStyle(.secondary))
+                    .font(.system(size: 13))
+                    .foregroundStyle(tone)
+                    if let words = lines.words {
+                        Text(words)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .truncationMode(.tail)
+                            .overlay {
+                                if line.shimmers {
+                                    TextShimmer(text: words, font: Self.wordsFont)
+                                }
+                            }
+                    }
                 }
-                .font(.system(size: 13))
                 .lineLimit(1)
-                .padding(.horizontal, 8)
-                .frame(height: 32)
+                .padding(.leading, 7)
+                .padding(.trailing, 9)
+                .frame(height: BranchBar.controlHeight)
                 .background {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .fill(isHovering || showsDetail ? Palette.buttonHover : .clear)
@@ -73,6 +92,14 @@ struct BranchAgentLine: View {
                 }
             }
         }
+    }
+
+    /// The first line's color: amber while an agent waits for you, red when a
+    /// turn ended with an error, and the text's own otherwise.
+    private var tone: AnyShapeStyle {
+        if line.isWaiting { return AnyShapeStyle(AgentColors.warn) }
+        if line.hasFailed { return AnyShapeStyle(Palette.red) }
+        return AnyShapeStyle(.primary)
     }
 }
 
