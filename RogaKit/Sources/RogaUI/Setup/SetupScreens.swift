@@ -260,7 +260,6 @@ struct SetupGit: View {
             SetupHead(eyebrow: SetupModel.Step.git.subject, title: heading, sub: SetupWords.gitSub)
             SetupCard {
                 ProgramRow(
-                    icon: .branch,
                     content: .git(state: gitProvider.state, survey: gitProvider.survey),
                     picker: .git(gitProvider),
                     choose: chooseAnother
@@ -300,7 +299,7 @@ struct SetupGit: View {
             }
             SetupCard(clips: true) {
                 ForEach(copies, id: \.executable) { copy in
-                    ProgramRow(icon: .branch, content: ProgramRowContent(
+                    ProgramRow(content: ProgramRowContent(
                         name: "Git",
                         version: copy.version?.description,
                         status: .warning(copy.version == nil ? "No version" : "Too old"),
@@ -308,7 +307,7 @@ struct SetupGit: View {
                     ))
                 }
                 if developerToolsMissing {
-                    ProgramRow(icon: .branch, content: ProgramRowContent(
+                    ProgramRow(content: ProgramRowContent(
                         name: "Git from Apple",
                         line: "It comes with the Command Line Tools, which aren't installed.",
                         tone: .plain,
@@ -364,7 +363,6 @@ struct SetupAgents: View {
             SetupCard {
                 ForEach(AgentKind.allCases) { kind in
                     ProgramRow(
-                        icon: .squareTerminal,
                         content: .agent(kind, lookup: agents.lookups[kind]),
                         picker: .agent(kind, agents: agents, choose: { setup.chooseProgram(kind, $0) }),
                         choose: { choose(kind) }

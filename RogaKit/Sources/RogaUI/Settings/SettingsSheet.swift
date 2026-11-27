@@ -624,7 +624,7 @@ struct SettingsSheet: View {
     /// chooses, since the row's name is only the first one's.
     private var codeFontRow: some View {
         SettingsRow(title: SettingsItem.codeFont.title, help: SettingsItem.codeFont.help, namesControl: false) {
-            HStack(spacing: 0) {
+            HStack(spacing: 8) {
                 SettingsPopup(
                     selection: shownCodeFontFamily,
                     options: codeFontOptions,
@@ -690,7 +690,7 @@ private struct SettingsSidebar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            search
+            SettingsSearchField(query: $query)
                 .padding(.bottom, 12)
             ForEach(Array(SettingsPage.groups.enumerated()), id: \.offset) { index, group in
                 if index > 0 {
@@ -719,22 +719,30 @@ private struct SettingsSidebar: View {
         }
         .padding(EdgeInsets(top: 11, leading: 12, bottom: 12, trailing: 12))
     }
+}
 
-    private var search: some View {
+/// The search field at the top of the sidebar, drawn as Settings' other
+/// fields are, with the magnifying glass at its start. It's as tall as a
+/// page's row under it.
+private struct SettingsSearchField: View {
+    @Binding var query: String
+    @State private var isHovering = false
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
         HStack(spacing: 8) {
             Icon.search.image
                 .font(.system(size: 13))
                 .foregroundStyle(SettingsColors.note)
             TextField("Search", text: $query)
                 .textFieldStyle(.plain)
+                .focused($isFocused)
                 .accessibilityLabel("Search settings")
         }
         .padding(.horizontal, 10)
         .frame(height: 30)
-        .overlay {
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .strokeBorder(SettingsColors.line, lineWidth: 1)
-        }
+        .settingsBox(isHovering: isHovering, isFocused: isFocused)
+        .onHover { isHovering = $0 }
     }
 }
 
