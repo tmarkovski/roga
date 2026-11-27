@@ -128,3 +128,4 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [118](0118-follow-a-changed-setting-without-making-another-thread-wait-for-the-main-thread.md) | Follow a changed setting without making another thread wait for the main thread | Accepted |
 | [119](0119-branches-on-one-line-and-what-the-pointer-lights-up.md) | Branches on one line, merged branches, and what the pointer lights up | Accepted |
 | [120](0120-say-how-far-the-branch-is-from-main-and-make-its-menu-a-popover.md) | Say how far the branch is from main, and make its menu a popover | Accepted |
+| [121](0121-delete-a-folder-of-branches-or-the-branches-picked.md) | Delete a folder of branches, or the branches picked with Command and Shift | Accepted |

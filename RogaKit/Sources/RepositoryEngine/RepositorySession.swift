@@ -724,11 +724,27 @@ public actor RepositorySession {
     ///   - names: The full names of the branches and remote branches on the commit.
     ///   - commit: The commit they were on when someone asked, or nil for branches
     ///     on different commits, which are taken wherever they are now.
+    ///   - keepingMain: Whether the main branch stays when it's among them, as it
+    ///     does when several branches are deleted together (decision 121).
     ///   - limit: The most commits to list of those deleting all of them would lose.
     ///   - worktree: The worktree's folder.
     @concurrent
-    public nonisolated func prepareToDelete(branches names: [String], on commit: ObjectID?, limit: Int, in worktree: String) async throws -> CommitBranchesDeletion {
-        try await CommitBranchesDeletion.prepare(branches: names, on: commit, limit: limit, in: worktree, worktrees: try await worktrees(), git: git)
+    public nonisolated func prepareToDelete(
+        branches names: [String],
+        on commit: ObjectID?,
+        keepingMain: Bool = false,
+        limit: Int,
+        in worktree: String
+    ) async throws -> CommitBranchesDeletion {
+        try await CommitBranchesDeletion.prepare(
+            branches: names,
+            on: commit,
+            keepingMain: keepingMain,
+            limit: limit,
+            in: worktree,
+            worktrees: try await worktrees(),
+            git: git
+        )
     }
 
     /// Deletes a branch. Deleting one from a remote first stops any fetch that's

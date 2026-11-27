@@ -93,9 +93,20 @@ struct HookActivityTests {
         (.codex, "apply_patch", ToolInput(command: .line("garbage")), "Editing files"),
         (.codex, "spawn_agent", ToolInput(description: "Check the docs"), "Subagent: Check the docs"),
         (.codex, "request_user_input", ToolInput(), "Asked a question"),
+        (.codex, "request_user_input_async", ToolInput(), "Asked a question"),
         (.codex, "mcp__linear__get_issue", ToolInput(), "Using linear"),
+        (.codex, "view_image", ToolInput(filePath: "/Users/me/Desktop/Screenshot 2026-11-27.png"), "Looking at Screenshot 2026-11-27.png"),
+        (.codex, "view_image", ToolInput(), "Looking at an image"),
+        (.codex, "web__run", ToolInput(), "Browsing the web"),
+        (.codex, "image_gen__imagegen", ToolInput(description: "A secret prompt"), "Making an image"),
+        (.codex, "read_mcp_resource", ToolInput(server: "linear"), "Using linear"),
+        (.codex, "list_mcp_resources", ToolInput(), "Using MCP servers"),
+        (.codex, "sleep", ToolInput(), "Waiting"),
         // Task is Claude's old name for subagents, and nothing in particular to Codex.
         (.codex, "Task", ToolInput(description: "Something"), "Task"),
+        // Any other tool says its name in words.
+        (.codex, "some_new_tool", ToolInput(), "Some new tool"),
+        (.claude, "EnterWorktree", ToolInput(), "Enter worktree"),
     ])
     func makesALineForEachTool(host: AgentHost, tool: String, input: ToolInput, line: String) {
         #expect(Activity.line(host: host, tool: tool, input: input) == line)
@@ -105,6 +116,35 @@ struct HookActivityTests {
     func toolsThatKeepTheTaskListHaveNoLine(tool: String) {
         #expect(Activity.line(host: .claude, tool: tool, input: ToolInput(description: "Plan")) == nil)
         #expect(Activity.line(host: .codex, tool: tool, input: ToolInput()) == nil)
+    }
+
+    @Test(arguments: ["exec", "wait", "write_stdin", "create_goal", "get_goal", "update_goal", "clock__curr_time"])
+    func codexToolsThatWaitOrKeepItsGoalLeaveTheLine(tool: String) {
+        #expect(Activity.line(host: .codex, tool: tool, input: ToolInput(command: .line("swift test"))) == nil)
+    }
+
+    @Test(arguments: [
+        ("view_image", "View image"),
+        ("EnterWorktree", "Enter worktree"),
+        ("SendMessage", "Send message"),
+        ("LSP", "LSP"),
+        ("MCPSearch", "MCP search"),
+        ("get_v2_status", "Get v2 status"),
+        ("ns__do_thing", "Ns do thing"),
+        ("Skill", "Skill"),
+        ("_", "_"),
+    ])
+    func saysAToolsNameInWords(tool: String, words: String) {
+        #expect(Activity.words(ofTool: tool) == words)
+    }
+
+    /// Codex's `view_image` names its file `path`, which a payload too big to
+    /// read finds too.
+    @Test func readsTheImageCodexLooksAt() throws {
+        let event = try parsed(#"{"session_id":"s2","turn_id":"t1","transcript_path":"/Users/me/.codex/sessions/s2.jsonl","cwd":"/w","hook_event_name":"PreToolUse","model":"gpt-6-astra","permission_mode":"default","tool_name":"view_image","tool_use_id":"call_1","tool_input":{"path":"/Users/me/w/docs/images/refs.png"}}"#, host: .codex)
+        #expect(event?.activity == "Looking at refs.png")
+        let scanned = ToolInput(scanning: Array(#"{"transcript_path":"/t/s.jsonl","tool_name":"view_image","tool_input":{"path":"/w/a.png","#.utf8)[...])
+        #expect(scanned.filePath == "/w/a.png")
     }
 
     // MARK: - Commands

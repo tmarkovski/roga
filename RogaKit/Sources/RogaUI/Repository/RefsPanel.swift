@@ -7,7 +7,10 @@ import SwiftUI
 /// The panel on the right of the window, which lists the repository's branches,
 /// remotes, tags and stashes, and the worktree's submodules (docs/main-window.md).
 /// Clicking a ref selects its commit in history, and double-clicking a branch
-/// checks it out, as double-clicking its badge there does.
+/// checks it out, as double-clicking its badge there does. Command-click and
+/// Shift-click pick several local branches, which their menu deletes together,
+/// and a folder of local branches has a menu that deletes the branches in it
+/// (decision 121).
 ///
 /// It draws its own rows rather than using a `List`, for the same reason as the
 /// sidebar: its rows swap their label for commands on hover. So it handles the
@@ -118,9 +121,9 @@ struct RefsPanel: View {
                         ForEach(rows.local) { row in
                             switch row.content {
                             case .folder(let ref, let name, let count, let isCollapsed):
-                                folderRow(ref: ref, name: name, count: count, isCollapsed: isCollapsed, depth: row.depth)
+                                folderRow(ref: ref, name: name, count: count, isCollapsed: isCollapsed, depth: row.depth, menu: folderMenu(ref, in: details))
                             case .branch(let branch, let title):
-                                branchRow(branch, title: title, depth: row.depth, isCurrent: branch.name == details.currentBranch)
+                                branchRow(branch, title: title, depth: row.depth, isCurrent: branch.name == details.currentBranch, lists: details)
                             }
                         }
                     }
@@ -176,6 +179,11 @@ struct RefsPanel: View {
                 step(by: press.key == .downArrow ? 1 : -1)
                 return .handled
             }
+            .onKeyPress(.escape) {
+                guard !refs.picked.isEmpty else { return .ignored }
+                refs.clearPicked()
+                return .handled
+            }
             .onChange(of: refs.selectionSteps) {
                 if let name = refs.selectedRef { scroller.scrollTo(name) }
             }
@@ -219,12 +227,47 @@ struct RefsPanel: View {
     }
 
     /// A folder of branches, which opens and closes.
-    private func folderRow(ref: String, name: String, count: Int, isCollapsed: Bool, depth: Int) -> some View {
-        RefFolderRow(name: name, path: Ref.shortName(ref), count: count, isCollapsed: isCollapsed, indent: RefIndent.of(depth)) {
+    private func folderRow(ref: String, name: String, count: Int, isCollapsed: Bool, depth: Int, menu: [RefMenu.Entry] = []) -> some View {
+        RefFolderRow(name: name, path: Ref.shortName(ref), count: count, isCollapsed: isCollapsed, indent: RefIndent.of(depth), menu: menu) {
             isListFocused = true
             setCollapsed(!isCollapsed, folder: ref)
         }
         .id(ref)
+    }
+
+    /// What right-clicking a folder of local branches offers: deleting the
+    /// branches in it that the panel lists, which a filter narrows as it narrows
+    /// the folder (decision 121). A folder of a remote's branches has no menu.
+    private func folderMenu(_ ref: String, in details: RefDetails) -> [RefMenu.Entry] {
+        guard ref.hasPrefix(Ref.branchPrefix) else { return [] }
+        let path = Ref.shortName(ref)
+        let branches = details.branches.filter { $0.name.hasPrefix(ref) }
+        return [
+            .header(RefMenu.Title(path)),
+            deleteSeveral(branches, current: details.currentBranch, as: .folder(path)),
+        ]
+    }
+
+    /// What right-clicking one of the picked branches offers (decision 121).
+    private func pickedMenu(in details: RefDetails) -> [RefMenu.Entry] {
+        let branches = details.branches.filter { refs.picked.contains($0.name) }
+        return [
+            .header(RefMenu.Title("\(branches.count.formatted()) branches")),
+            deleteSeveral(branches, current: details.currentBranch, as: .picked),
+        ]
+    }
+
+    /// Deletes some local branches, after a dialog with a switch for each. Its
+    /// count leaves out the ones git won't delete because they're checked out,
+    /// and the main branch, which the dialog says stay.
+    private func deleteSeveral(_ branches: [BranchDetails], current: String?, as kind: BranchModel.BranchChoice.Kind) -> RefMenu.Entry {
+        let main = model.mainBranch
+        let deletable = branches.filter { $0.name != current && $0.worktree == nil && $0.name != main }.count
+        let title: RefMenu.Title = deletable == 1 ? "Delete 1 branch…" : "Delete \(deletable.formatted()) branches…"
+        return .command(title, isDestructive: true, isEnabled: deletable > 0 && !model.branch.isBusy) {
+            isListFocused = true
+            model.branch.askToDelete(branches: branches.map(\.name), as: kind)
+        }
     }
 
     /// A local branch, on one line (decision 119). Its icon says whose it is and
@@ -234,8 +277,9 @@ struct RefsPanel: View {
     ///
     /// - Parameter title: What's left of the branch's name after the folders
     ///   it's in.
-    private func branchRow(_ branch: BranchDetails, title: String, depth: Int, isCurrent: Bool) -> some View {
+    private func branchRow(_ branch: BranchDetails, title: String, depth: Int, isCurrent: Bool, lists: RefDetails) -> some View {
         let otherWorktree = isCurrent ? nil : branch.worktree
+        let isPicked = refs.picked.contains(branch.name)
         let icon: Icon = if otherWorktree == nil { .branch } else if branch.isWorktreeLocked { .lock } else { .worktree }
         let details = branch.details(isCurrent: isCurrent)
         return RefRow(
@@ -244,15 +288,19 @@ struct RefsPanel: View {
             title: title,
             help: ([branch.shortName] + details).joined(separator: "\n"),
             accessibilityDetails: details.joined(separator: ", "),
-            menu: branchMenu(branch, isCurrent: isCurrent, otherWorktree: otherWorktree),
-            isSelected: isSelected(branch.name, branch.tip) || model.reviewedBranch == branch.name,
+            menu: isPicked ? pickedMenu(in: lists) : branchMenu(branch, isCurrent: isCurrent, otherWorktree: otherWorktree),
+            isSelected: (refs.picked.isEmpty ? isSelected(branch.name, branch.tip) : isPicked) || model.reviewedBranch == branch.name,
             isDone: branch.isDone(isCurrent: isCurrent),
             indent: RefIndent.of(depth),
             linking: RefRowLinking(refs: refs, name: branch.name),
             hasCommands: otherWorktree != nil,
-            action: { select(branch.name, branch.tip) },
-            // There's nothing to do for the current branch, as for its badge.
-            doubleAction: isCurrent ? nil : { checkOut(branch.name) }
+            action: { click(branch, in: lists) },
+            // There's nothing to do for the current branch, as for its badge,
+            // and a second click that picks isn't a double-click.
+            doubleAction: isCurrent ? nil : {
+                if !Self.clickModifiers.isDisjoint(with: [.command, .shift]) { return }
+                checkOut(branch.name)
+            }
         ) {
             BranchRowState(state: branch.rowState(isCurrent: isCurrent))
         } commands: {
@@ -266,6 +314,38 @@ struct RefsPanel: View {
             }
         }
         .id(branch.name)
+    }
+
+    /// Selects a local branch, or with Command or Shift, picks it along with
+    /// others (decision 121). History shows the commit of the branch clicked
+    /// last, or of the one that's left when Command-clicking leaves one.
+    private func click(_ branch: BranchDetails, in details: RefDetails) {
+        let modifiers = Self.clickModifiers
+        guard !modifiers.isDisjoint(with: [.command, .shift]) else {
+            select(branch.name, branch.tip)
+            return
+        }
+        isListFocused = true
+        let selected = refs.picked.isEmpty
+            ? details.branches.first { $0.name == refs.selectedRef && isSelected($0.name, $0.tip) }?.name
+            : nil
+        if modifiers.contains(.shift) {
+            let rows = refs.branchRows(sort: sort, collapsed: closedFolders)?.local.compactMap(\.branch?.name) ?? []
+            refs.pick(through: branch.name, in: rows, selected: selected)
+            model.select(commit: branch.tip)
+        } else if refs.pick(toggling: branch.name, selected: selected) {
+            model.select(commit: branch.tip)
+        } else if refs.picked.isEmpty, let left = details.branches.first(where: { $0.name == refs.selectedRef }) {
+            model.select(commit: left.tip)
+        }
+    }
+
+    /// The keys held with the click being handled, from the click itself, as
+    /// history's list reads them. `NSEvent.modifierFlags` has only the keys
+    /// pressed at the moment, which a click that an assistive app sends with
+    /// Command doesn't press.
+    private static var clickModifiers: NSEvent.ModifierFlags {
+        NSApp.currentEvent?.modifierFlags ?? []
     }
 
     private func review(_ name: String) {
@@ -932,7 +1012,8 @@ private struct RefRemoteRow: View {
 /// then the folder's name in gray with a chevron after it, as a section's
 /// header and a repository in the sidebar have. Clicking it opens or closes it.
 /// How many branches are under it is in its tooltip rather than on the row,
-/// where it would line up with the counts of the branches.
+/// where it would line up with the counts of the branches. A folder of local
+/// branches has a menu that deletes them (decision 121).
 private struct RefFolderRow: View {
     let name: String
     /// Its whole path, as in `origin/tm/`, for its tooltip.
@@ -940,6 +1021,8 @@ private struct RefFolderRow: View {
     let count: Int
     let isCollapsed: Bool
     let indent: Double
+    /// What right-clicking it offers. A folder with nothing to offer has no menu.
+    var menu: [RefMenu.Entry] = []
     let toggle: () -> Void
     @State private var isHovering = false
 
@@ -967,6 +1050,9 @@ private struct RefFolderRow: View {
         }
         .padding(.horizontal, 6)
         .contentShape(Rectangle())
+        .overlay {
+            if !menu.isEmpty { RefMenuArea(entries: menu) }
+        }
         .onTapGesture(perform: toggle)
         .onHover { isHovering = $0 }
         .help("\(path) · \(branches)")
@@ -976,6 +1062,7 @@ private struct RefFolderRow: View {
         .accessibilityHint("Shows or hides its branches")
         .accessibilityAddTraits(.isButton)
         .accessibilityAction(.default, toggle)
+        .accessibilityActions { refMenuActions(menu) }
     }
 
     private var branches: String {

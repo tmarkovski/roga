@@ -465,6 +465,73 @@ struct RefsModelTests {
         #expect(refs.shown(sort: .name) == nil)
     }
 
+    // MARK: Picking branches (decision 121)
+
+    @Test func commandClickPicksTheSelectedBranchAlongWithTheOneClicked() async throws {
+        let (model, _) = try await makeModel()
+        let refs = model.refs
+        refs.select(ref: "refs/heads/a")
+        #expect(refs.pick(toggling: "refs/heads/b", selected: "refs/heads/a"))
+        #expect(refs.picked == ["refs/heads/a", "refs/heads/b"])
+        #expect(refs.selectedRef == "refs/heads/b")
+
+        #expect(refs.pick(toggling: "refs/heads/c", selected: nil))
+        #expect(refs.picked == ["refs/heads/a", "refs/heads/b", "refs/heads/c"])
+
+        // Leaving one out, then another, leaves one selected row and nothing picked.
+        #expect(!refs.pick(toggling: "refs/heads/c", selected: nil))
+        #expect(refs.picked == ["refs/heads/a", "refs/heads/b"])
+        #expect(!refs.pick(toggling: "refs/heads/b", selected: nil))
+        #expect(refs.picked.isEmpty)
+        #expect(refs.selectedRef == "refs/heads/a")
+    }
+
+    @Test func shiftClickPicksTheRowsFromTheLastOneClicked() async throws {
+        let (model, _) = try await makeModel()
+        let refs = model.refs
+        let rows = ["refs/heads/a", "refs/heads/b", "refs/heads/c", "refs/heads/d"]
+        refs.select(ref: "refs/heads/b")
+        refs.pick(through: "refs/heads/d", in: rows, selected: "refs/heads/b")
+        #expect(refs.picked == ["refs/heads/b", "refs/heads/c", "refs/heads/d"])
+        #expect(refs.selectedRef == "refs/heads/d")
+
+        // Another Shift-click goes from the same place.
+        refs.pick(through: "refs/heads/a", in: rows, selected: nil)
+        #expect(refs.picked == ["refs/heads/a", "refs/heads/b"])
+    }
+
+    @Test func aPlainClickTheKeyboardOrTheFilterLetGoOfWhatsPicked() async throws {
+        let (model, _) = try await makeModel()
+        let refs = model.refs
+        let pickTwo = {
+            refs.select(ref: "refs/heads/a")
+            refs.pick(toggling: "refs/heads/b", selected: "refs/heads/a")
+            #expect(refs.picked.count == 2)
+        }
+        pickTwo()
+        refs.select(ref: "refs/heads/c")
+        #expect(refs.picked.isEmpty)
+        pickTwo()
+        refs.step(to: "refs/heads/c")
+        #expect(refs.picked.isEmpty)
+        pickTwo()
+        refs.filter = "a"
+        #expect(refs.picked.isEmpty)
+        #expect(refs.selectedRef == "refs/heads/b")
+    }
+
+    /// The `basic` repository has `main` and `feature`.
+    @Test func aPickedBranchThatsGoneIsLetGo() async throws {
+        let (model, _) = try await makeModel()
+        let refs = model.refs
+        refs.select(ref: "refs/heads/main")
+        refs.pick(toggling: "refs/heads/feature", selected: "refs/heads/main")
+        refs.pick(toggling: "refs/heads/gone", selected: nil)
+        #expect(refs.picked.count == 3)
+        await refs.load()
+        #expect(refs.picked == ["refs/heads/main", "refs/heads/feature"])
+    }
+
     @Test func selectingARefSelectsItsCommitInHistory() async throws {
         let (model, _) = try await makeModel()
         await model.load()

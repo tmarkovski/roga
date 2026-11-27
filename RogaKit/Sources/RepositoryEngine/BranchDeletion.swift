@@ -138,10 +138,40 @@ public struct CommitBranchesDeletion: Sendable, Hashable {
     /// The branches that stay because a worktree has them checked out, which git
     /// refuses to delete.
     public var checkedOut: [BranchDeletion]
+    /// The main branch, when it was among the names and the deletion keeps it,
+    /// as deleting a folder of branches or the ones picked in the refs panel
+    /// does (decision 121).
+    public var main: BranchDeletion?
     /// How many commits go when every one of `branches` does.
     public var lostCount: Int
     /// The newest of those commits.
     public var lost: [ObjectID]
+    /// Those commits counted by which of `branches` lead to them, by the
+    /// branches' full names. A commit goes only when every branch that leads to
+    /// it goes. On one commit, every branch leads to all of them, so any one that
+    /// stays keeps them all.
+    public var lostBy: [Set<String>: Int]
+
+    /// How many commits go when the branches named go and the rest of
+    /// `branches` stay.
+    ///
+    /// - Parameter names: Full names, which can include others that aren't
+    ///   among `branches`.
+    public func lostCount(deleting names: Set<String>) -> Int {
+        lostBy.reduce(0) { total, group in group.key.isSubset(of: names) ? total + group.value : total }
+    }
+
+    /// How many commits only this one of `branches` leads to, which go with it
+    /// whatever happens to the rest.
+    public func lostCount(onlyBy name: String) -> Int {
+        lostBy[[name]] ?? 0
+    }
+
+    /// How many of the commits that go when every one of `branches` does this
+    /// branch leads to along with others among them, which go if they all do.
+    public func lostCount(sharedBy name: String) -> Int {
+        lostBy.reduce(0) { total, group in group.key.count > 1 && group.key.contains(name) ? total + group.value : total }
+    }
 
     /// - Parameters:
     ///   - names: The full names of the branches and remote branches on the commit.
@@ -151,10 +181,13 @@ public struct CommitBranchesDeletion: Sendable, Hashable {
     ///     whatever they moved to. Nil for branches on different commits, as the
     ///     merged branches the refs panel deletes are, which are taken wherever
     ///     they are now, leaving out any that are gone.
+    ///   - keepingMain: Whether the main branch stays when it's among them, in
+    ///     `main` rather than `branches`.
     ///   - limit: The most commits to list.
     static func prepare(
         branches names: [String],
         on commit: ObjectID?,
+        keepingMain: Bool = false,
         limit: Int,
         in worktree: String,
         worktrees: [Worktree],
@@ -162,7 +195,8 @@ public struct CommitBranchesDeletion: Sendable, Hashable {
     ) async throws -> CommitBranchesDeletion {
         async let refList = RefsLoader.load(git: git, in: worktree)
         async let remoteAddresses = RefDetailsLoader.remoteAddresses(git: git, in: worktree)
-        let refs = try await refList.refs
+        let list = try await refList
+        let refs = list.refs
         let remotes = Set(try await remoteAddresses.keys)
         let here = Set(refs.filter { ref in commit.map { ref.peeled == $0 } ?? true }.map(\.name))
 
@@ -176,6 +210,10 @@ public struct CommitBranchesDeletion: Sendable, Hashable {
             )
         }
         var branches = all.filter { !$0.isCheckedOut }
+        var main: BranchDeletion?
+        if keepingMain, let name = list.mainBranch?.name, let index = branches.firstIndex(where: { $0.ref == name }) {
+            main = branches.remove(at: index)
+        }
         let lost = try await LostCommits.find(
             from: branches.map(\.ref),
             leaving: LostCommits.leaving(branches.map(\.ref), among: refs),
@@ -188,7 +226,28 @@ public struct CommitBranchesDeletion: Sendable, Hashable {
             branches[0].lostCount = lost.count
             branches[0].lost = lost.newest
         }
-        return CommitBranchesDeletion(branches: branches, checkedOut: all.filter(\.isCheckedOut), lostCount: lost.count, lost: lost.newest)
+        let going = Set(branches.map(\.ref))
+        var lostBy: [Set<String>: Int] = lost.count > 0 ? [going: lost.count] : [:]
+        // Branches on different commits can each lead to commits of their own,
+        // which only finding out which leads where can count.
+        if commit == nil, branches.count > 1, lost.count > 0 {
+            let tips = Dictionary(refs.filter { going.contains($0.name) }.map { ($0.name, $0.peeled) }, uniquingKeysWith: { first, _ in first })
+            lostBy = try await LostCommits.owners(
+                of: tips,
+                leaving: LostCommits.leaving(branches.map(\.ref), among: refs),
+                keeping: ["--all"],
+                in: worktree,
+                git: git
+            )
+        }
+        return CommitBranchesDeletion(
+            branches: branches,
+            checkedOut: all.filter(\.isCheckedOut),
+            main: main,
+            lostCount: lost.count,
+            lost: lost.newest,
+            lostBy: lostBy
+        )
     }
 }
 
@@ -219,6 +278,59 @@ struct LostCommits {
         let count = try await git.text(GitCommand(["rev-list", "--count"] + commits, in: directory))
         let newest = try await git.text(GitCommand(["rev-list", "--max-count=\(limit)"] + commits, in: directory))
         return LostCommits(count: Int(count) ?? 0, newest: newest.split(separator: "\n").compactMap { ObjectID(hex: String($0)) })
+    }
+
+    /// Which of some branches lead to each of the commits that go when they all
+    /// do, as how many of those commits each set of them leads to.
+    ///
+    /// It lists those commits with their parents, children first, and passes
+    /// each commit's branches down to its parents. Every commit between a tip and
+    /// one of those commits is one of them too, since whatever kept it would keep
+    /// what it leads to, so the walk never has to leave them. A tip outside them
+    /// leads only to commits that something else keeps.
+    ///
+    /// - Parameters:
+    ///   - tips: The commit each branch is on, by the branch's full name.
+    ///   - leaving: As `find(from:leaving:keeping:limit:in:git:)` has it.
+    ///   - keeping: As `find(from:leaving:keeping:limit:in:git:)` has it.
+    static func owners(
+        of tips: [String: ObjectID],
+        leaving: [String],
+        keeping: [String],
+        in directory: String,
+        git: Git
+    ) async throws -> [Set<String>: Int] {
+        guard !tips.isEmpty else { return [:] }
+        let names = tips.keys.sorted()
+        let commits = names + ["--not"] + leaving.map { "--exclude=" + $0 } + keeping + ["--"]
+        let listed = try await git.text(GitCommand(["rev-list", "--topo-order", "--parents"] + commits, in: directory))
+        return owners(listed: listed, tips: tips)
+    }
+
+    /// The same, from what `git rev-list --topo-order --parents` listed, one
+    /// commit to a line followed by its parents.
+    static func owners(listed: String, tips: [String: ObjectID]) -> [Set<String>: Int] {
+        let lines = listed.split(separator: "\n").map { $0.split(separator: " ").map(String.init) }
+        var index: [String: Int] = [:]
+        for (position, line) in lines.enumerated() {
+            if let commit = line.first { index[commit] = position }
+        }
+        var owners = Array(repeating: Set<String>(), count: lines.count)
+        for (name, tip) in tips {
+            if let position = index[tip.hex] { owners[position].insert(name) }
+        }
+        // Topological order lists a commit before its parents, so a commit has
+        // every branch that leads to it by the time its line comes.
+        for (position, line) in lines.enumerated() {
+            for parent in line.dropFirst() {
+                if let parentPosition = index[parent] { owners[parentPosition].formUnion(owners[position]) }
+            }
+        }
+        var counts: [Set<String>: Int] = [:]
+        for set in owners where !set.isEmpty {
+            counts[set, default: 0] += 1
+        }
+        return counts
     }
 
     /// Adds the symbolic refs that point to refs that are going. One such as

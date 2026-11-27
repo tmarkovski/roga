@@ -550,10 +550,12 @@ struct SettingsSheet: View {
                 if group == .interface {
                     // The preview goes between the rows it shows: Theme and
                     // Colors above it, and the code font below (decision 73).
-                    // Its border sets it apart, so no line comes between it and
-                    // the row on either side. Animate the house comes after,
-                    // below a line like any row, and a search that finds only
-                    // it leaves the preview out (decision 112).
+                    // Its border sets it apart from the row above, so no line
+                    // comes between them. The code font row is a row of the
+                    // section's own, with the usual line above it. Animate the
+                    // house comes after, below a line like any row, and a
+                    // search that finds only it leaves the preview out
+                    // (decision 112).
                     let above = items.filter { $0 == .theme || $0 == .colors }
                     let showsCodeFont = items.contains(.codeFont)
                     ForEach(above.dropLast(), id: \.self) { row($0) }
@@ -561,10 +563,10 @@ struct SettingsSheet: View {
                         VStack(spacing: 0) {
                             if let last = above.last { row(last) }
                             ThemePreview()
-                                .padding(EdgeInsets(top: above.isEmpty ? 8 : 4, leading: 0, bottom: showsCodeFont ? 4 : 12, trailing: 0))
-                            if showsCodeFont { codeFontRow }
+                                .padding(EdgeInsets(top: above.isEmpty ? 8 : 4, leading: 0, bottom: 12, trailing: 0))
                         }
                     }
+                    if showsCodeFont { codeFontRow }
                     ForEach(items.filter { $0 == .animatesHouse }, id: \.self) { row($0) }
                 } else {
                     ForEach(items, id: \.self) { row($0) }
