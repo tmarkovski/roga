@@ -428,7 +428,7 @@ private struct WorktreeTab: View {
 /// it. It pulses once as it arrives: the ring starts twice as thick, and a
 /// second ring spreads out from it and fades. Then it holds still, so that it
 /// catches the eye across the window without moving at the edge of it the way
-/// an agent's ring does. With Reduce Motion it's there without the pulse.
+/// an agent's windows do. With Reduce Motion it's there without the pulse.
 ///
 /// The title row clips the tabs 6 points above and below them, so nothing here
 /// reaches further out than that.

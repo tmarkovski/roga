@@ -349,7 +349,7 @@ struct AgentTestResult: View {
                     .foregroundStyle(SettingsColors.note)
             case .running:
                 HStack(spacing: 7) {
-                    SettingsSpinner()
+                    AgentMark(state: .working)
                     Text("Waiting for \(name)…")
                         .foregroundStyle(SettingsColors.note)
                 }
@@ -375,32 +375,6 @@ struct AgentTestResult: View {
         .font(.system(size: 12.5))
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-/// A small ring with a darker quarter that turns, while something runs. With
-/// Reduce Motion on, it stays still, as the commit box's does, and the words
-/// beside it say that something runs.
-struct SettingsSpinner: View {
-    @State private var isTurning = false
-    @Environment(\.accessibilityReduceMotion) private var reducesMotion
-
-    var body: some View {
-        Circle()
-            .strokeBorder(SettingsColors.line, lineWidth: 1.5)
-            .overlay {
-                Circle()
-                    .trim(from: 0, to: 0.25)
-                    .stroke(SettingsColors.note, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
-                    .padding(0.75)
-                    .rotationEffect(.degrees(isTurning ? 270 : -90))
-            }
-            .frame(width: 12, height: 12)
-            .onAppear {
-                guard !reducesMotion else { return }
-                withAnimation(.linear(duration: 0.9).repeatForever(autoreverses: false)) { isTurning = true }
-            }
-            .accessibilityHidden(true)
     }
 }
 

@@ -5,7 +5,8 @@ import SwiftUI
 /// A light in the brand's orange that runs left to right through the words of
 /// the branch row's agent line while an agent works (decision 100), as
 /// decision 68's light runs along an agent's command. It stands in for the
-/// turning ring there, since the worktree's tab turns one a few points above.
+/// windows at work there, since the worktree's tab plays them a few points
+/// above.
 ///
 /// It lies over the words, as large as they are, and gets the same text and
 /// font, so that it can draw them again as its mask.

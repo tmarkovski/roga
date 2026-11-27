@@ -535,9 +535,9 @@ private struct CommitBoxChip: View {
     }
 }
 
-/// What Generate turns into while an agent writes: the sidebar's ring and Stop,
-/// with the agent's line around it lit, and the seconds so far beside it. Stop
-/// gives the box back as it was.
+/// What Generate turns into while an agent writes: the sidebar's windows at
+/// work and Stop, with the agent's line around it lit, and the seconds so far
+/// beside it. Stop gives the box back as it was.
 private struct CommitBoxStopWriting: View {
     let writing: MessageGenerator.Writing
     let stop: () -> Void

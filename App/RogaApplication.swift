@@ -44,6 +44,9 @@ struct RogaApplication: App {
         _setup = State(initialValue: SetupModel(hasRepositories: !repositories.repositories.isEmpty))
         // Before any window shows, so that a dark theme never starts light.
         AppTheme.applyStored()
+        // Picks the windows' animation for agents at work, a different one
+        // each time Roga launches (decision 122).
+        _ = HouseWindowAnimation.forThisLaunch
     }
 
     var body: some Scene {

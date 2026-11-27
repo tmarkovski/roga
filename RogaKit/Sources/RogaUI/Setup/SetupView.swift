@@ -566,8 +566,8 @@ struct SetupSay: View {
 }
 
 /// A small mark before a line: a green check, the amber circle, a gray dash
-/// for what isn't used, the ring while something runs, or a dot for what
-/// hasn't started.
+/// for what isn't used, the windows at work while something runs, or a dot
+/// for what hasn't started.
 struct SetupGlyph: View {
     enum Kind: Equatable {
         case ok

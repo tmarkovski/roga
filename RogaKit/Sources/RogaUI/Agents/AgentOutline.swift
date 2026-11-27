@@ -38,11 +38,11 @@ struct AgentOutline: NSViewRepresentable {
     }
 }
 
-/// `AgentOutline`, in layers. Like `AgentRingView`, it leaves the moving to Core
-/// Animation, which the render server plays, so neither SwiftUI nor Roga's main
-/// thread does anything for each frame. Nothing moves at rest, and it stops when
-/// its window can't be seen. For someone who asked for less motion, the line
-/// brightens and stays still.
+/// `AgentOutline`, in layers. Like `HouseWindowLayerView`, it leaves the
+/// moving to Core Animation, which the render server plays, so neither SwiftUI
+/// nor Roga's main thread does anything for each frame. Nothing moves at rest,
+/// and it stops when its window can't be seen. For someone who asked for less
+/// motion, the line brightens and stays still.
 final class AgentOutlineView: NSView {
     enum Shape: Equatable {
         /// All the way around a rounded rectangle.
