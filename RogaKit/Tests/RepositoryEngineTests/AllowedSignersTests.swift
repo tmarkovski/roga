@@ -76,7 +76,7 @@ struct AllowedSignersTests {
         #expect(check.signer == "t@example.com")
         // The key read from the signature before checking is the one git
         // names after, so the commit panel's line doesn't change (decision 109).
-        #expect(await signed.session.signatureKey(of: signed.commit) == check.key)
+        #expect(await signed.session.signatureKey(of: signed.commit)?.id == check.key)
         // Once the file lists it, there's nothing left to offer.
         #expect(await makeOffer(signed) == nil)
     }
@@ -108,6 +108,38 @@ struct AllowedSignersTests {
     @Test func offersNothingWithoutAnEmail() async throws {
         let signed = try await signed()
         #expect(await makeOffer(signed, email: "") == nil)
+    }
+
+    /// The Signature line's menu copies and adds the key that signed the
+    /// commit, which is the key in this Mac's `.pub` file (decision 117).
+    @Test func findsThisMacsKeyForAddingToAHost() async throws {
+        let signed = try await signed()
+        let key = try #require(await signed.session.signatureKey(of: signed.commit))
+        let file = try String(contentsOfFile: signed.home + "/.ssh/id_ed25519.pub", encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
+        // Copying reads the signature, which has the key without its comment.
+        let copied = try await SignaturePublicKey.text(of: key, format: .ssh, git: signed.git, programs: programs, in: signed.repository)
+        #expect(file.hasPrefix(copied + " "))
+
+        let found = try await SignaturePublicKey.find(key, format: .ssh, git: signed.git, programs: programs, in: signed.repository, home: signed.home)
+        #expect(found.isThisMacs)
+        #expect(found.key.publicKey == file)
+        #expect(found.key.publicKeyFile == signed.home + "/.ssh/id_ed25519.pub")
+        #expect(found.key.shownPublicKeyFile == "~/.ssh/id_ed25519.pub")
+        #expect(!GitHubCLI.pipesKey(found.key))
+    }
+
+    @Test func findsAnotherMacsKeyForAddingToAHost() async throws {
+        let signed = try await signed(with: "elsewhere", inSSH: false)
+        let key = try #require(await signed.session.signatureKey(of: signed.commit))
+        let found = try await SignaturePublicKey.find(key, format: .ssh, git: signed.git, programs: programs, in: signed.repository, home: signed.home)
+        #expect(!found.isThisMacs)
+        #expect(found.key.publicKey == key.ssh?.line)
+        #expect(found.key.publicKeyFile == nil)
+        // gh takes it on standard input, since it's in no file here.
+        #expect(GitHubCLI.pipesKey(found.key))
+        await #expect(throws: NewSigningKey.Failure.self) {
+            try await SignaturePublicKey.text(of: key, format: .x509, git: signed.git, programs: programs, in: signed.repository)
+        }
     }
 
     @Test func readsTheKeyFromTheSignature() async throws {

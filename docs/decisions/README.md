@@ -124,3 +124,4 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [114](0114-text-a-control-would-cover-on-hover-fades-out-before-it.md) | Text that a control would cover on hover fades out before it | Accepted |
 | [115](0115-one-scroll-for-a-worktrees-files-with-headings-that-stay-in-view.md) | One scroll for a worktree's files, with headings that stay in view | Accepted |
 | [116](0116-offer-to-delete-a-locked-worktree-anyway.md) | Offer to delete a locked worktree anyway, unlock it, and show the lock in the sidebar | Accepted |
+| [117](0117-copy-a-signatures-key-and-add-it-to-github-from-the-signature-line.md) | Copy a signature's key, and add it to GitHub, from the Signature line | Accepted |

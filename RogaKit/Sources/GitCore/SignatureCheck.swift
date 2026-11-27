@@ -37,6 +37,22 @@ public struct SignatureCheck: Sendable, Hashable {
     }
 }
 
+/// The key that made a commit's signature, read from the commit itself
+/// without checking it (decisions 109 and 117).
+public struct SignatureKey: Sendable, Hashable {
+    /// The key as git's `%GK` names it once it has checked: an SSH key's
+    /// `SHA256:` fingerprint, or an OpenPGP key's ID.
+    public var id: String
+    /// An SSH key's public half, which an SSH signature carries. An OpenPGP
+    /// signature only names its key, so its public half comes from gpg.
+    public var ssh: SSHPublicKey?
+
+    public init(id: String, ssh: SSHPublicKey? = nil) {
+        self.id = id
+        self.ssh = ssh
+    }
+}
+
 /// Reads `git log --format=%G?%x00%GS%x00%GK` for one commit.
 public enum SignatureCheckParser {
     /// The commit's own line, without the signature that `log.showSignature`

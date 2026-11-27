@@ -25,11 +25,8 @@ struct KeyMaker {
 /// New SSH Key… or New OpenPGP Key… from the Key field's menu (decision
 /// 108). First it says what Roga makes, with the name and email the key is
 /// for in a card of their own, and shows what it runs, as decision 29 asks.
-/// Once the key is made, it says where the key's public half can
-/// go so that the commits it signs show as verified: Add to GitHub runs gh
-/// when gh may add keys there, and otherwise Open GitHub or Open GitLab
-/// goes to the host's page, with Copy Public Key for pasting it there or
-/// anywhere else.
+/// Once the key is made, it says where the key's public half can go so that
+/// the commits it signs show as verified, as `KeyHostsContent` lays out.
 struct NewKeyPopover: View {
     let format: CommitIdentity.SigningFormat
     let email: String
@@ -42,10 +39,6 @@ struct NewKeyPopover: View {
     @State private var failure: String?
     @State private var result: NewSigningKey.Made?
     @State private var hosting: KeyHosting?
-    @State private var added: Set<KeyHost> = []
-    @State private var adding: KeyHost?
-    @State private var hasCopied = false
-    @Environment(\.openURL) private var openURL
 
     static let width: CGFloat = 320
     private static let inset: CGFloat = 16
@@ -192,135 +185,24 @@ struct NewKeyPopover: View {
     private func madeContent(_ made: NewSigningKey.Made) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             header("Key made", sub: made.shownPublicKeyFile ?? made.key.title)
-            VStack(alignment: .leading, spacing: 10) {
-                Text(maker.savesAtOnce ? "Commits are signed with it now." : "It's in the Key field. Save to sign commits with it.")
-                    .foregroundStyle(DialogColors.note)
-                if let trustFailure = made.trustFailure {
-                    Text("Roga couldn't add it to the allowed signers file: \(trustFailure)")
-                        .foregroundStyle(AgentColors.warn)
-                }
-                if let hosting {
-                    if hosting.hosts.isEmpty {
-                        Text(maker.repository == nil
-                            ? "Copy Public Key copies it, for adding it wherever you push, so that commits show as verified there."
-                            : "None of this repository's remotes is on GitHub or GitLab. Copy Public Key copies it, for adding it wherever you push.")
-                            .foregroundStyle(DialogColors.note)
-                    }
-                    ForEach(hosting.hosts) { host in
-                        hostRow(host, made: made, hosting: hosting)
-                    }
-                } else {
-                    HStack(spacing: 6) {
-                        ProgressView().controlSize(.mini)
-                        Text("Looking for gh…").foregroundStyle(DialogColors.note)
-                    }
-                }
-            }
-            .font(.system(size: 12))
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(.horizontal, Self.inset)
-            failureLine
-            HStack(spacing: 8) {
-                DialogActionButton(button: DialogButton(title: hasCopied ? "Copied" : "Copy Public Key", kind: .secondary) { copy(made) })
-                DialogActionButton(button: DialogButton(title: "Done", kind: .primary, action: close))
-            }
-            .frame(maxWidth: .infinity, alignment: .trailing)
-            .padding(EdgeInsets(top: 14, leading: Self.inset, bottom: 12, trailing: Self.inset))
-            CommandBlock(lines: hosting.map { Self.lines(made, hosting: $0, added: added) } ?? [.blank], isCompact: true)
+            KeyHostsContent(
+                key: made,
+                hosting: hosting,
+                notes: Self.madeNotes(made, savesAtOnce: maker.savesAtOnce),
+                hasRepository: maker.repository != nil,
+                add: { key, host, gh in try await maker.list.addKey(key, to: host, gh: gh) },
+                close: close
+            )
         }
     }
 
-    /// A host's line: what happens there, and Add to GitHub, or the button
-    /// that opens its page.
-    private func hostRow(_ host: KeyHost, made: NewSigningKey.Made, hosting: KeyHosting) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(host.name) · \(host.host)")
-                    .font(.system(size: 12, weight: .semibold))
-                Text(Self.hostWords(host, format: made.format, hosting: hosting, isAdded: added.contains(host)))
-                    .foregroundStyle(DialogColors.note)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            if added.contains(host) {
-                Icon.check.image
-                    .foregroundStyle(Palette.green)
-                    .accessibilityLabel("Added")
-            } else if let gh = hosting.gh, hosting.canAdd(made.format, to: host) {
-                Button(adding == host ? "Adding…" : "Add to \(host.name)") { add(made, to: host, gh: gh) }
-                    .buttonStyle(.outlined)
-                    .disabled(adding != nil)
-                    .fixedSize()
-            } else if let page = host.page(for: made.format) {
-                Button("Open \(host.name)") {
-                    copy(made)
-                    openURL(page)
-                }
-                .buttonStyle(.outlined)
-                .fixedSize()
-                .help("Copies the public key and opens \(page.absoluteString)")
-            }
+    /// What the popover says once the key is made, above the hosts.
+    static func madeNotes(_ made: NewSigningKey.Made, savesAtOnce: Bool) -> [KeyHostsContent.Note] {
+        var notes = [KeyHostsContent.Note(text: savesAtOnce ? "Commits are signed with it now." : "It's in the Key field. Save to sign commits with it.")]
+        if let trustFailure = made.trustFailure {
+            notes.append(KeyHostsContent.Note(text: "Roga couldn't add it to the allowed signers file: \(trustFailure)", isWarning: true))
         }
-    }
-
-    /// What a host's line says.
-    static func hostWords(_ host: KeyHost, format: CommitIdentity.SigningFormat, hosting: KeyHosting, isAdded: Bool) -> String {
-        let verified = "so commits signed with it show as Verified"
-        if isAdded { return "Added as a signing key, \(verified)." }
-        switch host {
-        case .gitHub:
-            let kind = format == .ssh ? "a signing key" : "a GPG key"
-            if hosting.canAdd(format, to: host) { return "gh can add it as \(kind), \(verified)." }
-            if hosting.gh != nil, hosting.account(on: host) != nil {
-                return "gh may not add \(format == .ssh ? "signing keys" : "GPG keys") yet. Run the command below once, or add it on GitHub as \(kind), \(verified)."
-            }
-            return "Add it on GitHub as \(kind), \(verified). Open GitHub copies it first."
-        case .gitLab:
-            let usage = format == .ssh ? " with the usage type Signing" : ""
-            return "Add it on GitLab\(usage), \(verified). Open GitLab copies it first."
-        }
-    }
-
-    /// What adding the key runs, and for a GitHub host gh may not add keys
-    /// to, the one command that lets it.
-    static func lines(_ made: NewSigningKey.Made, hosting: KeyHosting, added: Set<KeyHost>) -> [TerminalLine] {
-        var lines: [TerminalLine] = []
-        for host in hosting.hosts where !added.contains(host) {
-            guard case .gitHub(let name) = host, let gh = hosting.gh else { continue }
-            if hosting.canAdd(made.format, to: host) {
-                if made.format != .ssh { lines.append(.comment("Add to GitHub pipes in gpg --armor --export \(made.key.fingerprint)")) }
-                var command = ProgramCommand(gh, GitHubCLI.addArguments(made, title: GitHubCLI.title))
-                if name != "github.com" { command.environment["GH_HOST"] = name }
-                lines.append(.program(command))
-            } else if hosting.account(on: host) != nil {
-                lines.append(.comment("Lets gh add keys to \(name). Run it once in Terminal."))
-                lines.append(.program(ProgramCommand(gh, GitHubCLI.refreshArguments(host: name, format: made.format))))
-            }
-        }
-        if lines.isEmpty {
-            lines.append(.comment("Copy Public Key copies \(made.shownPublicKeyFile ?? "the public key")"))
-        }
-        return lines
-    }
-
-    private func add(_ made: NewSigningKey.Made, to host: KeyHost, gh: String) {
-        adding = host
-        failure = nil
-        Task {
-            do {
-                try await maker.list.addKey(made, to: host, gh: gh)
-                added.insert(host)
-            } catch {
-                failure = String(describing: error)
-            }
-            adding = nil
-        }
-    }
-
-    private func copy(_ made: NewSigningKey.Made) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(made.publicKey, forType: .string)
-        hasCopied = true
+        return notes
     }
 
     // MARK: Parts

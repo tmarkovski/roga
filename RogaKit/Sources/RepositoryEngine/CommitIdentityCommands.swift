@@ -131,13 +131,13 @@ extension RepositorySession {
     }
 
     /// The key that made a commit's signature, as git's `%GK` names it once
-    /// it's checked, read from the commit's own `gpgsig` header without
-    /// running gpg or ssh-keygen (decision 109). It's nil for X.509, and
-    /// when git can't read the commit.
+    /// it's checked, with an SSH key's public half, read from the commit's
+    /// own `gpgsig` header without running gpg or ssh-keygen (decisions 109
+    /// and 116). It's nil for X.509, and when git can't read the commit.
     @concurrent
-    public nonisolated func signatureKey(of commit: ObjectID) async -> String? {
+    public nonisolated func signatureKey(of commit: ObjectID) async -> SignatureKey? {
         guard let raw = try? await git.run(GitCommand(["cat-file", "commit", commit.hex], in: location.commonDirectory)).output else { return nil }
-        return CommitSignatureParser.key(inCommit: String(decoding: raw, as: UTF8.self))
+        return CommitSignatureParser.signatureKey(inCommit: String(decoding: raw, as: UTF8.self))
     }
 
     /// Changes who the repository's commits go out as, in its own config or

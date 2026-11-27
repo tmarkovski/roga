@@ -4,6 +4,7 @@ import Foundation
 import GitCore
 import GitRunner
 import IconUI
+import MenuUI
 import RepositoryEngine
 import Testing
 import ThemeUI
@@ -374,6 +375,61 @@ struct IdentityTests {
         #expect(UserDefaults(suiteName: "checksSignatures-\(UUID())")?.checksSignatures == true)
     }
 
+    /// The chevron's rows, with a disabled row in brackets and a line as `-`.
+    func signatureMenu(
+        _ format: CommitIdentity.SigningFormat,
+        key: SignatureKey?,
+        check: SignatureCheck? = nil,
+        hosts: [KeyHost] = [.gitHub("github.com")]
+    ) -> [String] {
+        SignatureLine.menu(format: format, key: key, check: check, hosts: hosts, copyPublicKey: {}, copyID: { _ in }, add: {}).map { entry in
+            switch entry {
+            case let .command(title, _, isEnabled, _, _): isEnabled ? title.plain : "[\(title.plain)]"
+            case .divider: "-"
+            default: "?"
+            }
+        }
+    }
+
+    @Test func theSignaturesMenuOffersWhatItCanDoWithTheKey() throws {
+        let ssh = try #require(SSHPublicKeyParser.parse("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEl5c7+FTBhBHYT9TKz61AWx/U3+VjN1Mh2idso8ynyp"))
+        let sshKey = SignatureKey(id: ssh.fingerprint, ssh: ssh)
+        // An SSH signature carries its key, so it's there before git checks.
+        #expect(signatureMenu(.ssh, key: sshKey) == ["Copy public key", "Copy fingerprint", "-", "Add to GitHub…"])
+        // While the key is read, there's nothing to copy yet.
+        #expect(signatureMenu(.ssh, key: nil) == ["[Copy public key]", "[Copy fingerprint]", "-", "[Add to GitHub…]"])
+        // Each host's name once, in the remotes' order.
+        let hosts: [KeyHost] = [.gitLab("gitlab.com"), .gitHub("github.com"), .gitHub("github.example.com")]
+        #expect(signatureMenu(.ssh, key: sshKey, hosts: hosts).last == "Add to GitLab or GitHub…")
+        // Without a remote on GitHub or GitLab, copying is what's left.
+        #expect(signatureMenu(.ssh, key: sshKey, hosts: []) == ["Copy public key", "Copy fingerprint"])
+        // A bad signature's key isn't offered for adding to a host.
+        #expect(signatureMenu(.ssh, key: sshKey, check: SignatureCheck(result: .bad)) == ["Copy public key", "Copy fingerprint"])
+
+        // gpg can only export an OpenPGP key it has.
+        let pgp = SignatureKey(id: "3AA5C34371567BD2")
+        #expect(signatureMenu(.openPGP, key: pgp) == ["Copy public key", "Copy key ID", "-", "Add to GitHub…"])
+        #expect(signatureMenu(.openPGP, key: pgp, check: SignatureCheck(result: .good, key: pgp.id)) == ["Copy public key", "Copy key ID", "-", "Add to GitHub…"])
+        #expect(signatureMenu(.openPGP, key: pgp, check: SignatureCheck(result: .missingKey, key: pgp.id)) == ["[Copy public key]", "Copy key ID", "-", "[Add to GitHub…]"])
+
+        // An X.509 certificate isn't read, so only its ID, once git names it.
+        #expect(signatureMenu(.x509, key: nil) == ["[Copy key ID]"])
+        #expect(signatureMenu(.x509, key: nil, check: SignatureCheck(result: .good, key: "0x1234")) == ["Copy key ID"])
+    }
+
+    @Test func addingASignaturesKeySaysWhoseItIs() {
+        let local = SigningKey(value: "~/.ssh/id_ed25519.pub", title: "~/.ssh/id_ed25519.pub", details: ["ED25519"], fingerprint: "SHA256:x", emails: [])
+        let fromFile = NewSigningKey.Made(format: .ssh, key: local, publicKey: "ssh-ed25519 AAAA", publicKeyFile: "/Users/sam/.ssh/id_ed25519.pub", shownPublicKeyFile: "~/.ssh/id_ed25519.pub")
+        #expect(AddSignatureKeyPopover.notes(SignaturePublicKey.Found(key: fromFile, isThisMacs: true), email: "sam@rivera.dev") == [
+            .init(text: "It's ~/.ssh/id_ed25519.pub, one of this Mac's keys. The host also needs sam@rivera.dev on the same account."),
+        ])
+        let other = SigningKey(value: "key::ssh-ed25519 AAAA", title: "ED25519 key", details: ["ED25519"], fingerprint: "SHA256:x", emails: [])
+        let elsewhere = NewSigningKey.Made(format: .ssh, key: other, publicKey: "ssh-ed25519 AAAA")
+        #expect(AddSignatureKeyPopover.notes(SignaturePublicKey.Found(key: elsewhere, isThisMacs: false), email: "") == [
+            .init(text: "It isn't one of this Mac's keys, so add it only if it's yours, such as a key from another Mac.", isWarning: true),
+        ])
+    }
+
     func trustOffer(setsFile: Bool) throws -> AllowedSigners.Offer {
         let key = try #require(SSHPublicKeyParser.parse("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEl5c7+FTBhBHYT9TKz61AWx/U3+VjN1Mh2idso8ynyp"))
         let local = SigningKey(value: "~/.ssh/id_ed25519.pub", title: "~/.ssh/id_ed25519.pub", details: ["ED25519"], fingerprint: key.fingerprint, emails: [])
@@ -497,25 +553,49 @@ struct IdentityTests {
         let gh = "/opt/homebrew/bin/gh"
 
         let canAdd = KeyHosting(gh: gh, accounts: [GitHubAccount(host: "github.com", scopes: ["admin:ssh_signing_key"])], hosts: [gitHub])
-        #expect(NewKeyPopover.hostWords(gitHub, format: .ssh, hosting: canAdd, isAdded: false) == "gh can add it as a signing key, so commits signed with it show as Verified.")
-        #expect(NewKeyPopover.hostWords(gitHub, format: .ssh, hosting: canAdd, isAdded: true) == "Added as a signing key, so commits signed with it show as Verified.")
-        #expect(NewKeyPopover.lines(made, hosting: canAdd, added: []) == [
+        #expect(KeyHostsContent.hostWords(gitHub, format: .ssh, hosting: canAdd, isAdded: false) == "gh can add it as a signing key, so commits signed with it show as Verified.")
+        #expect(KeyHostsContent.hostWords(gitHub, format: .ssh, hosting: canAdd, isAdded: true) == "Added as a signing key, so commits signed with it show as Verified.")
+        #expect(KeyHostsContent.lines(made, hosting: canAdd, added: []) == [
             .program(ProgramCommand(gh, ["ssh-key", "add", "~/.ssh/id_ed25519_signing.pub", "--type", "signing", "--title", GitHubCLI.title])),
         ])
 
         // Signed in, but without the scope: the command that gives it.
         let noScope = KeyHosting(gh: gh, accounts: [GitHubAccount(host: "github.com", scopes: ["repo"])], hosts: [gitHub])
-        #expect(NewKeyPopover.hostWords(gitHub, format: .ssh, hosting: noScope, isAdded: false).hasPrefix("gh may not add signing keys yet."))
-        #expect(NewKeyPopover.lines(made, hosting: noScope, added: []) == [
+        #expect(KeyHostsContent.hostWords(gitHub, format: .ssh, hosting: noScope, isAdded: false).hasPrefix("gh may not add signing keys yet."))
+        #expect(KeyHostsContent.lines(made, hosting: noScope, added: []) == [
             .comment("Lets gh add keys to github.com. Run it once in Terminal."),
             .program(ProgramCommand(gh, ["auth", "refresh", "-h", "github.com", "-s", "admin:ssh_signing_key"])),
         ])
 
         // Without gh, GitHub's page, and GitLab's for a GitLab remote.
         let noGH = KeyHosting(gh: nil, accounts: [], hosts: [gitHub, .gitLab("gitlab.com")])
-        #expect(NewKeyPopover.hostWords(gitHub, format: .ssh, hosting: noGH, isAdded: false) == "Add it on GitHub as a signing key, so commits signed with it show as Verified. Open GitHub copies it first.")
-        #expect(NewKeyPopover.hostWords(.gitLab("gitlab.com"), format: .ssh, hosting: noGH, isAdded: false) == "Add it on GitLab with the usage type Signing, so commits signed with it show as Verified. Open GitLab copies it first.")
-        #expect(NewKeyPopover.lines(made, hosting: noGH, added: []) == [.comment("Copy Public Key copies ~/.ssh/id_ed25519_signing.pub")])
+        #expect(KeyHostsContent.hostWords(gitHub, format: .ssh, hosting: noGH, isAdded: false) == "Add it on GitHub as a signing key, so commits signed with it show as Verified. Open GitHub copies it first.")
+        #expect(KeyHostsContent.hostWords(.gitLab("gitlab.com"), format: .ssh, hosting: noGH, isAdded: false) == "Add it on GitLab with the usage type Signing, so commits signed with it show as Verified. Open GitLab copies it first.")
+        #expect(KeyHostsContent.lines(made, hosting: noGH, added: []) == [.comment("Copy Public Key copies ~/.ssh/id_ed25519_signing.pub")])
+
+        #expect(NewKeyPopover.madeNotes(made, savesAtOnce: true) == [.init(text: "Commits are signed with it now.")])
+        var untrusted = made
+        untrusted.trustFailure = "no folder"
+        #expect(NewKeyPopover.madeNotes(untrusted, savesAtOnce: false) == [
+            .init(text: "It's in the Key field. Save to sign commits with it."),
+            .init(text: "Roga couldn't add it to the allowed signers file: no folder", isWarning: true),
+        ])
+    }
+
+    /// The key that signed a commit, which is in no file when it isn't this
+    /// Mac's, goes into gh on standard input (decision 117).
+    @Test func aKeyFromASignatureIsPipedIntoGH() {
+        let key = SigningKey(value: "key::ssh-ed25519 AAAA", title: "ED25519 key", details: ["ED25519"], fingerprint: "SHA256:x", emails: [])
+        let fromSignature = NewSigningKey.Made(format: .ssh, key: key, publicKey: "ssh-ed25519 AAAA")
+        let gh = "/opt/homebrew/bin/gh"
+        let canAdd = KeyHosting(gh: gh, accounts: [GitHubAccount(host: "github.com", scopes: ["admin:ssh_signing_key"])], hosts: [.gitHub("github.com")])
+        #expect(KeyHostsContent.lines(fromSignature, hosting: canAdd, added: []) == [
+            .comment("Add to GitHub pipes in the public key"),
+            .program(ProgramCommand(gh, ["ssh-key", "add", "-", "--type", "signing", "--title", GitHubCLI.title])),
+        ])
+        #expect(KeyHostsContent.lines(fromSignature, hosting: KeyHosting(gh: nil, accounts: [], hosts: []), added: []) == [
+            .comment("Copy Public Key copies the public key"),
+        ])
     }
 
     @Test func setupSaysWhatItFoundForSigning() {

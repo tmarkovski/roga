@@ -14,7 +14,13 @@ public struct SSHPublicKey: Sendable, Hashable {
 
     /// The key as git takes it in `user.signingkey`, when it isn't in a file.
     public var literal: String {
-        "key::\(type) \(blob)" + (comment.isEmpty ? "" : " \(comment)")
+        "key::\(line)"
+    }
+
+    /// The key as a `.pub` file has it, as in `ssh-ed25519 AAAA… sam@laptop`,
+    /// which is what GitHub and GitLab take when it's pasted.
+    public var line: String {
+        "\(type) \(blob)" + (comment.isEmpty ? "" : " \(comment)")
     }
 
     /// The algorithm as `ssh-keygen -l` names it, as in `ED25519`.
@@ -308,9 +314,17 @@ public enum CommitSignatureParser {
     ///
     /// - Parameter text: What `git cat-file commit` printed.
     public static func key(inCommit text: String) -> String? {
+        signatureKey(inCommit: text)?.id
+    }
+
+    /// The key, with an SSH key's public half, which its signature carries,
+    /// for copying it and adding it to a host (decision 117).
+    ///
+    /// - Parameter text: What `git cat-file commit` printed.
+    public static func signatureKey(inCommit text: String) -> SignatureKey? {
         guard let signature = SSHSignatureParser.signature(inCommit: text) else { return nil }
-        if let key = SSHSignatureParser.publicKey(inSignature: signature) { return key.fingerprint }
-        return OpenPGPSignatureParser.keyID(inSignature: signature)
+        if let key = SSHSignatureParser.publicKey(inSignature: signature) { return SignatureKey(id: key.fingerprint, ssh: key) }
+        return OpenPGPSignatureParser.keyID(inSignature: signature).map { SignatureKey(id: $0) }
     }
 }
 
