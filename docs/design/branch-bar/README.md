@@ -2,14 +2,14 @@
 
 Boards for what the row under the tabs could say and how it could say it. They're on the Branch bar page of the design canvas [yaga layout options](https://claude.ai/artifact/4WQVua6gwKqSBoiRdf2FhX#page-branchbar), and [`boards.py`](boards.py) draws every board.
 
-The row comes from [decision 95](../../decisions/0095-a-repositorys-worktrees-as-tabs.md), and [decision 100](../../decisions/0100-say-what-the-worktrees-agent-is-doing-in-the-branch-row.md) added the agent's line to it. Two things about it prompted these boards. It never says where the worktree's files are, which shows only at the end of the tab's tooltip, although that folder is what tells two checkouts of one repository apart and what you'd paste into a terminal. And a click on the branch opens a menu whose first line is the upstream and whose rows are Pull, Push, Fetch, New Branch and Switch Branch, most of which are buttons on the same row and items in the menu bar's Branch menu.
+The row comes from [decision 95](../../decisions/0095-a-repositorys-worktrees-as-tabs.md), and [decision 100](../../decisions/0100-say-what-the-worktrees-agent-is-doing-in-the-branch-row.md) added the agent's line to it. Two things about it prompted these boards. It doesn't say how far the branch has drifted from main, which you find out from history or from a merge that goes wrong, and it doesn't say where the worktree's files are, which shows only at the end of the tab's tooltip. And a click on the branch opens a menu whose first line is the upstream and whose rows are Pull, Push, Fetch, New Branch and Switch Branch, most of which are buttons on the same row and items in the menu bar's Branch menu.
 
 The boards draw the middle column at 680 points, as in the default window, and at 480, with Claude Code running the tests in `agent/fix-login`:
 
 - **Today**, for comparison.
 - **A · Two lines** gives the branch and the agent two lines each in the row's 44 points, as a window's title and subtitle share a toolbar. The folder sits under the branch, cut in its middle so that its last part stays. The agent's state and how long sit over what it's doing, as in `Claude Code is working · 6 min` over `Run the test suite`, and the light runs through the second line.
 - **B · Labels** shrinks every part to a short label, the folder's last part, the branch, the counts and the agent's name and time, and moves the words into tooltips and popovers.
-- **C · Against main** is A with the branch's second line saying how far it is from main, as in `4 ahead of main · 12 behind`, with the folder in the tooltip and the popover.
+- **C · Against main** keeps A's two lines, but the branch's second line says how far it is from `origin/main`, and the folder moves to the tooltip and the popover.
 
 In A, B and C the number of commits moves into the order's menu, which leaves the agent the room it shared with it, and the branch's menu becomes a popover about the checkout:
 
@@ -17,16 +17,33 @@ In A, B and C the number of commits moves into the order's menu, which leaves th
 - the folder, with Show in Finder, Open in Terminal and Copy Path,
 - the lock's reason and Unlock, for a locked worktree,
 - the upstream, how far the branch is from it, and when Roga last fetched,
-- how far the branch is from main, with Rebase onto main and Merge main while main has commits it lacks, which Roga doesn't work out today,
+- how far the branch is from `origin/main`, which files a merge of it would conflict in, and Rebase and Merge while it has commits the branch lacks,
 - Switch Branch… and Rename Branch….
 
 Pull, Push, Fetch and New Branch aren't in it, since they're on the row and in the menu bar with their shortcuts. The agent's popover is decision 100's.
 
-After those come every option in ten moments, in both appearances, the popovers drawn open, and a board to try every option and moment, where a click opens a popover and a hover shows the tooltip after macOS's delay.
+After those come every option in twelve moments, in both appearances, the popovers drawn open, and a board to try every option and moment, where a click opens a popover and a hover shows the tooltip after macOS's delay.
 
 ## Suggested
 
-**A, with the branch's popover.** It says more without making the row taller, which decision 100 avoided because a taller row pushes history down. The agent's name over its line says whose words they are, which a bare `git push` didn't, and the folder sits where you look for the branch. B is the quietest, but what the agent is doing would again take a hover and a wait, which is what decision 100 set out to fix. C's distance from main changes as main moves rather than as you work, so it fits the popover better than the row.
+**C, with the branch's popover.** The row should hold two kinds of things: what you can do, like the counts that pull and push, and what changed without you, like the agent's work and main moving on. Everything else goes in the popover.
+
+The folder never changes once you know it, and you mostly need it to do something there, so it belongs beside Open in Terminal in the popover, with the tooltip for a quick look. How far `origin/main` has moved is the opposite. Nobody notices it until a merge goes wrong, and an agent's worktree that has been running for an hour is exactly where it drifts. A, which an earlier version of these boards suggested, put the static folder in the row and the changing distance in the popover, which was the wrong way round.
+
+A number that changes isn't worth showing on its own, though. In a busy repository every branch is always some way behind, and most branches that are behind still merge cleanly, so a count that's always orange would stop being read within a week. C's line is drawn to stay quiet until it matters:
+
+- **It compares with `origin/main`, not the local `main`.** The local `main` goes stale unless someone pulls it, while the fetches Roga makes on its own keep `origin/main` current.
+- **How far ahead always shows,** as in `4 ahead of origin/main`, since it's how much work the branch holds. **How far behind shows once it isn't zero,** as in `4 ahead, 12 behind origin/main`. Both are gray.
+- **Only a merge that would conflict is orange,** as in `15 behind origin/main · 2 files would conflict`, and that part is never cut. `git merge-tree --write-tree origin/main HEAD` says so without touching the worktree, and git has had it since 2.38, inside Roga's minimum of 2.45 (decision 8). How far ahead gives way to it in the row, and the popover still has both.
+- **After a fetch that failed,** the line says how old its numbers are, as in `· as of 2 h ago`.
+
+For `main` itself the line says how far it is from `origin/main` and when Roga last fetched, and for a detached HEAD it says it isn't on a branch.
+
+B is the quietest option, but what the agent is doing would again take a hover and a wait, which is what decision 100 set out to fix.
+
+## What to watch in C
+
+The row now has two kinds of ahead and behind: the arrows against the upstream, and the words against `origin/main`. They're meant to read apart because they look and behave differently. The arrows are orange buttons that pull and push and go away when there's nothing to do. The words are gray and do nothing when clicked, since their click opens the popover with the rest of the branch. If people still mix them up, the words could name `main` and leave `origin/` to the popover.
 
 ## Click or hover
 
@@ -34,9 +51,9 @@ The boards keep the detail behind clicks, with a tooltip on every part for a qui
 
 ## Still to decide
 
-- **Which second line, A's or C's.** A's folder is calm and never changes. C's distance from main is more useful in an agent's worktree that has been running a while.
-- **Whether how far main has moved belongs in the row at all,** as a count after `↑`, while it's large enough to matter. It would need a click to do something that's safe, and a rebase isn't.
-- **Where main is.** The popover compares with `main`. A repository whose default branch has another name, or a branch made from another branch, would need the base Roga already uses to count a never-pushed branch's `↑` (decision 95).
+- **How quickly `git merge-tree` runs on large repositories.** It would run after each fetch for each worktree in the background, and speed is part of correctness, so it needs measuring against the benchmark repositories before it's built. Until then, the line can show the counts without the conflict part, which `git rev-list --left-right --count` gives cheaply from the commit-graph.
+- **Whether how far behind should ever be orange without a conflict,** as when the branch is hundreds of commits behind. The boards say no, since the count already says it.
+- **Which branch is main.** The boards compare with `origin/main`. A repository whose default branch has another name would use the branch `origin/HEAD` names, as Roga already does to count a never-pushed branch's `↑` (decision 95). A branch made from another branch would still compare with the default branch.
 - **Which terminal Open in Terminal uses.** Opening a new window at a folder is simpler than decision 100's Show Terminal, which had to find the window an agent runs in, but it still has to know whether the user runs Terminal, iTerm or Ghostty.
 
 ## Regenerating the boards

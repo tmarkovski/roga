@@ -330,14 +330,18 @@ class Scene:
     ahead: int = 2
     behind: int = 0
     first_push: bool = False                    # never pushed, so ↑ pushes it for the first time
-    base_ahead: int = 4                         # commits on the branch that main doesn't have
-    base_behind: int = 12                       # commits on main that the branch doesn't have
+    base_ahead: int = 4                         # commits on the branch that origin/main doesn't have
+    base_behind: int = 12                       # commits on origin/main that the branch doesn't have
+    # The files a merge of origin/main would conflict in, as
+    # git merge-tree --write-tree origin/main HEAD lists them after a fetch.
+    would_conflict: list[str] = field(default_factory=list)
     agents: list[Agent] = field(default_factory=list)
     files: int = 3
     roga: str = ""                              # what Roga says after the counts, as "Committed 9f2c1ab"
     stuck: str = ""                             # what replaces the counts, as "Rebasing · 2 conflicts"
     locked: str = ""                            # the lock's reason
     fetched: str = "4 min ago"
+    fetch_failed: bool = False                  # the last fetch couldn't reach origin
 
     @property
     def name(self) -> str:
@@ -372,28 +376,36 @@ EDITING = working("Editing LoginView.swift", "3 min")
 
 MAIN_SCENE = Scene(branch="main", folder="~/git/roga", main_wt=True, upstream="origin/main", ahead=0, behind=0,
                    base_ahead=0, base_behind=0, files=0)
+WORKING = Scene(agents=[RUN_TESTS])
+TWO_AGENTS = Scene(agents=[CODEX_PUSH, RUN_TESTS])
+WOULD_CONFLICT = Scene(agents=[FINISHED], base_behind=15, would_conflict=["LoginView.swift", "LoginStore.swift"])
+LOCKED_NEW = Scene(branch="agent/rate-limits", folder="~/git/roga/.claude/worktrees/rate-limits", upstream=None,
+                   first_push=True, ahead=0, base_ahead=3, base_behind=0, files=1, locked="In use by Claude Code",
+                   agents=[working("Reading RateLimiter.swift", "1 min")])
 
 # The moments every option is drawn in, with a short name for Try it.
 STATES: list[tuple[str, str, str, Scene]] = [
     ("Main", "The main worktree, quiet", "Nothing running, up to date", MAIN_SCENE),
-    ("Working", "An agent working", "The helper's line, and how long", Scene(agents=[RUN_TESTS])),
+    ("Working", "An agent working", "The helper's line, and how long", WORKING),
     ("Approval", "Waiting for approval", "Amber, like the tab's mark", Scene(agents=[APPROVAL], files=0, ahead=3)),
     ("Finished", "Finished", "The reply's first line, until the next turn", Scene(agents=[FINISHED])),
-    ("Two agents", "Two agents, one waiting", "The waiting one speaks for both", Scene(agents=[CODEX_PUSH, RUN_TESTS])),
+    ("Would conflict", "Merging main would conflict", "C's line turns orange only now",
+     WOULD_CONFLICT),
+    ("Two agents", "Two agents, one waiting", "The waiting one speaks for both", TWO_AGENTS),
     ("Committed", "Roga says what just happened", "Its words take the agent's place for 8 seconds",
      Scene(agents=[FINISHED], files=0, ahead=3, roga="Committed 9f2c1ab")),
-    ("Conflicts", "Stopped partway, with conflicts", "The conflicts replace the counts",
+    ("Rebasing", "Stopped partway, with conflicts", "The conflicts replace the counts",
      Scene(agents=[EDITING], stuck="Rebasing · 2 conflicts", files=2)),
     ("Detached", "Detached HEAD", "A commit rather than a branch",
      Scene(branch=None, upstream=None, ahead=0, base_ahead=0, base_behind=0, files=0)),
     ("Not pushed", "Never pushed", "↑ pushes it for the first time",
      Scene(branch="agent/rate-limits", folder="~/git/roga/.claude/worktrees/rate-limits", upstream=None, first_push=True,
            ahead=0, base_ahead=3, base_behind=0, files=1, agents=[working("Reading RateLimiter.swift", "1 min")])),
+    ("Offline", "The last fetch failed", "C says how old its numbers are",
+     Scene(agents=[RUN_TESTS], fetch_failed=True, fetched="2 h ago")),
     ("Locked", "A locked worktree", "git worktree lock, with its reason",
      Scene(locked="In use by Claude Code", agents=[RUN_TESTS])),
 ]
-
-WORKING = STATES[1][3]
 
 COMMITS = [
     (["cur:agent/fix-login"], "Add tests for the login lockout", "TM", "48ba644"),
@@ -420,6 +432,8 @@ def plural(n: int, word: str) -> str:
 def summary(s: Scene) -> str:
     """The branch's first line today: its upstream, how far it is from it,
     and when Roga last fetched (BranchModel.summary)."""
+    if s.fetch_failed:
+        return f"couldn't reach origin · fetched {s.fetched}"
     if s.branch is None:
         return f"Detached at {s.head} · fetched {s.fetched}"
     if s.first_push:
@@ -510,17 +524,40 @@ def folder_html(s: Scene) -> str:
 
 
 def relation_html(s: Scene) -> str:
-    """C's second line: how far the branch is from main, or for main itself,
-    from its upstream."""
+    """C's second line: how far the branch is from origin/main, or for main
+    itself, from its upstream.
+
+    It compares with origin/main rather than the local main, which goes
+    stale unless someone pulls it, while Roga's own fetches keep origin/main
+    current. How far ahead always shows, since it's how much work the branch
+    holds. How far behind shows only when it isn't zero, and in gray, since
+    most branches that are behind still merge cleanly. Only a merge that
+    would conflict is orange, and it's never cut. After a fetch that failed,
+    the line says how old its numbers are."""
+    lock = f'<span class="keep lk">{LOCK_XS}</span>' if s.locked else ""
     if s.branch is None:
         return '<span class="cut">Not on a branch</span>'
     if s.branch == "main":
-        return f'<span class="cut">{esc(summary(s))}</span>'
-    parts = [f"{s.base_ahead} ahead of main"]
-    behind = f' · <span class="o">{s.base_behind} behind</span>' if s.base_behind else ""
-    pushed = " · not pushed yet" if s.first_push else ""
-    lock = f'<span class="keep lk">{LOCK_XS}</span>' if s.locked else ""
-    return f'{lock}<span class="cut">{esc(parts[0])}{behind}{pushed}</span>'
+        return f'{lock}<span class="cut">{esc(summary(s))}</span>'
+    if s.would_conflict:
+        # The line says the most pressing thing about main, and how far
+        # ahead gives way to it. The popover still has both.
+        text = f"{s.base_behind} behind origin/main"
+    elif s.base_ahead and s.base_behind:
+        text = f"{s.base_ahead} ahead, {s.base_behind} behind origin/main"
+    elif s.base_behind:
+        text = f"{s.base_behind} behind origin/main"
+    elif s.base_ahead:
+        text = f"{s.base_ahead} ahead of origin/main"
+    else:
+        text = "Same as origin/main"
+    if s.first_push:
+        text += " · not pushed yet"
+    if s.fetch_failed:
+        text += f" · as of {s.fetched}"
+    n = len(s.would_conflict)
+    clash = f'<span class="keep o">&nbsp;· {plural(n, "file")} would conflict</span>' if n else ""
+    return f'{lock}<span class="cut">{esc(text)}</span>{clash}'
 
 
 # ---------------------------------------------------------------- the middle column
@@ -778,7 +815,9 @@ def checkout_pop(s: Scene, *, right: bool = False) -> str:
         if s.first_push:
             secs.append(kv("Upstream", "Not pushed yet", "↑ pushes it to origin for the first time"))
         else:
-            if s.ahead and s.behind:
+            if s.fetch_failed:
+                rel = "Couldn't reach origin"
+            elif s.ahead and s.behind:
                 rel = f"{s.behind} behind, {s.ahead} ahead"
             elif s.behind:
                 rel = f"{s.behind} behind"
@@ -788,13 +827,17 @@ def checkout_pop(s: Scene, *, right: bool = False) -> str:
                 rel = "Up to date"
             secs.append(kv("Upstream", esc(s.upstream or ""), f"{esc(rel)} · fetched {esc(s.fetched)}"))
         if s.branch != "main":
-            if s.base_behind:
-                second = f'main has <span class="o">{plural(s.base_behind, "commit")}</span> this branch doesn\'t'
-                acts = [("", "Rebase onto main"), ("", "Merge main")]
+            if s.would_conflict:
+                files = " and ".join(s.would_conflict) if len(s.would_conflict) < 3 else plural(len(s.would_conflict), "file")
+                second = f'<span class="o">Merging it would conflict in {esc(files)}</span>'
+            elif s.base_behind:
+                second = f"origin/main has {plural(s.base_behind, 'commit')} this branch doesn't"
             else:
-                second = "Has every commit on main"
-                acts = None
-            secs.append(kv("Main", f"{s.base_ahead} ahead, {s.base_behind} behind", second, acts, new=True))
+                second = "Has every commit on origin/main"
+            if s.fetch_failed:
+                second += f"<br>As of the last fetch, {esc(s.fetched)}"
+            acts = [("", "Rebase onto origin/main"), ("", "Merge origin/main")] if s.base_behind else None
+            secs.append(kv("Main", f"{s.base_ahead} ahead, {s.base_behind} behind origin/main", second, acts, new=True))
     foot = ['<button class="pb" type="button">Switch Branch…</button>']
     if s.branch is not None:
         foot.append('<button class="pb" type="button">Rename Branch…</button>')
@@ -900,27 +943,26 @@ def board_states(dark: bool) -> Board:
 
 
 def board_popovers() -> Board:
-    two = STATES[4][3]
     fin = Scene(agents=[Agent("finished", "Added the lockout tests and updated the changelog. Both test suites pass, and the "
                               "lockout message now says how long to wait.", "3 min ago")])
-    locked = Scene(branch="agent/rate-limits", folder="~/git/roga/.claude/worktrees/rate-limits", upstream=None,
-                   first_push=True, ahead=0, base_ahead=3, base_behind=0, files=1, locked="In use by Claude Code",
-                   agents=[working("Reading RateLimiter.swift", "1 min")])
     rows = [
         [
-            ("The branch's popover", "A, in an agent's worktree that main has moved past",
-             middle(WORKING, "A", WIDE, POP_H, h=Hooks.open("co", checkout_pop(WORKING)))),
-            ("The branch's popover", "A, in the main worktree",
-             middle(MAIN_SCENE, "A", WIDE, POP_H, h=Hooks.open("co", checkout_pop(MAIN_SCENE)))),
-            ("The branch's popover", "A, never pushed, and locked",
-             middle(locked, "A", WIDE, POP_H, h=Hooks.open("co", checkout_pop(locked)))),
+            ("The branch's popover", "C, when merging origin/main would conflict",
+             middle(WOULD_CONFLICT, "C", WIDE, POP_H, h=Hooks.open("co", checkout_pop(WOULD_CONFLICT)))),
+            ("The branch's popover", "C, in the main worktree",
+             middle(MAIN_SCENE, "C", WIDE, POP_H, h=Hooks.open("co", checkout_pop(MAIN_SCENE)))),
+            ("The branch's popover", "C, never pushed, and locked",
+             middle(LOCKED_NEW, "C", WIDE, POP_H, h=Hooks.open("co", checkout_pop(LOCKED_NEW)))),
         ],
         [
-            ("The agent's popover", "A, two sessions, one waiting",
-             middle(two, "A", WIDE, POP_H, h=Hooks.open("ag", agent_pop(two)))),
-            ("The agent's popover", "A, finished, with its whole reply",
-             middle(fin, "A", WIDE, POP_H, h=Hooks.open("ag", agent_pop(fin)))),
-            ("B's tooltips", "a hover over the agent's label, after the tooltip's delay",
+            ("The agent's popover", "C, two sessions, one waiting",
+             middle(TWO_AGENTS, "C", WIDE, POP_H, h=Hooks.open("ag", agent_pop(TWO_AGENTS)))),
+            ("The agent's popover", "C, finished, with its whole reply",
+             middle(fin, "C", WIDE, POP_H, h=Hooks.open("ag", agent_pop(fin)))),
+            ("C's tooltip", "a hover over the branch, where the folder went",
+             middle(WORKING, "C", WIDE, POP_H, h=Hooks(tip_on="co"),
+                    extra=POINTER.format(style="left:150px;top:50px"))),
+            ("B's tooltip", "a hover over the agent's label, the only place its words are",
              middle(WORKING, "B", WIDE, POP_H, h=Hooks(tip_on="ag"),
                     extra=POINTER.format(style="left:300px;top:60px"))),
         ],
@@ -928,7 +970,7 @@ def board_popovers() -> Board:
     out = []
     for r in rows:
         out.append('<div class="cells">' + "".join(cell(t, sub, stage) for t, sub, stage in r) + "</div>")
-    w = 80 + 3 * WIDE + 2 * 48
+    w = 80 + 4 * WIDE + 3 * 48
     h = 34 + 2 * (36 + 12 + POP_H) + 36 + 40
     body = f'<div class="board th-l" style="width:{w}px;height:{h}px">{"".join(out)}</div>'
     return Board("Bb-Popovers.dc.html", "What the clicks open", w, h, page("What the clicks open", body, w, h))
@@ -1002,7 +1044,7 @@ class Component extends DCLogic {
 
 def board_try() -> Board:
     w = 28 + WIDE + 28 + 330 + 28
-    h = 28 + 3 * 34 + 18 + 460 + 28
+    h = 28 + 4 * 34 + 18 + 460 + 28    # twelve moments wrap the controls onto a fourth line
     body = (
         f'<div class="{{{{sheetCls}}}}" style="width:{w}px;height:{h}px">'
         '<div class="bar"><sc-for list="{{groups}}" as="gp" hint-placeholder-count="4"><div class="grp"><span>{{gp.name}}</span>'
@@ -1013,9 +1055,9 @@ def board_try() -> Board:
         '<div class="side">'
         '<div class="meta"><b>Click</b> the branch, the folder in B, or the agent to open its popover, and click it again to close it. '
         '<b>Hover</b> over any of them, or over a count, and wait for the tooltip, as macOS makes you wait for one.</div>'
-        '<div class="meta">Things to look for: how much each option says before you click anything; whether the folder earns its '
-        'line in A; whether C\'s <b>12 behind</b> is something you\'d act on; and what B loses when the agent\'s words are only '
-        'in a tooltip.</div>'
+        '<div class="meta">Things to look for: how much each option says before you click anything; whether C\'s line stays quiet '
+        'until it matters, which <b>Would conflict</b> and <b>Offline</b> show; whether the arrows and C\'s words read as two '
+        'different things; and what B loses when the agent\'s words are only in a tooltip.</div>'
         '<div class="meta">The right end is the same in A, B and C: Fetch, New Branch, a line and history\'s order. The number of '
         'commits moves into the order\'s menu, which gives the agent the room it used to share with it.</div>'
         "</div></div></div>"
@@ -1052,30 +1094,33 @@ TITLES = [
 
 INTROS = [
     "The row under the tabs says which branch the worktree is on, pulls and pushes, and says what its agent is doing. "
-    "It doesn't say where the worktree's files are, which is only at the end of the tab's tooltip, and the branch's menu "
-    "repeats Pull, Push, Fetch and New Branch, which are a click away on the same row. Each board draws the middle column "
-    "at 680 points, as in the default window, and at 480, with Claude Code running the tests in agent/fix-login. "
-    "A gives the branch and the agent two lines each in the row's 44 points. B shrinks every part to a label and leaves "
-    "the words to tooltips and popovers. C is A with the branch's second line saying how far it is from main.",
+    "It doesn't say how far the branch has drifted from main, which you only find out from history or a failed merge, "
+    "and the branch's menu repeats Pull, Push, Fetch and New Branch, which are a click away on the same row. Each board "
+    "draws the middle column at 680 points, as in the default window, and at 480, with Claude Code running the tests "
+    "in agent/fix-login. A gives the branch and the agent two lines each in the row's 44 points, with the folder under "
+    "the branch. B shrinks every part to a label and leaves the words to tooltips and popovers. C keeps A's two lines "
+    "but puts how far the branch is from origin/main under it, and leaves the folder to the tooltip and the popover.",
     "In A, B and C a click on the branch opens a popover about the checkout instead of the menu: the folder with Show in "
-    "Finder, Open in Terminal and Copy Path, the upstream and when Roga last fetched, how far the branch is from main "
-    "with Rebase and Merge, the lock, and Switch Branch and Rename. Pull, Push, Fetch and New Branch stay on the row, "
-    "and in the menu bar's Branch menu with their shortcuts. The agent's popover is decision 100's. Try it puts every "
-    "option and moment under your pointer.",
-    "Each option in the same ten moments. Only the branch row and the first rows of history are drawn.",
+    "Finder, Open in Terminal and Copy Path, the upstream and when Roga last fetched, how far the branch is from "
+    "origin/main and which files a merge of it would conflict in, with Rebase and Merge, the lock, and Switch Branch and "
+    "Rename. Pull, Push, Fetch and New Branch stay on the row, and in the menu bar's Branch menu with their shortcuts. "
+    "The agent's popover is decision 100's. Try it puts every option and moment under your pointer.",
+    "Each option in the same twelve moments. Only the branch row and the first rows of history are drawn.",
     "The same moments in the dark appearance.",
 ]
 
 EXTRA_NOTES = {
     "nBbPick": {
         "x": 1080, "row": 0, "w": 900,
-        "text": "Suggested: A, with the branch's popover. Two lines fit in the row's 44 points the way a window's title and "
-                "subtitle do, so the row says more without getting taller and pushing history down, which is why decision "
-                "100 turned down a strip under the row. The folder under the branch is what tells two checkouts of one "
-                "repository apart, and the agent's name over its line says whose words they are without a colon. B is "
-                "the quietest, but it hides what the agent is doing behind a hover again, which is what decision 100 set "
-                "out to fix. C's distance from main is useful, but it changes as main moves rather than as you work, so "
-                "it fits better in the popover, where A puts it.",
+        "text": "Suggested: C, with the branch's popover. The row's place is for two kinds of things: what you can do, "
+                "like the counts that pull and push, and what changed without you, like the agent and main moving on. "
+                "The folder never changes once you know it, and you mostly need it to do something there, so it belongs "
+                "beside Open in Terminal in the popover. How far origin/main has moved is the opposite: nobody notices "
+                "it until a merge goes wrong. C draws it in gray, since most branches that are behind still merge "
+                "cleanly, says how far behind only when it isn't zero, and turns orange only when git merge-tree "
+                "--write-tree says a merge would conflict. It compares with origin/main rather than the local main, "
+                "which goes stale unless someone pulls it. Two lines still fit in the row's 44 points, so history "
+                "doesn't move down. B is the quietest, but what the agent is doing would again take a hover.",
     },
     "nBbHover": {
         "x": 1080, "row": 1, "w": 900,
@@ -1084,6 +1129,14 @@ EXTRA_NOTES = {
                 "the row to Fetch, couldn't be reached from the keyboard or VoiceOver, and would have to close itself "
                 "when the pointer leaves, which makes it hard to click Open in Terminal inside it. Every part keeps a "
                 "tooltip with its one-line summary for a quick look, and the click opens the rest on the press (decision 111).",
+    },
+    "nBbWatch": {
+        "x": 1080, "row": 2, "w": 900,
+        "text": "What to watch in C: the row now has two kinds of ahead and behind, the arrows against the upstream and "
+                "the words against origin/main. They're meant to read apart because they look and behave differently. "
+                "The arrows are buttons that pull and push and go away when there's nothing to do, and the words are "
+                "gray and do nothing when clicked. If people still mix them up, the words could say main's name only "
+                "and leave origin/ to the popover.",
     },
 }
 
@@ -1098,19 +1151,24 @@ NOTES = {
     "Bb-B.dc.html": "B is a row of quiet labels: the folder's last part, the branch, the counts, and the agent's name and "
                     "time. Each label's tooltip has the whole of it, and a click opens its popover. It reads calmly and "
                     "fits anywhere, but what the agent is doing takes a hover and a wait, as it did before decision 100.",
-    "Bb-C.dc.html": "C is A with the branch's second line saying how far it is from main, in orange when main has commits "
-                    "the branch lacks. The folder moves to the tooltip and the popover. For main itself the line says "
-                    "how far it is from origin/main and when Roga fetched.",
+    "Bb-C.dc.html": "C puts how far the branch is from origin/main under its name: always how far ahead, which is how much "
+                    "work it holds, and how far behind once it's behind at all, both in gray. Only a merge that would "
+                    "conflict is orange, and that part is never cut. The folder moves to the tooltip and the popover. For "
+                    "main itself the line says how far it is from origin/main and when Roga fetched.",
     "Bb-Popovers.dc.html": "The branch's popover holds what the row has no room for and the actions the row doesn't have. "
-                           "Main's distance and its Rebase and Merge are marked new, since Roga doesn't work that out "
-                           "today. The agent's popover is decision 100's, without Show Terminal. The last cell shows how "
-                           "B's agent label gives its words only to a tooltip.",
+                           "The Main section is marked new, since Roga doesn't work out how far a branch is from "
+                           "origin/main, or whether merging it would conflict, today. The agent's popover is decision "
+                           "100's, without Show Terminal. The last two cells show where C's folder went, and how B's "
+                           "agent label gives its words only to a tooltip.",
     "Bb-Try.dc.html": "Pick an option and a moment. Click a part to open its popover, and hover to see its tooltip.",
     "Bb-States.dc.html": "Roga's own words, as in Committed 9f2c1ab, still take the agent's place while they show. "
-                         "A detached HEAD shows its commit, and C says it isn't on a branch. A locked worktree gets a "
-                         "small lock before its folder in A, and its folder label turns into the lock in B.",
+                         "Would conflict is the one moment where C's line turns orange, and Offline is where it says how "
+                         "old its numbers are. A detached HEAD shows its commit, and C says it isn't on a branch. A locked "
+                         "worktree gets a small lock at the start of the second line in A and C, and its folder label "
+                         "turns into the lock in B.",
     "Bb-States-Dark.dc.html": "The amber of a waiting agent and the red of conflicts are the sidebar's, so they read the "
-                              "same in the tab, the row and the popovers.",
+                              "same in the tab, the row and the popovers. C's orange is the counts' color, since it "
+                              "asks for something to be done rather than for an answer.",
 }
 
 
