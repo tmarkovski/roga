@@ -52,7 +52,7 @@ enum Palette {
     /// The current branch, in the color of its badge in history (decision 27).
     static var current: Color { themed(\.current) }
     /// The name of any local branch but the current one, as in history's badges
-    /// (decision 27), and the refs panel's icons for them (decision 118).
+    /// (decision 27), and the refs panel's icons for them (decision 119).
     static var otherBranch: Color { themed(\.otherBranch) }
     /// What was added, and commits ahead of the upstream.
     static var green: Color { themed(\.added) }

@@ -183,7 +183,7 @@ struct RefsPanel: View {
     }
 
     /// The button on the Branches heading that deletes the merged branches no
-    /// worktree has, while there are any (decision 118).
+    /// worktree has, while there are any (decision 119).
     private var deleteMergedCommand: SectionCommand? {
         let merged = refs.deletableMergedBranches
         guard !merged.isEmpty, let main = merged.first?.main?.other else { return nil }
@@ -227,7 +227,7 @@ struct RefsPanel: View {
         .id(ref)
     }
 
-    /// A local branch, on one line (decision 118). Its icon says whose it is and
+    /// A local branch, on one line (decision 119). Its icon says whose it is and
     /// where it's checked out: the current branch's green, or sky, and the icon
     /// of the tab of a worktree that has it. What it says after its name is in
     /// `BranchDetails.RowState`, and the rest is in its tooltip.
@@ -301,7 +301,7 @@ struct RefsPanel: View {
     }
 
     /// A remote branch, on one line. Its icon's color says whether a local
-    /// branch tracks it, in the colors of that branch (decision 118), and its
+    /// branch tracks it, in the colors of that branch (decision 119), and its
     /// date is in its tooltip rather than at the end of its row.
     ///
     /// - Parameters:
@@ -639,7 +639,7 @@ private struct RefsPanelHeader<Commands: View>: View {
 }
 
 /// A command at the right of a section's heading: the plus that adds a remote,
-/// and on Branches, the button that deletes the merged branches (decision 118).
+/// and on Branches, the button that deletes the merged branches (decision 119).
 struct SectionCommand {
     let icon: Icon
     /// Its tooltip and its name for VoiceOver.
@@ -712,7 +712,7 @@ private struct RefSectionHeader: View {
     }
 }
 
-/// The size of a row's icon and the room around it (decision 118): a 12-point
+/// The size of a row's icon and the room around it (decision 119): a 12-point
 /// column with 6 points after it, where it used to be 16 with 8, so that a row
 /// in a folder under a remote has room for its name.
 private enum RefIcon {
@@ -723,7 +723,7 @@ private enum RefIcon {
 }
 
 /// How a row that the pointer can rest on takes part in lighting up what goes
-/// with it (decision 118): it says when the pointer is on it and whether it's
+/// with it (decision 119): it says when the pointer is on it and whether it's
 /// in view, and it tints while something else lights it up.
 struct RefRowLinking {
     let refs: RefsModel
@@ -874,7 +874,7 @@ private struct ReportsVisibility: ViewModifier {
 /// How much further in than a section's rows a row starts: a step for each
 /// folder it's in. A remote's branches start where the local ones do, rather
 /// than a step further in under the remote, so that a branch and its remote
-/// copy line up (decision 118).
+/// copy line up (decision 119).
 private enum RefIndent {
     static let step = 16.0
 
@@ -983,7 +983,7 @@ private struct RefFolderRow: View {
     }
 }
 
-/// What a branch's row says after its name (decision 118): a checkmark for the
+/// What a branch's row says after its name (decision 119): a checkmark for the
 /// branch checked out here, its counts, or that it's merged.
 private struct BranchRowState: View {
     let state: BranchDetails.RowState
@@ -1010,7 +1010,7 @@ private struct BranchRowState: View {
 
 /// How far a branch is from the one it's compared with, as arrows, in gray as
 /// a worktree's tab has them, since clicking the row selects it rather than
-/// pulling or pushing (decision 118).
+/// pulling or pushing (decision 119).
 private struct AheadBehind: View {
     let ahead: Int
     let behind: Int
@@ -1032,7 +1032,7 @@ private struct AheadBehind: View {
 }
 
 /// The pill at the edge of the list that names the row the pointer lights up
-/// while that row is out of view, with an arrow toward it (decision 118). It
+/// while that row is out of view, with an arrow toward it (decision 119). It
 /// takes no clicks, so it never gets in the way of the rows under it.
 private struct RefsPill: View {
     let refs: RefsModel

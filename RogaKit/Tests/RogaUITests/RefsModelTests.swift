@@ -256,7 +256,7 @@ struct RefsModelTests {
 
     func id(_ hex: String) -> ObjectID { ObjectID(hex: hex)! }
 
-    /// Branches as this repository had them when decision 118 was drawn.
+    /// Branches as this repository had them when decision 119 was drawn.
     var shimmer: BranchDetails {
         BranchDetails(
             name: "refs/heads/tm/agent-line-shimmer", tip: id, date: 1_000,

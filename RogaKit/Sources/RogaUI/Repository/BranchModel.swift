@@ -466,14 +466,8 @@ final class BranchModel {
         self.worktree = worktree
         self.fetchesByItself = fetchesByItself
         self.reportBranchChange = reportBranchChange
-        defaultsObserver = NotificationCenter.default.addObserver(
-            forName: UserDefaults.didChangeNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.houseSettingMayHaveChanged()
-            }
+        defaultsObserver = DefaultsChanges.observe { [weak self] in
+            self?.houseSettingMayHaveChanged()
         }
     }
 
@@ -1102,7 +1096,7 @@ final class BranchModel {
     }
 
     /// Asks which of the branches merged into the main branch should go, from the
-    /// button on the refs panel's Branches heading (decision 118). They're on
+    /// button on the refs panel's Branches heading (decision 119). They're on
     /// different commits, so each is taken wherever it is now. Their commits are all
     /// in the main branch, so nothing should be lost, and every switch starts on.
     ///

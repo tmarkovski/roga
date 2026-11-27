@@ -1,4 +1,4 @@
-# 118. Branches on one line, merged branches, and what the pointer lights up
+# 119. Branches on one line, merged branches, and what the pointer lights up
 
 Accepted on 2026-11-27. This changes how the refs panel draws its branches and remote branches. It takes back the second line a local branch had and the date at the end of a remote branch's row, gives the panel's counts the tabs' gray in place of [decision 27](0027-give-the-graph-and-branches-monokais-colors.md)'s green and pink, makes the icons and indents of [decision 50](0050-branches-in-folders-at-each-slash-of-their-names.md) smaller, and lets the delete dialog from [decision 38](0038-one-delete-on-a-commit-with-its-branches-in-the-dialog.md) ask about branches on different commits. The options were drawn on the Branches page of the design canvas, with this repository's own branches, and [`docs/design/branch-list/`](../design/branch-list/README.md) has the script that draws them.
 

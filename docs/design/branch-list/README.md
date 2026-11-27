@@ -14,7 +14,7 @@ After those come every state a row can be in, as today and as A in both appearan
 
 ## Decided
 
-- **A, with one pulse, and remote branches say merged too.** Decided on November 27, 2026, as [decision 118](../../decisions/0118-branches-on-one-line-and-what-the-pointer-lights-up.md). Every item under Proposed below went in together. The app draws a row's icon at 11 points in a 14-point column, where the boards draw it at 12 in 14, and its counts and pill use the `↓` and `↑` characters, as the boards do.
+- **A, with one pulse, and remote branches say merged too.** Decided on November 27, 2026, as [decision 119](../../decisions/0119-branches-on-one-line-and-what-the-pointer-lights-up.md). Every item under Proposed below went in together. The app draws a row's icon at 11 points in a 14-point column, where the boards draw it at 12 in 14, and its counts and pill use the `↓` and `↑` characters, as the boards do.
 
 ## Proposed
 

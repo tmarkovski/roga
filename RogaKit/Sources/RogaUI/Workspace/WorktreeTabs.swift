@@ -101,7 +101,7 @@ struct WorktreeTabStrip: View {
             menu: menu,
             // A branch the pointer rests on in the refs panel lights up the
             // tab of the worktree that has it, and the pointer on a tab lights
-            // up its branch's row (decision 118).
+            // up its branch's row (decision 119).
             glow: refs.flatMap { $0.links.worktree == worktree.path ? $0.linkColor : nil },
             pointing: { isOn in
                 if isOn { refs?.point(at: .worktree(worktree.path)) } else { refs?.stopPointing(at: .worktree(worktree.path)) }
@@ -424,7 +424,7 @@ private struct WorktreeTab: View {
 }
 
 /// The ring a tab wears while a branch the pointer rests on in the refs panel
-/// lights it up (decision 118), in the branch's color, with a soft light around
+/// lights it up (decision 119), in the branch's color, with a soft light around
 /// it. It pulses once as it arrives: the ring starts twice as thick, and a
 /// second ring spreads out from it and fades. Then it holds still, so that it
 /// catches the eye across the window without moving at the edge of it the way

@@ -97,7 +97,7 @@ final class RefsModel {
     /// Whether the filter field shows, which it doesn't until someone asks for it.
     private(set) var isFilterShown = false
     /// What the pointer has rested on, in the panel or among the window's tabs,
-    /// which lights up the rows and the tab that go with it (decision 118).
+    /// which lights up the rows and the tab that go with it (decision 119).
     private(set) var pointing: Pointing?
     /// The rows and the tab that light up with what the pointer rests on.
     private(set) var links = Links()
@@ -656,7 +656,7 @@ struct BranchRows {
 }
 
 extension BranchDetails {
-    /// What a branch's row says after its name (decision 118).
+    /// What a branch's row says after its name (decision 119).
     enum RowState: Equatable {
         /// The branch checked out here, which has a checkmark.
         case checkedOut
@@ -687,7 +687,7 @@ extension BranchDetails {
 
     /// Its tooltip, after its whole name: where it's checked out, how far it
     /// is from its upstream and from the main branch, and when it last changed.
-    /// The row has no second line (decision 118), so this is where the rest is,
+    /// The row has no second line (decision 119), so this is where the rest is,
     /// and VoiceOver reads it as the row's value.
     func details(isCurrent: Bool, now: Date = Date()) -> [String] {
         var lines: [String] = []
@@ -716,7 +716,7 @@ extension BranchDetails {
 extension RemoteBranchDetails {
     /// Its tooltip, after its whole name: which local branches track it, whether
     /// it's merged, and when it last changed. The date used to be at the end of
-    /// its row (decision 118).
+    /// its row (decision 119).
     ///
     /// - Parameter trackers: The short names of the local branches that track it.
     func details(trackedBy trackers: [String], now: Date = Date()) -> [String] {
