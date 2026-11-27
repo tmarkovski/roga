@@ -668,6 +668,9 @@ public struct WorkspaceView: View {
             delete: { worktree in
                 tabDeletions.askToDelete(worktree, in: repository, list: list)
             },
+            unlock: { worktree in
+                tabRepairs.unlock(worktree, in: repository, list: list)
+            },
             locateRepository: { locate(repository) },
             removeRepository: { list.remove(repository) }
         )

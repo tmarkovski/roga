@@ -281,6 +281,8 @@ struct Sidebar: View {
                 repairs.locate(worktree, in: repository, list: list) { select($0) }
             } delete: {
                 deletions.askToDelete(worktree, in: repository, list: list)
+            } unlock: {
+                repairs.unlock(worktree, in: repository, list: list)
             }
             .modifier(newWorktreePopover(on: row, from: worktree))
             .id(row)
@@ -1033,6 +1035,7 @@ private struct WorktreeRow: View {
     let newWorktree: () -> Void
     let locate: () -> Void
     let delete: () -> Void
+    let unlock: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reducesMotion
 
     var body: some View {
@@ -1086,6 +1089,7 @@ private struct WorktreeRow: View {
                 newWorktree: newWorktree,
                 locate: locate,
                 delete: delete,
+                unlock: unlock,
                 reveal: reveal,
                 openInTerminal: openInTerminal
             )
@@ -1490,5 +1494,12 @@ extension Worktree {
     var lockHelp: String? {
         guard isLocked else { return nil }
         return lockReason.map { "Locked: " + $0 } ?? "Locked"
+    }
+
+    /// A line of its own for the lock's reason, in a tooltip whose other lines
+    /// already say Locked, or nil when there's no reason to give.
+    var lockReasonLine: String? {
+        guard isLocked, let lockReason else { return nil }
+        return "Reason for the lock: " + lockReason
     }
 }

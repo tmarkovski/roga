@@ -76,8 +76,8 @@ struct SidebarMenusTests {
         SidebarMenus.RepositoryActions(openInNewWindow: {}, newWorktree: newWorktree, locate: {}, remove: {}, reveal: { _ in }, openInTerminal: { _ in })
     }
 
-    private func worktreeActions(newWorktree: @escaping () -> Void = {}) -> SidebarMenus.WorktreeActions {
-        SidebarMenus.WorktreeActions(openInNewWindow: {}, newWorktree: newWorktree, locate: {}, delete: {}, reveal: { _ in }, openInTerminal: { _ in })
+    private func worktreeActions(newWorktree: @escaping () -> Void = {}, unlock: @escaping () -> Void = {}) -> SidebarMenus.WorktreeActions {
+        SidebarMenus.WorktreeActions(openInNewWindow: {}, newWorktree: newWorktree, locate: {}, delete: {}, unlock: unlock, reveal: { _ in }, openInTerminal: { _ in })
     }
 
     // MARK: A repository's row
@@ -122,6 +122,22 @@ struct SidebarMenusTests {
         let entries = SidebarMenus.entries(forWorktree: linked, isDeleting: true, actions: worktreeActions())
         #expect(command("New worktree…", in: entries)?.isEnabled == false)
         #expect(command("Delete…", in: entries)?.isEnabled == false)
+    }
+
+    @Test func aLockedWorktreeOffersUnlockBeforeDelete() throws {
+        var locked = linked
+        locked.isLocked = true
+        locked.lockReason = "agent running"
+        var unlocked = 0
+        let entries = SidebarMenus.entries(forWorktree: locked, isDeleting: false, actions: worktreeActions(unlock: { unlocked += 1 }))
+        #expect(titles(entries) == ["Open in new window", "—", "New worktree…", "Show in Finder", "Open in Terminal", "—", "Unlock", "Delete…"])
+        let unlock = try #require(command("Unlock", in: entries))
+        #expect(unlock.isEnabled)
+        unlock.action()
+        #expect(unlocked == 1)
+
+        let deleting = SidebarMenus.entries(forWorktree: locked, isDeleting: true, actions: worktreeActions())
+        #expect(command("Unlock", in: deleting)?.isEnabled == false)
     }
 
     @Test func aWorktreeWithoutCommitsIsDeletedWithoutAChoice() {
