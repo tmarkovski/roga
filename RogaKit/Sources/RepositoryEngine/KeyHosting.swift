@@ -86,16 +86,23 @@ public enum GitHubCLI {
     }
 
     /// What adding a made key runs, by its arguments after `gh`. An SSH key
-    /// goes in as a signing key, and an OpenPGP key's armored export comes
-    /// in on standard input, which `-` stands for.
+    /// goes in as a signing key, from its `.pub` file. An OpenPGP key's
+    /// armored export, and an SSH key that's in no file, such as one read
+    /// from a signature (decision 117), come in on standard input, which `-`
+    /// stands for.
     public static func addArguments(_ made: NewSigningKey.Made, title: String, shown: Bool = true) -> [String] {
         switch made.format {
         case .ssh:
-            let file = (shown ? made.shownPublicKeyFile : made.publicKeyFile) ?? made.publicKeyFile ?? ""
+            let file = (shown ? made.shownPublicKeyFile : made.publicKeyFile) ?? made.publicKeyFile ?? "-"
             return ["ssh-key", "add", file, "--type", "signing", "--title", title]
         case .openPGP, .x509:
             return ["gpg-key", "add", "-", "--title", title]
         }
+    }
+
+    /// Whether adding the key pipes it into gh, rather than naming its file.
+    static func pipesKey(_ made: NewSigningKey.Made) -> Bool {
+        made.format != .ssh || made.publicKeyFile == nil
     }
 
     /// Adds the made key to the account gh is signed in to on the host.
@@ -106,7 +113,7 @@ public enum GitHubCLI {
         var command = ProgramCommand(gh, addArguments(made, title: title, shown: false))
         command.environment["GH_HOST"] = host
         command.timeout = .seconds(30)
-        let input = made.format == .ssh ? nil : Array(made.publicKey.utf8)
+        let input = pipesKey(made) ? Array(made.publicKey.utf8) : nil
         let result = try await programs.run(command, input: input)
         guard result.succeeded else {
             let words = result.errorOutput.split(whereSeparator: \.isNewline).first.map(String.init) ?? "it exited with \(result.status)"

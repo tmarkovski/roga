@@ -168,6 +168,18 @@ struct NewSigningKeyTests {
         #expect(Set(fingerprints).count == 2)
         let listing = await SigningKeys.list(.openPGP, git: git, programs: programs, in: home, home: home)
         #expect(Set(listing.keys.map(\.value)) == Set(fingerprints))
+
+        // The Signature line's menu exports a key by the ID its signature
+        // names, and finds it among this Mac's keys (decision 117).
+        let signedWith = SignatureKey(id: String(fingerprints[0].suffix(16)))
+        let found = try await SignaturePublicKey.find(signedWith, format: .openPGP, git: git, programs: programs, in: home, home: home)
+        #expect(found.isThisMacs)
+        #expect(found.key.key.value == fingerprints[0])
+        #expect(found.key.publicKey.hasPrefix("-----BEGIN PGP PUBLIC KEY BLOCK-----"))
+        // gpg prints nothing for a key it doesn't have.
+        await #expect(throws: NewSigningKey.Failure.self) {
+            try await SignaturePublicKey.text(of: SignatureKey(id: "0123456789ABCDEF"), format: .openPGP, git: git, programs: programs, in: home)
+        }
     }
 
     // MARK: Programs
@@ -220,8 +232,15 @@ struct NewSigningKeyTests {
         )
         #expect(GitHubCLI.addArguments(ssh, title: "Signing key on Mac") == ["ssh-key", "add", "~/.ssh/id_ed25519_signing.pub", "--type", "signing", "--title", "Signing key on Mac"])
         #expect(GitHubCLI.addArguments(ssh, title: "T", shown: false)[2] == "/Users/sam/.ssh/id_ed25519_signing.pub")
+        #expect(!GitHubCLI.pipesKey(ssh))
         let openPGP = NewSigningKey.Made(format: .openPGP, key: key, publicKey: "-----BEGIN PGP PUBLIC KEY BLOCK-----")
         #expect(GitHubCLI.addArguments(openPGP, title: "T") == ["gpg-key", "add", "-", "--title", "T"])
+        #expect(GitHubCLI.pipesKey(openPGP))
+        // A key read from a signature, in no file, comes in on standard input
+        // too (decision 117).
+        let fromSignature = NewSigningKey.Made(format: .ssh, key: key, publicKey: "ssh-ed25519 AAAA")
+        #expect(GitHubCLI.addArguments(fromSignature, title: "T", shown: false) == ["ssh-key", "add", "-", "--type", "signing", "--title", "T"])
+        #expect(GitHubCLI.pipesKey(fromSignature))
         #expect(GitHubCLI.refreshArguments(host: "github.com", format: .ssh) == ["auth", "refresh", "-h", "github.com", "-s", "admin:ssh_signing_key"])
     }
 

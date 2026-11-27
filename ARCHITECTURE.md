@@ -41,7 +41,7 @@ roga/
 │   │   │   ├── Worktree.swift          a worktree's folder, HEAD and branch
 │   │   │   ├── CommitInfo.swift        a commit's parents, author, committer and message
 │   │   │   ├── CommitIdentity.swift    who a repository's commits go out as and how they're signed, with where git found each setting, decision 103
-│   │   │   ├── SignatureCheck.swift    what git found when it checked a commit's signature, and reading log --format=%G?, decision 104
+│   │   │   ├── SignatureCheck.swift    what git found when it checked a commit's signature, and reading log --format=%G?, decision 104, and the key that made it, decision 117
 │   │   │   ├── SigningKey.swift        a key on this Mac that can sign commits, which the Key field offers, decision 106
 │   │   │   ├── KeyHost.swift           GitHub or GitLab, from a remote's host, and the page for adding a key there, decision 108
 │   │   │   ├── WorktreeChanges.swift   what's uncommitted in a worktree, in groups
@@ -107,6 +107,7 @@ roga/
 │   │   │   ├── SigningPrograms.swift   whether the program git signs with for each format is on this Mac, decision 108
 │   │   │   ├── NewSigningKey.swift     making an Ed25519 SSH or OpenPGP key without a passphrase, and trusting a new SSH key, decision 108
 │   │   │   ├── KeyHosting.swift        where a new key's public half can go, and adding it with gh, decision 108
+│   │   │   ├── SignaturePublicKey.swift the public half of the key that made a commit's signature, for copying it and adding it to a host, decision 117
 │   │   │   ├── RepositoryWatcher.swift one FSEvents stream, numbered batches, decision 49
 │   │   │   ├── FolderWatcher.swift     the FSEvents stream itself
 │   │   │   ├── RepositoryChanges.swift what a batch of changed paths affects
@@ -162,7 +163,7 @@ roga/
 │   │   │   ├── Agents/                 finding agents, the marks, and what each worktree's agents are doing
 │   │   │   ├── Workspace/              windows, finding git, the sidebar, the saved list of repositories and the update notice
 │   │   │   ├── Repository/             the repository model, panels, the refs panel, commit details
-│   │   │   ├── Identity/               who commits go out as: the title row's person, the message box's line and warnings, and the popover (decisions 103 and 105), its Key field's keys as cards (decision 106) with New SSH Key… and New OpenPGP Key… and the faded formats (decision 108), and the commit panel's Signature line (decision 104) with Trust This Key… (decision 107)
+│   │   │   ├── Identity/               who commits go out as: the title row's person, the message box's line and warnings, and the popover (decisions 103 and 105), its Key field's keys as cards (decision 106) with New SSH Key… and New OpenPGP Key… and the faded formats (decision 108), and the commit panel's Signature line (decision 104) with Trust This Key… (decision 107) and the chevron that copies the key or adds it to GitHub (decision 117)
 │   │   │   ├── Dialogs/                the sheet for everything Roga asks or reports, with its command (decision 29)
 │   │   │   ├── House/                  the house's joints, its animations and drawing them (decision 21), and the wordmark
 │   │   │   ├── Commands/               menus and keyboard shortcuts

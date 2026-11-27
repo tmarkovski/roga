@@ -1,5 +1,7 @@
+import AppKit
 import GitCore
 import IconUI
+import MenuUI
 import RepositoryEngine
 import SwiftUI
 
@@ -26,7 +28,9 @@ extension UserDefaults {
 /// check that's still running stops when another commit shows. With
 /// checking turned off in Settings, Check does it for this commit. When git
 /// couldn't vouch for an SSH signature made with one of this Mac's keys, the
-/// key's line ends with Trust This Key… (decision 107).
+/// key's line ends with Trust This Key… (decision 107). The chevron after the
+/// words opens what can be done with the key: copy its public half or its
+/// fingerprint, or add it to GitHub or GitLab (decision 117).
 struct SignatureLine: View {
     let commit: ObjectID
     let format: CommitIdentity.SigningFormat
@@ -36,7 +40,12 @@ struct SignatureLine: View {
     let session: RepositorySession
     @AppStorage(UserDefaults.checksSignaturesKey) private var checksByItself = true
     /// The key read from the signature, and for which commit.
-    @State private var key: (commit: ObjectID, key: String?)?
+    @State private var key: (commit: ObjectID, key: SignatureKey?)?
+    /// The GitHub and GitLab hosts the repository's remotes are on, which
+    /// Add to GitHub… names.
+    @State private var hosts: [KeyHost] = []
+    /// The key Add to GitHub… is adding, while its popover is open.
+    @State private var adding: SignatureKey?
     /// What the check found, and for which commit, so that a line that's
     /// reused for the next commit doesn't show the last one's.
     @State private var found: Found?
@@ -77,19 +86,30 @@ struct SignatureLine: View {
         let isWanted = checksByItself || requested == commit
         SignatureLineContent(
             words: words,
-            key: readKey ?? shown?.check?.key,
+            key: readKey?.id ?? shown?.check?.key,
             check: isWanted || shown != nil ? nil : { requested = commit }
         ) {
             if let offer = shown?.offer {
                 TrustKeyButton(offer: offer, session: session) { trusts += 1 }
                     .transition(.opacity)
             }
+        } menu: {
+            SignatureMenuButton(entries: menu(key: readKey, check: shown?.check))
+                .popover(isPresented: Binding { adding != nil } set: { if !$0 { adding = nil } }, arrowEdge: .bottom) {
+                    if let adding {
+                        AddSignatureKeyPopover(key: adding, format: format, email: email, session: session) { self.adding = nil }
+                    }
+                }
         }
         // Reading the key costs one git cat-file and no gpg, so it doesn't wait.
         .task(id: commit) {
             let read = await session.signatureKey(of: commit)
             guard !Task.isCancelled else { return }
             key = (commit, read)
+        }
+        // Remotes don't change from one commit to the next.
+        .task {
+            hosts = await session.remoteKeyHosts()
         }
         .task(id: Check(commit: commit, trusts: trusts, isWanted: isWanted)) {
             guard isWanted else { return }
@@ -114,6 +134,178 @@ struct SignatureLine: View {
             else { return }
             withAnimation(Self.answer) { found = Found(commit: commit, check: check, offer: offer) }
         }
+    }
+
+    /// The chevron's menu for this commit's key.
+    private func menu(key: SignatureKey?, check: SignatureCheck?) -> [RefMenu.Entry] {
+        Self.menu(
+            format: format,
+            key: key,
+            check: check,
+            hosts: hosts,
+            copyPublicKey: {
+                guard let key else { return }
+                Task {
+                    do {
+                        copy(try await session.publicKey(of: key, format: format))
+                    } catch {
+                        NSSound.beep()
+                    }
+                }
+            },
+            copyID: { id in copy(id) },
+            add: { adding = key }
+        )
+    }
+
+    /// What the chevron after the words offers for the key that made the
+    /// signature (decision 117). An SSH signature carries its public key,
+    /// so it can always be copied. gpg exports an OpenPGP key only when it
+    /// has it, which git's answer rules out for a key not on this Mac. X.509
+    /// certificates aren't read, so only their ID can be copied, once git
+    /// names it. A bad signature, or one made with a revoked key, isn't
+    /// offered for adding to a host.
+    static func menu(
+        format: CommitIdentity.SigningFormat,
+        key: SignatureKey?,
+        check: SignatureCheck?,
+        hosts: [KeyHost],
+        copyPublicKey: @escaping () -> Void,
+        copyID: @escaping (String) -> Void,
+        add: @escaping () -> Void
+    ) -> [RefMenu.Entry] {
+        let id = key?.id ?? check?.key
+        let canCopyPublicKey = switch format {
+        case .ssh: key?.ssh != nil
+        case .openPGP: key != nil && ![.missingKey, .notChecked].contains(check?.result)
+        case .x509: false
+        }
+        var entries: [RefMenu.Entry] = []
+        if format != .x509 {
+            entries.append(.command("Copy public key", isEnabled: canCopyPublicKey, action: copyPublicKey))
+        }
+        entries.append(.command(format == .ssh ? "Copy fingerprint" : "Copy key ID", isEnabled: id != nil) {
+            if let id { copyID(id) }
+        })
+        let names = hosts.map(\.name).reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
+        if format != .x509, !names.isEmpty, ![.bad, .revoked].contains(check?.result) {
+            entries.append(.divider)
+            entries.append(.command("Add to \(names.joined(separator: " or "))…", isEnabled: canCopyPublicKey, action: add))
+        }
+        return entries
+    }
+
+    private func copy(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+}
+
+/// The chevron after the Signature line's words, which opens what can be
+/// done with the key that made the signature (decision 117). It's one of
+/// Roga's own menus, so it opens as the mouse button goes down (decision
+/// 111).
+private struct SignatureMenuButton: View {
+    let entries: [RefMenu.Entry]
+    @State private var opener = RefMenuOpener()
+
+    var body: some View {
+        HoverIcon(size: 16) {
+            Icon.dropdown.image
+                .font(.system(size: 9, weight: .semibold))
+        }
+        .overlay { RefMenuArea(entries: entries, opensOnClick: true, opener: opener) }
+        .help("Copy the key, or add it to GitHub")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Key Actions")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { opener.open() }
+        .accessibilityActions { refMenuActions(entries) }
+    }
+}
+
+/// Add to GitHub… from the Signature line's menu (decision 117), which says
+/// where the public half of the key that made the signature can go, as New
+/// SSH Key… does once it has made one (decision 108). It says whether the
+/// key is one of this Mac's, since a key from another Mac is fine to add
+/// when it's the person's own, and that the host also needs the commit's
+/// email on the same account.
+struct AddSignatureKeyPopover: View {
+    let key: SignatureKey
+    let format: CommitIdentity.SigningFormat
+    /// The committer's email, which the host matches with an account.
+    let email: String
+    let session: RepositorySession
+    let close: () -> Void
+    @State private var found: SignaturePublicKey.Found?
+    @State private var hosting: KeyHosting?
+    @State private var failure: String?
+
+    static let width: CGFloat = 320
+    private static let inset: CGFloat = 16
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Add this key")
+                    .font(.system(size: 13, weight: .semibold))
+                    .accessibilityAddTraits(.isHeader)
+                Text(key.id)
+                    .font(.system(size: 12))
+                    .foregroundStyle(DialogColors.note)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .padding(EdgeInsets(top: 13, leading: Self.inset, bottom: 8, trailing: Self.inset))
+            if let found {
+                KeyHostsContent(
+                    key: found.key,
+                    hosting: hosting,
+                    notes: Self.notes(found, email: email),
+                    hasRepository: true,
+                    add: { key, host, gh in try await session.addKey(key, to: host, gh: gh) },
+                    close: close
+                )
+            } else if let failure {
+                Text(failure)
+                    .font(.system(size: 12))
+                    .foregroundStyle(AgentColors.warn)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, Self.inset)
+                DialogActionButton(button: DialogButton(title: "Done", kind: .primary, action: close))
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(EdgeInsets(top: 14, leading: Self.inset, bottom: 12, trailing: Self.inset))
+            } else {
+                ProgressView()
+                    .controlSize(.small)
+                    .padding(EdgeInsets(top: 0, leading: Self.inset, bottom: 14, trailing: Self.inset))
+            }
+        }
+        .frame(width: Self.width)
+        .font(.system(size: 13))
+        // It hangs from the line's words, whose color it would otherwise
+        // take, as the hierarchical .primary would too.
+        .foregroundStyle(Color.primary)
+        .background(DialogColors.surface)
+        .task {
+            do {
+                found = try await session.publicKeyToAdd(key, format: format)
+            } catch {
+                failure = String(describing: error)
+                return
+            }
+            hosting = await session.keyHosting()
+        }
+    }
+
+    /// Whose key it is, and what else the host needs, above the hosts.
+    static func notes(_ found: SignaturePublicKey.Found, email: String) -> [KeyHostsContent.Note] {
+        let account = email.isEmpty ? "" : " The host also needs \(email) on the same account."
+        guard found.isThisMacs else {
+            return [KeyHostsContent.Note(text: "It isn't one of this Mac's keys, so add it only if it's yours, such as a key from another Mac.\(account)", isWarning: true)]
+        }
+        let name = found.key.shownPublicKeyFile ?? found.key.key.title
+        return [KeyHostsContent.Note(text: "It's \(name), one of this Mac's keys.\(account)")]
     }
 }
 
@@ -215,7 +407,9 @@ struct TrustKeyPopover: View {
 /// with anything that follows, such as Trust This Key…. Both lines are
 /// always there, so that what the check finds changes only the first
 /// line's mark, color and words. Why, and who signed, are in the tooltip.
-struct SignatureLineContent<Accessory: View>: View {
+/// The words are followed by the chevron that opens the key's menu
+/// (decision 117).
+struct SignatureLineContent<Accessory: View, Menu: View>: View {
     let words: SignatureWords
     /// The key that made the signature, or nil while it's read, and for
     /// X.509 until the check names it.
@@ -224,6 +418,7 @@ struct SignatureLineContent<Accessory: View>: View {
     /// checked, or nil.
     var check: (() -> Void)?
     @ViewBuilder var accessory: Accessory
+    @ViewBuilder var menu: Menu
 
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
@@ -240,6 +435,7 @@ struct SignatureLineContent<Accessory: View>: View {
                     .truncationMode(.tail)
                     .contentTransition(.opacity)
                     .textSelection(.enabled)
+                menu
                 if let check {
                     Spacer(minLength: 8)
                     Button("Check", action: check)
@@ -268,9 +464,9 @@ struct SignatureLineContent<Accessory: View>: View {
     }
 }
 
-extension SignatureLineContent where Accessory == EmptyView {
+extension SignatureLineContent where Accessory == EmptyView, Menu == EmptyView {
     init(words: SignatureWords, key: String?) {
-        self.init(words: words, key: key) { EmptyView() }
+        self.init(words: words, key: key) { EmptyView() } menu: { EmptyView() }
     }
 }
 
