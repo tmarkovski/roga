@@ -1333,8 +1333,8 @@ final class BranchModel {
     func renameNote(for start: RenameStart) -> String? {
         guard let upstream = start.upstream else { return nil }
         let name = Ref.shortName(upstream)
-        if upstream == measuredDistance?.base { return "It keeps tracking \(name)." }
-        return "It keeps tracking \(name), which keeps its name, and pushing it goes there by that name."
+        if upstream == measuredDistance?.base { return "It still tracks \(name)." }
+        return "It still tracks \(name), and pushes go there under the old name."
     }
 
     private func rename(_ rename: BranchRename) async -> String? {

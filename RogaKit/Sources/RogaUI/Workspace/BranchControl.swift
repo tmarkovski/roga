@@ -1168,7 +1168,7 @@ private struct RenameBranchPopover: View {
     var body: some View {
         NewRefForm(
             title: "Rename branch",
-            subtitle: "Here only. Nothing on a remote changes.",
+            subtitle: "Renames only the local branch.",
             name: $name,
             action: "Rename Branch",
             commands: [rename.arguments],

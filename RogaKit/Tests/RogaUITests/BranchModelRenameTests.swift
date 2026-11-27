@@ -30,7 +30,7 @@ extension BranchModelTests {
         let start = try startRename(model)
         #expect(start == BranchModel.RenameStart(branch: "refs/heads/agent/fix", upstream: "refs/remotes/origin/agent/fix"))
         #expect(model.branch.renamePlace == nil)
-        #expect(model.branch.renameNote(for: start) == "It keeps tracking origin/agent/fix, which keeps its name, and pushing it goes there by that name.")
+        #expect(model.branch.renameNote(for: start) == "It still tracks origin/agent/fix, and pushes go there under the old name.")
     }
 
     @Test func aRenamedBranchPushesToItsUpstreamByName() async throws {
@@ -52,7 +52,7 @@ extension BranchModelTests {
         try await git("switch", "--quiet", "--create", "feature", "--track", "origin/main", in: clones.work)
         try await commit("One", in: clones.work, file: "one.txt", text: "1\n")
         let model = try await measuredModel(clones)
-        #expect(model.branch.renameNote(for: try startRename(model)) == "It keeps tracking origin/main.")
+        #expect(model.branch.renameNote(for: try startRename(model)) == "It still tracks origin/main.")
         #expect(model.branch.pushToRun == .toUpstream)
     }
 
