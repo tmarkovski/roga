@@ -140,14 +140,8 @@ public final class AgentProvider {
         usesAgents = AgentPreferences.usesAgents(in: defaults)
         defaultChoice = AgentPreferences.defaultAgent(in: defaults)
         customAgents = AgentPreferences.customAgents(in: defaults)
-        defaultsObserver = NotificationCenter.default.addObserver(
-            forName: UserDefaults.didChangeNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.reloadSettings()
-            }
+        defaultsObserver = DefaultsChanges.observe { [weak self] in
+            self?.reloadSettings()
         }
     }
 

@@ -477,14 +477,8 @@ final class BranchModel {
         self.worktree = worktree
         self.fetchesByItself = fetchesByItself
         self.reportBranchChange = reportBranchChange
-        defaultsObserver = NotificationCenter.default.addObserver(
-            forName: UserDefaults.didChangeNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.houseSettingMayHaveChanged()
-            }
+        defaultsObserver = DefaultsChanges.observe { [weak self] in
+            self?.houseSettingMayHaveChanged()
         }
     }
 
