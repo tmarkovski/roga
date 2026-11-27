@@ -109,7 +109,7 @@ struct ConflictResolutionTests {
         await work.settled()
         #expect(try work.read("a.txt") == "one\nTHEIRS\nthree\n")
         #expect(work.summary?.left == 0)
-        #expect(work.document?.conflictBands.first?.kept == "Kept other's")
+        #expect(work.document?.conflictBands.first?.kept == "Kept version from other")
         // Writing isn't marking it resolved.
         #expect(work.changes.loaded?.conflicted.map(\.path) == ["a.txt"])
 
