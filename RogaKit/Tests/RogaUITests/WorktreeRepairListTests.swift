@@ -181,6 +181,53 @@ struct WorktreeRepairListTests {
         #expect(model.failure == nil)
     }
 
+    // MARK: A lock
+
+    @Test func unlocksALockedWorktreeAndListsItAgain() async throws {
+        let (main, linked) = try await repository()
+        try await runGit("worktree", "lock", "--reason", "agent running", linked, in: main)
+        let list = try await makeList()
+        _ = try await list.add(folder: main)
+        await list.refresh()
+        let repository = try #require(list.repositories.first)
+        let locked = try #require(repository.worktrees.last)
+        #expect(locked.isLocked)
+        #expect(locked.lockReason == "agent running")
+
+        let model = WorktreeRepairModel()
+        model.unlock(locked, in: repository, list: list)
+        await model.running?.value
+        #expect(model.failure == nil)
+        let unlocked = try #require(repository.worktrees.last)
+        #expect(unlocked.path == linked)
+        #expect(!unlocked.isLocked)
+        #expect(unlocked.lockReason == nil)
+        #expect(FileManager.default.fileExists(atPath: linked))
+    }
+
+    /// Something else can unlock it first, which git refuses to do again. The
+    /// list looks again anyway, so the row stops showing the lock.
+    @Test func saysWhatGitSaidWhenItWasntLockedAnyMore() async throws {
+        let (main, linked) = try await repository()
+        try await runGit("worktree", "lock", linked, in: main)
+        let list = try await makeList()
+        _ = try await list.add(folder: main)
+        await list.refresh()
+        let repository = try #require(list.repositories.first)
+        let locked = try #require(repository.worktrees.last)
+        try await runGit("worktree", "unlock", linked, in: main)
+
+        let model = WorktreeRepairModel()
+        model.unlock(locked, in: repository, list: list)
+        await model.running?.value
+        let failure = try #require(model.failure)
+        #expect(failure.title == "Can't unlock the worktree for topic")
+        #expect(failure.command == ["worktree", "unlock", linked])
+        #expect(failure.said?.isEmpty == false)
+        #expect(failure.summary == "Nothing changed.")
+        #expect(repository.worktrees.last?.isLocked == false)
+    }
+
     @Test func saysSoWhenTheFolderIsAnotherWorktree() throws {
         let missing = Worktree(path: "/code/topic", head: ObjectID(hex: "86b3386aa0000000000000000000000000000000"), branch: "refs/heads/topic", isPrunable: true)
         let failure = WorktreeRepairModel.failure(repairing: missing, movedTo: "/code/other", error: RepositoryListError.notTheWorktree)

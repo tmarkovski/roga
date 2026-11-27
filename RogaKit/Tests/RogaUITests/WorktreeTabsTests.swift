@@ -102,6 +102,15 @@ struct WorktreeTabsTests {
         #expect(WorktreeTabs.help(for: WorktreeFacts(worktree: main), repositoryName: "agents-demo", index: 0) == "agents-demo, on main  ⌘1\n~/code/agents-demo")
     }
 
+    @Test func theTooltipGivesTheLocksReasonOnALineOfItsOwn() {
+        var locked = fixLogin
+        locked.isLocked = true
+        locked.lockReason = "agent running"
+        #expect(WorktreeTabs.help(for: WorktreeFacts(worktree: locked), repositoryName: nil, index: 1) == "agent/fix-login  ⌘2\nLocked · ~/agents/fix-login\nReason for the lock: agent running")
+        locked.lockReason = nil
+        #expect(WorktreeTabs.help(for: WorktreeFacts(worktree: locked), repositoryName: nil, index: 1) == "agent/fix-login  ⌘2\nLocked · ~/agents/fix-login")
+    }
+
     @Test func aTabPastTheNinthHasNoKey() {
         #expect(WorktreeTabs.help(for: WorktreeFacts(worktree: fixLogin), repositoryName: nil, index: 9) == "agent/fix-login\n~/agents/fix-login")
     }

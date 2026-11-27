@@ -180,18 +180,57 @@ struct WorktreeDeletionModelTests {
         #expect(setup.model.failure == nil)
     }
 
+    // MARK: A lock
+
+    @Test func asksBeforeForcingALockedWorktree() async throws {
+        let setup = try await setup()
+        try await runGit("worktree", "lock", "--reason", "agent running", setup.linked, in: setup.work)
+        await setup.list.refresh()
+        try await setup.ask()
+        #expect(setup.model.failure == nil)
+        let dialog = setup.model.dialog(for: try #require(setup.model.pending))
+        #expect(dialog.title == "Delete the worktree for topic?")
+        #expect(dialog.message?.plain == "It's locked, which often means an agent is still working in it. Git only removes a locked worktree when it's forced twice.")
+        #expect(dialog.note?.plain == "The reason given for the lock: agent running")
+        #expect(dialog.switches.map(\.isOn) == [true])
+        #expect(dialog.terminal == [
+            .command(["worktree", "remove", "--force", "--force", setup.linked]),
+            .command(["branch", "-D", "topic"]),
+        ])
+        #expect(dialog.buttons.map(\.title) == ["Cancel", "Delete Anyway"])
+        #expect(dialog.buttons.map(\.kind) == [.secondary, .destructive])
+        #expect(FileManager.default.fileExists(atPath: setup.linked))
+
+        await setup.confirm()
+        #expect(setup.model.failure == nil)
+        #expect(!FileManager.default.fileExists(atPath: setup.linked))
+        #expect(setup.repository.worktrees.map(\.path) == [setup.work])
+        #expect(try await !exists("refs/heads/topic", in: setup.work))
+    }
+
+    @Test func aLockWithoutAReasonHasNoNote() async throws {
+        let setup = try await setup()
+        try await runGit("worktree", "lock", setup.linked, in: setup.work)
+        await setup.list.refresh()
+        try await setup.ask()
+        let dialog = setup.model.dialog(for: try #require(setup.model.pending))
+        #expect(dialog.note == nil)
+        #expect(dialog.buttons.map(\.title) == ["Cancel", "Delete Anyway"])
+    }
+
     // MARK: When git refuses
 
-    @Test func showsWhatGitSaysAboutALockedWorktreeWithoutAsking() async throws {
+    @Test func showsWhatGitSaysWhenTheWorktreeIsLockedAfterAsking() async throws {
         let setup = try await setup(pushed: true)
-        try await runGit("worktree", "lock", "--reason", "agent running", setup.linked, in: setup.work)
         try await setup.ask(.everything)
-        #expect(setup.model.pending == nil)
+        try await runGit("worktree", "lock", "--reason", "agent running", setup.linked, in: setup.work)
+        await setup.confirm()
         let failure = try #require(setup.model.failure)
         #expect(failure.title == "Can't delete the worktree linked")
         #expect(failure.said.contains("agent running"))
         #expect(setup.repository.deletingWorktrees.isEmpty)
         #expect(FileManager.default.fileExists(atPath: setup.linked))
+        #expect(try await exists("refs/heads/topic", in: setup.work))
         #expect(try await exists("refs/heads/topic", in: setup.remote))
     }
 
@@ -381,7 +420,7 @@ struct WorktreeDeletionModelTests {
         #expect(dialog.message?.plain == "Git only removes a worktree with submodules when it's forced. Nothing has looked inside them, so anything that's only there goes too.")
         #expect(dialog.cards == [[.fact("Submodule", "vendor/lib")]])
         #expect(dialog.terminal == [.command(["worktree", "remove", "--force", setup.linked]), .blank])
-        #expect(dialog.buttons.map(\.title) == ["Cancel", "Delete anyway"])
+        #expect(dialog.buttons.map(\.title) == ["Cancel", "Delete Anyway"])
         #expect(dialog.buttons.map(\.kind) == [.secondary, .destructive])
 
         await setup.confirm()
@@ -428,15 +467,21 @@ struct WorktreeDeletionModelTests {
         #expect(dialog.buttons.map(\.title) == ["Cancel", "Delete"])
     }
 
-    @Test func showsWhatGitSaysAboutALockedWorktreeWithASubmoduleWithoutAsking() async throws {
+    @Test func aLockedWorktreeWithASubmoduleSaysBoth() async throws {
         let setup = try await setup()
         try await addSubmodules(["vendor/lib"], in: setup)
         try await runGit("worktree", "lock", "--reason", "agent running", setup.linked, in: setup.work)
+        await setup.list.refresh()
         try await setup.ask(.worktree)
-        #expect(setup.model.pending == nil)
-        let failure = try #require(setup.model.failure)
-        #expect(failure.said.contains("agent running"))
-        #expect(FileManager.default.fileExists(atPath: setup.linked))
+        #expect(setup.model.failure == nil)
+        let dialog = setup.model.dialog(for: try #require(setup.model.pending))
+        #expect(dialog.message?.plain == "It's locked, which often means an agent is still working in it. Git only removes a locked worktree when it's forced twice. Forcing it also takes its submodules, and nothing has looked inside them, so anything that's only there goes too.")
+        #expect(dialog.terminal.first == .command(["worktree", "remove", "--force", "--force", setup.linked]))
+        #expect(dialog.buttons.map(\.title) == ["Cancel", "Delete Anyway"])
+
+        await setup.confirm()
+        #expect(setup.model.failure == nil)
+        #expect(!FileManager.default.fileExists(atPath: setup.linked))
     }
 
     @Test func dismissingTheDialogLeavesEverythingAsItWas() async throws {

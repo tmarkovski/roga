@@ -19,6 +19,8 @@ struct WorktreeTabActions {
     /// Asks where a worktree whose folder is missing is now.
     var locate: (Worktree) -> Void
     var delete: (Worktree) -> Void
+    /// Takes the lock off a locked worktree.
+    var unlock: (Worktree) -> Void
     /// Asks where the repository is now, when it can't be found.
     var locateRepository: () -> Void
     var removeRepository: () -> Void
@@ -157,6 +159,7 @@ struct WorktreeTabStrip: View {
                 newWorktree: { newWorktreeFrom = selection },
                 locate: { actions.locate(worktree) },
                 delete: { actions.delete(worktree) },
+                unlock: { actions.unlock(worktree) },
                 reveal: reveal,
                 openInTerminal: openInTerminal
             )
@@ -250,7 +253,7 @@ enum WorktreeTabs {
 
     /// The tab's tooltip: the branch's whole name and the shortcut that shows
     /// it, then everything the menu bar's worktree rows say about it, which
-    /// ends with its folder.
+    /// ends with its folder, and the lock's reason on a line of its own.
     ///
     /// - Parameters:
     ///   - repositoryName: The repository's name, for its own tab.
@@ -260,7 +263,7 @@ enum WorktreeTabs {
         var title = repositoryName.map { "\($0), on \(facts.worktree.title)" } ?? facts.worktree.title
         if index < 9 { title += "  ⌘\(index + 1)" }
         let details = WorktreeMenu.details(for: facts, now: now).map(\.text).joined(separator: " · ")
-        return [title, details, StatusFailureNote.worktree(facts.statusFailure)?.help]
+        return [title, details, facts.worktree.lockReasonLine, StatusFailureNote.worktree(facts.statusFailure)?.help]
             .compactMap(\.self)
             .filter { !$0.isEmpty }
             .joined(separator: "\n")

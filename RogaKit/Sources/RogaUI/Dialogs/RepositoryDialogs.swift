@@ -836,8 +836,14 @@ extension WorktreeDeletionModel {
         }
 
         var sentences: [DialogText] = []
+        if deletion.isLocked {
+            sentences.append("It's locked, which often means an agent is still working in it. Git only removes a locked worktree when it's forced twice.")
+        }
         if deletion.hasSubmodules {
-            sentences.append("Git only removes a worktree with submodules when it's forced. Nothing has looked inside them, so anything that's only there goes too.")
+            // The lock's sentence has already said it's forced.
+            sentences.append(deletion.isLocked
+                ? "Forcing it also takes its submodules, and nothing has looked inside them, so anything that's only there goes too."
+                : "Git only removes a worktree with submodules when it's forced. Nothing has looked inside them, so anything that's only there goes too.")
         }
         if losesSomething { sentences.append("These can't be brought back:") }
 
@@ -885,10 +891,11 @@ extension WorktreeDeletionModel {
             cards: facts.isEmpty ? [] : [facts],
             switches: switches,
             cardsAfterSwitches: commits.isEmpty ? [] : [commits],
+            note: deletion.lockReason.map { "The reason given for the lock: \($0)" },
             terminal: terminal,
             buttons: [
                 .cancel(cancel),
-                .init(title: deletion.hasSubmodules ? "Delete anyway" : "Delete", kind: deletion.asksFirst ? .destructive : .primary) { [weak self] in self?.confirm() },
+                .init(title: deletion.isLocked || deletion.hasSubmodules ? "Delete Anyway" : "Delete", kind: deletion.asksFirst ? .destructive : .primary) { [weak self] in self?.confirm() },
             ],
             dismiss: cancel
         )

@@ -123,6 +123,15 @@ public actor RepositorySession {
         _ = try await Self.run(WorktreeRepair.arguments(movedTo: folder), in: location.commonDirectory, git: git)
     }
 
+    /// Takes the lock that `git worktree lock` put on a linked worktree off it,
+    /// which also forgets the lock's reason. Nothing in the worktree changes.
+    ///
+    /// - Throws: `GitError` when git refuses, as when it isn't locked any more.
+    @concurrent
+    public nonisolated func unlock(worktree path: String) async throws {
+        _ = try await Self.run(WorktreeRepair.unlockArguments(path), in: location.commonDirectory, git: git)
+    }
+
     /// Who owns the repository, from its remotes' URLs, with `origin`'s owner
     /// first.
     public nonisolated func owners() async throws -> [String] {

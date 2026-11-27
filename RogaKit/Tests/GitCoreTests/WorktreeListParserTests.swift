@@ -23,7 +23,7 @@ struct WorktreeListParserTests {
             Worktree(path: "/work/main", head: head, branch: "refs/heads/main", isMain: true),
             Worktree(path: "/work/detached", head: head),
             Worktree(path: "/work/gone", head: head, branch: "refs/heads/gone", isPrunable: true),
-            Worktree(path: "/work/locked", head: head, branch: "refs/heads/locked", isLocked: true),
+            Worktree(path: "/work/locked", head: head, branch: "refs/heads/locked", isLocked: true, lockReason: "on a USB drive"),
         ])
     }
 
@@ -33,6 +33,7 @@ struct WorktreeListParserTests {
             "worktree /work/locked", "HEAD \(commit)", "branch refs/heads/locked", "locked", "",
         ]))
         #expect(worktrees.map(\.isLocked) == [false, true])
+        #expect(worktrees.map(\.lockReason) == [nil, nil])
     }
 
     @Test func readsABranchWithoutCommits() throws {

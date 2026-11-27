@@ -31,6 +31,8 @@ enum SidebarMenus {
         /// links to it there.
         var locate: () -> Void
         var delete: () -> Void
+        /// Takes the lock off a locked worktree.
+        var unlock: () -> Void
         var reveal: (String) -> Void
         var openInTerminal: (String) -> Void
     }
@@ -112,20 +114,28 @@ enum SidebarMenus {
     /// keeps for a folder that's gone, and only for that one, where
     /// `git worktree prune` would clear every missing folder's, including one on
     /// a disk that isn't mounted.
+    ///
+    /// A locked worktree also offers Unlock, just before Delete…, which takes
+    /// the lock off without asking, because nothing in the folder changes
+    /// (decision 116).
     static func entries(forWorktree worktree: Worktree, isDeleting: Bool, actions: WorktreeActions) -> [RefMenu.Entry] {
         let delete = RefMenu.Entry.command(worktree.canDeleteBranch ? "Delete…" : "Delete worktree", isDestructive: true, isEnabled: !isDeleting, action: actions.delete)
         if worktree.isPrunable {
             return [.command("Locate…", isEnabled: !isDeleting, action: actions.locate), .divider, delete]
         }
-        return [
+        var entries: [RefMenu.Entry] = [
             .command("Open in new window", action: actions.openInNewWindow),
             .divider,
             .command("New worktree…", isEnabled: !isDeleting, action: actions.newWorktree),
             .command("Show in Finder") { actions.reveal(worktree.path) },
             .command("Open in Terminal") { actions.openInTerminal(worktree.path) },
             .divider,
-            delete,
         ]
+        if worktree.isLocked {
+            entries.append(.command("Unlock", isEnabled: !isDeleting, action: actions.unlock))
+        }
+        entries.append(delete)
+        return entries
     }
 }
 

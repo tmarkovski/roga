@@ -15,4 +15,10 @@ public enum WorktreeRepair {
     public static func arguments(movedTo folder: String? = nil) -> [String] {
         ["worktree", "repair"] + (folder.map { [$0] } ?? [])
     }
+
+    /// What takes the lock off a linked worktree, along with its reason. It runs
+    /// in the repository's git directory.
+    public static func unlockArguments(_ worktree: String) -> [String] {
+        ["worktree", "unlock", worktree]
+    }
 }

@@ -131,9 +131,10 @@ enum WorktreeMenu {
             count: count(for: facts),
             isCurrent: isCurrent,
             isEnabled: !worktree.isPrunable && !facts.isDeleting,
-            // What git said, under the folder, since the triangle has no
-            // tooltip of its own in a menu.
-            help: [worktree.path, StatusFailureNote.worktree(facts.statusFailure)?.help].compactMap(\.self).joined(separator: "\n"),
+            // The lock's reason and what git said, under the folder, since
+            // the second line has no room for a reason and the triangle has
+            // no tooltip of its own in a menu.
+            help: [worktree.path, worktree.lockReasonLine, StatusFailureNote.worktree(facts.statusFailure)?.help].compactMap(\.self).joined(separator: "\n"),
             action: isCurrent ? {} : action
         )
     }

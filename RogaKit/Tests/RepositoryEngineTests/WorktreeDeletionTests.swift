@@ -248,19 +248,19 @@ struct WorktreeDeletionTests {
         #expect(!folderExists(clone))
     }
 
-    @Test func aLockedWorktreeWithASubmoduleIsStillRefused() async throws {
+    @Test func aLockedWorktreeWithASubmoduleIsForcedTwice() async throws {
         let clone = try await clone()
         try await addSubmodule(in: clone)
         try await runGit("worktree", "lock", "--reason", "agent running", clone.linked, in: clone.work)
         let deletion = try await prepare(.worktree, in: clone)
-        #expect(deletion.isRefused)
-        #expect(!deletion.asksFirst)
+        #expect(!deletion.isRefused)
+        #expect(deletion.isLocked)
+        #expect(deletion.hasSubmodules)
+        #expect(deletion.asksFirst)
+        #expect(deletion.removeArguments == ["worktree", "remove", "--force", "--force", clone.linked])
 
-        let error = await #expect(throws: GitError.self) {
-            try await clone.session.delete(deletion)
-        }
-        #expect(error?.message.contains("agent running") == true)
-        #expect(folderExists(clone))
+        try await clone.session.delete(deletion)
+        #expect(!folderExists(clone))
     }
 
     @Test func aWorktreeWithASubmoduleWhoseFolderIsMissingNeedsNoForce() async throws {
@@ -473,11 +473,16 @@ struct WorktreeDeletionTests {
         #expect(choice.deletion(for: .everything) == choice.deletion(for: .worktree))
     }
 
-    @Test func aWorktreeGitWillRefuseAsksNothing() async throws {
+    @Test func aLockedWorktreeAsksEvenWhenNothingWouldBeLost() async throws {
         let clone = try await clone()
         try await runGit("worktree", "lock", clone.linked, in: clone.work)
         let choice = try await clone.session.prepareToDelete(worktree: clone.linked, limit: 5)
-        #expect(!choice.asksFirst)
+        let deletion = choice.deletion(for: .worktree)
+        #expect(choice.asksFirst)
+        #expect(deletion.lostCount == 0)
+        #expect(deletion.asksFirst)
+        #expect(deletion.isLocked)
+        #expect(deletion.lockReason == nil)
     }
 
     @Test func theWidestScopeLosesEverythingTheOthersDo() async throws {
@@ -519,16 +524,41 @@ struct WorktreeDeletionTests {
         #expect(deletion.lost.map(\.hex) == [onlyThere])
     }
 
-    // MARK: When git refuses
+    // MARK: A lock
 
-    @Test func aLockedWorktreeStopsEverythingWithoutAsking() async throws {
+    @Test func forcesALockedWorktreeAndTakesWhatsPickedWithIt() async throws {
         let clone = try await clone()
         try await push(in: clone)
         try "new".write(toFile: clone.linked + "/untracked.txt", atomically: true, encoding: .utf8)
         try await runGit("worktree", "lock", "--reason", "agent running", clone.linked, in: clone.work)
         let deletion = try await prepare(.everything, in: clone)
-        #expect(deletion.isRefused)
-        #expect(!deletion.asksFirst)
+        #expect(!deletion.isRefused)
+        #expect(deletion.lockReason == "agent running")
+        #expect(deletion.uncommittedFiles == 1)
+        #expect(deletion.asksFirst)
+        #expect(deletion.commands == [
+            ["worktree", "remove", "--force", "--force", clone.linked],
+            ["branch", "-D", "topic"],
+            ["push", "--delete", "origin", "refs/heads/topic"],
+        ])
+
+        try await clone.session.delete(deletion)
+        #expect(try await !isListed(clone))
+        #expect(!folderExists(clone))
+        #expect(try await !exists("refs/heads/topic", in: clone.work))
+        #expect(try await !exists("refs/heads/topic", in: clone.remote))
+    }
+
+    // MARK: When git refuses
+
+    /// Something can lock the worktree while the dialog is open. That
+    /// deletion was worked out without a lock, so git refuses it.
+    @Test func aLockThatCameAfterAskingStopsEverything() async throws {
+        let clone = try await clone()
+        try await push(in: clone)
+        let deletion = try await prepare(.everything, in: clone)
+        #expect(!deletion.isLocked)
+        try await runGit("worktree", "lock", "--reason", "agent running", clone.linked, in: clone.work)
 
         let error = await #expect(throws: GitError.self) {
             try await clone.session.delete(deletion)

@@ -23,6 +23,9 @@ public struct Worktree: Sendable, Hashable {
     /// Whether `git worktree lock` keeps it from being removed, which often
     /// means an agent is working in it.
     public var isLocked: Bool
+    /// What `git worktree lock --reason` said about the lock, or nil when it's
+    /// not locked or no reason was given.
+    public var lockReason: String?
 
     public init(
         path: String,
@@ -31,7 +34,8 @@ public struct Worktree: Sendable, Hashable {
         isMain: Bool = false,
         isBare: Bool = false,
         isPrunable: Bool = false,
-        isLocked: Bool = false
+        isLocked: Bool = false,
+        lockReason: String? = nil
     ) {
         self.path = path
         self.head = head
@@ -40,5 +44,6 @@ public struct Worktree: Sendable, Hashable {
         self.isBare = isBare
         self.isPrunable = isPrunable
         self.isLocked = isLocked
+        self.lockReason = lockReason
     }
 }
