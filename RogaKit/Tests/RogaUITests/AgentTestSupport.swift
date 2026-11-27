@@ -103,6 +103,33 @@ enum AgentTestSupport {
         defaults.removePersistentDomain(forName: name)
     }
 
+    /// Defaults whose reads of some keys can fall behind what was written to
+    /// them, as they did once on a loaded runner. There, after a custom agent
+    /// was renamed and then deleted, reading the custom agents still gave
+    /// back the agent as it was added.
+    ///
+    /// Writes go through to the defaults as usual, and say that the defaults
+    /// changed as usual. Only reads of the keys that fell behind keep giving
+    /// back what those keys held when they did.
+    nonisolated final class Lagging: UserDefaults {
+        private let lock = NSLock()
+        /// What each key that fell behind held then, nil for nothing.
+        private var held: [String: Any?] = [:]
+
+        /// From now on, reads of `keys` give back what they hold now.
+        func fallBehind(on keys: [String]) {
+            for key in keys {
+                let now = super.object(forKey: key)
+                lock.withLock { _ = held.updateValue(now, forKey: key) }
+            }
+        }
+
+        override func object(forKey key: String) -> Any? {
+            if let then = lock.withLock({ held[key] }) { return then }
+            return super.object(forKey: key)
+        }
+    }
+
     /// A provider that finds nothing but the fake agents in `bin`, keeps its
     /// files in `support`, and has a Codex folder of its own.
     @MainActor
