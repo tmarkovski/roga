@@ -1,6 +1,6 @@
 # 120. Say how far the branch is from main, and make its menu a popover
 
-Accepted on 2026-11-27. This changes the branch row under the tabs from [decision 95](0095-a-repositorys-worktrees-as-tabs.md) and the agent's line in it from [decision 100](0100-say-what-the-worktrees-agent-is-doing-in-the-branch-row.md). The branch's name gets a second line that says how far the branch is from the main branch on the remote, the agent's line becomes two lines, every control in the row becomes 36 points tall, history's number of commits moves into the order's menu, and the branch's menu becomes a popover about the checkout.
+Accepted on 2026-11-27. This changes the branch row under the tabs from [decision 95](0095-a-repositorys-worktrees-as-tabs.md) and the agent's line in it from [decision 100](0100-say-what-the-worktrees-agent-is-doing-in-the-branch-row.md). The branch's name gets a second line that says how far the branch is from the main branch on the remote, the agent's line becomes two lines, every control in the row becomes 36 points tall, history's number of commits moves into the order's menu, and the branch's menu becomes a popover about the checkout, from which the branch can be renamed here and nowhere else.
 
 ## Context
 
@@ -45,9 +45,13 @@ An earlier version of the boards suggested A. That put the folder, which never c
 - for a locked worktree, the lock's reason and **Unlock**, which takes it off at once, as the sidebar's does ([decision 116](0116-offer-to-delete-a-locked-worktree-anyway.md)),
 - the upstream, how far the branch is from it and when Roga last fetched, or `Not pushed yet`,
 - the main branch, as in `4 ahead, 15 behind origin/main`, over `Merging it would conflict in LoginView.swift and LoginStore.swift` in orange, or `origin/main has 12 commits this branch doesn't`, with **Rebase onto origin/main** and **Merge origin/main** while it has commits the branch doesn't, which ask first, as the refs panel's menu does,
-- **Switch Branch…**, which opens the refs panel's filter, and for a detached `HEAD`, **New Branch Here…**.
+- **Switch Branch…**, which opens the refs panel's filter, and **Rename Branch…**, or for a detached `HEAD`, **New Branch Here…**.
 
 Pull, Push, Fetch and New Branch aren't in it, since they're on the row and in the menu bar's Branch menu with their shortcuts, and that menu doesn't change. A `↑` that git would reject still opens that menu's rows, since it says what can be done instead.
+
+**Rename Branch… renames the branch here and nowhere else.** It opens a popover like New Branch's, with the name in its field and `git branch -m agent/fix fix-login` in the dark block as it's typed. `-m` rather than `-M`, so that git refuses a name another branch has, and the popover shows what git said. Nothing happens on any remote. git takes the branch's upstream, reflog and settings along, so the branch keeps tracking `origin/agent/fix`, which keeps its name, and the popover says so: `It keeps tracking origin/agent/fix, which keeps its name, and ↑ pushes to it by that name.` The title row then says `Renamed to fix-login`, with a button that renames it back.
+
+**`↑` pushes a renamed branch to its upstream by name,** as in `git push origin fix-login:agent/fix`. A plain `git push` refuses when the branch and its upstream have different names, under `push.default=simple`, which is git's default, so without this `↑` would fail after any rename of a branch that's been pushed. git also moves `origin/agent/fix` here when the push goes through. The one exception is a branch whose upstream is the main branch, as `git switch -c feature origin/main` makes. That one keeps the plain `git push`, which refuses, so that `↑` can't put a branch's commits on main, and so does any branch while Roga hasn't yet worked out which branch is main. `%(upstream:remoteref)` gives the upstream's name on the remote, in the same `git for-each-ref` that reads the branch's status.
 
 ## Consequences
 
@@ -56,7 +60,8 @@ Pull, Push, Fetch and New Branch aren't in it, since they're on the row and in t
 - `git merge-tree` writes the objects the merge would make to the repository, as any merge does. Nothing refers to them, so `git gc` clears them in time, and the same merge writes nothing new.
 - How quickly `git merge-tree` runs on a large repository hasn't been measured against the benchmark repositories yet. It runs only when both sides have moved on, only once for each pair of commits, and apart from what someone waits for, but a slow one would still use a core after each fetch for each worktree on screen. It needs measuring before a release.
 - The folder is in the tooltip and the popover rather than the row, next to what you'd do with it.
-- **Rename Branch…**, which the boards drew at the popover's foot, isn't built. Renaming a branch that has an upstream has to decide what becomes of the upstream and of its name on the remote, which is a decision of its own.
+- A renamed branch goes on pushing to its old name on the remote, so a pull request on that branch keeps getting its commits. The branch keeps the old name there until someone renames it on the remote, as GitHub's branch settings can, and then sets the upstream again.
+- A branch that tracks the main branch under another name still can't be pushed from `↑`, as before, since git refuses and Roga won't push it to main by name. It needs a push to a branch of its own, from a terminal or the refs panel.
 - The boards drew a turning ring before a working agent's first line. The row keeps decision 100's light instead, for the reason decision 100 gives.
 
 ## Alternatives considered
@@ -65,5 +70,8 @@ Pull, Push, Fetch and New Branch aren't in it, since they're on the row and in t
 - **B, short labels with the words in tooltips.** It's the quietest, but what the agent is doing would again take a hover and a wait, which is what decision 100 set out to fix.
 - **C, at the row's old heights.** Its two-line blocks need 36 points, so the counts between them were 4 points shorter than their neighbours.
 - **Cards that open on hover** rather than popovers. macOS tooltips can't hold a button, and a card that opened on hover would open as the pointer crosses the row to Fetch, couldn't be reached from the keyboard or with VoiceOver, and would close when the pointer left it, which makes Open in Terminal inside it hard to click.
+- **Renaming on the remote too,** by pushing the new name and deleting the old one. It changes what everyone else sees, and on GitHub, deleting the old branch closes its pull request.
+- **Dropping the upstream on a rename,** so that the branch reads as not pushed yet and `↑` makes a branch of the new name on the remote. The old one would stay there anyway, and a pull request on it would stop getting commits without saying so.
+- **Keeping the upstream and the plain push,** as `git branch -m` alone leaves it. `↑` would fail after every rename of a pushed branch, until someone pushed it by name from a terminal.
 - **Comparing with the local `main`.** It goes stale unless someone pulls it, so a branch would look up to date with a main that's hours old.
 - **Orange whenever the branch is behind,** or when it's far behind. In a busy repository that's every branch, so the orange would stop being read within a week, and the count already says how far.

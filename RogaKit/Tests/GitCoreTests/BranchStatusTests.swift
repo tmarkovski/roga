@@ -63,23 +63,25 @@ struct BranchStatusTests {
     }
 
     @Test func readsABranch() throws {
-        let output = line("refs/heads/main", "refs/remotes/origin/main", "ahead 1, behind 3", "origin", "origin")
+        let output = line("refs/heads/main", "refs/remotes/origin/main", "ahead 1, behind 3", "origin", "origin", "refs/heads/main")
         let entry = try #require(try BranchStatusParser.parse(output, branch: "refs/heads/main"))
         #expect(entry.upstream == "refs/remotes/origin/main")
         #expect(entry.counts == BranchListParser.Counts(ahead: 1, behind: 3))
         #expect(entry.trackedRemote == "origin")
+        #expect(entry.upstreamOnRemote == "refs/heads/main")
         #expect(!entry.upstreamIsGone)
     }
 
     @Test func readsABranchWhoseUpstreamIsGone() throws {
-        let output = line("refs/heads/main", "refs/remotes/origin/main", "gone", "origin", "origin")
+        let output = line("refs/heads/main", "refs/remotes/origin/main", "gone", "origin", "origin", "refs/heads/main")
         let entry = try #require(try BranchStatusParser.parse(output, branch: "refs/heads/main"))
         #expect(entry.upstream == nil)
+        #expect(entry.upstreamOnRemote == nil)
         #expect(entry.upstreamIsGone)
     }
 
     @Test func readsABranchWithoutAnUpstream() throws {
-        let output = line("refs/heads/agent", "", "", "", "origin")
+        let output = line("refs/heads/agent", "", "", "", "origin", "")
         let entry = try #require(try BranchStatusParser.parse(output, branch: "refs/heads/agent"))
         #expect(entry.upstream == nil)
         #expect(entry.trackedRemote == nil)
@@ -88,6 +90,50 @@ struct BranchStatusTests {
 
     @Test func findsNothingForABranchWithoutCommits() throws {
         #expect(try BranchStatusParser.parse([], branch: "refs/heads/main") == nil)
+    }
+
+    // MARK: Renaming
+
+    /// A branch that was `old` and tracks `origin/old`, with a commit to push.
+    func renamed(upstream: String = "refs/remotes/origin/old", onRemote: String = "refs/heads/old") -> BranchStatus {
+        BranchStatus(branch: "refs/heads/new", upstream: upstream, ahead: 1, remote: "origin", pushRemote: "origin", upstreamOnRemote: onRemote)
+    }
+
+    @Test func aRenamedBranchPushesToItsUpstreamByName() {
+        let status = renamed()
+        #expect(status.push == .toUpstream)
+        let push = status.push(main: "refs/remotes/origin/main")
+        #expect(push == .otherBranch("new", remote: "origin", onRemote: "old"))
+        #expect(push?.arguments == ["push", "origin", "new:old"])
+    }
+
+    @Test func aBranchCalledTheSameOnTheRemotePushesPlainly() {
+        let status = renamed(upstream: "refs/remotes/origin/new", onRemote: "refs/heads/new")
+        #expect(status.push(main: "refs/remotes/origin/main") == .toUpstream)
+    }
+
+    @Test func aBranchTrackingMainNeverPushesToItByName() {
+        let status = renamed(upstream: "refs/remotes/origin/main", onRemote: "refs/heads/main")
+        #expect(status.push(main: "refs/remotes/origin/main") == .toUpstream)
+    }
+
+    @Test func aRenamedBranchPushesPlainlyWhileMainIsUnknown() {
+        #expect(renamed().push(main: nil) == .toUpstream)
+    }
+
+    @Test func aRenamedBranchBehindItsUpstreamHasNothingToPush() {
+        var status = renamed()
+        status.behind = 1
+        #expect(status.push(main: "refs/remotes/origin/main") == nil)
+    }
+
+    @Test func renamingRunsBranchMove() {
+        let rename = BranchRename(branch: "agent/fix", name: "fix-login")
+        #expect(rename.arguments == ["branch", "-m", "agent/fix", "fix-login"])
+        #expect(!rename.keepsName)
+        #expect(rename.problem == nil)
+        #expect(BranchRename(branch: "fix", name: "fix").keepsName)
+        #expect(BranchRename(branch: "fix", name: "-d").problem == .startsWithHyphen)
     }
 
     // MARK: Ahead of the main branch

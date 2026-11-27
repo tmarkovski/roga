@@ -68,8 +68,9 @@ D is built, as [decision 120](../../decisions/0120-say-how-far-the-branch-is-fro
 - **Orange without a conflict.** There's none, however far behind the branch is, since the count already says it.
 - **Which terminal Open in Terminal uses.** It's the one chosen in Settings › General, which the sidebar's Open in Terminal already uses.
 - **A working agent's mark.** The boards drew a turning ring before its first line. The app keeps decision 100's light in the second line instead, because the worktree's tab turns a ring a few points above.
+- **What Rename Branch… does to the upstream.** Nothing: it renames the branch here only, the branch keeps tracking its upstream, which keeps its name on the remote, and `↑` pushes to that by name.
 
-Two things are still open. How quickly `git merge-tree` runs on large repositories hasn't been measured against the benchmark repositories, though it only runs when both sides have moved on, once for each pair of commits, and apart from anything someone waits for. And Rename Branch… isn't built, since renaming a branch that has an upstream has to decide what becomes of the upstream and its name on the remote.
+One thing is still open. How quickly `git merge-tree` runs on large repositories hasn't been measured against the benchmark repositories, though it only runs when both sides have moved on, once for each pair of commits, and apart from anything someone waits for.
 
 ## Regenerating the boards
 

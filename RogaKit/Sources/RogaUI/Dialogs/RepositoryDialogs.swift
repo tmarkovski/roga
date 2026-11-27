@@ -231,7 +231,7 @@ extension RepositoryModel {
             )
         case .movingBranch(let name):
             let name = Ref.shortName(name)
-            let push = branch.status?.push
+            let push = branch.pushToRun
             // These two skip the push, so they need a line less than the block has room for.
             let room: [TerminalLine] = push == nil ? [] : [.blank]
             buttons.append(DialogButton(title: "Reset Anyway", kind: .destructive, terminal: [.command(commitSwitch.arguments)] + room) { [weak self] in

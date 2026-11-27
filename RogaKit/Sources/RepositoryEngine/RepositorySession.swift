@@ -905,6 +905,15 @@ public actor RepositorySession {
         _ = try await Self.run(branch.arguments, in: worktree, git: git)
     }
 
+    /// Renames a branch here and nowhere else (decision 120). It keeps its
+    /// upstream, which keeps its name on the remote.
+    ///
+    /// - Throws: `GitError` when git refuses, as for a name another branch has.
+    @concurrent
+    public nonisolated func rename(_ rename: BranchRename, in worktree: String) async throws {
+        _ = try await Self.run(rename.arguments, in: worktree, git: git)
+    }
+
     /// Puts files into a worktree's index as they are on disk now, including
     /// removing the ones that are gone.
     ///

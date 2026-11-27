@@ -46,6 +46,7 @@ private struct BranchBlock: View {
     let unlock: () -> Void
     @State private var isHovering = false
     @State private var showsDetail = false
+    @State private var showsRename = false
 
     /// How wide it gets, so that a long name leaves the agent room.
     private static let widest: CGFloat = 300
@@ -105,9 +106,27 @@ private struct BranchBlock: View {
             .accessibilityValue([line.words, line.conflicts].compactMap(\.self).joined(separator: ", "))
             .accessibilityHint("Shows the worktree's folder and how far the branch is from main")
             .popover(isPresented: $showsDetail, arrowEdge: .bottom) {
-                CheckoutPopover(branch: branch, worktree: worktree, repositoryName: repositoryName, switchBranch: switchBranch, unlock: unlock) {
+                CheckoutPopover(
+                    branch: branch,
+                    worktree: worktree,
+                    repositoryName: repositoryName,
+                    switchBranch: switchBranch,
+                    rename: { showsRename = true },
+                    unlock: unlock
+                ) {
                     showsDetail = false
                 }
+            }
+            // A view of its own, since one view shows one popover.
+            .background {
+                Color.clear
+                    .popover(isPresented: $showsRename, arrowEdge: .bottom) {
+                        if let status = branch.status {
+                            RenameBranchPopover(branch: branch, current: Ref.shortName(status.branch)) {
+                                showsRename = false
+                            }
+                        }
+                    }
             }
         }
     }
@@ -155,13 +174,15 @@ private struct BranchBlock: View {
 /// (decision 120). It says what the row has no room for: whose worktree this
 /// is, its folder and what can be done there, its lock, its upstream, and how
 /// far the branch is from the main branch on the remote, with Rebase and Merge
-/// while that has commits the branch doesn't. Switch Branch… is at its foot,
-/// or New Branch Here… for a detached `HEAD`.
+/// while that has commits the branch doesn't. Switch Branch… and Rename
+/// Branch… are at its foot, or New Branch Here… for a detached `HEAD`.
 struct CheckoutPopover: View {
     let branch: BranchModel
     let worktree: Worktree
     let repositoryName: String
     let switchBranch: (() -> Void)?
+    /// Opens the popover that renames the branch.
+    let rename: () -> Void
     let unlock: () -> Void
     let close: () -> Void
     @State private var copied: Copied?
@@ -243,6 +264,14 @@ struct CheckoutPopover: View {
                         switchBranch?()
                     }
                     .disabled(switchBranch == nil)
+                    // Only once it has commits, since that's when there's a
+                    // status to say what becomes of its upstream.
+                    if worktree.branch != nil, branch.status != nil {
+                        Button("Rename Branch…") {
+                            after(close, rename)
+                        }
+                        .disabled(branch.isBusy)
+                    }
                     if worktree.branch == nil {
                         Button("New Branch Here…") {
                             after(close) { branch.startNewBranch() }
@@ -1095,6 +1124,64 @@ private struct NewBranchPopover: View {
                 refusal = await branch.create(newBranch, showWorktree: showWorktree)
             }
             isCreating = false
+        }
+    }
+}
+
+/// Renames the worktree's branch here and nowhere else (decision 120), and
+/// shows the exact command as it's typed. It says what becomes of the
+/// branch's upstream, which is nothing: the branch keeps tracking it, and it
+/// keeps its name on the remote.
+private struct RenameBranchPopover: View {
+    let branch: BranchModel
+    /// The branch's short name, which the field starts with.
+    let current: String
+    let close: () -> Void
+    @State private var name: String
+    @State private var refusal: String?
+    @State private var isRenaming = false
+
+    init(branch: BranchModel, current: String, close: @escaping () -> Void) {
+        self.branch = branch
+        self.current = current
+        self.close = close
+        _name = State(initialValue: current)
+    }
+
+    private var rename: BranchRename {
+        BranchRename(branch: current, name: name.trimmingCharacters(in: .whitespaces))
+    }
+
+    var body: some View {
+        NewRefForm(
+            title: "Rename branch",
+            subtitle: "Here only. Nothing on a remote changes.",
+            name: $name,
+            action: "Rename Branch",
+            commands: [rename.arguments],
+            emptyNote: "Type the branch's new name",
+            refusal: refusal,
+            isCreating: isRenaming,
+            create: perform,
+            close: close
+        ) {
+            if let note = branch.renameNote {
+                Text(note)
+                    .font(.system(size: 12))
+                    .foregroundStyle(DialogColors.note)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .onChange(of: name) { refusal = nil }
+    }
+
+    private func perform() {
+        guard !rename.name.isEmpty, !isRenaming else { return }
+        isRenaming = true
+        Task {
+            refusal = await branch.rename(to: rename.name)
+            isRenaming = false
+            if refusal == nil { close() }
         }
     }
 }

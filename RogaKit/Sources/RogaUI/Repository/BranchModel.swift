@@ -913,9 +913,19 @@ final class BranchModel {
 
     // MARK: Pushing
 
+    /// What clicking `↑` runs: what the status says, except that a branch
+    /// whose upstream is called something else on the remote, as after
+    /// Rename Branch…, pushes to it by that name (decision 120), unless its
+    /// upstream is the main branch. Which branch is main comes from the last
+    /// time that was worked out, for whichever branch, since it's the same
+    /// one.
+    var pushToRun: Push? {
+        status?.push(main: measuredDistance?.base)
+    }
+
     /// Pushes the way clicking `↑` does.
     func push() {
-        guard let push = status?.push else { return }
+        guard let push = pushToRun else { return }
         run(.pushing, failure: "Can't push \(branchName)", changesNothing: true, fetchesAfterFailing: true) { [session, worktree] in
             try await session.push(push, in: worktree)
             return "Pushed"
@@ -955,7 +965,7 @@ final class BranchModel {
     /// Pushes the branch so that its commits aren't lost, then goes to a commit. If
     /// the push is refused, nothing else happens.
     func push(thenGoingTo commitSwitch: CommitSwitch) {
-        guard let push = status?.push else { return }
+        guard let push = pushToRun else { return }
         run(.pushing, failure: "Can't push \(branchName)", changesNothing: true, fetchesAfterFailing: true) { [session, worktree, weak self, branchName] in
             try await session.push(push, in: worktree)
             var note: String?
@@ -1260,6 +1270,49 @@ final class BranchModel {
         return nil
     }
 
+    // MARK: Renaming
+
+    /// Renames the worktree's branch here and nowhere else (decision 120),
+    /// and says so in the title row, with a button that renames it back.
+    ///
+    /// - Returns: What stopped it, which the popover shows, or nil once it's
+    ///   renamed, or when the name is the one it has.
+    func rename(to name: String) async -> String? {
+        guard let status else { return nil }
+        return await rename(BranchRename(branch: Ref.shortName(status.branch), name: name))
+    }
+
+    /// What the popover that renames the branch says about its upstream, or
+    /// nil when it has none: that it keeps tracking it, and unless that's the
+    /// main branch, that `↑` pushes to it by its name there.
+    var renameNote: String? {
+        guard let upstream = status?.upstream else { return nil }
+        let name = Ref.shortName(upstream)
+        if upstream == mainDistance?.base { return "It keeps tracking \(name)." }
+        return "It keeps tracking \(name), which keeps its name, and ↑ pushes to it by that name."
+    }
+
+    private func rename(_ rename: BranchRename) async -> String? {
+        guard !isBusy, !rename.keepsName else { return nil }
+        if rename.problem == .startsWithHyphen { return "A branch's name can't start with a hyphen." }
+        do {
+            try await session.rename(rename, in: worktree)
+        } catch {
+            return (error as? GitError)?.message ?? String(describing: error)
+        }
+        // The sidebar and the tab show the branch's name.
+        await reportBranchChange()
+        lookAgain()
+        let back = BranchRename(branch: rename.name, name: rename.branch)
+        announce("Renamed to \(Self.shortened(rename.name))", undo: FinishedUndo(help: "Rename It Back to \(rename.branch)") { [weak self] in
+            Task { [weak self] in
+                guard let refusal = await self?.rename(back) else { return }
+                self?.failure = Failure(title: "Can't rename \(Self.shortened(rename.name)) back", message: refusal, changedNothing: true)
+            }
+        })
+        return nil
+    }
+
     /// Makes a tag, and pushes it if someone asked for that too.
     ///
     /// - Parameter remote: Where to push it once it's made, or nil to keep it here.
@@ -1395,7 +1448,7 @@ final class BranchModel {
     /// The tooltip of `↑`, which says what clicking it would do.
     var pushHelp: String {
         guard let status else { return "" }
-        guard let push = status.push else {
+        guard let push = pushToRun else {
             return "\(branchName) is behind \(upstreamName ?? "its upstream"), so git would reject a push. Click for what you can do."
         }
         if case .firstTime(let remote) = push {
