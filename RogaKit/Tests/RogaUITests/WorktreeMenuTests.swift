@@ -133,6 +133,16 @@ struct WorktreeMenuTests {
         var locked = fixLogin
         locked.isLocked = true
         #expect(detailText(WorktreeFacts(worktree: locked)) == "Locked · ~/agents/fix-login")
+        #expect(WorktreeMenu.choice(for: WorktreeFacts(worktree: locked), isCurrent: false) {}.help == fixLogin.path)
+    }
+
+    /// The second line has no room for a lock's reason, so the tooltip has it.
+    @Test func aLocksReasonIsInTheTooltip() {
+        var locked = fixLogin
+        locked.isLocked = true
+        locked.lockReason = "claude session fix-login (pid 56765)"
+        #expect(detailText(WorktreeFacts(worktree: locked)) == "Locked · ~/agents/fix-login")
+        #expect(WorktreeMenu.choice(for: WorktreeFacts(worktree: locked), isCurrent: false) {}.help == fixLogin.path + "\nReason for the lock: claude session fix-login (pid 56765)")
     }
 
     @Test func aMissingOrDeletedWorktreeCantBeChosen() {
@@ -398,6 +408,7 @@ struct WorktreeMenuTests {
                     createWorktree: { _, _ in nil },
                     locate: { _ in },
                     delete: { _ in },
+                    unlock: { _ in },
                     locateRepository: {},
                     removeRepository: {}
                 ),

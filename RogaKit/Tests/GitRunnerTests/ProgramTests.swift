@@ -33,8 +33,11 @@ struct ProgramTests {
     }
 
     @Test func stopsAProgramThatRunsPastItsTimeLimit() async throws {
-        let script = try makeScript("echo started >&2; sleep 30", named: "agent", in: try makeTemporaryFolder())
-        var command = ProgramCommand(script, [])
+        // The system's shell rather than a script written for the test: macOS
+        // checks a new program the first time it runs, which can take longer
+        // than the time limit, so a new script would be stopped before it had
+        // printed anything.
+        var command = ProgramCommand("/bin/sh", ["-c", "echo started >&2; sleep 30"])
         command.timeout = .milliseconds(300)
         let started = ContinuousClock.now
         await #expect(throws: ProgramError.timedOut(command, .milliseconds(300), errorOutput: "started\n")) {

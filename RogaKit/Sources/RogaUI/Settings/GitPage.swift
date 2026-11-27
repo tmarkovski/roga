@@ -45,7 +45,6 @@ struct GitProgramSection: View {
                     VStack(alignment: .leading, spacing: 10) {
                         SetupCard {
                             ProgramRow(
-                                icon: .branch,
                                 content: .git(state: gitProvider.state, survey: gitProvider.survey),
                                 picker: .git(gitProvider),
                                 choose: choose

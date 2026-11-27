@@ -12,9 +12,12 @@ enum SettingsColors {
     static let ink = DialogColors.ink
     /// Behind a button that isn't the main one, as in a dialog.
     static let secondaryButton = DialogColors.secondaryButton
+    /// Behind that button on a gray card, such as Remove… beside an agent's
+    /// plugin, a step stronger than the card, as a dropdown on a card is.
+    static let secondaryButtonOnCard = Palette.gray(light: 0.89, dark: 0.282)
     /// What failed, in the agent's own words.
     static var danger: Color { DialogColors.danger }
-    /// The border of the search field, and a switch that's off.
+    /// A switch that's off, and the line around a destructive button.
     static let line = Palette.gray(light: 0.839, dark: 0.29)
     /// The lines between rows, and around the sidebar and the header.
     static let hairline = Palette.gray(light: 0.918, dark: 0.224)
@@ -28,6 +31,26 @@ enum SettingsColors {
             ? NSColor(white: 1, alpha: 0.07)
             : NSColor(white: 0, alpha: 0.05)
     })
+    /// Behind a field or a dropdown, the gray of the segments' strip, as in the
+    /// Claude app's settings.
+    static let field = card
+    /// Behind a field or a dropdown while the pointer is over it.
+    static let fieldHover = Palette.gray(light: 0.925, dark: 0.231)
+    /// Behind a dropdown on a gray card, such as a program's row, a step
+    /// stronger than the card, and while the pointer is over it. A custom
+    /// agent's tag on the agents' card is the same gray.
+    static let fieldOnCard = Palette.gray(light: 0.902, dark: 0.259)
+    static let fieldOnCardHover = Palette.gray(light: 0.878, dark: 0.29)
+    /// The ring around a field with focus or a dropdown whose list is open,
+    /// and the check beside what's chosen in the list.
+    static let focus = Color(nsColor: .controlAccentColor)
+    /// Behind a dropdown's list.
+    static let list = Palette.gray(light: 1.0, dark: 0.231)
+    /// The line around a dropdown's list, and before its commands.
+    static let listLine = Palette.gray(light: 0.86, dark: 0.263)
+    /// Under the row of a dropdown's list that the pointer or the arrow keys
+    /// are on.
+    static let listHighlight = Palette.gray(light: 0.925, dark: 0.353)
 }
 
 extension VerticalAlignment {
@@ -484,6 +507,9 @@ struct SettingsButtonStyle: ButtonStyle {
 
     var kind = Kind.secondary
     var isSmall = false
+    /// Whether it sits on a gray card, where a secondary button is a step
+    /// stronger so that it shows.
+    var isOnCard = false
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
@@ -514,7 +540,7 @@ struct SettingsButtonStyle: ButtonStyle {
 
     private var background: Color {
         switch kind {
-        case .secondary: SettingsColors.secondaryButton
+        case .secondary: isOnCard ? SettingsColors.secondaryButtonOnCard : SettingsColors.secondaryButton
         case .primary: SettingsColors.ink
         case .destructive: .clear
         }
@@ -522,8 +548,8 @@ struct SettingsButtonStyle: ButtonStyle {
 }
 
 extension ButtonStyle where Self == SettingsButtonStyle {
-    static func settings(_ kind: SettingsButtonStyle.Kind = .secondary, small: Bool = false) -> SettingsButtonStyle {
-        SettingsButtonStyle(kind: kind, isSmall: small)
+    static func settings(_ kind: SettingsButtonStyle.Kind = .secondary, small: Bool = false, onCard: Bool = false) -> SettingsButtonStyle {
+        SettingsButtonStyle(kind: kind, isSmall: small, isOnCard: onCard)
     }
 }
 
@@ -563,9 +589,8 @@ extension ButtonStyle where Self == ContextualActionStyle {
 
 // MARK: Choosing and typing
 
-/// The chosen value and a chevron, which open a menu of the choices with a
-/// check beside the chosen one, as the canvas's popups do. It has no border,
-/// so it reads as part of its row.
+/// The chosen value and a chevron in a box as wide as the value, which opens
+/// a list of the choices with a check beside the chosen one.
 struct SettingsPopup<Value: Hashable>: View {
     @Binding var selection: Value
     let options: [(value: Value, title: String)]
@@ -575,38 +600,24 @@ struct SettingsPopup<Value: Hashable>: View {
     /// A command after the choices, for a value that isn't one of them, such
     /// as a model's name to type.
     var more: (title: String, action: () -> Void)?
-    /// Whether the gray words show only in the menu, for a popup beside
+    /// Whether the gray words show only in the list, for a popup beside
     /// another, where both saying Default would say it twice on one row.
     var detailInMenuOnly = false
-    @State private var isHovering = false
-    @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
-        Menu {
-            SettingsChoices(selection: $selection, options: options, detail: detail)
-            if let more {
-                Divider()
-                Button(more.title, action: more.action)
-            }
-        } label: {
-            HStack(spacing: 6) {
-                label
-                SettingsChevron()
-            }
-            .lineLimit(1)
-            .padding(.leading, 10)
-            .padding(.trailing, 6)
-            .frame(height: 28)
-            .background(isHovering ? SettingsColors.hover : .clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .onHover { isHovering = $0 && isEnabled }
+        SettingsDropdown(items: items) {
+            label
         }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .opacity(isEnabled ? 1 : 0.45)
+        .settingsAdjustable($selection, options)
         .accessibilityValue(title(of: selection))
+    }
+
+    private var items: [DropdownItem] {
+        var items = DropdownItem.choices($selection, options, detail: detail)
+        if let more {
+            items.append(DropdownItem(title: more.title, isCommand: true, choose: more.action))
+        }
+        return items
     }
 
     private var label: Text {
@@ -620,84 +631,46 @@ struct SettingsPopup<Value: Hashable>: View {
     }
 }
 
-/// The canvas's select: a box with a line around it, as wide as it's asked to
-/// be, with the chosen value at its start and the chevron at its end, for a
-/// choice that matters more than a popup's.
+/// A dropdown as wide as it's asked to be, with the chosen value at its start
+/// and the chevron at its end, for a choice that matters more than a popup's.
 struct SettingsSelect<Value: Hashable>: View {
     @Binding var selection: Value
     let options: [(value: Value, title: String)]
     /// What it says when there's nothing to choose.
     var emptyTitle = ""
     var width: CGFloat = 200
-    @Environment(\.isEnabled) private var isEnabled
 
     /// What it shows: the chosen value's title, or `emptyTitle`. VoiceOver
     /// reads it as the value too, because the row names the select by its
-    /// setting, which hides the menu's own label.
+    /// setting, which hides the box's own label.
     var shownTitle: String {
         options.first { $0.value == selection }?.title ?? emptyTitle
     }
 
     var body: some View {
-        Menu {
-            SettingsChoices(selection: $selection, options: options)
-        } label: {
-            HStack(spacing: 8) {
-                Text(shownTitle)
-                    .foregroundStyle(options.isEmpty ? SettingsColors.note : .primary)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                SettingsChevron()
-            }
-            .padding(.leading, 12)
-            .padding(.trailing, 10)
-            .frame(width: width, height: 32)
-            .background(SettingsColors.surface, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .strokeBorder(SettingsColors.line, lineWidth: 1)
-            }
-            .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+        SettingsDropdown(items: DropdownItem.choices($selection, options), width: width) {
+            Text(shownTitle)
+                .foregroundStyle(options.isEmpty ? SettingsColors.note : .primary)
         }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .menuIndicator(.hidden)
-        .fixedSize()
         .disabled(options.isEmpty)
+        .settingsAdjustable($selection, options)
         .accessibilityValue(shownTitle)
     }
 }
 
-/// The items of a popup's menu, with a check beside the chosen one.
-struct SettingsChoices<Value: Hashable>: View {
-    @Binding var selection: Value
-    let options: [(value: Value, title: String)]
-    var detail: (Value) -> String? = { _ in nil }
-
-    var body: some View {
-        Picker("", selection: $selection) {
-            ForEach(options, id: \.value) { option in
-                Text(detail(option.value).map { "\(option.title) · \($0)" } ?? option.title)
-                    .tag(option.value)
-            }
-        }
-        .pickerStyle(.inline)
-        .labelsHidden()
-    }
-}
-
-/// The small chevron at the end of a popup or a select.
+/// The chevron at the end of a dropdown.
 struct SettingsChevron: View {
     var body: some View {
         Icon.dropdown.image
-            .font(.system(size: 11))
+            .font(.system(size: 14))
             .foregroundStyle(SettingsColors.note)
             .accessibilityHidden(true)
     }
 }
 
-/// A one-line box to type in, with a line around it, in the code font for
-/// what's typed as arguments.
+/// A one-line box to type in, in the code font for what's typed as
+/// arguments. It's the dropdowns' box without the chevron: a gray fill that
+/// lightens under the pointer, and the accent ring while it has focus.
 struct SettingsTextField: View {
     @Binding var text: String
     var placeholder = ""
@@ -706,25 +679,25 @@ struct SettingsTextField: View {
     /// Room kept at the field's end for a button drawn over it, such as the
     /// Key field's menu of keys.
     var trailingRoom: CGFloat = 0
+    @State private var isHovering = false
+    @FocusState private var isFocused: Bool
 
     var body: some View {
         TextField("", text: $text, prompt: Text(placeholder).foregroundStyle(SettingsColors.note))
             .textFieldStyle(.plain)
             .font(isMonospaced ? .system(size: 12, design: .monospaced) : .system(size: 13))
             .autocorrectionDisabled()
-            .padding(.leading, 11)
-            .padding(.trailing, 11 + trailingRoom)
-            .frame(width: width, height: 32)
-            .background(SettingsColors.surface, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .strokeBorder(SettingsColors.line, lineWidth: 1)
-            }
+            .focused($isFocused)
+            .padding(.leading, 12)
+            .padding(.trailing, 12 + trailingRoom)
+            .frame(width: width, height: SettingsBoxMetrics.height)
+            .settingsBox(isHovering: isHovering, isFocused: isFocused)
+            .onHover { isHovering = $0 }
     }
 }
 
 /// A box for a paragraph, as wide as its row, that grows with what's typed in
-/// it from the height of four lines.
+/// it from the height of four lines, drawn as the one-line fields are.
 ///
 /// It's a text editor rather than a field, so that Return starts a new line,
 /// as in the canvas's textarea: in a field, Return would end the editing and
@@ -737,6 +710,8 @@ struct SettingsTextArea: View {
     let label: String
 
     @State private var width: CGFloat = 0
+    @State private var isHovering = false
+    @FocusState private var isFocused: Bool
 
     static let fontSize: CGFloat = 13
     /// The canvas's lines are 1.45 times the font apart.
@@ -750,6 +725,7 @@ struct SettingsTextArea: View {
             .lineSpacing(Self.lineSpacing)
             .scrollContentBackground(.hidden)
             .scrollDisabled(true)
+            .focused($isFocused)
             .frame(height: Self.textHeight(text, width: width))
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
             .accessibilityLabel(label)
@@ -757,11 +733,8 @@ struct SettingsTextArea: View {
             // starts 12 points in, as on the canvas.
             .padding(EdgeInsets(top: 9, leading: 7, bottom: 9, trailing: 7))
             .frame(maxWidth: .infinity, minHeight: 84, alignment: .topLeading)
-            .background(SettingsColors.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(SettingsColors.line, lineWidth: 1)
-            }
+            .settingsBox(cornerRadius: 10, isHovering: isHovering, isFocused: isFocused)
+            .onHover { isHovering = $0 }
     }
 
     /// How tall `text` is in a text view `width` points wide, with a line
@@ -846,32 +819,6 @@ struct SettingsCardRow<Value: View>: View {
 extension SettingsCardRow where Value == Text {
     init(_ name: String, nameWidth: CGFloat = 200, _ value: String) {
         self.init(name: name, nameWidth: nameWidth) { Text(value) }
-    }
-}
-
-/// Rows with a thin line around them and between them, such as the agents
-/// Roga found.
-struct SettingsList<Content: View>: View {
-    @ViewBuilder var content: Content
-
-    var body: some View {
-        VStack(spacing: 0) {
-            Group(subviews: content) { rows in
-                ForEach(rows) { row in
-                    if row.id != rows.first?.id {
-                        Rectangle()
-                            .fill(SettingsColors.hairline)
-                            .frame(height: 1)
-                    }
-                    row
-                }
-            }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(SettingsColors.hairline, lineWidth: 1)
-        }
     }
 }
 

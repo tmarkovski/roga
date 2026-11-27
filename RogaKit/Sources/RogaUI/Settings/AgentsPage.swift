@@ -100,7 +100,7 @@ struct AgentListSection: View {
                         // edge, in the accent, as New SSH Key… is under the
                         // Key field (decision 108).
                         VStack(alignment: .trailing, spacing: 8) {
-                            SettingsList {
+                            SetupCard {
                                 ForEach(AgentKind.allCases) { kind in
                                     AgentRow(kind: kind, show: show)
                                 }
@@ -197,7 +197,7 @@ private struct AgentListRow<Detail: View>: View {
                     .foregroundStyle(SettingsColors.note)
                     .frame(width: 24, height: 24)
             }
-            .padding(EdgeInsets(top: 10, leading: 14, bottom: 10, trailing: 12))
+            .padding(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 12))
             .frame(minHeight: 58)
             .contentShape(Rectangle())
         }
@@ -217,7 +217,7 @@ private struct CustomTag: View {
             .foregroundStyle(SettingsColors.note)
             .padding(.horizontal, 6)
             .padding(.vertical, 1)
-            .background(SettingsColors.card, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+            .background(SettingsColors.fieldOnCard, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
             .accessibilityHidden(true)
     }
 }
@@ -259,7 +259,7 @@ struct AgentStatusSection: View {
                 // The time it gives is the minute's start, which would say a
                 // minute less, so the line asks for the time itself.
                 TimelineView(.everyMinute) { _ in
-                    SettingsList {
+                    SetupCard {
                         ForEach(AgentKind.allCases) { kind in
                             HookRow(
                                 kind: kind,
@@ -319,14 +319,14 @@ private struct HookRow: View {
                 Button(button.title) {
                     open(kind, button.action)
                 }
-                .buttonStyle(.settings(button.action == .install ? .primary : .secondary, small: true))
+                .buttonStyle(.settings(button.action == .install ? .primary : .secondary, small: true, onCard: true))
                 .disabled(!button.isEnabled)
                 // The page has a button for each agent, so VoiceOver's list
                 // of buttons needs the agent's name in each.
                 .accessibilityLabel(button.spokenTitle(kind))
             }
         }
-        .padding(EdgeInsets(top: 10, leading: 14, bottom: 10, trailing: 12))
+        .padding(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 14))
         .frame(minHeight: 58)
     }
 }

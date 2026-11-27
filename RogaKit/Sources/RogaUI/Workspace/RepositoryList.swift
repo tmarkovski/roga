@@ -415,6 +415,25 @@ public final class RepositoryList {
         return WorktreeSelection(repository: repository.path, worktree: repaired.path)
     }
 
+    /// Takes the lock off a linked worktree, then lists the repository's
+    /// worktrees again, so that its row and its tab stop showing the lock. It
+    /// looks again even when git refuses, as when something else unlocked it
+    /// first, so that the list shows what's true.
+    ///
+    /// - Throws: `GitError` when git refuses.
+    func unlock(_ worktree: Worktree, in repository: ListedRepository) async throws {
+        guard let git else { throw RepositoryListError.gitNotFound }
+        guard let session = repository.session else { throw RepositoryListError.notOpen }
+        var failure: (any Error)?
+        do {
+            try await session.unlock(worktree: worktree.path)
+        } catch {
+            failure = error
+        }
+        await refresh(repository, git: git)
+        if let failure { throw failure }
+    }
+
     /// Records whether a window found conflicts in the worktree it shows, which
     /// may be newer than what the list last found.
     func setHasConflicts(_ hasConflicts: Bool, in selection: WorktreeSelection) {

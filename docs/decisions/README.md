@@ -39,7 +39,7 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [29](0029-dialogs-that-say-what-happens-and-show-the-command.md) | Dialogs that say what happens and show the command | Partly superseded by [33](0033-one-row-in-a-menu-and-the-choice-in-the-dialog.md), [38](0038-one-delete-on-a-commit-with-its-branches-in-the-dialog.md) and [60](0060-resolve-conflicts-in-the-diff-panel.md), and its buttons put in title case by [102](0102-buttons-in-title-case.md) |
 | [30](0030-stage-and-commit-beside-history.md) | Stage and commit in the panels under history | When a heading's buttons show changed by [39](0039-discard-with-undo-and-ask-only-for-many.md), and how the panel's height is split by [55](0055-split-the-panel-for-uncommitted-changes-40-40-and-20.md), the staged files' own list above the message replaced by one scroll with headings that stay in view by [115](0115-one-scroll-for-a-worktrees-files-with-headings-that-stay-in-view.md), and the message box's heading, Amend and footer replaced by a row of buttons under its text by [98](0098-buttons-in-a-row-under-the-message.md) |
 | [31](0031-chevrons-for-what-folds-and-lines-down-a-tree.md) | Chevrons for what folds, and lines down a tree of files | Accepted |
-| [32](0032-ask-before-forcing-a-worktree-with-submodules.md) | Ask before forcing a worktree with submodules | Accepted |
+| [32](0032-ask-before-forcing-a-worktree-with-submodules.md) | Ask before forcing a worktree with submodules | A locked worktree offered to be forced too by [116](0116-offer-to-delete-a-locked-worktree-anyway.md) |
 | [33](0033-one-row-in-a-menu-and-the-choice-in-the-dialog.md) | Put one row in a menu, and the choice in the dialog | A commit's menu changed by [38](0038-one-delete-on-a-commit-with-its-branches-in-the-dialog.md) |
 | [34](0034-name-the-app-roga.md) | Name the app Roga, at roga.sh | Accepted |
 | [35](0035-one-cloud-for-each-remote-on-a-badge.md) | One cloud on a badge for each remote that has the branch | Accepted |
@@ -123,4 +123,5 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [113](0113-clone-from-a-url-in-add-repositories.md) | Clone from a URL in Add Repositories | Accepted |
 | [114](0114-text-a-control-would-cover-on-hover-fades-out-before-it.md) | Text that a control would cover on hover fades out before it | Accepted |
 | [115](0115-one-scroll-for-a-worktrees-files-with-headings-that-stay-in-view.md) | One scroll for a worktree's files, with headings that stay in view | Accepted |
+| [116](0116-offer-to-delete-a-locked-worktree-anyway.md) | Offer to delete a locked worktree anyway, unlock it, and show the lock in the sidebar | Accepted |
 | [117](0117-copy-a-signatures-key-and-add-it-to-github-from-the-signature-line.md) | Copy a signature's key, and add it to GitHub, from the Signature line | Accepted |

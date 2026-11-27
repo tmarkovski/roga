@@ -3,11 +3,13 @@ import GitCore
 import Observation
 import RepositoryEngine
 
-/// Finding a linked worktree whose folder moved outside git, from one window's
-/// sidebar: it asks where the folder is now and mends git's links to it there.
-/// There's nothing to agree to, because the folder was the question and mending
-/// changes nothing but the links, so only a failure shows a dialog, with what ran
-/// and what git said (decision 29).
+/// Mending a linked worktree from one window's sidebar or tabs. For one whose
+/// folder moved outside git, it asks where the folder is now and mends git's
+/// links to it there. For a locked one, it takes the lock off (decision 116).
+/// There's nothing to agree to, because the folder was the question, mending
+/// changes nothing but the links, and unlocking changes nothing in the folder,
+/// so only a failure shows a dialog, with what ran and what git said
+/// (decision 29).
 @Observable
 final class WorktreeRepairModel {
     /// What git couldn't do, until someone has seen it.
@@ -44,6 +46,26 @@ final class WorktreeRepairModel {
                 failure = Self.failure(repairing: worktree, movedTo: folder, error: error)
             }
         }
+    }
+
+    /// Takes the lock off the worktree, straight away.
+    func unlock(_ worktree: Worktree, in repository: ListedRepository, list: RepositoryList) {
+        running = Task {
+            do {
+                try await list.unlock(worktree, in: repository)
+            } catch {
+                failure = Self.failure(unlocking: worktree, error: error)
+            }
+        }
+    }
+
+    static func failure(unlocking worktree: Worktree, error: any Error) -> Failure {
+        Failure(
+            title: "Can't unlock the worktree for \(worktree.title)",
+            command: error.gitArguments ?? WorktreeRepair.unlockArguments(worktree.path),
+            said: error.dialogMessage,
+            summary: "Nothing changed."
+        )
     }
 
     static func failure(repairing worktree: Worktree, movedTo folder: String, error: any Error) -> Failure {

@@ -49,8 +49,8 @@ final class WorktreeDeletionModel {
 
     /// Asks how far to go when there's a branch that could go with the worktree. With
     /// nothing to choose, it deletes the worktree straight away when that loses
-    /// nothing, and otherwise says what it would lose and asks. A worktree that git
-    /// will refuse gets git's answer.
+    /// nothing, and otherwise says what it would lose and asks. A locked worktree
+    /// always asks, and one that git will refuse gets git's answer.
     func askToDelete(_ worktree: Worktree, in repository: ListedRepository, list: RepositoryList) {
         guard let session = repository.session, !repository.deletingWorktrees.contains(worktree.path) else { return }
         let title = Self.title(of: worktree)

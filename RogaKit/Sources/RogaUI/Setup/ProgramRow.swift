@@ -23,12 +23,13 @@ enum SetupColors {
     static let eyebrow = DialogColors.appearanceColor(light: 0xB83E02, dark: 0xF0813F)
 }
 
-/// A program Roga runs, as one row: an icon, its name and version, a check
-/// for having been found, its path, and at the right a button that names
-/// where this copy is from and opens a popover of every copy Roga found. Git,
-/// Claude Code and Codex each get the same row, in setup and in Settings.
+/// A program Roga runs, as one row: its name and version, a check for having
+/// been found, its path, and at the right a button that names where this
+/// copy is from and opens a popover of every copy Roga found. Git, Claude
+/// Code and Codex each get the same row, in setup and in Settings. There's no
+/// icon before the name, which would say nothing the name doesn't, as on the
+/// Agents page.
 struct ProgramRow: View {
-    let icon: Icon
     let content: ProgramRowContent
     /// What the button's popover offers, for a row whose button opens one.
     var picker: ProgramPicker?
@@ -37,12 +38,6 @@ struct ProgramRow: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            icon.image
-                .font(.system(size: 17))
-                .foregroundStyle(SetupColors.note)
-                .frame(width: 38, height: 38)
-                .background(SetupColors.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 3) {
                 title
                 line
@@ -113,18 +108,20 @@ struct ProgramRow: View {
             EmptyView()
         case .menu(let title):
             if let picker {
-                ProgramSelect(title: title, picker: picker)
+                ProgramSelect(title: title, picker: picker, isOnCard: true)
             }
         case .choose:
             Button("Choose…", action: choose)
-                .buttonStyle(ProgramSelectStyle(isOpen: false, hasChevrons: false))
+                .buttonStyle(ProgramSelectStyle(isOpen: false, hasChevrons: false, isOnCard: true))
                 .accessibilityLabel("Choose \(content.name)…")
         }
     }
 }
 
-/// A gray card of rows with a line between each, such as the programs Roga
-/// will run. `clips` rounds what reaches the card's edges, for a card that
+/// A gray card of rows with a line between each, for what Roga found on the
+/// Mac: the programs it will run, in setup and in Settings, and the agents and
+/// their plugins on the Agents page. The settings about them sit on the page
+/// with no card. `clips` rounds what reaches the card's edges, for a card that
 /// ends in a command block.
 struct SetupCard<Content: View>: View {
     var clips = false
@@ -184,6 +181,8 @@ extension EnvironmentValues {
 struct ProgramSelect: View {
     let title: String
     let picker: ProgramPicker
+    /// Whether it's on a program's card rather than a page's row.
+    var isOnCard = false
     @State private var isOpen = false
     @Environment(\.openProgramPicker) private var openPicker
 
@@ -191,7 +190,7 @@ struct ProgramSelect: View {
         Button(title) {
             isOpen.toggle()
         }
-        .buttonStyle(ProgramSelectStyle(isOpen: isOpen, hasChevrons: true))
+        .buttonStyle(ProgramSelectStyle(isOpen: isOpen, hasChevrons: true, isOnCard: isOnCard))
         .popover(isPresented: $isOpen, arrowEdge: .bottom) {
             ProgramPopover(picker: picker) { isOpen = false }
         }
@@ -204,40 +203,43 @@ struct ProgramSelect: View {
     }
 }
 
-/// The canvas's select, with a line around it and chevrons at its end. While
-/// its popover is open, the line is ink with a soft ring outside it.
+/// Drawn as Settings' dropdowns are, a step stronger on a program's card:
+/// a gray box with the chevron at its end, lighter under the pointer, and the
+/// accent ring while its popover is open. Choose… is the same box without
+/// the chevron.
 private struct ProgramSelectStyle: ButtonStyle {
     let isOpen: Bool
     let hasChevrons: Bool
+    var isOnCard = false
 
     func makeBody(configuration: Configuration) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 9, style: .continuous)
+        ProgramSelectBox(configuration: configuration, isOpen: isOpen, hasChevrons: hasChevrons, isOnCard: isOnCard)
+    }
+}
+
+private struct ProgramSelectBox: View {
+    let configuration: ButtonStyleConfiguration
+    let isOpen: Bool
+    let hasChevrons: Bool
+    let isOnCard: Bool
+    @State private var isHovering = false
+
+    var body: some View {
         HStack(spacing: 8) {
             configuration.label
-                .font(.system(size: 13, weight: .medium))
+                .font(.system(size: 13))
                 .lineLimit(1)
             if hasChevrons {
-                Icon.chevronsUpDown.image
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(SetupColors.note)
+                SettingsChevron()
             }
         }
-        .padding(.leading, 12)
-        .padding(.trailing, hasChevrons ? 7 : 12)
-        .frame(height: 30)
-        .background(SetupColors.surface, in: shape)
-        .overlay {
-            shape.strokeBorder(isOpen ? SetupColors.ink : SetupColors.line, lineWidth: 1)
-        }
-        .background {
-            if isOpen {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(SetupColors.hover)
-                    .padding(-3)
-            }
-        }
+        .padding(.leading, hasChevrons ? 9 : 12)
+        .padding(.trailing, hasChevrons ? 8 : 12)
+        .frame(height: SettingsBoxMetrics.height)
+        .settingsBox(isHovering: isHovering, isFocused: isOpen, isOnCard: isOnCard)
         .opacity(configuration.isPressed ? 0.75 : 1)
-        .contentShape(shape)
+        .contentShape(RoundedRectangle(cornerRadius: SettingsBoxMetrics.cornerRadius, style: .continuous))
+        .onHover { isHovering = $0 }
         .fixedSize()
     }
 }

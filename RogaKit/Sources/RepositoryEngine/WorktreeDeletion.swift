@@ -88,9 +88,14 @@ public struct WorktreeDeletion: Sendable, Hashable {
 
     /// The worktree's folder.
     public var worktree: String
-    /// Whether git will refuse whatever anyone answers: a locked worktree, which
-    /// `--force` doesn't get past, or the main worktree.
+    /// Whether git will refuse whatever anyone answers, which is the main
+    /// worktree.
     public var isRefused: Bool
+    /// Whether `git worktree lock` locked it, which often means an agent is
+    /// working in it. git only removes it when it's forced twice.
+    public var isLocked: Bool
+    /// What the lock says about why, if it says anything.
+    public var lockReason: String?
     /// Deleting the worktree's branch, unless it stays.
     public var branch: BranchDeletion?
     /// Deleting the branch from its remote, unless it stays.
@@ -115,21 +120,25 @@ public struct WorktreeDeletion: Sendable, Hashable {
     public var submodules: [String]
 
     /// Whether someone should agree to this first. Deleting from a remote affects
-    /// everyone who uses it, and anything else is only worth asking about when
-    /// something can't be brought back. That includes ignored files, which can be
-    /// real data rather than build products, and submodules, because forcing git
-    /// also takes whatever is only in them, and nothing has looked. A deletion that
-    /// git will refuse needs no question.
+    /// everyone who uses it, and a lock usually means something is still working
+    /// in the folder. Anything else is only worth asking about when something
+    /// can't be brought back. That includes ignored files, which can be real data
+    /// rather than build products, and submodules, because forcing git also takes
+    /// whatever is only in them, and nothing has looked. A deletion that git will
+    /// refuse needs no question.
     public var asksFirst: Bool {
         if isRefused { return false }
+        if isLocked { return true }
         if case .remote = remoteBranch?.place { return true }
         return lostCount > 0 || uncommittedFiles > 0 || ignoredCount > 0 || hasSubmodules
     }
 
     /// What removes the worktree. A single `--force` gets past uncommitted files and
-    /// submodules, and git still refuses a locked worktree.
+    /// submodules, and it takes a second one to get past a lock, which also gets
+    /// past those.
     public var removeArguments: [String] {
-        ["worktree", "remove"] + (uncommittedFiles > 0 || hasSubmodules ? ["--force"] : []) + [worktree]
+        let force = isLocked ? ["--force", "--force"] : uncommittedFiles > 0 || hasSubmodules ? ["--force"] : []
+        return ["worktree", "remove"] + force + [worktree]
     }
 
     /// Everything it runs, in order, which the dialog shows.
@@ -171,7 +180,9 @@ public struct WorktreeDeletion: Sendable, Hashable {
         let refs = branch == nil ? [] : try await RefsLoader.load(git: git, in: directory).refs
         let whatStays = WorktreeDeletion(
             worktree: path,
-            isRefused: worktree.isLocked || worktree.isMain,
+            isRefused: worktree.isMain,
+            isLocked: worktree.isLocked,
+            lockReason: worktree.lockReason,
             uncommittedFiles: changes.fileCount,
             ignoredCount: changes.ignored.count,
             ignored: Array(changes.ignored.prefix(limit)),
