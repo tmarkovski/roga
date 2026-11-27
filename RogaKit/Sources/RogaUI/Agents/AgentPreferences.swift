@@ -18,8 +18,13 @@ enum AgentPreferences {
     /// The agent Generate, Resolve and Fix run, as `AgentID.stored`. While
     /// it's absent, or names an agent Roga can't run, they run the first
     /// agent Roga can.
+    ///
+    /// Only `AgentProvider` writes it, and it reads it only as it starts, so
+    /// anything else that changes the default agent asks the provider
+    /// (decision 123).
     static let defaultAgentKey = "defaultAgent"
-    /// The agents someone added as commands, as JSON.
+    /// The agents someone added as commands, as JSON. Like the default agent,
+    /// only `AgentProvider` writes them, and it reads them only as it starts.
     static let customAgentsKey = "customAgents"
     /// Whether Generate sends the repository's recent subjects, so that the
     /// message matches its style. A Bool, on unless someone turned it off.

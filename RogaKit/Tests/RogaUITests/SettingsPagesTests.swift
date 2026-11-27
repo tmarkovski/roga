@@ -605,8 +605,10 @@ struct SettingsPagesTests {
         #expect(AgentSummaries.defaultOptions(both).map(\.title) == ["Claude Code", "Codex", "Ollama"])
         #expect(AgentSummaries.defaultOptions(both).map(\.value) == [.known(.claude), .known(.codex), .custom(ollama.id)])
 
-        let neither = provider(lookups: [.claude: .notFound, .codex: .notFound])
         both.deleteCustomAgent(ollama.id)
+        // A provider reads the custom agents only as it starts (decision
+        // 123), so this one starts once Ollama is gone.
+        let neither = provider(lookups: [.claude: .notFound, .codex: .notFound])
         #expect(AgentSummaries.defaultOptions(neither).isEmpty)
         #expect(AgentSummaries.noAgentTitle(neither) == "None found")
         #expect(AgentSummaries.noAgentTitle(provider(lookups: [:])) == "Searching…")

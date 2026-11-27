@@ -94,6 +94,10 @@ public final class AgentProvider {
     /// and has none to run (decision 89).
     private(set) var usesAgents: Bool
     /// The default agent as stored, whether or not Roga can run it.
+    ///
+    /// Like `customAgents`, it's read from the defaults once, as the provider
+    /// starts. From then on the provider is what changes it, and it writes
+    /// each change to the defaults without reading it back (decision 123).
     private(set) var defaultChoice: AgentID?
     /// The agents someone added as commands, in the order they were added.
     private(set) var customAgents: [CustomAgent]
@@ -409,16 +413,19 @@ public final class AgentProvider {
 
     /// Reads what's chosen again. A program that changed means looking for
     /// that agent again, so Settings doesn't have to ask.
+    ///
+    /// It doesn't read the default agent or the custom agents again. Nothing
+    /// else in Roga writes them, and the defaults only say when something in
+    /// this process changed them, so a read could only give back what the
+    /// provider holds already. Under load, a read once gave back something
+    /// older instead, from before the provider's last writes, and taking it
+    /// undid a rename and a delete (decision 123).
     func reloadSettings() {
         let uses = AgentPreferences.usesAgents(in: defaults)
         if uses != usesAgents {
             usesAgents = uses
             if uses { lookIfNotYet() }
         }
-        let chosen = AgentPreferences.defaultAgent(in: defaults)
-        if chosen != defaultChoice { defaultChoice = chosen }
-        let customs = AgentPreferences.customAgents(in: defaults)
-        if customs != customAgents { customAgents = customs }
         let read = Self.readSettings(from: defaults)
         guard read != settings else { return }
         let changedPrograms = AgentKind.allCases.filter { read[$0]?.program != settings[$0]?.program }

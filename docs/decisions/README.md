@@ -130,3 +130,4 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [120](0120-say-how-far-the-branch-is-from-main-and-make-its-menu-a-popover.md) | Say how far the branch is from main, and make its menu a popover | Accepted |
 | [121](0121-delete-a-folder-of-branches-or-the-branches-picked.md) | Delete a folder of branches, or the branches picked with Command and Shift | Accepted |
 | [122](0122-play-the-houses-windows-for-an-agent-at-work.md) | Play the house's windows for an agent at work | Accepted |
+| [123](0123-the-agent-provider-keeps-what-only-it-writes.md) | The agent provider keeps what only it writes, without reading it back | Accepted |

@@ -31,11 +31,13 @@ struct AgentProviderTests {
         AgentTestSupport.remove(defaults, named: defaultsName)
     }
 
-    /// A provider with both fake agents, started and done looking.
-    private func started(helperPath: String? = nil, claudeBody: String = "") async throws -> AgentProvider {
+    /// A provider with both fake agents, started and done looking, that keeps
+    /// its settings in the test's defaults, or in `defaults` when that's
+    /// given.
+    private func started(helperPath: String? = nil, claudeBody: String = "", defaults: UserDefaults? = nil) async throws -> AgentProvider {
         try AgentTestSupport.claude(in: bin, log: log, body: claudeBody)
         try AgentTestSupport.codex(in: bin, log: log)
-        let provider = AgentTestSupport.provider(support: support, helperPath: helperPath, defaults: defaults, codexHome: codexHome)
+        let provider = AgentTestSupport.provider(support: support, helperPath: helperPath, defaults: defaults ?? self.defaults, codexHome: codexHome)
         provider.start(git: try await AgentTestSupport.git(searchPath: bin))
         #expect(await AgentTestSupport.eventually { !provider.isLooking && provider.hookStatus.count == 2 })
         return provider
@@ -235,14 +237,51 @@ struct AgentProviderTests {
         #expect(provider.defaultAgent == .known(.claude))
     }
 
+    /// On a loaded runner, the defaults once read back the custom agents as
+    /// they were before the provider's last writes, and the provider took
+    /// that over what it held, which undid a rename and then a delete. Here
+    /// the defaults keep reading back the agent as it was added, and no
+    /// default agent, from just after it was added.
+    @Test func keepsWhatItWroteWhenTheDefaultsReadBackSomethingOlder() async throws {
+        defer { clean() }
+        let lagging = try #require(AgentTestSupport.Lagging(suiteName: defaultsName))
+        let provider = try await started(defaults: lagging)
+        let ollama = provider.addCustomAgent(name: "Ollama", command: "ollama run qwen2.5-coder:7b")
+        lagging.fallBehind(on: [AgentPreferences.customAgentsKey, AgentPreferences.defaultAgentKey])
+        #expect(AgentPreferences.customAgents(in: lagging) == [ollama])
+
+        provider.setDefaultAgent(.custom(ollama.id))
+        var renamed = ollama
+        renamed.name = "Qwen"
+        provider.updateCustomAgent(renamed)
+        #expect(provider.named(.custom(ollama.id))?.name == "Qwen")
+        #expect(provider.defaultAgent == .custom(ollama.id))
+        // A change to another setting reads the defaults again.
+        lagging.set("o5-mini", forKey: AgentPreferences.modelKey(.codex))
+        #expect(provider.named(.custom(ollama.id))?.name == "Qwen")
+        #expect(provider.defaultAgent == .custom(ollama.id))
+
+        provider.deleteCustomAgent(ollama.id)
+        lagging.set("o5", forKey: AgentPreferences.modelKey(.codex))
+        #expect(provider.customAgents.isEmpty)
+        #expect(provider.defaultAgent == .known(.claude))
+        // What's stored is what the provider wrote.
+        #expect(AgentPreferences.customAgents(in: defaults).isEmpty)
+        #expect(defaults.object(forKey: AgentPreferences.defaultAgentKey) == nil)
+    }
+
+    /// Settings and the sidebar switch agents on and off, and Settings
+    /// chooses each agent's program and model, by writing the defaults
+    /// themselves.
     @Test func followsChangesToTheDefaultsByItself() async throws {
         defer { clean() }
         let provider = try await started()
         defaults.set(false, forKey: AgentPreferences.usesAgentsKey)
         #expect(await AgentTestSupport.eventually { provider.defaultAgent == nil })
         defaults.set(true, forKey: AgentPreferences.usesAgentsKey)
-        defaults.set("codex", forKey: AgentPreferences.defaultAgentKey)
-        #expect(await AgentTestSupport.eventually { provider.defaultAgent == .known(.codex) })
+        defaults.set("o5-mini", forKey: AgentPreferences.modelKey(.codex))
+        #expect(await AgentTestSupport.eventually { provider.defaultAgent == .known(.claude) })
+        #expect(provider.generation(with: .known(.codex))?.agent.model == "o5-mini")
     }
 
     @Test func aGenerationRunsWhatsChosen() async throws {
