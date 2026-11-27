@@ -533,10 +533,12 @@ public struct WorkspaceView: View {
                         worktree: worktree,
                         monitor: agentMonitor,
                         list: list,
+                        repositoryName: repository.name,
                         switchBranch: refsPanelVisibility.fits ? {
                             refsPanelVisibility.isWanted.wrappedValue = true
                             model.refs.showFilter()
                         } : nil,
+                        unlock: { tabRepairs.unlock(worktree, in: repository, list: list) },
                         showWorktree: showWorktree
                     )
                     RepositoryView(model: model, showWorktree: showWorktree, lowerPanelSize: $lowerPanelSize)

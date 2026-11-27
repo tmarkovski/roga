@@ -99,16 +99,63 @@ struct AgentLine: Equatable {
         summary.sessions == 1 ? summary.hosts.first?.name ?? "An agent" : "\(summary.sessions) agents"
     }
 
-    /// What the line says, in two parts so that the words can be cut short and
-    /// how long stays whole: the sidebar's second line, as in "Run the test
-    /// suite" and "6 min", "Approval required: git push" or "2 agents
-    /// working". When other sessions in the worktree are doing something else,
-    /// it names the agent it's about, as the worktree menu does, as in "Codex
-    /// needs approval: git push".
-    func parts(now: Date) -> (words: String, time: String?) {
-        if hasFailed { return ("\(agentName) stopped with an error", nil) }
-        if agents.count > summary.sessions { return summary.menuParts(now: now) }
-        return summary.rowParts(now: now)
+    /// What the branch row's two lines say (decision 118): who and what state
+    /// they're in over what they're doing, as in "Claude Code is working" and
+    /// "6 min" over "Run the test suite", and "Claude Code needs approval"
+    /// over "git push".
+    ///
+    /// `short` is the first line in a narrow column, the agent's name alone,
+    /// as in "Claude Code" or "Codex +1", which leaves the mark and the color
+    /// to say the rest. When another session in the worktree is doing
+    /// something else, the second line says so after its words, as in "git
+    /// push · Claude Code is working".
+    func lines(now: Date) -> (state: String, short: String, time: String?, words: String?) {
+        let lead = agents.first
+        let single = summary.sessions == 1
+        let who: String
+        if single {
+            who = lead?.host.name ?? "An agent"
+        } else if summary.sessions == 2, summary.hosts.count == 2 {
+            who = summary.hosts.map(\.name).joined(separator: " and ")
+        } else {
+            who = "\(summary.sessions) agents"
+        }
+        let state: String
+        switch summary.state {
+        case .working: state = single ? "\(who) is working" : "\(who) are working"
+        case .waiting(.permission): state = single ? "\(who) needs approval" : "\(who) need approval"
+        case .waiting(.question): state = single ? "\(who) is waiting for you" : "\(who) are waiting for you"
+        case .finished: state = hasFailed ? "\(who) stopped with an error" : "\(who) finished"
+        }
+        let others = agents.count - summary.sessions
+        var short = single ? who : "\(summary.sessions) agents"
+        if others > 0 { short += " +\(others.formatted())" }
+
+        var time: String?
+        if summary.state != .finished {
+            let minutes = AgentSummary.minutes(from: summary.since, to: now)
+            if minutes > 0 { time = AgentSummary.shortDuration(minutes: minutes) }
+        }
+
+        var words = lead.flatMap(Self.detail)
+        // The most urgent of the others, which the line doesn't speak for.
+        if others > 0 {
+            let other = agents[summary.sessions]
+            let doing = "\(other.host.name) \(Self.stateWords(of: other.phase))"
+            words = words.map { "\($0) · \(doing)" } ?? doing
+        }
+        return (state, short, time, words)
+    }
+
+    /// What one session is doing, after its agent's name, as in "is working".
+    private static func stateWords(of phase: AgentPhase) -> String {
+        switch phase {
+        case .working, .idle: "is working"
+        case .waiting(.permission): "needs approval"
+        case .waiting(.question): "is waiting for you"
+        case .finished(failed: false): "finished"
+        case .finished(failed: true): "stopped with an error"
+        }
     }
 
     /// The tooltip, which is the mark's from decision 47, as in "Claude Code

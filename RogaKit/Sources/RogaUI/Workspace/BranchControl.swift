@@ -5,21 +5,24 @@ import MenuUI
 import RepositoryEngine
 import SwiftUI
 
-/// The branch at the start of the branch's row, under the tabs, as a chip with a
-/// menu, and after it the counts that pull and push (decisions 19 and 95). The
-/// counts show only when there's something to do, and the row reads as a
-/// sentence: `main ↓3 ↑1`.
+/// The branch at the start of the branch's row, under the tabs, as its name
+/// over how far it is from the main branch on the remote, and after it the
+/// counts that pull and push (decisions 19, 95 and 118). The counts show only
+/// when there's something to do, and the row reads as a sentence:
+/// `agent/fix-login ↑2`.
 struct BranchControl: View {
     let branch: BranchModel
     let worktree: Worktree
+    /// The repository's name, for the popover's subtitle.
+    let repositoryName: String
     /// Goes to the refs panel's filter, or nil when the refs panel doesn't fit.
     let switchBranch: (() -> Void)?
-    /// Shows one of the repository's worktrees in the window.
-    let showWorktree: (String, ObjectID?) -> Void
+    /// Takes the worktree's lock off.
+    let unlock: () -> Void
 
     var body: some View {
         HStack(spacing: 2) {
-            BranchChip(branch: branch, worktree: worktree, switchBranch: switchBranch, showWorktree: showWorktree)
+            BranchBlock(branch: branch, worktree: worktree, repositoryName: repositoryName, switchBranch: switchBranch, unlock: unlock)
                 .layoutPriority(1)
             BranchCounts(branch: branch, switchBranch: switchBranch)
                 .fixedSize()
@@ -28,56 +31,115 @@ struct BranchControl: View {
     }
 }
 
-/// The branch's name, which opens the menu with everything that can be done.
-private struct BranchChip: View {
+/// The branch's name, with the branch's icon before it, over how far the
+/// branch is from the main branch on the remote, as in `4 ahead, 12 behind
+/// origin/main` (decision 118). A click opens the popover about the checkout,
+/// on the press (decision 111), and its tooltip has the worktree's folder.
+///
+/// The icon is the branch's even for a detached `HEAD`, as the chip before
+/// it drew, since the commit's ID and `detached` already say what it is.
+private struct BranchBlock: View {
     let branch: BranchModel
     let worktree: Worktree
+    let repositoryName: String
     let switchBranch: (() -> Void)?
-    let showWorktree: (String, ObjectID?) -> Void
+    let unlock: () -> Void
     @State private var isHovering = false
+    @State private var showsDetail = false
+
+    /// How wide it gets, so that a long name leaves the agent room.
+    private static let widest: CGFloat = 300
 
     var body: some View {
-        Menu {
-            BranchMenuItems(branch: branch, switchBranch: switchBranch)
-        } label: {
-            HStack(spacing: 5) {
-                Icon.branch.image
-                    .font(.system(size: 15))
+        // Often enough to keep `fetched 4 min ago` right, for the main branch.
+        TimelineView(.periodic(from: .now, by: 30)) { context in
+            let line = Self.secondLine(branch: branch, worktree: worktree, now: context.date)
+            Button {
+                showsDetail.toggle()
+            } label: {
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 5) {
+                        Icon.branch.image
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                        name
+                    }
+                    .font(.system(size: 13))
+                    HStack(spacing: 0) {
+                        if worktree.isLocked {
+                            Icon.lock.image
+                                .font(.system(size: 9.5))
+                                .padding(.trailing, 3)
+                        }
+                        // A space while there's nothing to say yet, so that the
+                        // name doesn't move when the line arrives.
+                        Text(line.words.isEmpty ? " " : line.words)
+                            .truncationMode(.tail)
+                        if let conflicts = line.conflicts {
+                            Text(" · \(conflicts)")
+                                .foregroundStyle(Palette.action)
+                                .fixedSize()
+                        }
+                    }
+                    .font(.system(size: 11))
                     .foregroundStyle(.secondary)
-                if worktree.branch == nil, let head = worktree.head {
-                    Text(head.hex.prefix(8))
-                        .font(.system(size: 13, design: .monospaced))
-                    Text("detached")
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text(worktree.title)
-                        .truncationMode(.middle)
-                        // A few letters at each end, so that the repository's
-                        // name truncates before this goes altogether.
-                        .frame(minWidth: Self.shortestNameWidth(worktree.title))
                 }
-                Icon.dropdown.image
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .accessibilityElement(children: .ignore)
+                .padding(.leading, 7)
+                .padding(.trailing, 9)
+                .modifier(WidthCap(width: Self.widest))
+                .frame(height: BranchBar.controlHeight)
+                .background {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(isHovering || showsDetail ? Palette.buttonHover : .clear)
+                }
+                .contentShape(Rectangle())
+                .onHover { isHovering = $0 }
             }
-            .font(.system(size: 13))
-            .lineLimit(1)
-            .accessibilityElement(children: .ignore)
-            .padding(.leading, 5)
-            .padding(.trailing, 7)
-            .frame(height: 32)
-            .background {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isHovering ? Palette.buttonHover : .clear)
+            .buttonStyle(.plain)
+            .fixedSize(horizontal: false, vertical: true)
+            .opensOnPress($showsDetail)
+            .help(help(now: context.date))
+            .accessibilityLabel("Branch \(worktree.title)")
+            .accessibilityValue([line.words, line.conflicts].compactMap(\.self).joined(separator: ", "))
+            .accessibilityHint("Shows the worktree's folder and how far the branch is from main")
+            .popover(isPresented: $showsDetail, arrowEdge: .bottom) {
+                CheckoutPopover(branch: branch, worktree: worktree, repositoryName: repositoryName, switchBranch: switchBranch, unlock: unlock) {
+                    showsDetail = false
+                }
             }
-            .contentShape(Rectangle())
-            .onHover { isHovering = $0 }
         }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .menuIndicator(.hidden)
-        .help(branch.summary())
-        .accessibilityLabel("Branch \(worktree.title)")
+    }
+
+    @ViewBuilder private var name: some View {
+        if worktree.branch == nil, let head = worktree.head {
+            Text(head.hex.prefix(8))
+                .font(.system(size: 13, design: .monospaced))
+            Text("detached")
+                .foregroundStyle(.secondary)
+        } else {
+            Text(worktree.title)
+                .truncationMode(.middle)
+                // A few letters at each end, so that the repository's
+                // name truncates before this goes altogether.
+                .frame(minWidth: Self.shortestNameWidth(worktree.title), alignment: .leading)
+        }
+    }
+
+    /// What the line under the name says: how far the branch is from the
+    /// main branch on the remote, or for the main branch itself, its upstream
+    /// and when Roga last fetched.
+    static func secondLine(branch: BranchModel, worktree: Worktree, now: Date) -> (words: String, conflicts: String?) {
+        if worktree.branch == nil { return ("Not on a branch", nil) }
+        if worktree.head == nil { return ("No commits yet", nil) }
+        return branch.mainLine(now: now)
+    }
+
+    /// The worktree's folder, then the branch's upstream and when Roga last
+    /// fetched.
+    private func help(now: Date) -> String {
+        [CheckoutPopover.folder(of: worktree), branch.summary(now: now)].filter { !$0.isEmpty }.joined(separator: "\n")
     }
 
     /// How narrow the branch's name can get: all of a short one, and otherwise
@@ -88,9 +150,224 @@ private struct BranchChip: View {
     }
 }
 
+/// What a click on the branch opens, in place of the menu that had Pull, Push,
+/// Fetch and New Branch, which are on the row and in the menu bar's Branch menu
+/// (decision 118). It says what the row has no room for: whose worktree this
+/// is, its folder and what can be done there, its lock, its upstream, and how
+/// far the branch is from the main branch on the remote, with Rebase and Merge
+/// while that has commits the branch doesn't. Switch Branch… is at its foot,
+/// or New Branch Here… for a detached `HEAD`.
+struct CheckoutPopover: View {
+    let branch: BranchModel
+    let worktree: Worktree
+    let repositoryName: String
+    let switchBranch: (() -> Void)?
+    let unlock: () -> Void
+    let close: () -> Void
+    @State private var copied: Copied?
+
+    static let width: CGFloat = 400
+    /// How wide the column of headings is, from the longest, `Upstream`.
+    private static let headingWidth: CGFloat = 64
+
+    private enum Copied { case name, path }
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 30)) { context in
+            VStack(alignment: .leading, spacing: 0) {
+                header
+                Divider()
+                section("Folder") {
+                    Text(Self.folder(of: worktree))
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                    buttons {
+                        Button("Show in Finder", icon: .folderOpen) {
+                            reveal(worktree.path)
+                            close()
+                        }
+                        Button("Open in Terminal", icon: .terminal) {
+                            openInTerminal(worktree.path)
+                            close()
+                        }
+                        Button(copied == .path ? "Copied" : "Copy Path", icon: copied == .path ? .check : .copy) {
+                            copy(worktree.path, as: .path)
+                        }
+                    }
+                }
+                if worktree.isLocked {
+                    Divider()
+                    section("Locked") {
+                        Text(worktree.lockReason ?? "No reason given")
+                        detail("git worktree remove refuses it until it's unlocked")
+                        buttons {
+                            Button("Unlock") {
+                                close()
+                                unlock()
+                            }
+                        }
+                    }
+                }
+                if worktree.branch != nil, let upstream = branch.upstreamDetail(now: context.date) {
+                    Divider()
+                    section("Upstream") {
+                        Text(upstream.value)
+                        if let more = upstream.detail { detail(more) }
+                    }
+                }
+                if worktree.branch != nil, let main = branch.mainDetail(now: context.date), let distance = branch.mainDistance {
+                    Divider()
+                    section("Main") {
+                        Text(main.value)
+                        Text(main.detail)
+                            .font(.system(size: 12))
+                            .foregroundStyle(main.conflicts ? AnyShapeStyle(Palette.action) : AnyShapeStyle(.secondary))
+                            .fixedSize(horizontal: false, vertical: true)
+                        if distance.behind > 0 {
+                            buttons {
+                                Button("Rebase onto \(distance.baseName)") {
+                                    after(close, branch.rebaseOntoMain)
+                                }
+                                Button("Merge \(distance.baseName)") {
+                                    after(close, branch.mergeMain)
+                                }
+                            }
+                            .disabled(branch.isBusy)
+                        }
+                    }
+                }
+                Divider()
+                HStack(spacing: 2) {
+                    Button("Switch Branch…") {
+                        close()
+                        switchBranch?()
+                    }
+                    .disabled(switchBranch == nil)
+                    if worktree.branch == nil {
+                        Button("New Branch Here…") {
+                            after(close) { branch.startNewBranch() }
+                        }
+                        .disabled(branch.isBusy)
+                    }
+                }
+                .buttonStyle(OutlinedButtonStyle(height: 28, isOutlined: false))
+                .padding(6)
+            }
+            .font(.system(size: 13))
+            .frame(width: Self.width, alignment: .leading)
+        }
+    }
+
+    private var header: some View {
+        HStack(alignment: .center, spacing: 8) {
+            Icon.branch.image
+                .font(.system(size: 15))
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                if worktree.branch == nil, let head = worktree.head {
+                    Text(head.hex.prefix(8))
+                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                    Text("Detached HEAD, not on a branch")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text(worktree.title)
+                        .fontWeight(.semibold)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(worktree.isMain ? "The main worktree of \(repositoryName)" : "A worktree of \(repositoryName)")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer(minLength: 8)
+            if let copyable {
+                let label = worktree.branch == nil ? "Copy Commit ID" : "Copy Branch Name"
+                Button {
+                    copy(copyable, as: .name)
+                } label: {
+                    (copied == .name ? Icon.check : Icon.copy).image
+                        .font(.system(size: 13))
+                }
+                .buttonStyle(.icon(size: 24))
+                .help(label)
+                .accessibilityLabel(copied == .name ? "Copied" : label)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+    }
+
+    /// The branch's name, or the commit a detached `HEAD` is on.
+    private var copyable: String? {
+        if let name = worktree.branch { return Ref.shortName(name) }
+        return worktree.head?.hex
+    }
+
+    private func section(_ heading: String, @ViewBuilder content: () -> some View) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(heading)
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .frame(width: Self.headingWidth, alignment: .leading)
+            VStack(alignment: .leading, spacing: 3) {
+                content()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .accessibilityElement(children: .contain)
+    }
+
+    private func detail(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 12))
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// A section's buttons, which go on to another line when they don't fit
+    /// on one.
+    private func buttons(@ViewBuilder content: () -> some View) -> some View {
+        WrappingRow(spacing: 6) {
+            content()
+        }
+        .buttonStyle(.outlined)
+        .labelStyle(.titleAndIcon)
+        .font(.system(size: 12))
+        .padding(.top, 5)
+    }
+
+    private func copy(_ text: String, as what: Copied) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        copied = what
+        Task {
+            guard (try? await Task.sleep(for: .seconds(1.5))) != nil else { return }
+            if copied == what { copied = nil }
+        }
+    }
+
+    /// Closes the popover, then does what was asked once it has gone, since
+    /// a dialog or another popover can't open while this one is closing.
+    private func after(_ close: () -> Void, _ action: @escaping () -> Void) {
+        close()
+        Task {
+            try? await Task.sleep(for: .milliseconds(200))
+            action()
+        }
+    }
+
+    /// The worktree's folder, with the home folder as `~`.
+    static func folder(of worktree: Worktree) -> String {
+        (worktree.path as NSString).abbreviatingWithTildeInPath
+    }
+}
+
 /// Fetch and New Branch, as icons at the right end of the branch's row, before
-/// history's commands (decisions 45 and 95). They stay where they are while the branch's
-/// name and counts change. The branch's menu has both as well.
+/// history's commands (decisions 45 and 95), as tall as everything else in the
+/// row (decision 118). They stay where they are while the branch's name and
+/// counts change. The menu bar's Branch menu has both as well.
 struct BranchButtons: View {
     let branch: BranchModel
     let worktree: Worktree
@@ -118,7 +395,7 @@ private struct FetchButton: View {
             Button(action: branch.fetch) {
                 FetchDrop(isFetching: branch.isFetching)
             }
-            .buttonStyle(.icon)
+            .buttonStyle(.icon(size: BranchBar.controlHeight))
             .disabled(branch.status?.remote == nil)
             .help(branch.fetchHelp(now: context.date))
             .accessibilityLabel("Fetch")
@@ -128,7 +405,8 @@ private struct FetchButton: View {
 }
 
 /// Opens the popover for a new branch, which hangs from this button when it's
-/// asked for here, from the branch's menu, or with Shift-Command-B. Asked for
+/// asked for here, from the menu bar, from the branch's popover for a detached
+/// `HEAD`, or with Shift-Command-B. Asked for
 /// from a row's menu, such as Create in history or New branch from stash… in the
 /// refs panel, the same popover hangs from that row instead (decision 83), and a
 /// new worktree starts from its tab or its row in the sidebar (decisions 82 and
@@ -150,7 +428,7 @@ private struct NewBranchButton: View {
         } label: {
             Icon.newBranch.image
         }
-        .buttonStyle(.icon(isOn: isOpenHere.wrappedValue))
+        .buttonStyle(IconButtonStyle(size: BranchBar.controlHeight, isOn: isOpenHere.wrappedValue))
         .opensOnPress(isOpenHere, open: branch.startNewBranch)
         .help(help)
         .accessibilityLabel("New Branch")
@@ -220,8 +498,9 @@ private struct NewBranchButton: View {
     }
 }
 
-/// What the branch's menu lists. It's also what clicking a count opens when a
-/// click can't run straight away, and the commands in the menu bar.
+/// What clicking a count opens when a click can't run straight away, and the
+/// commands in the menu bar's Branch menu. The branch's own menu had them too,
+/// until its popover replaced it (decision 118).
 struct BranchMenuItems: View {
     let branch: BranchModel
     let switchBranch: (() -> Void)?
@@ -541,7 +820,7 @@ private struct UnfinishedWorkControl: View {
             .accessibilityElement(children: .ignore)
             .foregroundStyle(unfinished.hasConflicts ? AnyShapeStyle(Palette.red) : AnyShapeStyle(.secondary))
             .padding(.horizontal, 6)
-            .frame(minHeight: 32)
+            .frame(minHeight: BranchBar.controlHeight)
             .background {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(isHovering ? Palette.buttonHover : .clear)
@@ -615,6 +894,76 @@ private struct CountsOpening: ViewModifier {
 /// its edge. The part is animated by laying out again on every frame, so what's
 /// beside this moves exactly with that end, rather than animating on its own and
 /// drifting ahead of it.
+/// Keeps its content no wider than `width`, while letting it be as narrow as
+/// it is. A frame's `maxWidth` would stretch it to that width whenever there's
+/// room, and take the room from the agent's words.
+private struct WidthCap: ViewModifier {
+    let width: CGFloat
+
+    func body(content: Content) -> some View {
+        CappedWidth(width: width) { content }
+    }
+
+    private struct CappedWidth: Layout {
+        let width: CGFloat
+
+        private func capped(_ proposal: ProposedViewSize) -> ProposedViewSize {
+            ProposedViewSize(width: min(proposal.width ?? width, width), height: proposal.height)
+        }
+
+        func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+            subviews.first?.sizeThatFits(capped(proposal)) ?? .zero
+        }
+
+        func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+            subviews.first?.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size))
+        }
+    }
+}
+
+/// Buttons in a row, which go on to the next line when they run out of room,
+/// as a line of words does.
+private struct WrappingRow: Layout {
+    var spacing: CGFloat
+
+    private func lines(_ subviews: Subviews, width: CGFloat) -> [[(index: Int, size: CGSize)]] {
+        var lines: [[(index: Int, size: CGSize)]] = [[]]
+        var used: CGFloat = 0
+        for (index, subview) in subviews.enumerated() {
+            let size = subview.sizeThatFits(.unspecified)
+            let needed = lines[lines.count - 1].isEmpty ? size.width : used + spacing + size.width
+            if needed > width, !lines[lines.count - 1].isEmpty {
+                lines.append([(index, size)])
+                used = size.width
+            } else {
+                lines[lines.count - 1].append((index, size))
+                used = needed
+            }
+        }
+        return lines
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let lines = lines(subviews, width: proposal.width ?? .infinity)
+        let widths = lines.map { line in line.map(\.size.width).reduce(0, +) + spacing * CGFloat(max(line.count - 1, 0)) }
+        let heights = lines.map { line in line.map(\.size.height).max() ?? 0 }
+        return CGSize(width: widths.max() ?? 0, height: heights.reduce(0, +) + spacing * CGFloat(max(lines.count - 1, 0)))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var y = bounds.minY
+        for line in lines(subviews, width: bounds.width) {
+            var x = bounds.minX
+            let height = line.map(\.size.height).max() ?? 0
+            for (index, size) in line {
+                subviews[index].place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+                x += size.width + spacing
+            }
+            y += height + spacing
+        }
+    }
+}
+
 private struct PartWidth: Layout {
     var amount: Double
     let keepsTrailingEnd: Bool
@@ -661,7 +1010,7 @@ private struct BranchCount: View {
         .accessibilityElement(children: .ignore)
         .foregroundStyle(isOrange ? AnyShapeStyle(Palette.action) : AnyShapeStyle(.secondary))
         .padding(.horizontal, 6)
-        .frame(minWidth: 32, minHeight: 32)
+        .frame(minWidth: BranchBar.controlHeight, minHeight: BranchBar.controlHeight)
         .background {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(isHovering ? Palette.buttonHover : .clear)

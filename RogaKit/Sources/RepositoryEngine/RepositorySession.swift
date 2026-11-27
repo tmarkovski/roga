@@ -534,6 +534,21 @@ public actor RepositorySession {
         try await BranchStatusLoader.load(git: git, in: worktree)
     }
 
+    /// Says how far a worktree's branch is from the main branch on the remote,
+    /// and which files merging that would conflict in (decision 118), at
+    /// utility priority, for when nobody waits for the answer.
+    ///
+    /// - Parameters:
+    ///   - branch: The full name of the branch the worktree is on.
+    ///   - previous: What this said last time, which comes back as it was
+    ///     while neither the branch nor the main branch has moved.
+    ///   - worktree: The worktree's folder.
+    /// - Returns: How far it is, or nil when the repository has no main
+    ///   branch, or `branch` is the main branch.
+    public nonisolated func mainDistance(of branch: String, after previous: MainDistance?, in worktree: String) async throws -> MainDistance? {
+        try await MainDistanceLoader.load(of: branch, git: git, in: worktree, after: previous)
+    }
+
     /// Says how far each of several branches is from its upstream, or for one
     /// that has never had an upstream, how far it's ahead of the main branch,
     /// at utility priority, for when nobody waits for the answer.

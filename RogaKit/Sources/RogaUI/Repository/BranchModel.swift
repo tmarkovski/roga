@@ -287,9 +287,21 @@ final class BranchModel {
     /// Where the branch stands, or nil when the worktree isn't on a branch, or
     /// its branch has no commits yet.
     private(set) var status: BranchStatus?
+    /// How far the branch is from the main branch on the remote, which the
+    /// branch row says under the branch's name (decision 118), or nil when
+    /// the repository has no main branch, this is the main branch, or it
+    /// hasn't been worked out yet.
+    var mainDistance: MainDistance? {
+        measuredBranch == status?.branch ? measuredDistance : nil
+    }
+    /// What `mainDistance` was last worked out as, and for which branch,
+    /// which keeps it from saying one branch's distance for another just
+    /// after a checkout.
+    private var measuredDistance: MainDistance?
+    private var measuredBranch: String?
     /// What became of the repository's latest fetch.
     private(set) var fetchRecord = FetchRecord()
-    /// Whether Roga is fetching by itself, which the branch's menu says and the
+    /// Whether Roga is fetching by itself, which the branch's tooltip says and the
     /// Fetch button shows by dropping the house through it.
     private(set) var isFetchingByItself = false
     /// What git is doing because someone asked it to.
@@ -448,6 +460,9 @@ final class BranchModel {
     @ObservationIgnored private(set) var preparingIntegration: Task<Void, Never>?
     @ObservationIgnored private(set) var quietFetch: Task<Void, Never>?
     @ObservationIgnored private(set) var previewing: Task<Void, Never>?
+    /// Works out `mainDistance`, apart from the look that asked, since a merge
+    /// that git tries can take a while in a large repository.
+    @ObservationIgnored private(set) var measuring: Task<Void, Never>?
     /// How many times the branch has looked for the commits it's missing.
     @ObservationIgnored private var missingLooks = 0
     @ObservationIgnored private var finishedNote: Task<Void, Never>?
@@ -488,8 +503,28 @@ final class BranchModel {
     func refresh() async {
         guard let status = try? await session.branchStatus(in: worktree) as BranchStatus??, !Task.isCancelled else { return }
         self.status = status
+        measureMainDistance()
         await listMissingCommits()
         if fetchRecord == FetchRecord() { fetchRecord = await session.lastFetch() }
+    }
+
+    /// Works out how far the branch is from the main branch on the remote,
+    /// again, which comes straight back while neither has moved. A worktree
+    /// that isn't on a branch has nothing to say. When git can't say, it
+    /// keeps what it knew.
+    private func measureMainDistance() {
+        measuring?.cancel()
+        guard let branch = status?.branch else {
+            measuring = nil
+            return
+        }
+        let previous = mainDistance
+        measuring = Task { [session, worktree] in
+            guard let distance = try? await session.mainDistance(of: branch, after: previous, in: worktree) as MainDistance??,
+                  !Task.isCancelled else { return }
+            measuredDistance = distance
+            measuredBranch = branch
+        }
     }
 
     /// Asks history to fade the commits that `↓` counts, the ones a pull would
@@ -521,8 +556,9 @@ final class BranchModel {
 
     /// Fetches because Roga became active or a window started showing the
     /// repository, unless the user turned that off (decision 20). Nothing shows
-    /// while it runs or if it fails, except in the branch's menu. The session
-    /// decides whether it's been long enough since the last one.
+    /// while it runs or if it fails, except under the branch's name, in its
+    /// tooltip and in its popover. The session decides whether it's been long
+    /// enough since the last one.
     func fetchByItself() {
         guard fetchesByItself(), action == nil, quietFetch == nil, let remote = status?.remote else { return }
         isFetchingByItself = true
@@ -1364,8 +1400,9 @@ final class BranchModel {
         ShellCommand.text(arguments)
     }
 
-    /// The first line of the branch's menu: its upstream, how far the branch is
-    /// from it, and when Roga last fetched.
+    /// The upstream, how far the branch is from it, and when Roga last
+    /// fetched, which the branch's tooltip says, and the line under the name
+    /// of the main branch, and the first line of the menu bar's Branch menu.
     func summary(now: Date = Date()) -> String {
         var parts: [String] = []
         if let failure = fetchRecord.failure, !failure.isEmpty, !isFetchingByItself, action != .fetching, let remote = status?.remote {
@@ -1393,6 +1430,126 @@ final class BranchModel {
             parts.append("fetched " + Self.age(of: date, now: now))
         }
         return parts.joined(separator: " · ")
+    }
+
+    // MARK: How far the branch is from main
+
+    /// Whether the latest fetch failed, which leaves the counts as old as the
+    /// fetch before it.
+    private var fetchFailed: Bool {
+        guard let failure = fetchRecord.failure, !failure.isEmpty else { return false }
+        return !isFetching
+    }
+
+    /// Whether the line under the branch's name compares with the main
+    /// branch, rather than saying what `summary(now:)` does. The main branch
+    /// itself, and a branch whose upstream is the main branch on the remote,
+    /// have their upstream to say it.
+    var comparesWithMain: Bool {
+        guard let mainDistance, let status else { return false }
+        return status.upstream != mainDistance.base
+    }
+
+    /// The line under the branch's name in the branch row (decision 118), as
+    /// in `4 ahead, 12 behind origin/main`, and the part that's never cut,
+    /// as in `2 files would conflict`, which is orange.
+    ///
+    /// How far ahead always shows, since it's how much work the branch holds,
+    /// and how far behind once it isn't zero. A merge that would conflict
+    /// comes before how far ahead. After a fetch that failed, it says how old
+    /// its numbers are.
+    func mainLine(now: Date = Date()) -> (words: String, conflicts: String?) {
+        guard comparesWithMain, let distance = mainDistance, let status else { return (summary(now: now), nil) }
+        let base = distance.baseName
+        let conflicts = distance.conflicts ?? []
+        var words: String
+        if !conflicts.isEmpty {
+            words = "\(distance.behind.formatted()) behind \(base)"
+        } else {
+            switch (distance.ahead, distance.behind) {
+            case (0, 0): words = "Same as \(base)"
+            case (let ahead, 0): words = "\(ahead.formatted()) ahead of \(base)"
+            case (0, let behind): words = "\(behind.formatted()) behind \(base)"
+            case (let ahead, let behind): words = "\(ahead.formatted()) ahead, \(behind.formatted()) behind \(base)"
+            }
+        }
+        if status.upstream == nil, !status.upstreamIsGone, status.pushRemote != nil {
+            words += " · not pushed yet"
+        }
+        if fetchFailed {
+            if let date = fetchRecord.lastFetched {
+                words += " · as of " + Self.age(of: date, now: now)
+            } else if let remote = status.remote {
+                words += " · couldn't reach \(remote)"
+            }
+        }
+        let files = conflicts.count == 1 ? "1 file" : "\(conflicts.count.formatted()) files"
+        return (words, conflicts.isEmpty ? nil : "\(files) would conflict")
+    }
+
+    /// What the branch's popover says about its upstream: what it is, and
+    /// how far the branch is from it and when Roga last fetched, or nil for
+    /// a worktree that isn't on a branch.
+    func upstreamDetail(now: Date = Date()) -> (value: String, detail: String?)? {
+        guard let status else { return nil }
+        let fetched = isFetching ? "fetching…" : fetchRecord.lastFetched.map { "fetched " + Self.age(of: $0, now: now) }
+        guard let upstream = status.upstream else {
+            if status.upstreamIsGone { return ("Its upstream is gone", status.pushRemote.map { "↑ pushes it to \($0) again" }) }
+            if let remote = status.pushRemote { return ("Not pushed yet", "↑ pushes it to \(remote) for the first time") }
+            return ("No remote", nil)
+        }
+        let how: String
+        if fetchFailed, let remote = status.remote {
+            how = "Couldn't reach \(remote)"
+        } else {
+            switch (status.behind, status.ahead) {
+            case (0, 0): how = "Up to date"
+            case (let behind, 0): how = "\(behind.formatted()) behind"
+            case (0, let ahead): how = "\(ahead.formatted()) ahead, not pushed"
+            case (let behind, let ahead): how = "\(behind.formatted()) behind, \(ahead.formatted()) ahead"
+            }
+        }
+        return (Ref.shortName(upstream), [how, fetched].compactMap(\.self).joined(separator: " · "))
+    }
+
+    /// What the branch's popover says about the main branch on the remote:
+    /// how far the branch is from it, then which files a merge would conflict
+    /// in, or how many commits it would bring in. It's nil while the line
+    /// under the branch's name doesn't compare with it.
+    func mainDetail(now: Date = Date()) -> (value: String, detail: String, conflicts: Bool)? {
+        guard comparesWithMain, let distance = mainDistance else { return nil }
+        let base = distance.baseName
+        let value = "\(distance.ahead.formatted()) ahead, \(distance.behind.formatted()) behind \(base)"
+        let conflicts = distance.conflicts ?? []
+        var detail: String
+        if !conflicts.isEmpty {
+            let names = conflicts.map { ($0 as NSString).lastPathComponent }
+            let files = names.count < 3 ? names.joined(separator: " and ") : "\(names.count.formatted()) files"
+            detail = "Merging it would conflict in \(files)"
+        } else if distance.behind > 0 {
+            let commits = distance.behind == 1 ? "1 commit" : "\(distance.behind.formatted()) commits"
+            detail = "\(base) has \(commits) this branch doesn't"
+        } else {
+            detail = "Has every commit on \(base)"
+        }
+        if fetchFailed, let date = fetchRecord.lastFetched {
+            detail += "\nAs of the last fetch, " + Self.age(of: date, now: now)
+        }
+        return (value, detail, !conflicts.isEmpty)
+    }
+
+    /// Rebases the branch onto the main branch on the remote, after the
+    /// dialog that says what it comes to, as the refs panel's menu does.
+    func rebaseOntoMain() {
+        guard let base = mainDistance?.base else { return }
+        askToIntegrate(.rebase, ref: base)
+    }
+
+    /// Merges the main branch on the remote into the branch, after the
+    /// dialog that says what it comes to.
+    func mergeMain() {
+        guard let base = mainDistance?.base else { return }
+        askToIntegrate(.merge, ref: base)
     }
 
     /// As in `4 min ago`.

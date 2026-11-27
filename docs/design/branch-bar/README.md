@@ -60,12 +60,16 @@ The row now has two kinds of ahead and behind: the arrows against the upstream, 
 
 The boards keep the detail behind clicks, with a tooltip on every part for a quick look. macOS shows tooltips on hover, after about a second, and they can't hold a button. Anything with buttons is a popover that opens on a click, on the press (decision 111). A card that opened on hover would open as the pointer crosses the row to Fetch, couldn't be reached from the keyboard or with VoiceOver, and would close when the pointer left it, which makes Open in Terminal inside it hard to click.
 
-## Still to decide
+## Built
 
-- **How quickly `git merge-tree` runs on large repositories.** It would run after each fetch for each worktree in the background, and speed is part of correctness, so it needs measuring against the benchmark repositories before it's built. Until then, the line can show the counts without the conflict part, which `git rev-list --left-right --count` gives cheaply from the commit-graph.
-- **Whether how far behind should ever be orange without a conflict,** as when the branch is hundreds of commits behind. The boards say no, since the count already says it.
-- **Which branch is main.** The boards compare with `origin/main`. A repository whose default branch has another name would use the branch `origin/HEAD` names, as Roga already does to count a never-pushed branch's `↑` (decision 95). A branch made from another branch would still compare with the default branch.
-- **Which terminal Open in Terminal uses.** Opening a new window at a folder is simpler than decision 100's Show Terminal, which had to find the window an agent runs in, but it still has to know whether the user runs Terminal, iTerm or Ghostty.
+D is built, as [decision 118](../../decisions/0118-say-how-far-the-branch-is-from-main-and-make-its-menu-a-popover.md) describes, and it settled what these boards left open:
+
+- **Which branch is main.** It's the one `origin/HEAD` names, or another remote's `HEAD`, or else a local `main` or `master` through its upstream. A branch whose upstream is that branch says what its upstream is, as `main` does.
+- **Orange without a conflict.** There's none, however far behind the branch is, since the count already says it.
+- **Which terminal Open in Terminal uses.** It's the one chosen in Settings › General, which the sidebar's Open in Terminal already uses.
+- **A working agent's mark.** The boards drew a turning ring before its first line. The app keeps decision 100's light in the second line instead, because the worktree's tab turns a ring a few points above.
+
+Two things are still open. How quickly `git merge-tree` runs on large repositories hasn't been measured against the benchmark repositories, though it only runs when both sides have moved on, once for each pair of commits, and apart from anything someone waits for. And Rename Branch… isn't built, since renaming a branch that has an upstream has to decide what becomes of the upstream and its name on the remote.
 
 ## Regenerating the boards
 
