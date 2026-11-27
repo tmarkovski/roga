@@ -7,12 +7,14 @@ extension HookHelper {
         /// The line Claude Code writes for people about a command or a
         /// subagent, as in "Run the test suite".
         var description: String?
-        /// The file a tool reads or edits.
+        /// The file a tool reads, edits or looks at.
         var filePath: String?
         /// The page a tool fetches.
         var url: String?
         /// A shell's command, or the whole of a patch for `apply_patch`.
         var command: Command?
+        /// The MCP server whose resources Codex's resource tools read.
+        var server: String?
 
         /// Codex sends a command as one string or as a list of words.
         enum Command: Hashable {
@@ -20,11 +22,12 @@ extension HookHelper {
             case words([String])
         }
 
-        init(description: String? = nil, filePath: String? = nil, url: String? = nil, command: Command? = nil) {
+        init(description: String? = nil, filePath: String? = nil, url: String? = nil, command: Command? = nil, server: String? = nil) {
             self.description = description
             self.filePath = filePath
             self.url = url
             self.command = command
+            self.server = server
         }
 
         init(_ input: [String: Any]) {
@@ -38,9 +41,11 @@ extension HookHelper {
                 }
             self.init(
                 description: input["description"] as? String,
-                filePath: (input["file_path"] ?? input["notebook_path"]) as? String,
+                // Codex's `view_image` calls its file `path`.
+                filePath: (input["file_path"] ?? input["notebook_path"] ?? input["path"]) as? String,
                 url: input["url"] as? String,
-                command: command
+                command: command,
+                server: input["server"] as? String
             )
         }
 
@@ -55,9 +60,10 @@ extension HookHelper {
             }
             self.init(
                 description: text("description"),
-                filePath: text("file_path") ?? text("notebook_path"),
+                filePath: text("file_path") ?? text("notebook_path") ?? text("path"),
                 url: text("url"),
-                command: text("command").map(Command.line)
+                command: text("command").map(Command.line),
+                server: text("server")
             )
         }
     }
@@ -79,8 +85,9 @@ extension HookHelper {
         // MARK: Tools
 
         /// The line for a tool that's starting or asks to be allowed, or nil
-        /// for the tools that only keep the agent's task list, which leave
-        /// the line as it was.
+        /// for the tools that only keep the agent's task list, its goal or
+        /// the clock, or that wait on something already running, which leave
+        /// the line as it was. A tool not named here says its name in words.
         static func line(host: AgentHost, tool: String, input: ToolInput) -> String? {
             if let server = mcpServer(of: tool) {
                 return shortened("Using \(server)")
@@ -92,6 +99,8 @@ extension HookHelper {
                 return command(input.command)
             case "Read", "NotebookRead":
                 return file("Reading", input.filePath)
+            case "view_image":
+                return file("Looking at", input.filePath, otherwise: "an image")
             case "Edit", "MultiEdit", "Write", "NotebookEdit":
                 return file("Editing", input.filePath)
             case "apply_patch":
@@ -107,15 +116,65 @@ extension HookHelper {
                 return website(input.url).map { "Reading \($0)" } ?? "Reading a web page"
             case "WebSearch", "web_search":
                 return "Searching the web"
-            case "AskUserQuestion", "request_user_input":
+            case "web__run":
+                // Codex's tool for the web both searches and opens pages.
+                return "Browsing the web"
+            case "image_gen__imagegen":
+                return "Making an image"
+            case "list_mcp_resources", "list_mcp_resource_templates", "read_mcp_resource":
+                return shortened(input.server.map { "Using \($0)" }) ?? "Using MCP servers"
+            case "AskUserQuestion", "request_user_input", "request_user_input_async":
+                // The async one returns at once and the agent works on, so
+                // the line stays while the question is open.
                 return "Asked a question"
             case "ExitPlanMode":
                 return "Wants a plan approved"
-            case "TaskCreate", "TaskUpdate", "TaskGet", "TaskList", "TodoWrite", "TodoRead", "ToolSearch", "update_plan":
+            case "sleep":
+                return "Waiting"
+            case "TaskCreate", "TaskUpdate", "TaskGet", "TaskList", "TodoWrite", "TodoRead", "ToolSearch", "update_plan",
+                 "create_goal", "get_goal", "update_goal", "clock__curr_time":
+                return nil
+            case "exec", "wait", "write_stdin":
+                // Codex's `exec` runs code that calls the other tools, which
+                // each bring their own line. `wait` waits on that code and
+                // `write_stdin` types into a command that's running, so the
+                // line of what's running stays.
                 return nil
             default:
-                return shortened(tool)
+                return shortened(words(ofTool: tool))
             }
+        }
+
+        /// A tool's name as words, as "View image" for `view_image` and "Enter
+        /// worktree" for `EnterWorktree`. A word in capitals, such as `LSP`,
+        /// keeps them.
+        static func words(ofTool tool: String) -> String {
+            var words: [String] = []
+            var word = ""
+            let characters = Array(tool)
+            for (index, character) in characters.enumerated() {
+                if character == "_" || character == "-" || character == " " {
+                    if !word.isEmpty { words.append(word) }
+                    word = ""
+                    continue
+                }
+                if character.isUppercase, let previous = word.last {
+                    let next = index + 1 < characters.count ? characters[index + 1] : nil
+                    // A capital after a lowercase letter or a digit starts a
+                    // word, and so does the last capital of a run that's
+                    // followed by lowercase, as the S in `MCPSearch`.
+                    if previous.isLowercase || previous.isNumber || (previous.isUppercase && next?.isLowercase == true) {
+                        words.append(word)
+                        word = ""
+                    }
+                }
+                word.append(character)
+            }
+            if !word.isEmpty { words.append(word) }
+            guard let first = words.first else { return tool }
+            let rest = words.dropFirst().map { $0.allSatisfy(\.isUppercase) ? $0 : $0.lowercased() }
+            let head = first.allSatisfy(\.isUppercase) ? first : first.prefix(1).uppercased() + first.dropFirst()
+            return ([head] + rest).joined(separator: " ")
         }
 
         /// The server's name in an MCP tool's, as `github` in
@@ -127,9 +186,9 @@ extension HookHelper {
             return server.isEmpty ? nil : String(server)
         }
 
-        private static func file(_ verb: String, _ path: String?) -> String {
+        private static func file(_ verb: String, _ path: String?, otherwise: String = "a file") -> String {
             guard let name = path?.split(separator: "/").last, let line = shortened("\(verb) \(name)") else {
-                return "\(verb) a file"
+                return "\(verb) \(otherwise)"
             }
             return line
         }

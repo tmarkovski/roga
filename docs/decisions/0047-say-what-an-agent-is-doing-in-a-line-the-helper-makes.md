@@ -17,14 +17,20 @@ Decision 41 kept all of that inside the helper, for two reasons. A tool's input 
 | Claude Code's `Bash` | the `description` Claude wrote for it, as "Run the test suite", or the program when there's none |
 | Codex's `Bash`, `exec_command` and `shell` | the program and the word after it, as "git push" or "swift test" |
 | `Read` | "Reading" and the file's name, without its folder |
+| Codex's `view_image` | "Looking at" and the image's name, from its `path` |
 | `Edit`, `MultiEdit`, `Write`, `NotebookEdit`, and Codex's `apply_patch` | "Editing" and the file's name, and for a patch of several files how many others, as "Editing HookHelper.swift and 2 other files" |
 | `Grep`, `Glob` | "Searching the code" |
 | `Agent`, and Codex's `spawn_agent` | "Subagent: " and its description |
 | `WebFetch` / `WebSearch` | "Reading" and the site's name / "Searching the web" |
-| MCP tools, named `mcp__<server>__<tool>` | "Using" and the server's name |
-| `AskUserQuestion` and Codex's `request_user_input` / `ExitPlanMode` | "Asked a question" / "Wants a plan approved" |
-| `TaskCreate`, `TaskUpdate`, `TaskGet`, `TaskList`, `TodoWrite`, `ToolSearch`, and Codex's `update_plan` | no line, so the one before stays |
-| Anything else | the tool's name |
+| Codex's `web__run` / `image_gen__imagegen` | "Browsing the web" / "Making an image" |
+| MCP tools, named `mcp__<server>__<tool>`, and Codex's `list_mcp_resources`, `list_mcp_resource_templates` and `read_mcp_resource` | "Using" and the server's name, or "Using MCP servers" for a list across all of them |
+| `AskUserQuestion` and Codex's `request_user_input` and `request_user_input_async` / `ExitPlanMode` | "Asked a question" / "Wants a plan approved" |
+| Codex's `sleep` | "Waiting" |
+| `TaskCreate`, `TaskUpdate`, `TaskGet`, `TaskList`, `TodoWrite`, `ToolSearch`, and Codex's `update_plan`, `create_goal`, `get_goal`, `update_goal` and `clock__curr_time` | no line, so the one before stays |
+| Codex's `exec`, `wait` and `write_stdin` | no line, so the one before stays: `exec` runs code that calls the other tools, which bring their own lines, `wait` waits on that code, and `write_stdin` types into a command that's already running |
+| Anything else | the tool's name in words, as "View image" for `view_image` or "Enter worktree" for `EnterWorktree` |
+
+Codex 0.167 has the model call `exec`, which runs JavaScript that calls the other tools, and Codex's hooks still name the tool that ran inside it, so the table goes by those names. `request_user_input_async` returns at once and the agent works on while the question stays open, so unlike `request_user_input` it doesn't mark the agent as waiting, and its line stays after the tool returns. These names come from the tools Codex 0.167 declares in its session logs, since the payloads still haven't been captured from a live session.
 
 The tools with no line only keep the agent's task list or load its other tools. In the captured session they were 16 of its 22 tool calls, and each would have replaced what the agent was doing with something it does between steps.
 
