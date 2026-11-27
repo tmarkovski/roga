@@ -92,12 +92,20 @@ struct WorktreeTabStrip: View {
         let worktree = facts.worktree
         let selection = self.selection(of: worktree)
         let menu = self.menu(for: worktree, selection: selection)
+        let refs = model?.refs
         let tab = WorktreeTab(
             facts: facts,
             title: worktree.isMain ? repository.name : nil,
             isSelected: worktree.path == shown,
             help: WorktreeTabs.help(for: facts, repositoryName: worktree.isMain ? repository.name : nil, index: index, now: now),
-            menu: menu
+            menu: menu,
+            // A branch the pointer rests on in the refs panel lights up the
+            // tab of the worktree that has it, and the pointer on a tab lights
+            // up its branch's row (decision 118).
+            glow: refs.flatMap { $0.links.worktree == worktree.path ? $0.linkColor : nil },
+            pointing: { isOn in
+                if isOn { refs?.point(at: .worktree(worktree.path)) } else { refs?.stopPointing(at: .worktree(worktree.path)) }
+            }
         ) {
             actions.show(worktree.path)
         }
@@ -289,6 +297,10 @@ private struct WorktreeTab: View {
     let isSelected: Bool
     let help: String
     let menu: [RefMenu.Entry]
+    /// The color it glows in while a branch it has lights it up.
+    var glow: Color?
+    /// Says when the pointer comes onto the tab and leaves it.
+    var pointing: (Bool) -> Void = { _ in }
     let select: () -> Void
     @State private var isHovering = false
     @Environment(\.colorScheme) private var colorScheme
@@ -348,15 +360,21 @@ private struct WorktreeTab: View {
                     // Claude app, rather than falling below it.
                     shape.fill(Self.fill)
                         .shadow(color: .black.opacity(colorScheme == .dark ? 0.4 : 0.12), radius: 2)
+                } else if let glow {
+                    shape.fill(glow.opacity(0.14))
                 } else if isHovering && canSelect {
                     shape.fill(Palette.hover)
                 }
             }
             .overlay {
-                if isSelected {
+                if let glow {
+                    TabGlow(color: glow, shape: shape)
+                        .transition(.opacity)
+                } else if isSelected {
                     shape.strokeBorder(Self.edge)
                 }
             }
+            .animation(.easeOut(duration: 0.15), value: glow)
             .contentShape(shape)
         }
         .buttonStyle(SelectsOnPress { if canSelect { select() } })
@@ -368,7 +386,10 @@ private struct WorktreeTab: View {
         }
         .overlay { RefMenuArea(entries: menu) }
         .opacity(facts.isDeleting ? 0.5 : 1)
-        .onHover { isHovering = $0 }
+        .onHover { isHovering in
+            self.isHovering = isHovering
+            pointing(isHovering)
+        }
         .help(help)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title.map { "Repository \($0)" } ?? worktree.title)
@@ -396,6 +417,39 @@ private struct WorktreeTab: View {
     private static func shortestLabelWidth(_ name: String) -> CGFloat {
         let width = (name as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 13)]).width.rounded(.up)
         return min(width, 36)
+    }
+}
+
+/// The ring a tab wears while a branch the pointer rests on in the refs panel
+/// lights it up (decision 118), in the branch's color, with a soft light around
+/// it. The light swells once as it arrives and then holds still, so that it
+/// catches the eye across the window without moving at the edge of it the way
+/// an agent's ring does. With Reduce Motion it's there without the swell.
+private struct TabGlow: View {
+    let color: Color
+    let shape: RoundedRectangle
+    @State private var light: CGFloat = 0
+    @Environment(\.accessibilityReduceMotion) private var reducesMotion
+
+    /// How far the light spreads once it has settled, and at the top of its swell.
+    private static let resting: CGFloat = 5
+    private static let swell: CGFloat = 11
+
+    var body: some View {
+        shape.strokeBorder(color, lineWidth: 1.5)
+            .shadow(color: color.opacity(0.55), radius: light)
+            .onAppear {
+                guard !reducesMotion else {
+                    light = Self.resting
+                    return
+                }
+                withAnimation(.easeOut(duration: 0.3)) {
+                    light = Self.swell
+                } completion: {
+                    withAnimation(.easeInOut(duration: 0.6)) { light = Self.resting }
+                }
+            }
+            .allowsHitTesting(false)
     }
 }
 

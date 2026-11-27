@@ -235,13 +235,17 @@ final class BranchModel {
         var picked: Set<String>
         /// The newest commits that deleting all of them loses.
         var commits: [ListedCommit]
+        /// The main branch's short name, when these are the merged branches the refs
+        /// panel offers to delete rather than the branches on one commit.
+        var mergedInto: String?
 
         /// Starts with every local branch going and every remote branch staying, unless
         /// those local branches are all there is and would take commits with them. There's
         /// no telling then which name to keep, so nothing starts on.
-        init(deletion: CommitBranchesDeletion, commits: [ListedCommit]) {
+        init(deletion: CommitBranchesDeletion, commits: [ListedCommit], mergedInto: String? = nil) {
             self.deletion = deletion
             self.commits = commits
+            self.mergedInto = mergedInto
             let local = deletion.branches.filter { $0.place == .local }
             let losesCommits = deletion.lostCount > 0 && local.count == deletion.branches.count
             picked = losesCommits ? [] : Set(local.map(\.ref))
@@ -1089,6 +1093,36 @@ final class BranchModel {
                         changedNothing: true
                     )
                     lookAgain()
+                }
+            } catch {
+                failure = Failure(title: "Can't delete branches", error: error, changedNothing: true)
+            }
+            preparingDeletion = nil
+        }
+    }
+
+    /// Asks which of the branches merged into the main branch should go, from the
+    /// button on the refs panel's Branches heading (decision 118). They're on
+    /// different commits, so each is taken wherever it is now. Their commits are all
+    /// in the main branch, so nothing should be lost, and every switch starts on.
+    ///
+    /// - Parameters:
+    ///   - names: The full names of the merged branches that no worktree has.
+    ///   - main: The main branch's short name, which the dialog names.
+    func askToDelete(merged names: [String], into main: String) {
+        guard !isBusy, !names.isEmpty else { return }
+        preparingDeletion = Task {
+            do {
+                let deletion = try await session.prepareToDelete(branches: names, on: nil, limit: Self.overwrittenLimit, in: worktree)
+                if deletion.branches.isEmpty {
+                    failure = Failure(
+                        title: "Nothing to delete",
+                        message: "The merged branches have gone, or a worktree has them, since the list was read.",
+                        changedNothing: true
+                    )
+                    lookAgain()
+                } else {
+                    branchChoice = BranchChoice(deletion: deletion, commits: await listed(deletion.lost), mergedInto: main)
                 }
             } catch {
                 failure = Failure(title: "Can't delete branches", error: error, changedNothing: true)

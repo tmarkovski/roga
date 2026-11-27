@@ -1,6 +1,6 @@
 # 27. Give the graph and the branches Monokai's colors
 
-Accepted on 2026-11-04. Partly superseded by [decision 42](0042-run-each-line-down-to-its-parent-in-its-lanes-color.md), which gives each lane of the graph a color rather than each column. The rest of this decision still holds, as the Monokai color theme, beside Xcode's ([decision 71](0071-choose-monokais-or-xcodes-colors.md)).
+Accepted on 2026-11-04. Partly superseded by [decision 42](0042-run-each-line-down-to-its-parent-in-its-lanes-color.md), which gives each lane of the graph a color rather than each column. The rest of this decision still holds, as the Monokai color theme, beside Xcode's ([decision 71](0071-choose-monokais-or-xcodes-colors.md)), except that the refs panel's counts of commits ahead and behind are gray since [decision 118](0118-branches-on-one-line-and-what-the-pointer-lights-up.md).
 
 ## Context
 

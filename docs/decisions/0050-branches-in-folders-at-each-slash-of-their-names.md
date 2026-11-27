@@ -1,6 +1,6 @@
 # 50. Branches in folders, at each slash of their names
 
-Accepted on 2026-11-06. Brings [decision 31](0031-chevrons-for-what-folds-and-lines-down-a-tree.md)'s chevron to folders of branches in the refs panel, though not its lines down a tree, and moves the current branch, which came first in [the panel's](../main-window.md#the-refs-panel) list of branches, into its folder.
+Accepted on 2026-11-06. Brings [decision 31](0031-chevrons-for-what-folds-and-lines-down-a-tree.md)'s chevron to folders of branches in the refs panel, though not its lines down a tree, and moves the current branch, which came first in [the panel's](../main-window.md#the-refs-panel) list of branches, into its folder. [Decision 118](0118-branches-on-one-line-and-what-the-pointer-lights-up.md) takes a folder's step in from 22 points to 16, and has a remote's branches start where the local ones do rather than a step further in under the remote.
 
 Revised the same day, before any release had it. A folder's row first had its chevron where a branch has its icon, how many branches were under it at the right, and decision 31's line down the folder. Seen in the running app, the count lined up with the remote branches' dates and read as one of them, and the line added nothing to folders that are seldom more than one deep.
 

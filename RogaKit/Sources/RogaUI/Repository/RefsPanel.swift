@@ -114,7 +114,7 @@ struct RefsPanel: View {
                             .padding(16)
                             .frame(maxWidth: .infinity)
                     }
-                    section(.branches, count: details.branches.count) {
+                    section(.branches, count: details.branches.count, command: deleteMergedCommand) {
                         ForEach(rows.local) { row in
                             switch row.content {
                             case .folder(let ref, let name, let count, let isCollapsed):
@@ -124,15 +124,18 @@ struct RefsPanel: View {
                             }
                         }
                     }
-                    section(.remotes, count: details.remotes.count, add: { model.branch.remoteDraft = BranchModel.RemoteDraft() }) {
+                    section(.remotes, count: details.remotes.count, command: SectionCommand(icon: .plus, help: "Add a remote") {
+                        model.branch.remoteDraft = BranchModel.RemoteDraft()
+                    }) {
+                        let trackers = refs.trackers
                         ForEach(details.remotes, id: \.name) { remote in
                             RefRemoteRow(name: remote.name, detail: remote.address ?? "Not configured any more", menu: remoteMenu(remote))
                             ForEach(rows.remotes[remote.name] ?? []) { row in
                                 switch row.content {
                                 case .folder(let ref, let name, let count, let isCollapsed):
-                                    folderRow(ref: ref, name: name, count: count, isCollapsed: isCollapsed, depth: row.depth, isOnRemote: true)
+                                    folderRow(ref: ref, name: name, count: count, isCollapsed: isCollapsed, depth: row.depth)
                                 case .branch(let branch, let title):
-                                    remoteBranchRow(branch, title: title, depth: row.depth)
+                                    remoteBranchRow(branch, title: title, depth: row.depth, trackers: trackers[branch.name] ?? [], current: details.currentBranch)
                                 }
                             }
                         }
@@ -161,6 +164,11 @@ struct RefsPanel: View {
             // showed over the header's gray, behind the commands. They stop at
             // the line instead.
             .clipped()
+            // Names the row that the pointer lights up while it's out of view.
+            // Each edge has its own, which takes no room until it shows, so
+            // that nothing lies over the rows to take the pointer from them.
+            .overlay(alignment: .top) { RefsPill(refs: refs, isBelow: false) }
+            .overlay(alignment: .bottom) { RefsPill(refs: refs, isBelow: true) }
             .focusable()
             .focused($isListFocused)
             .focusEffectDisabled()
@@ -174,8 +182,20 @@ struct RefsPanel: View {
         }
     }
 
+    /// The button on the Branches heading that deletes the merged branches no
+    /// worktree has, while there are any (decision 118).
+    private var deleteMergedCommand: SectionCommand? {
+        let merged = refs.deletableMergedBranches
+        guard !merged.isEmpty, let main = merged.first?.main?.other else { return nil }
+        let words = merged.count == 1 ? "Delete 1 merged branch…" : "Delete \(merged.count.formatted()) merged branches…"
+        return SectionCommand(icon: .deleteBranch, help: words) {
+            isListFocused = true
+            model.branch.askToDelete(merged: merged.map(\.name), into: main)
+        }
+    }
+
     /// A section, unless it has nothing to show and no reason to stay.
-    @ViewBuilder private func section<Rows: View>(_ section: RefsModel.Section, count: Int, add: (() -> Void)? = nil, @ViewBuilder rows: () -> Rows) -> some View {
+    @ViewBuilder private func section<Rows: View>(_ section: RefsModel.Section, count: Int, command: SectionCommand? = nil, @ViewBuilder rows: () -> Rows) -> some View {
         if section.isShown(count: count, isFiltering: !refs.filter.isEmpty) {
             let isCollapsed = isCollapsed(section)
             // Each section is a stack of its own, so that remotes and tags,
@@ -189,7 +209,7 @@ struct RefsPanel: View {
                         rows()
                     }
                 } header: {
-                    RefSectionHeader(section: section, count: count, isCollapsed: isCollapsed, add: add) {
+                    RefSectionHeader(section: section, count: count, isCollapsed: isCollapsed, command: command) {
                         isListFocused = true
                         setCollapsed(!isCollapsed, section)
                     }
@@ -199,39 +219,42 @@ struct RefsPanel: View {
     }
 
     /// A folder of branches, which opens and closes.
-    private func folderRow(ref: String, name: String, count: Int, isCollapsed: Bool, depth: Int, isOnRemote: Bool = false) -> some View {
-        RefFolderRow(name: name, path: Ref.shortName(ref), count: count, isCollapsed: isCollapsed, indent: RefIndent.of(depth, isOnRemote: isOnRemote)) {
+    private func folderRow(ref: String, name: String, count: Int, isCollapsed: Bool, depth: Int) -> some View {
+        RefFolderRow(name: name, path: Ref.shortName(ref), count: count, isCollapsed: isCollapsed, indent: RefIndent.of(depth)) {
             isListFocused = true
             setCollapsed(!isCollapsed, folder: ref)
         }
         .id(ref)
     }
 
+    /// A local branch, on one line (decision 118). Its icon says whose it is and
+    /// where it's checked out: the current branch's green, or sky, and the icon
+    /// of the tab of a worktree that has it. What it says after its name is in
+    /// `BranchDetails.RowState`, and the rest is in its tooltip.
+    ///
     /// - Parameter title: What's left of the branch's name after the folders
     ///   it's in.
     private func branchRow(_ branch: BranchDetails, title: String, depth: Int, isCurrent: Bool) -> some View {
         let otherWorktree = isCurrent ? nil : branch.worktree
+        let icon: Icon = if otherWorktree == nil { .branch } else if branch.isWorktreeLocked { .lock } else { .worktree }
+        let details = branch.details(isCurrent: isCurrent)
         return RefRow(
-            icon: .branch,
-            imageColor: isCurrent ? Palette.current : .secondary,
+            icon: icon,
+            imageColor: isCurrent ? Palette.current : Palette.otherBranch,
             title: title,
-            subtitle: branch.subtitle(isCurrent: isCurrent),
+            help: ([branch.shortName] + details).joined(separator: "\n"),
+            accessibilityDetails: details.joined(separator: ", "),
             menu: branchMenu(branch, isCurrent: isCurrent, otherWorktree: otherWorktree),
             isSelected: isSelected(branch.name, branch.tip) || model.reviewedBranch == branch.name,
+            isDone: branch.isDone(isCurrent: isCurrent),
             indent: RefIndent.of(depth),
+            linking: RefRowLinking(refs: refs, name: branch.name),
             hasCommands: otherWorktree != nil,
             action: { select(branch.name, branch.tip) },
             // There's nothing to do for the current branch, as for its badge.
             doubleAction: isCurrent ? nil : { checkOut(branch.name) }
         ) {
-            if isCurrent {
-                Icon.check.image
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .accessibilityLabel("Checked out")
-            } else if let comparison = branch.comparison {
-                AheadBehind(ahead: comparison.ahead, behind: comparison.behind)
-            }
+            BranchRowState(state: branch.rowState(isCurrent: isCurrent))
         } commands: {
             // Reviewing a branch is in its menu, and Branch > Review Against main
             // with Shift-Command-R for the one the worktree is on (decision 80).
@@ -277,10 +300,28 @@ struct RefsPanel: View {
         return rows
     }
 
-    private func remoteBranchRow(_ branch: RemoteBranchDetails, title: String, depth: Int) -> some View {
-        RefRow(
+    /// A remote branch, on one line. Its icon's color says whether a local
+    /// branch tracks it, in the colors of that branch (decision 118), and its
+    /// date is in its tooltip rather than at the end of its row.
+    ///
+    /// - Parameters:
+    ///   - trackers: The local branches that track it.
+    ///   - current: The full name of the branch checked out here.
+    private func remoteBranchRow(_ branch: RemoteBranchDetails, title: String, depth: Int, trackers: [BranchDetails], current: String?) -> some View {
+        let color: Color = if trackers.contains(where: { $0.name == current }) {
+            Palette.current
+        } else if trackers.isEmpty {
+            .secondary
+        } else {
+            Palette.otherBranch
+        }
+        let details = branch.details(trackedBy: trackers.map(\.shortName))
+        return RefRow(
             icon: .branch,
+            imageColor: color,
             title: title,
+            help: ([Ref.shortName(branch.name)] + details).joined(separator: "\n"),
+            accessibilityDetails: details.joined(separator: ", "),
             // Its heading has the full name, because the row's title leaves out the remote.
             menu: model.menuEntries(
                 forBranch: branch.name,
@@ -291,15 +332,13 @@ struct RefsPanel: View {
                 showWorktree: showWorktree
             ),
             isSelected: isSelected(branch.name, branch.tip),
-            indent: RefIndent.of(depth, isOnRemote: true),
+            isDone: branch.isMerged,
+            indent: RefIndent.of(depth),
+            linking: RefRowLinking(refs: refs, name: branch.name),
             action: { select(branch.name, branch.tip) },
             doubleAction: { checkOut(branch.name) }
         ) {
-            if let date = branch.date {
-                Text(RefDates.short(date))
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(.secondary)
-            }
+            BranchRowState(state: branch.isMerged ? .merged : .quiet)
         } commands: {
         }
         .id(branch.name)
@@ -599,8 +638,17 @@ private struct RefsPanelHeader<Commands: View>: View {
     }
 }
 
-/// A section's title with a chevron after it, and for Remotes, a plus that
-/// adds one. Clicking it collapses or expands the section, unless it
+/// A command at the right of a section's heading: the plus that adds a remote,
+/// and on Branches, the button that deletes the merged branches (decision 118).
+struct SectionCommand {
+    let icon: Icon
+    /// Its tooltip and its name for VoiceOver.
+    let help: String
+    let action: () -> Void
+}
+
+/// A section's title with a chevron after it, and at its right, the section's
+/// command, if it has one. Clicking it collapses or expands the section, unless it
 /// has nothing to show, which leaves no chevron and nothing to click. It stays
 /// in place as the section's rows scroll under it, so it has a background of
 /// its own.
@@ -608,13 +656,12 @@ private struct RefSectionHeader: View {
     let section: RefsModel.Section
     let count: Int
     let isCollapsed: Bool
-    /// What the plus at its right does, for a section that has one.
-    var add: (() -> Void)?
+    var command: SectionCommand?
     let toggle: () -> Void
 
-    /// How far the plus is from the right of its box: it's about 9 points wide
+    /// How far the icon is from the right of its box: it's about 9 points wide
     /// at its size, in a box of 22.
-    private static let plusInset = 6.0
+    private static let iconInset = 6.0
 
     var body: some View {
         HStack(spacing: 4) {
@@ -624,21 +671,20 @@ private struct RefSectionHeader: View {
                 Chevron(pointsDown: !isCollapsed)
             }
             Spacer(minLength: 8)
-            // The header's right is for its commands, and Remotes is the only
-            // section with one. It shows no count, which would read like the
-            // numbers that ask for something, such as commits to pull
-            // (decision 84).
-            if let add {
-                Button(action: add) {
-                    HoverIcon(size: 22) { Icon.plus.image }
+            // The header's right is for its commands. It shows no count, which
+            // would read like the numbers that ask for something, such as
+            // commits to pull (decision 84).
+            if let command {
+                Button(action: command.action) {
+                    HoverIcon(size: 22) { command.icon.image }
                 }
                 .buttonStyle(.plain)
-                .help("Add a remote")
-                // The plus is in the middle of a box that's wider than it,
+                .help(command.help)
+                // The icon is in the middle of a box that's wider than it,
                 // which is what turns gray under the pointer. The box goes
-                // past the line the rows' labels end on, so that the plus
+                // past the line the rows' labels end on, so that the icon
                 // itself ends on that line.
-                .padding(.trailing, -Self.plusInset)
+                .padding(.trailing, -Self.iconInset)
             }
         }
         .foregroundStyle(.secondary)
@@ -661,9 +707,28 @@ private struct RefSectionHeader: View {
             if count > 0 { toggle() }
         }
         .accessibilityActions {
-            if let add { Button("Add a remote", action: add) }
+            if let command { Button(command.help, action: command.action) }
         }
     }
+}
+
+/// The size of a row's icon and the room around it (decision 118): a 12-point
+/// column with 6 points after it, where it used to be 16 with 8, so that a row
+/// in a folder under a remote has room for its name.
+private enum RefIcon {
+    /// The size of the font the icon is drawn at.
+    static let size = 11.0
+    static let width = 14.0
+    static let gap = 6.0
+}
+
+/// How a row that the pointer can rest on takes part in lighting up what goes
+/// with it (decision 118): it says when the pointer is on it and whether it's
+/// in view, and it tints while something else lights it up.
+struct RefRowLinking {
+    let refs: RefsModel
+    /// The branch's full name.
+    let name: String
 }
 
 /// A row in the panel. It fills with gray while the pointer is over it, if
@@ -677,6 +742,12 @@ private struct RefRow<Trailing: View, Commands: View>: View {
     var imageColor = Color.secondary
     let title: String
     var subtitle: String?
+    /// Its tooltip, when it says more than the title does. The tooltip is the
+    /// title's alone, so that a command's button shows its own.
+    var help: String?
+    /// What VoiceOver reads after the title, for a row whose second line is in
+    /// its tooltip.
+    var accessibilityDetails: String?
     /// What right-clicking the row offers. Its header names the ref, so that it's
     /// clear what the menu acts on. A row with nothing to offer has no menu.
     var menu: [RefMenu.Entry] = []
@@ -687,8 +758,12 @@ private struct RefRow<Trailing: View, Commands: View>: View {
     /// Whether its icon and title are gray, for something that's listed and
     /// isn't there, such as a submodule that isn't checked out.
     var isDimmed = false
+    /// Whether its title alone is gray, for a branch that's merged and done
+    /// with. Its icon keeps its color, which says whose it is.
+    var isDone = false
     /// How much further in than a section's rows it starts (`RefIndent`).
     var indent = 0.0
+    var linking: RefRowLinking?
     var hasCommands = false
     var action: (() -> Void)?
     /// What double-clicking the row does, after its first click has done `action`.
@@ -699,22 +774,20 @@ private struct RefRow<Trailing: View, Commands: View>: View {
 
     var body: some View {
         let showsCommands = isHovering && hasCommands
-        HStack(spacing: 8) {
+        HStack(spacing: RefIcon.gap) {
             icon.image
-                .font(.system(size: 13))
+                .font(.system(size: RefIcon.size))
                 .foregroundStyle(isDimmed ? AnyShapeStyle(.tertiary) : AnyShapeStyle(imageColor))
-                .frame(width: 16)
+                .frame(width: RefIcon.width)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
                     // A title that doesn't fit fades out at its end
-                    // (decision 51), and its tooltip has all of it. The
-                    // tooltip is the title's alone, so that a command's
-                    // button shows its own.
+                    // (decision 51).
                     FadingText(title)
                         .font(.system(size: 13))
-                        .foregroundStyle(isDimmed ? .secondary : .primary)
-                        .help(title)
+                        .foregroundStyle(isDimmed || isDone ? .secondary : .primary)
+                        .help(help ?? title)
                     Spacer(minLength: 0)
                     if !showsCommands {
                         HStack(spacing: 0) { trailing }
@@ -739,7 +812,7 @@ private struct RefRow<Trailing: View, Commands: View>: View {
         .frame(height: subtitle == nil ? 28 : 40)
         .background {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(isSelected ? Palette.selection : isHovering && action != nil ? Palette.hover : .clear)
+                .fill(fill)
         }
         .padding(.horizontal, 6)
         .contentShape(Rectangle())
@@ -750,10 +823,19 @@ private struct RefRow<Trailing: View, Commands: View>: View {
         // Alongside the single click rather than ahead of it, so that a click
         // doesn't wait to see whether a second one is coming.
         .simultaneousGesture(TapGesture(count: 2).onEnded { doubleAction?() })
-        .onHover { isHovering = $0 }
+        .onHover { isHovering in
+            self.isHovering = isHovering
+            guard let linking else { return }
+            if isHovering {
+                linking.refs.point(at: .ref(linking.name))
+            } else {
+                linking.refs.stopPointing(at: .ref(linking.name))
+            }
+        }
+        .modifier(ReportsVisibility(linking: linking))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
-        .accessibilityValue(subtitle ?? "")
+        .accessibilityValue(subtitle ?? accessibilityDetails ?? "")
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : action == nil ? [] : .isButton)
         .accessibilityAction(.default) { action?() }
         .accessibilityActions {
@@ -763,16 +845,41 @@ private struct RefRow<Trailing: View, Commands: View>: View {
             refMenuActions(menu)
         }
     }
+
+    /// Selected, then lit up by what the pointer rests on elsewhere, then
+    /// under the pointer.
+    private var fill: Color {
+        if isSelected { return Palette.selection }
+        if let linking, let color = linking.refs.linkTint(for: linking.name) { return color }
+        return isHovering && action != nil ? Palette.hover : .clear
+    }
 }
 
-/// How much further in than a section's rows a row starts: a step for its
-/// remote, if it's a remote's branch, and one for each folder it's in. A step
-/// puts a row's icon under the start of the name above it.
-private enum RefIndent {
-    static let step = 22.0
+/// Tells the panel's model whether a row that can light up is in view, which
+/// says whether the pill names it.
+private struct ReportsVisibility: ViewModifier {
+    let linking: RefRowLinking?
 
-    static func of(_ depth: Int, isOnRemote: Bool = false) -> Double {
-        Double(depth + (isOnRemote ? 1 : 0)) * step
+    func body(content: Content) -> some View {
+        if let linking {
+            content
+                .onScrollVisibilityChange(threshold: 0.6) { linking.refs.setVisible($0, ref: linking.name) }
+                .onDisappear { linking.refs.setVisible(false, ref: linking.name) }
+        } else {
+            content
+        }
+    }
+}
+
+/// How much further in than a section's rows a row starts: a step for each
+/// folder it's in. A remote's branches start where the local ones do, rather
+/// than a step further in under the remote, so that a branch and its remote
+/// copy line up (decision 118).
+private enum RefIndent {
+    static let step = 16.0
+
+    static func of(_ depth: Int) -> Double {
+        Double(depth) * step
     }
 }
 
@@ -790,11 +897,11 @@ private struct RefRemoteRow: View {
     let menu: [RefMenu.Entry]
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: RefIcon.gap) {
             Icon.remote.image
-                .font(.system(size: 13))
+                .font(.system(size: RefIcon.size))
                 .foregroundStyle(.secondary)
-                .frame(width: 16)
+                .frame(width: RefIcon.width)
                 .accessibilityHidden(true)
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 FadingText(name)
@@ -825,7 +932,7 @@ private struct RefRemoteRow: View {
 /// then the folder's name in gray with a chevron after it, as a section's
 /// header and a repository in the sidebar have. Clicking it opens or closes it.
 /// How many branches are under it is in its tooltip rather than on the row,
-/// where it would line up with the dates and the counts of the branches.
+/// where it would line up with the counts of the branches.
 private struct RefFolderRow: View {
     let name: String
     /// Its whole path, as in `origin/tm/`, for its tooltip.
@@ -837,11 +944,11 @@ private struct RefFolderRow: View {
     @State private var isHovering = false
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: RefIcon.gap) {
             Icon.folder.image
-                .font(.system(size: 13))
+                .font(.system(size: RefIcon.size))
                 .foregroundStyle(.secondary)
-                .frame(width: 16)
+                .frame(width: RefIcon.width)
                 .accessibilityHidden(true)
             HStack(spacing: 4) {
                 FadingText(name)
@@ -876,23 +983,96 @@ private struct RefFolderRow: View {
     }
 }
 
-/// How far a branch is from the one it's compared with, as arrows.
+/// What a branch's row says after its name (decision 118): a checkmark for the
+/// branch checked out here, its counts, or that it's merged.
+private struct BranchRowState: View {
+    let state: BranchDetails.RowState
+
+    var body: some View {
+        switch state {
+        case .checkedOut:
+            Icon.check.image
+                .font(.system(size: 11.5, weight: .medium))
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("Checked out")
+        case .counts(let behind, let ahead):
+            AheadBehind(ahead: ahead, behind: behind)
+        case .merged:
+            Text("merged")
+                .font(.system(size: 11.5))
+                .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
+        case .quiet:
+            EmptyView()
+        }
+    }
+}
+
+/// How far a branch is from the one it's compared with, as arrows, in gray as
+/// a worktree's tab has them, since clicking the row selects it rather than
+/// pulling or pushing (decision 118).
 private struct AheadBehind: View {
     let ahead: Int
     let behind: Int
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 5) {
             if behind > 0 {
-                Text("↓\(behind)")
-                    .foregroundStyle(Palette.red)
+                Text("↓" + behind.formatted())
             }
             if ahead > 0 {
-                Text("↑\(ahead)")
-                    .foregroundStyle(Palette.green)
+                Text("↑" + ahead.formatted())
             }
         }
-        .font(.system(size: 11, design: .monospaced))
+        .font(.system(size: 12))
+        .monospacedDigit()
+        .foregroundStyle(.secondary)
+        .accessibilityHidden(true)
+    }
+}
+
+/// The pill at the edge of the list that names the row the pointer lights up
+/// while that row is out of view, with an arrow toward it (decision 118). It
+/// takes no clicks, so it never gets in the way of the rows under it.
+private struct RefsPill: View {
+    let refs: RefsModel
+    /// Which edge this one is at: the bottom, for a row below the ones in view.
+    let isBelow: Bool
+
+    /// How tall a section's heading is (`RefSectionHeader`).
+    private static let headingHeight = 28.0
+
+    var body: some View {
+        let pill = refs.pill.flatMap { $0.isBelow == isBelow ? $0 : nil }
+        ZStack {
+            if let pill {
+                let color = pill.isCurrent ? Palette.current : Palette.otherBranch
+                HStack(spacing: 5) {
+                    // The arrows the counts have.
+                    Text(isBelow ? "↓" : "↑")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(color)
+                    Text(pill.name)
+                        .font(.system(size: 11.5))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                .padding(.leading, 8)
+                .padding(.trailing, 10)
+                .frame(height: 24)
+                .background(Capsule().fill(Palette.surface))
+                .overlay(Capsule().strokeBorder(color, lineWidth: 1))
+                .shadow(color: .black.opacity(0.12), radius: 5, y: 2)
+                .padding(.horizontal, 16)
+                // At the top, below the section's heading, which stays there
+                // as the rows scroll.
+                .padding(.top, isBelow ? 0 : Self.headingHeight + 4)
+                .padding(.bottom, isBelow ? 8 : 0)
+                .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.15), value: pill)
+        .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
 }

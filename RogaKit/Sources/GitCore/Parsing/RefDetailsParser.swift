@@ -7,6 +7,9 @@ public enum BranchListParser {
         public var date: Int64?
         /// The full name of its upstream, unless it has none or that's gone.
         public var upstream: String?
+        /// The full name of an upstream that's gone from its remote, as after a
+        /// fetch that prunes once a pull request is merged.
+        public var goneUpstream: String?
         /// How far it is from its upstream, if it has one.
         public var upstreamCounts: Counts?
         /// How far it is from the base that the format asked about: how many
@@ -57,24 +60,35 @@ public enum BranchListParser {
                 throw ParseError("git for-each-ref printed \(name) without an object ID.")
             }
             let track = String(decoding: fields[4], as: UTF8.self)
-            let hasUpstream = !fields[3].isEmpty && track != "gone"
-            var baseCounts = try counts(aheadBehind: String(decoding: fields[5], as: UTF8.self), of: name)
-            for field in fields.dropFirst(6) {
-                guard let other = try counts(aheadBehind: String(decoding: field, as: UTF8.self), of: name) else {
-                    throw ParseError("git for-each-ref printed nothing for how far \(name) is from where the main branch's commits are.")
-                }
-                if let ahead = baseCounts?.ahead { baseCounts?.ahead = min(ahead, other.ahead) }
-            }
+            let isGone = !fields[3].isEmpty && track == "gone"
+            let hasUpstream = !fields[3].isEmpty && !isGone
             entries.append(Entry(
                 name: name,
                 tip: tip,
                 date: Int64(String(decoding: fields[2], as: UTF8.self)),
                 upstream: hasUpstream ? String(decoding: fields[3], as: UTF8.self) : nil,
+                goneUpstream: isGone ? String(decoding: fields[3], as: UTF8.self) : nil,
                 upstreamCounts: hasUpstream ? try counts(track: track, of: name) : nil,
-                baseCounts: baseCounts
+                baseCounts: try baseCounts(fields.dropFirst(5), of: name)
             ))
         }
         return entries
+    }
+
+    /// Reads how far a ref is from the base and the others that a format asked
+    /// about, in the fields after the ref's own: how many commits the base has
+    /// that the ref doesn't, and the fewest the ref has that either the base or
+    /// one of the others doesn't. Nil when the format didn't ask.
+    static func baseCounts(_ fields: ArraySlice<ArraySlice<UInt8>>, of name: String) throws(ParseError) -> Counts? {
+        guard let first = fields.first else { return nil }
+        var result = try counts(aheadBehind: String(decoding: first, as: UTF8.self), of: name)
+        for field in fields.dropFirst() {
+            guard let other = try counts(aheadBehind: String(decoding: field, as: UTF8.self), of: name) else {
+                throw ParseError("git for-each-ref printed nothing for how far \(name) is from where the main branch's commits are.")
+            }
+            if let ahead = result?.ahead { result?.ahead = min(ahead, other.ahead) }
+        }
+        return result
     }
 
     /// Reads `ahead 3, behind 2`, `ahead 3` or `behind 2`, or nothing when the
@@ -114,6 +128,10 @@ public enum RemoteAndTagListParser {
     public struct Result: Sendable, Hashable {
         public var remoteBranches: [RemoteBranchDetails] = []
         public var tags: [TagDetails] = []
+        /// How far each remote branch is from the main branch, by its full
+        /// name, when the format asked, as `BranchListParser.Entry.baseCounts`
+        /// says it.
+        public var mainCounts: [String: BranchListParser.Counts] = [:]
     }
 
     /// The format to pass to `git for-each-ref --format`. Each ref is a line,
@@ -126,12 +144,24 @@ public enum RemoteAndTagListParser {
     /// `%(*subject)` does, would make git download Linux's oldest tag's tree.
     public static let format = "%(refname)%00%(objectname)%00%(objecttype)%00%(type)%00%(object)%00%(creatordate:unix)%00%(symref)"
 
-    public static func parse(_ output: [UInt8]) throws(ParseError) -> Result {
+    /// The format for remote branches alone, which also asks how far each is
+    /// from the main branch and from where else its commits are, as
+    /// `BranchListParser.format(comparingWith:alsoAheadOf:)` does. It's for
+    /// `refs/remotes/` only, because counting every tag in a repository such as
+    /// Linux would be wasted work.
+    public static func remoteBranchFormat(comparingWith base: ObjectID?, alsoAheadOf others: [ObjectID] = []) -> String {
+        format + (base.map { ([$0] + others).map { "%00%(ahead-behind:\($0.hex))" }.joined() } ?? "")
+    }
+
+    /// - Parameter counts: How many fields of counts the format asked for
+    ///   after the ref's own, which is none for `format`.
+    public static func parse(_ output: [UInt8], counts: Int = 0) throws(ParseError) -> Result {
         var result = Result()
+        let expected = 7 + counts
         for line in output.split(separator: UInt8(ascii: "\n")) {
             let fields = line.split(separator: 0, omittingEmptySubsequences: false)
-            guard fields.count == 7 else {
-                throw ParseError("git for-each-ref printed a line with \(fields.count) fields instead of 7.")
+            guard fields.count == expected else {
+                throw ParseError("git for-each-ref printed a line with \(fields.count) fields instead of \(expected).")
             }
             let name = String(decoding: fields[0], as: UTF8.self)
             guard let id = ObjectID(hexDigits: fields[1]) else {
@@ -142,6 +172,9 @@ public enum RemoteAndTagListParser {
                 // origin/HEAD only says which branch the remote calls its main one.
                 if fields[6].isEmpty {
                     result.remoteBranches.append(RemoteBranchDetails(name: name, tip: id, date: date))
+                    if let fromMain = try BranchListParser.baseCounts(fields.dropFirst(7), of: name) {
+                        result.mainCounts[name] = fromMain
+                    }
                 }
             } else {
                 var commit: ObjectID?

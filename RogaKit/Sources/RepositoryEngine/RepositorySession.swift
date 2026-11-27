@@ -85,7 +85,7 @@ public actor RepositorySession {
     ///   to read.
     @concurrent
     public nonisolated func refDetails(in worktree: String) async throws -> RefDetails {
-        var details = try await RefDetailsLoader.load(git: git, in: worktree, worktrees: try await worktrees())
+        var details = try await RefDetailsLoader.load(git: git, in: worktree, commonDirectory: location.commonDirectory, worktrees: try await worktrees())
         // Reading them in pieces leaves room for the commit list to read the
         // text of its rows in between, in a repository with very many tags.
         let tagged = details.tags.indices.filter { details.tags[$0].commit != nil }
@@ -707,11 +707,12 @@ public actor RepositorySession {
     ///
     /// - Parameters:
     ///   - names: The full names of the branches and remote branches on the commit.
-    ///   - commit: The commit they were on when someone asked.
+    ///   - commit: The commit they were on when someone asked, or nil for branches
+    ///     on different commits, which are taken wherever they are now.
     ///   - limit: The most commits to list of those deleting all of them would lose.
     ///   - worktree: The worktree's folder.
     @concurrent
-    public nonisolated func prepareToDelete(branches names: [String], on commit: ObjectID, limit: Int, in worktree: String) async throws -> CommitBranchesDeletion {
+    public nonisolated func prepareToDelete(branches names: [String], on commit: ObjectID?, limit: Int, in worktree: String) async throws -> CommitBranchesDeletion {
         try await CommitBranchesDeletion.prepare(branches: names, on: commit, limit: limit, in: worktree, worktrees: try await worktrees(), git: git)
     }
 
