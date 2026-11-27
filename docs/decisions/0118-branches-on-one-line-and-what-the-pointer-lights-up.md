@@ -31,7 +31,7 @@ Nothing said which branches were done with. Of this repository's 16 branches whe
 
 - A local branch tints its upstream's row and lights up the tab of the worktree that has it. A remote branch tints the rows of the branches that track it and lights up the tab of the first of them that a worktree has. Pointing at a tab tints its branch's row.
 - A tinted row has the selection's strength in sky, or in green for the branch checked out here and its upstream, so it can't be taken for a selection.
-- A tab lights up with a ring in the same color and a soft light around it. The light swells once as it arrives and then holds still, so that it catches the eye across the window without moving at the edge of it, where an agent's ring already turns. With Reduce Motion it's there without the swell.
+- A tab lights up with a ring in the same color and a soft light around it. It pulses once as it arrives: the ring starts twice as thick, and a second ring spreads 5 points out from it and fades, over 0.8 seconds. Then it holds still, so that it catches the eye across the window without moving at the edge of it, where an agent's ring already turns. The title row clips the tabs 6 points above and below them, so the pulse stays inside that, where a light that swelled further out was cut off and hard to see. With Reduce Motion it's there without the pulse.
 - When the row that lights up is out of view, a pill at the top or bottom of the list names it, with an arrow toward it. It takes no clicks, so it never gets in the way of the rows under it.
 
 ## Consequences
@@ -48,5 +48,5 @@ Nothing said which branches were done with. Of this repository's 16 branches whe
 
 - **Two lines for every branch, the second saying what its last commit was about** (B on the canvas). It's the one second line that says something a name can't, but it costs 40 points a branch, which left no remote branch in view in this repository, and a `git log` for each branch as its row scrolls into view.
 - **A tab that breathes for as long as the pointer rests on the branch.** It caught the eye as well, but it kept moving at the edge of the window, which the agent's ring already does on the tabs.
-- **A steady ring with no swell.** It's easy to miss when the tab is at the other end of the window from the pointer.
+- **A steady ring with no pulse.** It's easy to miss when the tab is at the other end of the window from the pointer.
 - **Saying merged only when the branch is behind main**, without reading the reflog. Every branch made for a new worktree from an older main would read as merged before its first commit.

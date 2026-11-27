@@ -422,34 +422,58 @@ private struct WorktreeTab: View {
 
 /// The ring a tab wears while a branch the pointer rests on in the refs panel
 /// lights it up (decision 118), in the branch's color, with a soft light around
-/// it. The light swells once as it arrives and then holds still, so that it
+/// it. It pulses once as it arrives: the ring starts twice as thick, and a
+/// second ring spreads out from it and fades. Then it holds still, so that it
 /// catches the eye across the window without moving at the edge of it the way
-/// an agent's ring does. With Reduce Motion it's there without the swell.
+/// an agent's ring does. With Reduce Motion it's there without the pulse.
+///
+/// The title row clips the tabs 6 points above and below them, so nothing here
+/// reaches further out than that.
 private struct TabGlow: View {
     let color: Color
     let shape: RoundedRectangle
-    @State private var light: CGFloat = 0
+    /// How far through its pulse the ring is, from 0 as it arrives to 1.
+    @State private var pulse: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reducesMotion
 
-    /// How far the light spreads once it has settled, and at the top of its swell.
-    private static let resting: CGFloat = 5
-    private static let swell: CGFloat = 11
+    /// How far the spreading ring goes out from the tab before it's gone.
+    private static let reach: CGFloat = 5
 
     var body: some View {
-        shape.strokeBorder(color, lineWidth: 1.5)
-            .shadow(color: color.opacity(0.55), radius: light)
-            .onAppear {
-                guard !reducesMotion else {
-                    light = Self.resting
-                    return
-                }
-                withAnimation(.easeOut(duration: 0.3)) {
-                    light = Self.swell
-                } completion: {
-                    withAnimation(.easeInOut(duration: 0.6)) { light = Self.resting }
-                }
+        ZStack {
+            shape.strokeBorder(color, lineWidth: 1.5)
+                .shadow(color: color.opacity(0.5), radius: 3)
+            // The ring's extra thickness as it arrives.
+            shape.strokeBorder(color, lineWidth: 3)
+                .opacity(1 - pulse)
+            TabRipple(cornerRadius: shape.cornerSize.width, spread: pulse * Self.reach)
+                .stroke(color, lineWidth: 2)
+                .opacity((1 - pulse) * 0.8)
+        }
+        .onAppear {
+            guard !reducesMotion else {
+                pulse = 1
+                return
             }
-            .allowsHitTesting(false)
+            withAnimation(.easeOut(duration: 0.8)) { pulse = 1 }
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+/// A tab's outline moved out by `spread` on every side, which can animate.
+private nonisolated struct TabRipple: Shape {
+    let cornerRadius: CGFloat
+    var spread: CGFloat
+
+    var animatableData: CGFloat {
+        get { spread }
+        set { spread = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        RoundedRectangle(cornerRadius: cornerRadius + spread, style: .continuous)
+            .path(in: rect.insetBy(dx: -spread, dy: -spread))
     }
 }
 
