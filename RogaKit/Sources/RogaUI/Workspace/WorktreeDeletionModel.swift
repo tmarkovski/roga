@@ -119,16 +119,16 @@ final class WorktreeDeletionModel {
             let name = deletion.branch?.shortName ?? ""
             return Failure(
                 title: "Can't delete \(name)",
-                summary: "The worktree is gone, but its branch \(name) isn't.",
+                summary: "The worktree was deleted. The local branch \(name) could not be deleted.",
                 command: deletion.branch?.arguments,
                 said: stopped.message,
-                note: deletion.remoteBranch.map { "\($0.shortName) wasn't touched." }
+                note: deletion.remoteBranch.map { "The remote branch \($0.shortName) was left in place." }
             )
         case .remoteBranch:
             let name = deletion.remoteBranch?.shortName ?? ""
             return Failure(
                 title: "Can't delete \(name)",
-                summary: deletion.branch == nil ? "The worktree is gone, but \(name) isn't." : "The worktree and its branch are gone, but \(name) isn't.",
+                summary: deletion.branch == nil ? "The worktree was deleted. The remote branch \(name) could not be deleted." : "The worktree and local branch were deleted. The remote branch \(name) could not be deleted.",
                 command: deletion.remoteBranch?.arguments,
                 said: stopped.message,
                 note: "To try again, use Delete from Remote… in the refs panel."

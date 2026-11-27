@@ -102,7 +102,7 @@ final class BranchModel {
             if let refused = error as? RefusedWithChangesAside {
                 self.init(title: title, message: refused.refusal.dialogMessage, command: refused.refusal.gitArguments)
                 summary = .sentences([
-                    "Nothing moved, but your uncommitted changes couldn't be put back, so they're still in the stash \(code: refused.aside.message).",
+                    "The Git operation failed to complete. Your uncommitted changes are still in \(code: refused.aside.message).",
                     "Git output is shown below.",
                 ])
                 return
@@ -274,7 +274,7 @@ final class BranchModel {
         /// What the dialog asks.
         var title: String {
             switch kind {
-            case .onCommit: "Delete which branches?"
+            case .onCommit: "Choose branches to delete"
             case .merged: "Delete merged branches?"
             case .folder(let path): "Delete the branches in \(path)?"
             case .picked: deletion.branches.count == 1 ? "Delete 1 branch?" : "Delete \(deletion.branches.count.formatted()) branches?"
@@ -722,7 +722,7 @@ final class BranchModel {
                 let integration = try await session.prepareToIntegrate(way, ref: ref, limit: Self.overwrittenLimit, in: worktree)
                 if integration.incomingCount == 0 {
                     let here = integration.branch.map(Ref.shortName) ?? "HEAD"
-                    failure = Failure(title: "Nothing to bring in", message: "\(here) already has everything on \(name).", changedNothing: true)
+                    failure = Failure(title: "Already up to date", message: "\(here) already contains all commits from \(name).", changedNothing: true)
                 } else if way == .fastForward {
                     integrate(integration)
                 } else {
@@ -852,7 +852,7 @@ final class BranchModel {
     private func putBack(_ aside: ChangesAside, ran: [[String]], done: String?) async throws -> String? {
         switch try await session.putBack(aside, in: worktree) {
         case .back:
-            return done.map { "\($0) · your changes are back" } ?? "Your changes are back"
+            return done.map { "\($0) · uncommitted changes restored" } ?? "Uncommitted changes restored"
         case .conflicted(let files):
             putBackConflict = PutBackConflict(aside: aside, files: files, ran: ran + [ChangesAside.putBackArguments])
             return nil
@@ -867,7 +867,7 @@ final class BranchModel {
     private static func stillAside(_ aside: ChangesAside, ran: [String], said: String) -> Failure {
         var failure = Failure(title: "Your changes are still in a stash", message: said, command: ran)
         failure.summary = .sentences([
-            "git wouldn't put your uncommitted changes back over what's in the worktree now, so they're in the stash \(code: aside.message), and nothing is lost.",
+            "Git couldn't restore your changes without overwriting files in the worktree. Your changes are saved in \(code: aside.message).",
             "Git output is shown below.",
         ])
         return failure
@@ -907,9 +907,9 @@ final class BranchModel {
         guard let conflict = stashConflict else { return }
         stashConflict = nil
         guard let indexBefore = conflict.indexBefore else { return }
-        run(.undoing, failure: "Can't undo putting back \(conflict.name)") { [session, worktree] in
+        run(.undoing, failure: "Can't undo applying \(conflict.name)") { [session, worktree] in
             try await session.undoPutBack(stash: conflict.stash, indexBefore: indexBefore, in: worktree)
-            return "Undid it · the stash is still in the list"
+            return "Stash application undone · stash retained"
         }
     }
 
@@ -1013,7 +1013,7 @@ final class BranchModel {
                 self?.failure = failure
                 return nil
             }
-            return note == nil ? "Pushed" : "Pushed · your changes are back"
+            return note == nil ? "Pushed" : "Pushed · uncommitted changes restored"
         }
     }
 
@@ -1164,7 +1164,7 @@ final class BranchModel {
                 } else {
                     failure = Failure(
                         title: "Nothing to delete",
-                        message: "The branches on this commit have moved or gone since history last looked.",
+                        message: "The branches pointing to this commit have changed. Reopen the menu to see which branches are available.",
                         changedNothing: true
                     )
                     lookAgain()
@@ -1185,11 +1185,7 @@ final class BranchModel {
     ///   - names: The full names of the merged branches that no worktree has.
     ///   - main: The main branch's short name, which the dialog names.
     func askToDelete(merged names: [String], into main: String) {
-        askToDelete(
-            apart: names,
-            kind: .merged(into: main),
-            gone: "The merged branches have gone, or a worktree has them, since the list was read."
-        )
+        askToDelete(apart: names, kind: .merged(into: main))
     }
 
     /// Asks about deleting some local branches at once, from a folder's menu in
@@ -1203,16 +1199,14 @@ final class BranchModel {
     ///     which the dialog says stay.
     ///   - kind: `.folder` or `.picked`.
     func askToDelete(branches names: [String], as kind: BranchChoice.Kind) {
-        askToDelete(apart: names, kind: kind, gone: "The branches have gone since the list was read.")
+        askToDelete(apart: names, kind: kind)
     }
 
     /// Asks which of some branches on different commits should go. The main
     /// branch stays, since deleting it along with others is never what someone
     /// means (decision 121).
     ///
-    /// - Parameter gone: What to say when none of them are left to delete and
-    ///   none are checked out or the main branch.
-    private func askToDelete(apart names: [String], kind: BranchChoice.Kind, gone: String) {
+    private func askToDelete(apart names: [String], kind: BranchChoice.Kind) {
         guard !isBusy, !names.isEmpty else { return }
         preparingDeletion = Task {
             do {
@@ -1226,13 +1220,15 @@ final class BranchModel {
                 if deletion.branches.isEmpty {
                     let checkedOut = deletion.checkedOut.map(\.shortName)
                     var sentences: [String] = []
-                    if let main = deletion.main { sentences.append("\(main.shortName) stays, because it's the main branch.") }
+                    if let main = deletion.main { sentences.append("\(main.shortName) is the main branch and will be kept.") }
                     if !checkedOut.isEmpty {
-                        sentences.append("\(Self.list(checkedOut)) \(checkedOut.count == 1 ? "is" : "are") checked out, and git won't delete a branch that's checked out.")
+                        sentences.append("\(Self.list(checkedOut)) \(checkedOut.count == 1 ? "is" : "are") checked out and will be kept.")
                     }
                     failure = Failure(
                         title: "Nothing to delete",
-                        message: sentences.isEmpty ? gone : sentences.joined(separator: " "),
+                        message: sentences.isEmpty
+                            ? "The selected branches are no longer available to delete. They may have been deleted or checked out in a worktree."
+                            : sentences.joined(separator: " "),
                         changedNothing: true
                     )
                     lookAgain()
@@ -1263,7 +1259,7 @@ final class BranchModel {
                     let gone = deletions[..<index].map(\.shortName)
                     let left = deletions[index...].map(\.shortName)
                     var failure = Failure(title: "Can't delete \(deletion.shortName)", error: error)
-                    failure.summary = "\(Self.list(gone)) \(gone.count == 1 ? "is" : "are") gone, but \(Self.list(left)) \(left.count == 1 ? "isn't" : "aren't"). Git output is shown below."
+                    failure.summary = "Deleted \(Self.list(gone)). Could not delete \(Self.list(left)). See the Git output below."
                     self?.failure = failure
                     return nil
                 }
@@ -1341,7 +1337,7 @@ final class BranchModel {
         newRefPlace = nil
         await reportBranchChange()
         lookAgain()
-        announce("Switched to \(Self.shortened(name)) · the stash is back", undo: nil)
+        announce("Switched to \(Self.shortened(name)) · Stash applied", undo: nil)
         return nil
     }
 
@@ -1403,8 +1399,8 @@ final class BranchModel {
     func renameNote(for start: RenameStart) -> String? {
         guard let upstream = start.upstream else { return nil }
         let name = Ref.shortName(upstream)
-        if upstream == measuredDistance?.base { return "It still tracks \(name)." }
-        return "It still tracks \(name), and pushes go there under the old name."
+        if upstream == measuredDistance?.base { return "This branch still tracks \(name)." }
+        return "This branch still tracks \(name). Roga will push to that same remote branch."
     }
 
     private func rename(_ rename: BranchRename) async -> String? {
@@ -1419,7 +1415,7 @@ final class BranchModel {
         await reportBranchChange()
         lookAgain()
         let back = BranchRename(branch: rename.name, name: rename.branch)
-        announce("Renamed to \(Self.shortened(rename.name))", undo: FinishedUndo(help: "Rename It Back to \(rename.branch)") { [weak self] in
+        announce("Renamed to \(Self.shortened(rename.name))", undo: FinishedUndo(help: "Restore branch name to \(rename.branch)") { [weak self] in
             Task { [weak self] in
                 guard let refusal = await self?.rename(back) else { return }
                 self?.failure = Failure(title: "Can't rename \(Self.shortened(rename.name)) back", message: refusal, changedNothing: true)
@@ -1564,7 +1560,7 @@ final class BranchModel {
     var pushHelp: String {
         guard let status else { return "" }
         guard let push = pushToRun else {
-            return "\(branchName) is behind \(upstreamName ?? "its upstream"), so git would reject a push. Click for what you can do."
+            return "\(branchName) is behind \(upstreamName ?? "its upstream"). Click for pull and push options."
         }
         if case .firstTime(let remote) = push {
             return "Push \(branchName) to \(remote) for the first time\n\(Self.command(push.arguments))"
@@ -1613,7 +1609,7 @@ final class BranchModel {
                 case (let behind, let ahead): parts.append("\(behind.formatted()) behind, \(ahead.formatted()) ahead")
                 }
             } else if status.upstreamIsGone {
-                parts.append("its upstream is gone")
+                parts.append("upstream branch missing")
             } else if status.pushRemote != nil {
                 parts.append("not pushed yet")
             } else {
@@ -1690,8 +1686,8 @@ final class BranchModel {
         guard let status else { return nil }
         let fetched = isFetching ? "fetching…" : fetchRecord.lastFetched.map { "fetched " + Self.age(of: $0, now: now) }
         guard let upstream = status.upstream else {
-            if status.upstreamIsGone { return ("Its upstream is gone", status.pushRemote.map { "↑ pushes it to \($0) again" }) }
-            if let remote = status.pushRemote { return ("Not pushed yet", "↑ pushes it to \(remote) for the first time") }
+            if status.upstreamIsGone { return ("Upstream branch missing", status.pushRemote.map { "Push to \($0) to set a new upstream." }) }
+            if let remote = status.pushRemote { return ("Not pushed yet", "Use Push to publish this branch to \(remote).") }
             return ("No remote", nil)
         }
         let how: String

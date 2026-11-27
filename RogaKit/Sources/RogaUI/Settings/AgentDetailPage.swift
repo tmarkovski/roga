@@ -506,13 +506,12 @@ final class AgentTestRun {
         }
     }
 
-    /// What the result says: "Replied in 2.4 s" and "with a two-line message
-    /// for a sample diff."
+    /// Describes the generation time and the length of the sample commit message.
     nonisolated static func replied(in duration: Duration, lines: Int) -> (time: String, rest: String) {
         let seconds = Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
         let numbers = ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"]
         let count = (1...numbers.count).contains(lines) ? numbers[lines - 1] : String(lines)
-        return ("Replied in \(String(format: "%.1f", seconds)) s", "with a \(count)-line message for a sample diff.")
+        return ("Generated in \(String(format: "%.1f", seconds)) s", "\(count)-line commit message from a sample diff.")
     }
 
     /// The lines of a message that have something on them.

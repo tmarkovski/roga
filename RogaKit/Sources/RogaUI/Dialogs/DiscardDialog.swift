@@ -41,7 +41,7 @@ extension SelectedChanges {
             return DialogContent(
                 id: "discard",
                 title: "Move \(which) to the Trash?",
-                message: "git has no copy of these, so they go to the Trash rather than away for good.",
+                message: "These files are untracked. You can recover them from the Trash.",
                 cards: [rows],
                 buttons: [
                     .cancel(cancelDiscard),
@@ -61,7 +61,7 @@ extension SelectedChanges {
         return DialogContent(
             id: "discard",
             title: "Discard \(which)?",
-            message: "They go back to what's staged, or to \(code: "HEAD") if nothing is. What's staged stays.",
+            message: "Tracked files return to their staged versions, or to \(code: "HEAD") if they have no staged changes.",
             cards: [rows],
             terminal: terminal,
             buttons: [
@@ -105,13 +105,13 @@ extension SelectedChanges {
         var note: DialogText?
         if let first = staying.first {
             note = staying.count == 1
-                ? "\(code: first) stays, because discarding leaves repositories and submodules alone."
-                : "\(staying.count.formatted()) repositories and submodules stay, because discarding leaves those alone."
+                ? "\(code: first) will be kept because it is a nested repository or submodule."
+                : "\(staying.count.formatted()) nested repositories and submodules will be kept."
         }
         return DialogContent(
             id: "discard",
             title: "Discard all uncommitted changes?",
-            message: changes.head == nil ? "Nothing has been committed yet, so the worktree goes back to empty." : "The worktree goes back to \(code: "HEAD").",
+            message: changes.head == nil ? "There are no commits yet. The files listed below will be removed from the worktree." : "Tracked files will match \(code: "HEAD").",
             cards: [rows],
             note: note,
             terminal: terminal,

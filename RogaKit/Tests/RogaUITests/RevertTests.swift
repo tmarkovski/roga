@@ -89,9 +89,9 @@ struct RevertTests {
         let work = try await worktree()
         let dialog = try await ask(work, toRevert: changeTheApp)
         #expect(dialog.title == "Revert da9ff973?")
-        #expect(dialog.message?.plain == "This undoes what da9ff973 changed, on main.")
+        #expect(dialog.message?.plain == "Reverses the changes from da9ff973 on main.")
         #expect(dialog.cards == [[.commit(hash: "da9ff973", subject: "Change the app")]])
-        #expect(dialog.note?.plain == "Leave Uncommitted stages the reversed changes, with git's message ready to commit.")
+        #expect(dialog.note?.plain == "Leave Uncommitted stages the revert and fills in the commit message.")
         #expect(dialog.terminal == [.command(["revert", "--no-edit", Fixture.Basic.main])])
         #expect(dialog.buttons.map(\.title) == ["Cancel", "Leave Uncommitted", "Commit Revert"])
         #expect(dialog.buttons.map(\.kind) == [.secondary, .secondary, .primary])
@@ -124,14 +124,14 @@ struct RevertTests {
         let merge = try #require(ObjectID(hex: try await git("rev-parse", "HEAD", in: work.path)))
         await work.model.load()
         let dialog = try await ask(work, toRevert: merge)
-        #expect(dialog.message?.plain.contains("It's a merge, so this keeps the side of its first parent, da9ff973, and takes out what came from b07dd8d5. git still counts those commits as merged, so merging them again won't bring them back.") == true)
+        #expect(dialog.message?.plain.contains("This reverses the changes from b07dd8d5 relative to the merge's first parent, da9ff973. Git still treats those commits as merged, so merging again won't restore their changes.") == true)
         #expect(dialog.terminal == [.command(["revert", "--no-edit", "-m", "1", merge.hex])])
     }
 
     @Test func aCommitThatHeadDoesntContainTakesAClick() async throws {
         let work = try await worktree()
         let dialog = try await ask(work, toRevert: addNotes)
-        #expect(dialog.message?.plain.contains("HEAD doesn't contain b07dd8d5, so git takes its changes out of whatever HEAD has. That only makes sense if they got there another way, such as a cherry-pick.") == true)
+        #expect(dialog.message?.plain.contains("b07dd8d5 isn't in the history of HEAD. Revert it only if the same changes reached this branch another way, such as a cherry-pick.") == true)
         #expect(dialog.buttons.map(\.pressesWithReturn) == [true, false, false])
     }
 
@@ -141,7 +141,7 @@ struct RevertTests {
         try Data("#!/bin/sh\nexit 0\n".utf8).write(to: URL(filePath: hook))
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: hook)
         let dialog = try await ask(work, toRevert: changeTheApp)
-        #expect(dialog.note?.plain.hasSuffix("git commits a revert without your pre-commit and commit-msg hooks, which run when you commit from the box.") == true)
+        #expect(dialog.note?.plain.hasSuffix("Git skips pre-commit and commit-msg hooks when it creates a revert commit. To run them, choose Leave Uncommitted and commit from Roga.") == true)
     }
 
     @Test func canOnlyRevertWhenNothingsUnderway() async throws {
@@ -203,7 +203,7 @@ struct RevertTests {
         work.branch.askToAbort()
         let dialog = try branchDialog(work)
         #expect(dialog.title == "Abort the revert?")
-        #expect(dialog.message?.plain == "This takes everything that's staged back to HEAD, in the index and in the files, including anything that was staged before the revert. Any conflicts you've resolved are lost too.")
+        #expect(dialog.message?.plain == "Aborting resets staged files to HEAD in the index and worktree. This discards changes staged before the revert and any conflict resolutions.")
         #expect(dialog.cards == [[.fact("2 staged files", "go back to HEAD")]])
         #expect(dialog.terminal == [.command(["revert", "--abort"])])
         #expect(dialog.buttons.map(\.kind) == [.secondary, .destructive])
@@ -257,7 +257,7 @@ struct RevertTests {
 
         #expect(work.branch.conflict?.stagedBefore == 1)
         let dialog = try branchDialog(work)
-        #expect(dialog.message?.plain.hasSuffix("Undoing it also takes back the 1 file that was staged before.") == true)
+        #expect(dialog.message?.plain.hasSuffix("Undo also discards the changes in 1 file staged before the revert.") == true)
         #expect(dialog.buttons.map(\.kind) == [.destructive, .primary])
     }
 

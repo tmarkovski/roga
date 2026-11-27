@@ -85,7 +85,7 @@ struct DialogText: Equatable, ExpressibleByStringInterpolation {
         }
         if names.count > 1 { parts.append(.words(" and ")) }
         parts.append(.code(last))
-        parts.append(.words((names.count == 1 ? " stays" : " stay") + ", because git won't delete a branch that's checked out."))
+        parts.append(.words(names.count == 1 ? " is checked out and will be kept." : " are checked out and will be kept."))
         return DialogText(parts: parts)
     }
 
@@ -290,9 +290,9 @@ extension DialogContent {
         if losing == 0 {
             heading = .heading((total == 1 ? "1 commit stays on " : "\(total.formatted()) commits stay on ") + (place ?? ""), isLost: false)
         } else if losing < total {
-            heading = .heading("\(losing.formatted()) of these \(total.formatted()) commits can't be brought back", isLost: true)
+            heading = .heading("\(losing.formatted()) of these \(total.formatted()) commits would become unreachable", isLost: true)
         } else {
-            heading = .heading(total == 1 ? "This commit can't be brought back" : "These \(total.formatted()) commits can't be brought back", isLost: true)
+            heading = .heading(total == 1 ? "This commit would become unreachable" : "These \(total.formatted()) commits would become unreachable", isLost: true)
         }
         return [heading] + commitRows(commits, total: total)
     }

@@ -56,9 +56,9 @@ struct IdentityTests {
     @Test func saysWhatsWrong() {
         let noEmail = IdentityWords(identity: identity(email: nil), globalFiles: globalFiles)
         #expect(noEmail.who == "Sam Rivera, with no email")
-        #expect(noEmail.signing.hasPrefix("git would refuse to commit"))
+        #expect(noEmail.signing.hasPrefix("Set a name and email"))
         let noKey = IdentityWords(identity: identity(signs: true, format: "ssh"), globalFiles: globalFiles)
-        #expect(noKey.signing.hasPrefix("Signing with SSH is on, but no key is set"))
+        #expect(noKey.signing.hasPrefix("SSH signing requires a key"))
     }
 
     @Test func findsTheGlobalConfig() {
@@ -344,13 +344,13 @@ struct IdentityTests {
         #expect(before.icon == .shield)
         #expect(before.tone == .plain)
         let good = SignatureWords(format: .ssh, check: SignatureCheck(result: .good, signer: "sam@rivera.dev", key: key), email: "sam@rivera.dev")
-        #expect(good.title == "Good SSH signature")
+        #expect(good.title == "Valid SSH signature")
         #expect(good.help == "Signed by sam@rivera.dev.")
         #expect(good.tone == .good)
         // Someone other than the committer is named, since the Committer
         // line doesn't say who signed.
         let other = SignatureWords(format: .openPGP, check: SignatureCheck(result: .good, signer: "Alex Kim <alex@example.com>", key: "3AA5"), email: "sam@rivera.dev")
-        #expect(other.title == "Good signature from Alex Kim")
+        #expect(other.title == "Valid signature from Alex Kim")
         let unchecked = SignatureWords(format: .ssh, check: SignatureCheck(result: .notChecked))
         #expect(unchecked.title == "Signed with SSH, not checked")
         #expect(unchecked.help == "git needs gpg.ssh.allowedSignersFile to know whose keys to trust.")
@@ -477,7 +477,7 @@ struct IdentityTests {
         #expect(unsigned.signedMark == nil)
         #expect(signed.columns.map(\.x) == unsigned.columns.map(\.x))
         #expect(signed.subjectMaxX == unsigned.subjectMaxX)
-        #expect(CommitCellView.signedMarkToolTip == "Signed. Select the commit to check the signature.")
+        #expect(CommitCellView.signedMarkToolTip == "Signed commit. Select it to verify the signature.")
     }
 
     // MARK: Decision 108
@@ -521,7 +521,7 @@ struct IdentityTests {
             .init(label: "Email", value: "sam@rivera.dev"),
             .init(label: "File", value: "~/.ssh/id_ed25519_signing"),
         ])
-        #expect(NewKeyPopover.note(plan) == "Roga makes an Ed25519 key without a passphrase, so git, Roga and agents can sign without asking. Anyone who can read the file can sign as you. It also goes in ~/.ssh/allowed_signers, so git says your commits are good.")
+        #expect(NewKeyPopover.note(plan) == "Roga makes an Ed25519 key without a passphrase, so git, Roga and agents can sign without asking. Anyone who can read the file can sign as you. Roga adds the public key to ~/.ssh/allowed_signers so Git can verify your signatures.")
         #expect(NewKeyPopover.lines(plan) == [
             .program(plan.command),
             .command(["config", "--global", "gpg.ssh.allowedSignersFile", "~/.ssh/allowed_signers"]),
@@ -569,15 +569,15 @@ struct IdentityTests {
 
         // Without gh, GitHub's page, and GitLab's for a GitLab remote.
         let noGH = KeyHosting(gh: nil, accounts: [], hosts: [gitHub, .gitLab("gitlab.com")])
-        #expect(KeyHostsContent.hostWords(gitHub, format: .ssh, hosting: noGH, isAdded: false) == "Add it on GitHub as a signing key, so commits signed with it show as Verified. Open GitHub copies it first.")
-        #expect(KeyHostsContent.hostWords(.gitLab("gitlab.com"), format: .ssh, hosting: noGH, isAdded: false) == "Add it on GitLab with the usage type Signing, so commits signed with it show as Verified. Open GitLab copies it first.")
+        #expect(KeyHostsContent.hostWords(gitHub, format: .ssh, hosting: noGH, isAdded: false) == "Open GitHub copies the public key and opens your key settings. Add it as a signing key, so commits signed with it show as Verified.")
+        #expect(KeyHostsContent.hostWords(.gitLab("gitlab.com"), format: .ssh, hosting: noGH, isAdded: false) == "Open GitLab copies the public key and opens your key settings. Add the key with the usage type Signing, so commits signed with it show as Verified.")
         #expect(KeyHostsContent.lines(made, hosting: noGH, added: []) == [.comment("Copy Public Key copies ~/.ssh/id_ed25519_signing.pub")])
 
-        #expect(NewKeyPopover.madeNotes(made, savesAtOnce: true) == [.init(text: "Commits are signed with it now.")])
+        #expect(NewKeyPopover.madeNotes(made, savesAtOnce: true) == [.init(text: "Future commits will use this signing key.")])
         var untrusted = made
         untrusted.trustFailure = "no folder"
         #expect(NewKeyPopover.madeNotes(untrusted, savesAtOnce: false) == [
-            .init(text: "It's in the Key field. Save to sign commits with it."),
+            .init(text: "Save to use this key for signing commits."),
             .init(text: "Roga couldn't add it to the allowed signers file: no folder", isWarning: true),
         ])
     }
@@ -599,7 +599,7 @@ struct IdentityTests {
     }
 
     @Test func setupSaysWhatItFoundForSigning() {
-        #expect(SetupWords.signingLooks(nil, hasGit: false, gitFailed: true).map(\.detail) == ["After Git", "After Git", "After Git"])
+        #expect(SetupWords.signingLooks(nil, hasGit: false, gitFailed: true).map(\.detail) == ["Waiting for Git", "Waiting for Git", "Waiting for Git"])
         #expect(SetupWords.signingLooks(nil, hasGit: true, gitFailed: false).map(\.state) == [.looking, .looking, .looking])
         let tools = SetupWords.SigningTools(
             ssh: .init(isFound: true, version: "OpenSSH 9.9p2"),

@@ -214,9 +214,9 @@ struct SigningKeyField<Label: View>: View {
 
     private var placeholder: String {
         switch format {
-        case .ssh: hasDefaultKeyCommand ? "Empty to let gpg.ssh.defaultKeyCommand pick" : "~/.ssh/id_ed25519.pub"
-        case .openPGP: "Key ID, or empty to use the email's"
-        case .x509: "Certificate ID, or empty to use the email's"
+        case .ssh: hasDefaultKeyCommand ? "Leave blank to use Git's default SSH key command" : "~/.ssh/id_ed25519.pub"
+        case .openPGP: "Key ID, or leave blank to match your email"
+        case .x509: "Certificate ID, or leave blank to match your email"
         }
     }
 

@@ -40,7 +40,7 @@ struct PullChoiceSheet: View {
             DialogSwitchCard(switches: [
                 DialogSwitch(
                     title: "Remember for this repository",
-                    detail: "Sets pull.rebase in its git config, so you won't be asked again.",
+                    detail: "Saves your choice as the default for pulls in this repository.",
                     isOn: choice.remembers
                 ) {
                     branch.pullChoice?.remembers.toggle()
@@ -191,19 +191,18 @@ struct PullPicture: View {
 
     static func summary(of result: Result, yours: Int) -> String {
         switch (result, yours == 1) {
-        case (.rebase, true): "A straight line, and your commit gets a new hash."
-        case (.rebase, false): "A straight line, and your commits get new hashes."
-        case (.merge, true): "A merge commit joins them, and your commit keeps its hash."
-        case (.merge, false): "A merge commit joins them, and your commits keep their hashes."
+        case (.rebase, true): "Reapplies your commit on top of the upstream branch with a new hash."
+        case (.rebase, false): "Reapplies your commits on top of the upstream branch with new hashes."
+        case (.merge, _): "Combines both branches in a merge commit. Existing commit hashes stay the same."
         }
     }
 
     private static func accessibilityDescription(of result: Result, choice: PullChoice) -> String {
         let yours = commits(choice.ahead, "your")
-        let theirs = commits(choice.behind, "their")
+        let theirs = commits(choice.behind, "the upstream branch's")
         return switch result {
-        case .rebase: "After a rebase, one straight line, with \(yours) on top of \(theirs)."
-        case .merge: "After a merge, two lines, \(yours) and \(theirs), joined by a merge commit on top."
+        case .rebase: "The rebase moves \(yours) on top of \(theirs)."
+        case .merge: "A merge commit joins \(yours) with \(theirs)."
         }
     }
 

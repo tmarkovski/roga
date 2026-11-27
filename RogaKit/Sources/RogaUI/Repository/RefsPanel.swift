@@ -132,7 +132,7 @@ struct RefsPanel: View {
                     }) {
                         let trackers = refs.trackers
                         ForEach(details.remotes, id: \.name) { remote in
-                            RefRemoteRow(name: remote.name, detail: remote.address ?? "Not configured any more", menu: remoteMenu(remote))
+                            RefRemoteRow(name: remote.name, detail: remote.address ?? "Remote configuration missing", menu: remoteMenu(remote))
                             ForEach(rows.remotes[remote.name] ?? []) { row in
                                 switch row.content {
                                 case .folder(let ref, let name, let count, let isCollapsed):
@@ -471,8 +471,8 @@ struct RefsPanel: View {
         let isBusy = model.branch.isBusy
         return [
             .header(RefMenu.Title(stash.rowTitle)),
-            .command("Put back", isEnabled: !isBusy) { model.putBack(stash) },
-            .command("Put back and keep the stash", isEnabled: !isBusy) { model.putBack(stash, keeping: true) },
+            .command("Pop stash", isEnabled: !isBusy) { model.putBack(stash) },
+            .command("Apply stash", isEnabled: !isBusy) { model.putBack(stash, keeping: true) },
             .divider,
             .command("New branch from stash…", isEnabled: !isBusy) { model.branch.startNewBranch(fromStash: stash, from: MenuAnchor.current) },
             .command("Copy message") { copy(stash.title) },

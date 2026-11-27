@@ -511,7 +511,7 @@ public final class AgentProvider {
                 hookWork[kind] = .failed(action, error.message)
                 succeeded = false
             } catch {
-                hookWork[kind] = .failed(action, action == .remove ? "Removing the hooks stopped." : "Installing the hooks stopped.")
+                hookWork[kind] = .failed(action, action == .remove ? "Hook removal failed." : "Hook installation failed.")
                 succeeded = false
             }
             // Each agent is asked as soon as its own commands are done, and

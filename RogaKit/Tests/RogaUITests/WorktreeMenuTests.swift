@@ -103,7 +103,7 @@ struct WorktreeMenuTests {
         #expect(detailText(WorktreeFacts(worktree: fixLogin, upstream: UpstreamCounts(ahead: 2))) == "↑2 · ~/agents/fix-login")
         #expect(detailText(WorktreeFacts(worktree: fixLogin, upstream: UpstreamCounts(ahead: 1, behind: 4))) == "↓4 ↑1 · ~/agents/fix-login")
         #expect(detailText(WorktreeFacts(worktree: fixLogin, upstream: UpstreamCounts())) == "~/agents/fix-login")
-        #expect(detailText(WorktreeFacts(worktree: fixLogin, upstream: UpstreamCounts(isGone: true))) == "Upstream gone · ~/agents/fix-login")
+        #expect(detailText(WorktreeFacts(worktree: fixLogin, upstream: UpstreamCounts(isGone: true))) == "Upstream missing · ~/agents/fix-login")
     }
 
     @Test func aBranchThatNeverHadAnUpstreamSaysHowFarItsAheadOfMain() {

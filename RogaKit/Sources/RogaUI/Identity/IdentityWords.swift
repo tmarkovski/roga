@@ -36,7 +36,7 @@ struct IdentityWords {
     /// Where the email comes from, or the name when there's no email.
     func from(capitalized: Bool) -> String {
         guard let origin = (identity.email ?? identity.name)?.origin else {
-            return capitalized ? "Nothing in git's config says who commits are from" : "not set"
+            return capitalized ? "Git author identity is missing" : "not set"
         }
         let words = Self.origin(origin, globalFiles: globalFiles)
         return capitalized ? words.prefix(1).uppercased() + words.dropFirst() : words
@@ -46,9 +46,9 @@ struct IdentityWords {
     var signing: String {
         switch identity.problem {
         case .noEmail:
-            return "git would refuse to commit, or make an email up from your login and this Mac's name."
+            return "Set a name and email. Otherwise Git may reject the commit or derive an email from your username and Mac's name."
         case .noSigningKey:
-            return "Signing with SSH is on, but no key is set, so a commit would stop at signing."
+            return "SSH signing requires a key. Choose one before committing."
         case nil:
             guard identity.signs else { return "Not signed" }
             return ["Signed with \(identity.format.title)", identity.key].compactMap(\.self).joined(separator: " · ")

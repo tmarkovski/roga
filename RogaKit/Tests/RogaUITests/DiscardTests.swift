@@ -121,7 +121,7 @@ struct DiscardTests {
         try #require(work.branch.undoFinished).perform()
         await work.settled()
         #expect(try work.read("b.txt") == "changed\n")
-        #expect(work.branch.finished == "Brought back b.txt")
+        #expect(work.branch.finished == "Restored b.txt")
         #expect(work.branch.undoFinished == nil)
         // The row came back, and it's selected again.
         #expect(work.model.hasWorkingTreeRow)
@@ -195,7 +195,7 @@ struct DiscardTests {
 
         work.changes.undoDiscard()
         await work.settled()
-        #expect(work.branch.finished == "Brought back c.txt")
+        #expect(work.branch.finished == "Restored c.txt")
         #expect(try work.read("b.txt") == "b\n")
         work.changes.undoDiscard()
         await work.settled()
@@ -584,7 +584,7 @@ struct DiscardTests {
             .command(["reset", "--hard"]),
             .comment("1 file goes to the Trash"),
         ])
-        #expect(content.note?.plain == "inner/ stays, because discarding leaves repositories and submodules alone.")
+        #expect(content.note?.plain == "inner/ will be kept because it is a nested repository or submodule.")
         #expect(content.buttons.last?.kind == .destructive)
     }
 

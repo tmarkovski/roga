@@ -10,6 +10,7 @@ struct NewRefForm<Options: View>: View {
     let title: String
     /// What it starts from, as in `From main`.
     let subtitle: String?
+    var subtitleLineLimit = 1
     @Binding var name: String
     var placeholder = "Name"
     /// What the button that makes it says, as in Create Branch.
@@ -44,7 +45,7 @@ struct NewRefForm<Options: View>: View {
                     Text(subtitle)
                         .font(.system(size: 12))
                         .foregroundStyle(DialogColors.note)
-                        .lineLimit(1)
+                        .lineLimit(subtitleLineLimit)
                         .truncationMode(.middle)
                 }
             }

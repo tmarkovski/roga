@@ -47,7 +47,7 @@ struct KeyHostsContent: View {
                 if let hosting {
                     if hosting.hosts.isEmpty {
                         Text(hasRepository
-                            ? "None of this repository's remotes is on GitHub or GitLab. Copy Public Key copies it, for adding it wherever you push."
+                            ? "Copy the public key to add it to your Git hosting account."
                             : "Copy Public Key copies it, for adding it wherever you push, so that commits show as verified there.")
                             .foregroundStyle(DialogColors.note)
                     }
@@ -126,10 +126,10 @@ struct KeyHostsContent: View {
             if hosting.gh != nil, hosting.account(on: host) != nil {
                 return "gh may not add \(format == .ssh ? "signing keys" : "GPG keys") yet. Run the command below once, or add it on GitHub as \(kind), \(verified)."
             }
-            return "Add it on GitHub as \(kind), \(verified). Open GitHub copies it first."
+            return "Open GitHub copies the public key and opens your key settings. Add it as \(kind), \(verified)."
         case .gitLab:
             let usage = format == .ssh ? " with the usage type Signing" : ""
-            return "Add it on GitLab\(usage), \(verified). Open GitLab copies it first."
+            return "Open GitLab copies the public key and opens your key settings. Add the key\(usage), \(verified)."
         }
     }
 

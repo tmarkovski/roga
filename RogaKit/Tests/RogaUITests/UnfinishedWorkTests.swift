@@ -31,7 +31,7 @@ struct UnfinishedWorkTests {
     @Test func theTooltipNamesTheRevertedCommitAndHowToGoBack() throws {
         let commit = ObjectID(hex: "da9ff97390adfc8a4a4b4c0f0a1481c9084145d5")
         let unfinished = try #require(UnfinishedWork(work: .revert(commit: commit), conflicts: 0, subject: "Change the app"))
-        #expect(unfinished.help == "Reverting da9ff973 · ready to commit\n\u{201C}Change the app\u{201D}\nYou can finish from the command line, or git revert --abort goes back.")
+        #expect(unfinished.help == "Reverting da9ff973 · ready to commit\n\u{201C}Change the app\u{201D}\nFinish the operation in Terminal, or run git revert --abort to cancel it.")
         #expect(try #require(UnfinishedWork(work: nil, conflicts: 2)).help == "2 conflicts")
     }
 

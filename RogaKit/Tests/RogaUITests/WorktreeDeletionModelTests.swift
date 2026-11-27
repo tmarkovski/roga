@@ -190,8 +190,8 @@ struct WorktreeDeletionModelTests {
         #expect(setup.model.failure == nil)
         let dialog = setup.model.dialog(for: try #require(setup.model.pending))
         #expect(dialog.title == "Delete the worktree for topic?")
-        #expect(dialog.message?.plain == "It's locked, which often means an agent is still working in it. Git only removes a locked worktree when it's forced twice.")
-        #expect(dialog.note?.plain == "The reason given for the lock: agent running")
+        #expect(dialog.message?.plain == "This worktree is locked and may still be in use. Deleting it requires two force flags.")
+        #expect(dialog.note?.plain == "Lock reason · agent running")
         #expect(dialog.switches.map(\.isOn) == [true])
         #expect(dialog.terminal == [
             .command(["worktree", "remove", "--force", "--force", setup.linked]),
@@ -242,9 +242,9 @@ struct WorktreeDeletionModelTests {
         await setup.confirm()
         let failure = try #require(setup.model.failure)
         #expect(failure.title == "Can't delete topic")
-        #expect(failure.summary == "The worktree is gone, but its branch topic isn't.")
+        #expect(failure.summary == "The worktree was deleted. The local branch topic could not be deleted.")
         #expect(failure.command == ["branch", "-D", "topic"])
-        #expect(failure.note == "origin/topic wasn't touched.")
+        #expect(failure.note == "The remote branch origin/topic was left in place.")
         #expect(!setup.repository.worktrees.contains { $0.path == setup.linked })
     }
 
@@ -255,7 +255,7 @@ struct WorktreeDeletionModelTests {
         await setup.confirm()
         let failure = try #require(setup.model.failure)
         #expect(failure.title == "Can't delete origin/topic")
-        #expect(failure.summary == "The worktree and its branch are gone, but origin/topic isn't.")
+        #expect(failure.summary == "The worktree and local branch were deleted. The remote branch origin/topic could not be deleted.")
         #expect(failure.command == ["push", "--delete", "origin", "refs/heads/topic"])
         #expect(failure.note == "To try again, use Delete from Remote… in the refs panel.")
         // The refs panel's remote branch is still there to try again from.
@@ -272,10 +272,10 @@ struct WorktreeDeletionModelTests {
         try "new".write(toFile: setup.linked + "/untracked.txt", atomically: true, encoding: .utf8)
         try await setup.ask()
         let dialog = setup.model.dialog(for: try #require(setup.model.pending))
-        #expect(dialog.message?.plain == "These can't be brought back:")
+        #expect(dialog.message?.plain == "The listed files will be deleted.")
         #expect(dialog.cards == [[
-            .fact("1 uncommitted file", "goes with the folder"),
-            .fact("Files git ignores", ".env"),
+            .fact("1 uncommitted file", "will be deleted"),
+            .fact("Ignored files", ".env"),
         ]])
         #expect(dialog.terminal == [
             .command(["worktree", "remove", "--force", setup.linked]),
@@ -308,7 +308,7 @@ struct WorktreeDeletionModelTests {
         dialog.switches[0].flip()
         dialog = setup.model.dialog(for: try #require(setup.model.pending))
         #expect(dialog.switches.map(\.isOn) == [true])
-        #expect(dialog.cardsAfterSwitches.first?.first == .heading("This commit can't be brought back", isLost: true))
+        #expect(dialog.cardsAfterSwitches.first?.first == .heading("This commit would become unreachable", isLost: true))
         #expect(dialog.terminal == [.command(["worktree", "remove", setup.linked]), .command(["branch", "-D", "topic"])])
         #expect(dialog.buttons.map(\.kind) == [.secondary, .destructive])
     }
@@ -342,7 +342,7 @@ struct WorktreeDeletionModelTests {
 
         dialog.switches[1].flip()
         dialog = setup.model.dialog(for: try #require(setup.model.pending))
-        #expect(dialog.cardsAfterSwitches.first?.first == .heading("This commit can't be brought back", isLost: true))
+        #expect(dialog.cardsAfterSwitches.first?.first == .heading("This commit would become unreachable", isLost: true))
     }
 
     @Test func warnsThatDeletingFromARemoteAffectsEveryoneAndStartsOff() async throws {
@@ -351,7 +351,7 @@ struct WorktreeDeletionModelTests {
         var dialog = setup.model.dialog(for: try #require(setup.model.pending))
         #expect(dialog.switches.map(\.isOn) == [true, false])
         #expect(dialog.switches.last?.title.plain == "Also delete origin/topic")
-        #expect(dialog.switches.last?.detail.plain == "This deletes the branch on origin, for everyone who uses it.")
+        #expect(dialog.switches.last?.detail.plain == "The branch will be deleted from origin for everyone.")
         #expect(dialog.terminal == [
             .command(["worktree", "remove", setup.linked]),
             .command(["branch", "-D", "topic"]),
@@ -382,7 +382,7 @@ struct WorktreeDeletionModelTests {
         try await setup.ask(.init(deletesRemoteBranch: true))
         try FileManager.default.moveItem(atPath: setup.remote, toPath: setup.remote + ".moved")
         await setup.confirm()
-        #expect(setup.model.failure?.summary == "The worktree is gone, but origin/topic isn't.")
+        #expect(setup.model.failure?.summary == "The worktree was deleted. The remote branch origin/topic could not be deleted.")
     }
 
     @Test func aDetachedWorktreeWithSomethingToLoseHasNoSwitches() async throws {
@@ -393,7 +393,7 @@ struct WorktreeDeletionModelTests {
         try await setup.ask()
         let dialog = setup.model.dialog(for: try #require(setup.model.pending))
         #expect(dialog.switches.isEmpty)
-        #expect(dialog.cardsAfterSwitches.first?.first == .heading("This commit can't be brought back", isLost: true))
+        #expect(dialog.cardsAfterSwitches.first?.first == .heading("This commit would become unreachable", isLost: true))
         #expect(dialog.terminal == [.command(["worktree", "remove", setup.linked])])
         #expect(dialog.buttons.map(\.kind) == [.secondary, .destructive])
     }
@@ -417,7 +417,7 @@ struct WorktreeDeletionModelTests {
 
         let dialog = setup.model.dialog(for: pending)
         #expect(dialog.title == "Delete the worktree for topic?")
-        #expect(dialog.message?.plain == "Git only removes a worktree with submodules when it's forced. Nothing has looked inside them, so anything that's only there goes too.")
+        #expect(dialog.message?.plain == "Deleting a worktree with submodules requires force. Any changes stored only in its submodules will be lost.")
         #expect(dialog.cards == [[.fact("Submodule", "vendor/lib")]])
         #expect(dialog.terminal == [.command(["worktree", "remove", "--force", setup.linked]), .blank])
         #expect(dialog.buttons.map(\.title) == ["Cancel", "Delete Anyway"])
@@ -445,8 +445,8 @@ struct WorktreeDeletionModelTests {
         try "new".write(toFile: setup.linked + "/untracked.txt", atomically: true, encoding: .utf8)
         try await setup.ask(.worktree)
         let dialog = setup.model.dialog(for: try #require(setup.model.pending))
-        #expect(dialog.message?.plain.hasSuffix("goes too. These can't be brought back:") == true)
-        #expect(dialog.cards == [[.fact("1 uncommitted file", "goes with the folder"), .fact("Submodule", "vendor/lib")]])
+        #expect(dialog.message?.plain.hasSuffix("will be lost. The listed files will be deleted.") == true)
+        #expect(dialog.cards == [[.fact("1 uncommitted file", "will be deleted"), .fact("Submodule", "vendor/lib")]])
     }
 
     @Test func countsTheSubmodulesItDoesntList() async throws {
@@ -475,7 +475,7 @@ struct WorktreeDeletionModelTests {
         try await setup.ask(.worktree)
         #expect(setup.model.failure == nil)
         let dialog = setup.model.dialog(for: try #require(setup.model.pending))
-        #expect(dialog.message?.plain == "It's locked, which often means an agent is still working in it. Git only removes a locked worktree when it's forced twice. Forcing it also takes its submodules, and nothing has looked inside them, so anything that's only there goes too.")
+        #expect(dialog.message?.plain == "This worktree is locked and may still be in use. Deleting it requires two force flags. Force-deleting also removes the submodules and any changes stored only in this worktree.")
         #expect(dialog.terminal.first == .command(["worktree", "remove", "--force", "--force", setup.linked]))
         #expect(dialog.buttons.map(\.title) == ["Cancel", "Delete Anyway"])
 

@@ -173,12 +173,12 @@ struct SettingsPagesTests {
         let heard = AgentProvider.Heard(date: now.addingTimeInterval(-130), cwd: "/git/acme/api")
         let installed = line(.claude, agents, heard: heard)
         #expect(installed.tone == .installed)
-        #expect(installed.text == "Installed (roga-hooks plugin). Last heard from 2 minutes ago, in api.")
+        #expect(installed.text == "Installed (roga-hooks plugin). Last activity 2 minutes ago in api.")
         #expect(installed.button == .init(action: .remove, title: "Remove…", isEnabled: true))
         // Without a word since Roga opened, it says only that it's installed.
         #expect(line(.claude, agents).text == "Installed (roga-hooks plugin).")
         let folderless = AgentProvider.Heard(date: now.addingTimeInterval(-30), cwd: nil)
-        #expect(line(.claude, agents, heard: folderless).text == "Installed (roga-hooks plugin). Last heard from less than a minute ago.")
+        #expect(line(.claude, agents, heard: folderless).text == "Installed (roga-hooks plugin). Last activity less than a minute ago.")
     }
 
     @Test func installedButNotRunningSaysWhatToDo() {
@@ -312,7 +312,7 @@ struct SettingsPagesTests {
             hookStatus: [.codex: .notInstalled],
             hookWork: [.codex: .failed(.install, "Error: marketplace `roga` is already added from a different source")]
         )
-        #expect(line(.codex, agents).spoken == "Not installed. Codex asks you to trust new hooks when they first run. Hook installation unavailable: roga helper missing. Error: marketplace `roga` is already added from a different source.")
+        #expect(line(.codex, agents).spoken == "Not installed. Codex asks you to trust new hooks when they first run. Roga couldn't find the helper needed to install hooks. Error: marketplace `roga` is already added from a different source.")
         // With a detail, the row reads its help as the value; without one,
         // the help shows as it is and isn't read twice.
         let detailed = SettingsRow(title: "Hooks", help: "Not installed.", namesControl: false) { Text("Not installed.") } control: { EmptyView() }
@@ -325,7 +325,7 @@ struct SettingsPagesTests {
         let agents = provider(helper: false, lookups: [.claude: .found(Self.claude), .codex: .found(Self.codex)], hookStatus: [.claude: .notInstalled, .codex: .installed])
         let claude = line(.claude, agents)
         #expect(claude.button == .init(action: .install, title: "Install…", isEnabled: false))
-        #expect(claude.note == "Hook installation unavailable: roga helper missing.")
+        #expect(claude.note == "Roga couldn't find the helper needed to install hooks.")
         // Removing needs no helper.
         #expect(line(.codex, agents).button?.isEnabled == true)
         #expect(line(.codex, agents).note == nil)
@@ -773,9 +773,9 @@ struct SettingsPagesTests {
         // The folder goes once the test is done.
         #expect(directory.map { !FileManager.default.fileExists(atPath: $0) } == true)
         let words = AgentTestRun.replied(in: .milliseconds(2400), lines: 2)
-        #expect(words.time == "Replied in 2.4 s")
-        #expect(words.rest == "with a two-line message for a sample diff.")
-        #expect(AgentTestRun.replied(in: .seconds(6), lines: 14).rest == "with a 14-line message for a sample diff.")
+        #expect(words.time == "Generated in 2.4 s")
+        #expect(words.rest == "two-line commit message from a sample diff.")
+        #expect(AgentTestRun.replied(in: .seconds(6), lines: 14).rest == "14-line commit message from a sample diff.")
     }
 
     @Test func runATestSaysHowTheAgentFailed() async {

@@ -27,7 +27,7 @@ extension BranchModelTests {
         #expect(dialog.switches.map(\.title.plain) == ["tm/one", "tm/two"])
         #expect(dialog.switches.map(\.isOn) == [true, true])
         #expect(dialog.switches.map(\.detail.plain) == ["1 commit isn't on any other branch or tag.", "Its commits are all on other branches or tags."])
-        #expect(dialog.cardsAfterSwitches.first?.first == .heading("This commit can't be brought back", isLost: true))
+        #expect(dialog.cardsAfterSwitches.first?.first == .heading("This commit would become unreachable", isLost: true))
 
         try flip(0, model)
         dialog = try choiceDialog(model)
@@ -56,7 +56,7 @@ extension BranchModelTests {
         var dialog = try choiceDialog(model)
         #expect(dialog.title == "Delete 2 branches?")
         #expect(dialog.switches.map(\.detail.plain) == ["Some of its commits are only on branches in this list.", "1 commit isn't on any other branch or tag."])
-        #expect(dialog.cardsAfterSwitches.first?.first == .heading("These 2 commits can't be brought back", isLost: true))
+        #expect(dialog.cardsAfterSwitches.first?.first == .heading("These 2 commits would become unreachable", isLost: true))
 
         // next keeps base's commit.
         try flip(1, model)
@@ -66,7 +66,7 @@ extension BranchModelTests {
         try flip(0, model)
         try flip(1, model)
         dialog = try choiceDialog(model)
-        #expect(dialog.cardsAfterSwitches.first?.first == .heading("1 of these 2 commits can't be brought back", isLost: true))
+        #expect(dialog.cardsAfterSwitches.first?.first == .heading("1 of these 2 commits would become unreachable", isLost: true))
     }
 
     @Test func aCheckedOutBranchInTheFolderStays() async throws {
@@ -79,7 +79,7 @@ extension BranchModelTests {
         await askToDelete(.folder("tm/"), "tm/here", "tm/other", model: model)
         let dialog = try choiceDialog(model)
         #expect(dialog.switches.map(\.title.plain) == ["tm/other"])
-        #expect(dialog.note?.plain == "tm/here stays, because git won't delete a branch that's checked out.")
+        #expect(dialog.note?.plain == "tm/here is checked out and will be kept.")
     }
 
     /// The clones' `origin/HEAD` names `main`, so the local `main` is the main
@@ -95,7 +95,7 @@ extension BranchModelTests {
         let dialog = try choiceDialog(model)
         #expect(dialog.title == "Delete 1 branch?")
         #expect(dialog.switches.map(\.title.plain) == ["tm/one"])
-        #expect(dialog.note?.plain == "main stays, because it's the main branch.")
+        #expect(dialog.note?.plain == "main is the main branch and will be kept.")
     }
 
     @Test func saysSoWhenOnlyTheMainBranchIsLeft() async throws {
@@ -108,7 +108,7 @@ extension BranchModelTests {
         #expect(model.branch.branchChoice == nil)
         let failure = try #require(model.branch.failure)
         #expect(failure.title == "Nothing to delete")
-        #expect(failure.message == "main stays, because it's the main branch. tm/here is checked out, and git won't delete a branch that's checked out.")
+        #expect(failure.message == "main is the main branch and will be kept. tm/here is checked out and will be kept.")
     }
 
     @Test func saysSoWhenEveryBranchIsCheckedOut() async throws {
@@ -121,6 +121,6 @@ extension BranchModelTests {
         #expect(model.branch.branchChoice == nil)
         let failure = try #require(model.branch.failure)
         #expect(failure.title == "Nothing to delete")
-        #expect(failure.message == "tm/here is checked out, and git won't delete a branch that's checked out.")
+        #expect(failure.message == "tm/here is checked out and will be kept.")
     }
 }

@@ -89,7 +89,7 @@ struct AgentLineTests {
         let line = try #require(AgentLine([agent("a", .finished(failed: true))]))
         #expect(line.hasFailed)
         #expect(line.mark == .failed)
-        #expect(line.lines(now: minutes(5)) == ("Claude Code stopped with an error", "Claude Code", nil, "Its turn ended with an error."))
+        #expect(line.lines(now: minutes(5)) == ("Claude Code stopped with an error", "Claude Code", nil, "The agent's turn failed."))
         #expect(line.help(now: minutes(5)) == "Claude Code stopped with an error")
         // One that failed among others that finished is counted with them.
         let both = try #require(AgentLine([agent("a", .finished(failed: true)), agent("b", .finished(failed: false), host: .codex, "Done")]))
@@ -120,7 +120,7 @@ struct AgentLineTests {
         #expect(AgentLine.time(of: working, now: minutes(65)) == "1 hr 5 min")
         #expect(AgentLine.time(of: agent("b", .finished(failed: false)), now: minutes(65)) == nil)
         #expect(AgentLine.detail(of: working) == "Run the test suite")
-        #expect(AgentLine.detail(of: agent("c", .finished(failed: true))) == "Its turn ended with an error.")
+        #expect(AgentLine.detail(of: agent("c", .finished(failed: true))) == "The agent's turn failed.")
     }
 
     /// The popover's times change as any agent working or waiting reaches
