@@ -1,6 +1,6 @@
 # 46. Turn the ring of an agent at work
 
-Accepted on 2026-11-06. Partly supersedes [decision 41](0041-agents-status-from-their-hooks-and-messages-from-their-clis.md): the ring that marks an agent at work turns, where decision 41 had it stand still. The rest of decision 41 still holds.
+Accepted on 2026-11-06. Partly supersedes [decision 41](0041-agents-status-from-their-hooks-and-messages-from-their-clis.md): the ring that marks an agent at work turns, where decision 41 had it stand still. The rest of decision 41 still holds. Partly superseded by [decision 122](0122-play-the-houses-windows-for-an-agent-at-work.md), which plays the house's windows in place of the ring, in Core Animation as this decision turns the ring.
 
 ## Context
 

@@ -3,7 +3,7 @@ import Foundation
 import SwiftUI
 
 /// A looping busy animation made from the four panes of the Roga mark.
-public nonisolated enum HouseWindowAnimation: CaseIterable, Identifiable, Sendable {
+public nonisolated enum HouseWindowAnimation: String, CaseIterable, Identifiable, Sendable {
     case windowChase
     case shutterFlip
     case sashShift
@@ -12,6 +12,30 @@ public nonisolated enum HouseWindowAnimation: CaseIterable, Identifiable, Sendab
     case stackAndDeal
 
     public static let logoRotation = Angle.degrees(11)
+
+    /// The animation that marks an agent at work for as long as Roga runs.
+    /// Roga picks it as it launches, at random from the ones the last launch
+    /// didn't show, so that each launch shows a different one.
+    public static let forThisLaunch = pickForLaunch(in: .standard)
+
+    /// Where Roga keeps the animation the last launch picked.
+    static let lastLaunchKey = "agentWorkingAnimation"
+
+    /// Picks an animation other than the one the last launch picked, and keeps
+    /// it for the next launch to avoid.
+    static func pickForLaunch(in defaults: UserDefaults) -> Self {
+        var generator = SystemRandomNumberGenerator()
+        let last = defaults.string(forKey: lastLaunchKey).flatMap(Self.init(rawValue:))
+        let picked = pick(after: last, using: &generator)
+        defaults.set(picked.rawValue, forKey: lastLaunchKey)
+        return picked
+    }
+
+    /// Any animation but `last`, at random.
+    static func pick(after last: Self?, using generator: inout some RandomNumberGenerator) -> Self {
+        // There are always others to pick from, so this never falls back.
+        allCases.filter { $0 != last }.randomElement(using: &generator) ?? .windowChase
+    }
 
     public var id: Self { self }
 

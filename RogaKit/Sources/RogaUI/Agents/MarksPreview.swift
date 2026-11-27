@@ -15,8 +15,8 @@ import SwiftUI
 /// so that it reads as a glimpse of the window rather than a list of its own.
 ///
 /// It's a picture: nothing in it takes a click or shows a tooltip, and how
-/// long each agent has been at it stands still, though the working ring turns
-/// as it does in the sidebar.
+/// long each agent has been at it stands still, though the working windows
+/// play as they do in the sidebar.
 ///
 /// Setup's Hooks screen shows only the repository and its three worktrees,
 /// without the lines out to what the marks mean, beside the agents, so that
@@ -109,7 +109,7 @@ struct MarksPreview: View {
         .allowsHitTesting(false)
         .accessibilityElement(children: .ignore)
         // One picture to VoiceOver, since what's in it is made up.
-        .accessibilityLabel("Worktree status indicators. Ring: working. Amber circle: waiting for approval or a response. Blue dot: finished, unread.")
+        .accessibilityLabel("Worktree status indicators. Orange windows: working. Amber circle: waiting for approval or a response. Blue dot: finished, unread.")
         .accessibilityAddTraits(.isImage)
     }
 

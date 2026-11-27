@@ -27,7 +27,7 @@ struct AgentLine: Equatable {
     /// What starts the line.
     enum Mark: Equatable {
         /// The sidebar's mark: the amber circle, or in the popover, the
-        /// turning ring.
+        /// windows at work.
         case agent(AgentSummary.State)
         /// A gray check in a circle, for a turn that ended.
         case finished
@@ -72,8 +72,8 @@ struct AgentLine: Equatable {
     }
 
     /// Whether the words shimmer, which they do while the line speaks for
-    /// agents at work. The worktree's tab turns a ring a few points above, so
-    /// a light in the words says it here rather than a second ring.
+    /// agents at work. The worktree's tab plays the windows a few points
+    /// above, so a light in the words says it here rather than a second mark.
     var shimmers: Bool {
         summary.state == .working
     }

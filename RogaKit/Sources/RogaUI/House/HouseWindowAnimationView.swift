@@ -49,7 +49,7 @@ struct HouseWindowFigure: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        let colors = Colors(dark: colorScheme == .dark)
+        let colors = HouseWindowColors(dark: colorScheme == .dark)
         Canvas { context, size in
             let placement = Self.placement(in: size, rotation: rotation)
             let scale = min(size.width, size.height) / Self.frame.width
@@ -66,22 +66,29 @@ struct HouseWindowFigure: View {
                 paneContext.fill(path.applying(transform.concatenating(placement)), with: .color(colors.fill(warmth: pose.warmth)))
             }
 
-            if let travel = animation.beamTravel(at: time) {
-                let axis = Angle.degrees(32).radians
-                let center = CGPoint(x: Self.frame.midX, y: Self.frame.midY)
-                let start = travel - 140
-                let beamStart = CGPoint(x: center.x + cos(axis) * start, y: center.y + sin(axis) * start)
-                let beamEnd = CGPoint(x: beamStart.x + cos(axis) * 76, y: beamStart.y + sin(axis) * 76)
+            if let beam = Self.beam(of: animation, at: time) {
                 context.fill(
                     HouseOutline.window.applying(placement),
                     with: .linearGradient(
                         colors.beam,
-                        startPoint: beamStart.applying(placement),
-                        endPoint: beamEnd.applying(placement)
+                        startPoint: beam.start.applying(placement),
+                        endPoint: beam.end.applying(placement)
                     )
                 )
             }
         }
+    }
+
+    /// Where the band of light starts and ends, in the mark's coordinates, for
+    /// an animation that has one.
+    static func beam(of animation: HouseWindowAnimation, at time: TimeInterval) -> (start: CGPoint, end: CGPoint)? {
+        guard let travel = animation.beamTravel(at: time) else { return nil }
+        let axis = Angle.degrees(32).radians
+        let center = CGPoint(x: frame.midX, y: frame.midY)
+        let start = travel - 140
+        let beamStart = CGPoint(x: center.x + cos(axis) * start, y: center.y + sin(axis) * start)
+        let beamEnd = CGPoint(x: beamStart.x + cos(axis) * 76, y: beamStart.y + sin(axis) * 76)
+        return (beamStart, beamEnd)
     }
 
     static func placement(in size: CGSize, rotation: Angle) -> CGAffineTransform {
@@ -91,34 +98,36 @@ struct HouseWindowFigure: View {
             .concatenating(CGAffineTransform(scaleX: scale, y: scale))
             .concatenating(CGAffineTransform(translationX: size.width / 2, y: size.height / 2))
     }
+}
 
-    private struct Colors {
-        let idle: Color
-        let warm: Color
-        let lit: Color
-        let halo: Color
+/// The colors of the panes, their glow and the band of light, in each
+/// appearance.
+struct HouseWindowColors {
+    let idle: Color
+    let warm: Color
+    let lit: Color
+    let halo: Color
 
-        init(dark: Bool) {
-            idle = Color(nsColor: .srgb(dark ? 0xBC461D : 0xD54802))
-            warm = Color(nsColor: .srgb(dark ? 0xEE752F : 0xE56C2D))
-            lit = Color(nsColor: .srgb(dark ? 0xFFDC9D : 0xFFC477))
-            halo = Color(nsColor: .srgb(dark ? 0xFFBF65 : 0xFFAE53, alpha: 0.7))
-        }
+    init(dark: Bool) {
+        idle = Color(nsColor: .srgb(dark ? 0xBC461D : 0xD54802))
+        warm = Color(nsColor: .srgb(dark ? 0xEE752F : 0xE56C2D))
+        lit = Color(nsColor: .srgb(dark ? 0xFFDC9D : 0xFFC477))
+        halo = Color(nsColor: .srgb(dark ? 0xFFBF65 : 0xFFAE53, alpha: 0.7))
+    }
 
-        func fill(warmth: Double) -> Color {
-            if warmth <= 0.5 { return idle.mix(with: warm, by: 2 * warmth) }
-            return warm.mix(with: lit, by: 2 * warmth - 1)
-        }
+    func fill(warmth: Double) -> Color {
+        if warmth <= 0.5 { return idle.mix(with: warm, by: 2 * warmth) }
+        return warm.mix(with: lit, by: 2 * warmth - 1)
+    }
 
-        var beam: Gradient {
-            Gradient(stops: [
-                .init(color: warm.opacity(0), location: 0),
-                .init(color: warm, location: 0.32),
-                .init(color: lit, location: 0.56),
-                .init(color: warm, location: 0.79),
-                .init(color: warm.opacity(0), location: 1),
-            ])
-        }
+    var beam: Gradient {
+        Gradient(stops: [
+            .init(color: warm.opacity(0), location: 0),
+            .init(color: warm, location: 0.32),
+            .init(color: lit, location: 0.56),
+            .init(color: warm, location: 0.79),
+            .init(color: warm.opacity(0), location: 1),
+        ])
     }
 }
 

@@ -1,28 +1,31 @@
 import AppKit
 import IconUI
-import QuartzCore
 import SwiftUI
 import ThemeUI
 
-/// The mark a sidebar row shows for an agent (decision 41): a turning ring
-/// while it works, the amber circle-alert while it waits for you, and a blue
-/// dot once it has finished and nobody has looked yet.
+/// The mark a sidebar row shows for an agent (decision 41): the house's
+/// windows at work while it works (decision 122), the amber circle-alert while
+/// it waits for you, and a blue dot once it has finished and nobody has looked
+/// yet.
 ///
-/// The ring is the design canvas's: a gray track with a quarter of it in the
-/// brand's orange, from the top. The quarter turns once a second, so that it
-/// doesn't read as progress stuck at a quarter. Core Animation turns it rather
-/// than SwiftUI, because a repeating SwiftUI animation would redraw the sidebar
-/// many times a second for as long as an agent works, which can be hours (see
-/// `AgentRingView`). The waiting mark is a circle rather than the canvas's
-/// triangle, since decision 28's red triangle already means conflicts.
-/// VoiceOver doesn't read the mark, because the row describes it.
+/// The windows play one of `HouseWindowAnimation`'s animations, the one Roga
+/// picked for this launch, so each launch brings another. They stand upright
+/// rather than at the logo's tilt, which sits better among the row's other
+/// marks and words and still looks like the house. Core Animation plays
+/// it rather than SwiftUI, because a SwiftUI animation would redraw the
+/// sidebar many times a second for as long as an agent works, which can be
+/// hours (see `HouseWindowLayerView`). The waiting mark is a circle rather
+/// than the canvas's triangle, since decision 28's red triangle already means
+/// conflicts. VoiceOver doesn't read the mark, because the row describes it.
 struct AgentMark: View {
     let state: AgentSummary.State
     /// The width and height it takes up. The canvas draws marks in a 16-point
     /// box at 14 points.
     var size: CGFloat = 14
+    /// What the windows play while an agent works.
+    var animation = HouseWindowAnimation.forThisLaunch
 
-    /// The ring stands still for someone who asked for less motion, as the
+    /// The windows stand still for someone who asked for less motion, as the
     /// house does.
     @Environment(\.accessibilityReduceMotion) private var reducesMotion
 
@@ -31,16 +34,31 @@ struct AgentMark: View {
     /// the font's size.
     private static let iconWidthPerPoint: CGFloat = 1.128
     /// How much smaller than its box the circle-alert is drawn. At full size
-    /// it would fill the box, while the ring's outer edge is 13/16 of it. At
-    /// this size both measure about 0.81 of the box, so the two look as big
-    /// as each other in the sidebar and in the legends in Settings alike.
+    /// it would fill the box, while the ring that marked an agent at work
+    /// before the windows was 13/16 of it across. At this size the circle
+    /// measures about 0.81 of the box, so it looks as big as the windows, and
+    /// as the ring did, in the sidebar and in the legends in Settings alike.
     private static let waitingScale: CGFloat = 0.88
+    /// How much of the box the four panes at rest take up across. Solid panes
+    /// in a square look bigger than a circle drawn with a line, so they're a
+    /// little narrower than the waiting circle to look as big as it.
+    static let windowWidth: CGFloat = 0.75
+    /// How much bigger than the box the windows' drawing area is, which makes
+    /// the panes at rest `windowWidth` of the box across. Sash Shift slides
+    /// the panes out sideways, so for a moment they reach about half a point
+    /// past a 14-point box.
+    static let windowReach: CGFloat = {
+        let frame = HouseWindowFigure.frame
+        let upright = HouseOutline.window.applying(HouseWindowFigure.placement(in: frame.size, rotation: .zero))
+        return windowWidth * frame.width / upright.boundingRect.width
+    }()
 
     var body: some View {
         Group {
             switch state {
             case .working:
-                AgentRing(spins: !reducesMotion)
+                AgentWindows(animation: animation, plays: !reducesMotion)
+                    .frame(width: size * Self.windowReach, height: size * Self.windowReach)
             case .waiting:
                 Icon.circleAlert.image
                     .font(Self.circleFont(size: size))
@@ -56,164 +74,27 @@ struct AgentMark: View {
     }
 
     /// The font for an icon in a circle, such as the waiting mark's, that
-    /// looks as big as the ring in a box of this size.
+    /// looks as big as the windows in a box of this size.
     static func circleFont(size: CGFloat) -> Font {
         .system(size: size * waitingScale / iconWidthPerPoint, weight: .medium)
     }
 }
 
-/// The working ring, drawn by `AgentRingView` at whatever size it's given.
-private struct AgentRing: NSViewRepresentable {
-    let spins: Bool
+/// The windows at work, upright, drawn by `HouseWindowLayerView` at whatever
+/// size it's given.
+private struct AgentWindows: NSViewRepresentable {
+    let animation: HouseWindowAnimation
+    let plays: Bool
 
-    func makeNSView(context: Context) -> AgentRingView {
-        AgentRingView()
+    func makeNSView(context: Context) -> HouseWindowLayerView {
+        let view = HouseWindowLayerView()
+        view.rotation = .zero
+        return view
     }
 
-    func updateNSView(_ view: AgentRingView, context: Context) {
-        view.spins = spins
-    }
-}
-
-/// The canvas's ring, in layers: a circle of radius 5.5 in a 16-point box,
-/// stroked 2 points wide, and a quarter arc from the top with round ends,
-/// scaled to the view's width. While `spins` is set, the arc turns clockwise
-/// once a second.
-///
-/// The turning is a `CABasicAnimation` that repeats forever, which the render
-/// server plays, so neither SwiftUI nor Roga's main thread does anything for
-/// each frame. It stops whenever the window can't be seen, being minimized,
-/// hidden, on another Space or fully covered, and starts again when it can.
-/// Every ring turns in step with the others, whenever each started, so that a
-/// sidebar of agents at work looks calm rather than busy.
-final class AgentRingView: NSView {
-    /// Whether the arc turns while the window can be seen.
-    var spins = false {
-        didSet {
-            if spins != oldValue { updateSpinning() }
-        }
-    }
-
-    private let track = CAShapeLayer()
-    private let arc = CAShapeLayer()
-
-    /// How long the arc takes to go around once.
-    static let turn: CFTimeInterval = 1
-    static let spinKey = "spin"
-
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        wantsLayer = true
-        for shape in [track, arc] {
-            shape.fillColor = nil
-            shape.lineCap = .round
-            layer?.addSublayer(shape)
-        }
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    /// Top-down, like SwiftUI, so that the arc starts at the top.
-    override var isFlipped: Bool { true }
-    override var wantsUpdateLayer: Bool { true }
-
-    /// Clicks and hovering go to the row the ring is in.
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-    override func isAccessibilityElement() -> Bool { false }
-
-    /// Whether the arc is turning right now, which tests read.
-    var isTurning: Bool {
-        arc.animation(forKey: Self.spinKey) != nil
-    }
-
-    override func layout() {
-        super.layout()
-        let scale = bounds.width / 16
-        let radius = 5.5 * scale
-        let center = CGPoint(x: bounds.midX, y: bounds.midY)
-        let circle = CGPath(
-            ellipseIn: CGRect(x: center.x - radius, y: center.y - radius, width: 2 * radius, height: 2 * radius),
-            transform: nil
-        )
-        let quarter = CGMutablePath()
-        // In a top-down view, angles grow clockwise, and -π/2 is the top.
-        quarter.addArc(center: center, radius: radius, startAngle: -.pi / 2, endAngle: 0, clockwise: false)
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        for shape in [track, arc] {
-            // The arc turns about its middle, which is the view's.
-            shape.frame = bounds
-            shape.lineWidth = 2 * scale
-        }
-        track.path = circle
-        arc.path = quarter
-        CATransaction.commit()
-    }
-
-    override func updateLayer() {
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            track.strokeColor = NSColor(AgentColors.ringTrack).cgColor
-            arc.strokeColor = NSColor(Palette.action).cgColor
-            CATransaction.commit()
-        }
-    }
-
-    override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
-        needsDisplay = true
-    }
-
-    override func viewWillMove(toWindow newWindow: NSWindow?) {
-        super.viewWillMove(toWindow: newWindow)
-        if let window {
-            NotificationCenter.default.removeObserver(self, name: NSWindow.didChangeOcclusionStateNotification, object: window)
-        }
-    }
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        if let window {
-            NotificationCenter.default.addObserver(
-                self, selector: #selector(occlusionChanged), name: NSWindow.didChangeOcclusionStateNotification, object: window
-            )
-        }
-        updateSpinning()
-    }
-
-    @objc private func occlusionChanged(_ notification: Notification) {
-        updateSpinning()
-    }
-
-    /// Starts the arc turning, or stops it, for whether it should spin and
-    /// whether anyone can see it. Stopping takes the animation away, so that
-    /// the render server has nothing to play for a window nobody sees.
-    func updateSpinning() {
-        if spins, let window, window.occlusionState.contains(.visible) {
-            guard arc.animation(forKey: Self.spinKey) == nil else { return }
-            arc.add(Self.spin(at: CACurrentMediaTime()), forKey: Self.spinKey)
-        } else {
-            arc.removeAnimation(forKey: Self.spinKey)
-        }
-    }
-
-    /// One turn after another, clockwise in a top-down view, for an arc that
-    /// starts turning at `now` on Core Animation's clock. It starts partway
-    /// through a turn, as far as the clock is into one, which puts every ring
-    /// at the same angle at the same moment.
-    static func spin(at now: CFTimeInterval) -> CABasicAnimation {
-        let spin = CABasicAnimation(keyPath: "transform.rotation.z")
-        spin.fromValue = 0
-        spin.toValue = 2 * Double.pi
-        spin.duration = turn
-        spin.repeatCount = .infinity
-        spin.isRemovedOnCompletion = false
-        spin.timeOffset = now.truncatingRemainder(dividingBy: turn)
-        return spin
+    func updateNSView(_ view: HouseWindowLayerView, context: Context) {
+        view.animation = animation
+        view.plays = plays
     }
 }
 
@@ -228,8 +109,6 @@ enum AgentColors {
     /// The blue of a dot for what finished and nobody has looked at yet, the
     /// same in both appearances.
     static let finished = DialogColors.appearanceColor(light: 0x2F6DE1, dark: 0x2F6DE1)
-    /// The track of the ring, in the canvas's line gray.
-    static let ringTrack = SettingsColors.line
     /// The still line around an agent's command, the brand's orange at about
     /// half strength (decision 68).
     static let outline = orange(light: 0.42, dark: 0.45)
