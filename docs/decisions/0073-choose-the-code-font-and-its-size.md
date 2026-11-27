@@ -12,7 +12,7 @@ Settings › Appearance also had nothing that showed what a choice would look li
 
 **Settings › Appearance shows a preview under Theme and Colors**: six commits with a four-lane graph and each kind of badge, and under them a commit's files as a tree beside a diff. It's a cutout of the window, drawn by the commit list's own cell, the panels' file rows and the diff's text view, from a history and a patch that are made up. Nothing in it takes a click, and VoiceOver reads it as one image.
 
-**Code font is under the preview, with the family and the size on one row**, and the preview shows both as they change. No line separates the preview from the row above or below it, since its border already does.
+**Code font is under the preview, with the family and the size on one row**, and the preview shows both as they change. No line separates the preview from the row above it, since its border already does. The usual line between rows comes before Code font, so that the row reads as a setting of its own rather than a caption under the preview.
 
 - The family's menu offers SF Mono, which is the system's monospaced font and what Roga starts with, and every installed family that has a face whose characters are all one width.
 - The size's menu offers 11 to 16, 18 and 20 points. Roga starts with 12.
