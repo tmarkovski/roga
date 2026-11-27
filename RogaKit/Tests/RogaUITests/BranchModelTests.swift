@@ -1307,7 +1307,9 @@ struct BranchModelTests {
         await model.appear()
 
         model.branch.askToForcePush()
-        while model.branch.forcePush == nil { await Task.yield() }
+        // A loop of Task.yield() never ends if the main actor is stuck, and the
+        // time limit can't stop it, so this gives up instead.
+        try #require(await AgentTestSupport.eventually { model.branch.forcePush != nil })
         #expect(model.branch.forcePush?.count == 1)
         #expect(model.branch.forcePush?.commits.map(\.subject) == ["First try"])
         #expect(model.branch.forcePush?.branch == "main")
