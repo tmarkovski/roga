@@ -29,7 +29,7 @@ struct UnfinishedWork: Equatable {
         guard let work else { return title }
         var lines = [title]
         if let subject { lines.append("\u{201C}\(subject)\u{201D}") }
-        lines.append("You can finish from the command line, or \(ShellCommand.text(work.abortArguments)) goes back.")
+        lines.append("Finish the operation in Terminal, or run \(ShellCommand.text(work.abortArguments)) to cancel it.")
         return lines.joined(separator: "\n")
     }
 

@@ -548,7 +548,7 @@ struct ChangedFileRow: View {
         case .modified: "Modified \(file.path)"
         case .renamed: "Renamed \(file.oldPath ?? "") to \(file.path)"
         case .copied: "Copied \(file.oldPath ?? "") to \(file.path)"
-        case .typeChanged: "Changed the kind of \(file.path)"
+        case .typeChanged: "File type changed for \(file.path)"
         case .untracked: "Untracked \(file.path)"
         case .conflicted: "Conflict in \(file.path)"
         case .other(let letter): "\(letter) \(file.path)"

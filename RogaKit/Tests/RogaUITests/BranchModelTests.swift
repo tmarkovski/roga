@@ -331,7 +331,7 @@ struct BranchModelTests {
         let choice = PullChoice(branch: "main", upstream: "origin/main", behind: 1, ahead: 1)
         let dialog = model.branch.dialog(for: choice)
         #expect(dialog.title == "Pull 1 commit into main")
-        #expect(dialog.message?.plain == "main and origin/main have moved apart. origin/main has 1 commit that main doesn't, and main has 1 of its own.")
+        #expect(dialog.message?.plain == "main is 1 ahead and 1 behind origin/main. Choose how to combine their commits.")
     }
 
     @Test func pullingWithoutRememberingLeavesTheConfigAlone() async throws {
@@ -463,9 +463,9 @@ struct BranchModelTests {
         model.branch.forcePush = BranchModel.ForcePush(branch: "main", upstream: "origin/main", count: 3, commits: commits)
         let dialog = try dialogContent(model)
         #expect(dialog.title == "Force push main?")
-        #expect(dialog.message?.plain == "This overwrites 3 commits on origin/main, and your branch takes their place.")
+        #expect(dialog.message?.plain == "This replaces origin/main with main, removing 3 commits from the remote branch.")
         #expect(dialog.cards == [[.commit(hash: "8f3c1d20", subject: "First try"), .more("and 2 more")]])
-        #expect(dialog.note?.plain == "git refuses if origin/main has commits that main never had.")
+        #expect(dialog.note?.plain == "Git rejects the force push if origin/main has commits that main has never contained.")
         #expect(dialog.terminal == [.command(["push", "--force-with-lease", "--force-if-includes"])])
         #expect(dialog.buttons.last?.kind == .destructive)
     }
@@ -475,7 +475,7 @@ struct BranchModelTests {
         let model = model(clones, fetches: false)
         model.branch.forcePush = BranchModel.ForcePush(branch: "main", upstream: "origin/main", count: 0, commits: [])
         let dialog = try dialogContent(model)
-        #expect(dialog.message?.plain.hasSuffix("so none are lost.") == true)
+        #expect(dialog.message?.plain.hasSuffix("All remote commits are already in main.") == true)
         #expect(dialog.cards.isEmpty)
     }
 
@@ -487,7 +487,7 @@ struct BranchModelTests {
         await askToDelete("refs/heads/other", model)
         let dialog = try dialogContent(model)
         #expect(dialog.title == "Delete other?")
-        #expect(dialog.message?.plain == "1 commit isn't on any other branch or tag, so it goes too.")
+        #expect(dialog.message?.plain == "Deleting this branch leaves 1 commit without a branch or tag.")
         #expect(dialog.terminal == [.command(["branch", "-D", "other"])])
         #expect(dialog.cards.first?.count == 1)
         dialog.dismiss()
@@ -503,7 +503,7 @@ struct BranchModelTests {
         await askToDelete("refs/remotes/origin/feature", model)
         let dialog = try dialogContent(model)
         #expect(dialog.title == "Delete feature from origin?")
-        #expect(dialog.message?.plain == "This deletes the branch on origin, for everyone who uses it. Its commits are all on other branches or tags, so none are lost.")
+        #expect(dialog.message?.plain == "The branch will be deleted from origin for everyone. Its commits are all on other branches or tags, so none are lost.")
         #expect(dialog.terminal == [.command(["push", "--delete", "origin", "refs/heads/feature"])])
     }
 
@@ -593,7 +593,7 @@ struct BranchModelTests {
         let dialog = try dialogContent(model)
         #expect(dialog.message?.plain.hasSuffix("1 commit isn't on a remote, another branch or a tag, so it would be lost.") == true)
         let short = try await git("rev-parse", "origin/main", in: clones.work).prefix(8)
-        #expect(dialog.note?.plain == "git reflog can still find it for a while. Keep Changes leaves everything since \(short) staged.")
+        #expect(dialog.note?.plain == "You can recover the commit with git reflog for a limited time. Keep Changes leaves everything since \(short) staged.")
     }
 
     @Test func resetsAndKeepsTheChangesWhenAsked() async throws {
@@ -736,7 +736,7 @@ struct BranchModelTests {
 
         let dialog = try dialogContent(model)
         #expect(dialog.buttons.map(\.title) == ["Cancel", "Reset Anyway"])
-        #expect(dialog.note?.plain.contains("git would reject it: origin/main has commits that main doesn't.") == true)
+        #expect(dialog.note?.plain.contains("You can't push before resetting because origin/main has commits that main is missing.") == true)
         #expect(dialog.terminal.count == 1)
     }
 
@@ -791,7 +791,7 @@ struct BranchModelTests {
 
         let dialog = try dialogContent(model)
         #expect(dialog.title == "Switch to \(target.prefix(8))?")
-        #expect(dialog.message?.plain == "HEAD isn't on a branch. 1 commit isn't on a remote, a branch or a tag, so it would be lost.")
+        #expect(dialog.message?.plain == "You're in detached HEAD state. 1 commit isn't on a remote, a branch or a tag, so it would be lost.")
         #expect(dialog.buttons.map(\.title) == ["Cancel", "Switch Anyway"])
         #expect(dialog.terminal == [.command(["switch", "--detach", target])])
 
@@ -905,7 +905,7 @@ struct BranchModelTests {
         await model.branch.running?.value
         #expect(model.branch.failure == nil)
         #expect(model.branch.putBackConflict == nil)
-        #expect(model.branch.finished == "Pulled · your changes are back")
+        #expect(model.branch.finished == "Pulled · uncommitted changes restored")
         #expect(try notes(clones) == "theirs\n2\n3\n4\nmine\n")
         #expect(try await git("stash", "list", in: clones.work).isEmpty)
     }
@@ -922,7 +922,7 @@ struct BranchModelTests {
         #expect(model.branch.putBackConflict?.files == ["notes.txt"])
         let dialog = try dialogContent(model)
         #expect(dialog.title == "Putting your changes back stopped on a conflict")
-        #expect(dialog.message?.plain == "After pulling into main, your uncommitted changes were put back, but in 1 file they conflict with what came in. You can resolve them here, or undo the pull.")
+        #expect(dialog.message?.plain == "Restoring your uncommitted changes after pulling into main caused conflicts in 1 file. You can resolve them here, or undo the pull.")
         #expect(dialog.cards == [[.name("notes.txt")]])
         #expect(dialog.buttons.map(\.title) == ["Undo Pull", "Resolve"])
         #expect(dialog.buttons.map(\.kind) == [.secondary, .primary])
@@ -1000,7 +1000,7 @@ struct BranchModelTests {
         await finishGoing(model)
         #expect(model.dialog == nil)
         #expect(try await git("rev-parse", "HEAD", in: clones.work) == target)
-        #expect(model.branch.finished == "Your changes are back")
+        #expect(model.branch.finished == "Uncommitted changes restored")
         #expect(try notes(clones) == "theirs\n2\n3\n4\nmine\n")
     }
 
@@ -1522,10 +1522,10 @@ struct BranchModelTests {
 
         await askToDelete(branches: "feature", "origin/feature", model: model)
         let dialog = try choiceDialog(model)
-        #expect(dialog.title == "Delete which branches?")
+        #expect(dialog.title == "Choose branches to delete")
         #expect(dialog.switches.map(\.isOn) == [true, false])
         #expect(dialog.switches.map(\.title.plain) == ["feature", "origin/feature"])
-        #expect(dialog.switches.last?.detail.plain == "This deletes the branch on origin, for everyone who uses it.")
+        #expect(dialog.switches.last?.detail.plain == "The branch will be deleted from origin for everyone.")
         #expect(dialog.terminal == [.command(["branch", "-D", "feature"]), .room(["push", "--delete", "origin", "refs/heads/feature"])])
         #expect(dialog.buttons.map(\.kind) == [.secondary, .primary])
         #expect(try await exists("refs/heads/feature", in: clones.work))
@@ -1608,7 +1608,7 @@ struct BranchModelTests {
         #expect(dialog.switches.map(\.title.plain) == ["feature", "copy", "fork/feature", "origin/feature"])
         #expect(dialog.switches.map(\.isOn) == [true, true, false, false])
         #expect(dialog.switches.map(\.key) == ["1", "2", "3", "4"])
-        #expect(dialog.switches[2].detail.plain == "This deletes the branch on fork, for everyone who uses it.")
+        #expect(dialog.switches[2].detail.plain == "The branch will be deleted from fork for everyone.")
         // The block always has room for each switch's command, because a sheet can't grow.
         #expect(dialog.terminal == [
             .command(["branch", "-D", "feature"]),
@@ -1730,7 +1730,7 @@ struct BranchModelTests {
 
         try flip(1, model)
         dialog = try choiceDialog(model)
-        #expect(dialog.cardsAfterSwitches.first?.first == .heading("This commit can't be brought back", isLost: true))
+        #expect(dialog.cardsAfterSwitches.first?.first == .heading("This commit would become unreachable", isLost: true))
         #expect(dialog.cardsAfterSwitches.first?.count == 2)
         #expect(dialog.buttons.last?.kind == .destructive)
 
@@ -1764,7 +1764,7 @@ struct BranchModelTests {
         try flip(1, model)
         dialog = try choiceDialog(model)
         #expect(dialog.buttons.last?.kind == .destructive)
-        #expect(dialog.cardsAfterSwitches.first?.first == .heading("This commit can't be brought back", isLost: true))
+        #expect(dialog.cardsAfterSwitches.first?.first == .heading("This commit would become unreachable", isLost: true))
     }
 
     @Test func startsWithLocalBranchesOnWhenAnotherRefKeepsTheirCommits() async throws {
@@ -1793,7 +1793,7 @@ struct BranchModelTests {
         let dialog = try choiceDialog(model)
         #expect(dialog.switches.map(\.title.plain) == ["copy", "origin/main"])
         #expect(dialog.switches.map(\.isOn) == [true, false])
-        #expect(dialog.note?.plain == "main stays, because git won't delete a branch that's checked out.")
+        #expect(dialog.note?.plain == "main is checked out and will be kept.")
         #expect(dialog.terminal == [.command(["branch", "-D", "copy"]), .room(["push", "--delete", "origin", "refs/heads/main"])])
         // The current branch keeps the commits, whatever the switches say.
         #expect(dialog.cardsAfterSwitches.isEmpty)
@@ -1810,7 +1810,7 @@ struct BranchModelTests {
         await askToDelete(branches: "main", "linked", "another", "copy", "origin/main", model: model)
         let dialog = try choiceDialog(model)
         #expect(dialog.switches.map(\.title.plain) == ["copy", "origin/main"])
-        #expect(dialog.note?.plain == "main, linked and another stay, because git won't delete a branch that's checked out.")
+        #expect(dialog.note?.plain == "main, linked and another are checked out and will be kept.")
     }
 
     @Test func asksOnlyAboutTheUpstreamWhenAWorktreeHasTheBranchCheckedOut() async throws {
@@ -1945,7 +1945,7 @@ struct BranchModelTests {
         await model.branch.running?.value
         let failure = try #require(model.branch.failure)
         #expect(failure.title == "Can't delete origin/feature")
-        #expect(failure.summary?.plain == "feature and copy are gone, but origin/feature isn't. Git output is shown below.")
+        #expect(failure.summary?.plain == "Deleted feature and copy. Could not delete origin/feature. See the Git output below.")
         #expect(model.branch.finished == nil)
         #expect(try await !exists("refs/heads/feature", in: clones.work))
         #expect(try await !exists("refs/heads/copy", in: clones.work))
@@ -1964,7 +1964,7 @@ struct BranchModelTests {
         await model.branch.running?.value
         let failure = try #require(model.branch.failure)
         #expect(failure.title == "Can't delete origin/feature")
-        #expect(failure.summary?.plain == "feature is gone, but origin/feature isn't. Git output is shown below.")
+        #expect(failure.summary?.plain == "Deleted feature. Could not delete origin/feature. See the Git output below.")
         #expect(model.branch.finished == nil)
     }
 
@@ -2298,7 +2298,7 @@ struct BranchModelTests {
         await model.appear()
         #expect(model.branch.summary().hasPrefix("origin/main · 1 behind, 1 ahead"))
         #expect(model.branch.pullHelp.hasPrefix("main has diverged from origin/main."))
-        #expect(model.branch.pushHelp.hasPrefix("main is behind origin/main,"))
+        #expect(model.branch.pushHelp == "main is behind origin/main. Click for pull and push options.")
     }
 
     @Test func tooltipsNameTheBranchTheRemoteAndTheCommand() async throws {

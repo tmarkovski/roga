@@ -84,7 +84,7 @@ extension GitFixModel {
             id: "gitFix-answer",
             title: "Suggested fix from \(kind.shortName)",
             message: said,
-            note: fix.keepsEverything ? "Commands have not run yet." : "Commands have not run yet. Review them carefully: they may discard work that Git cannot recover.",
+            note: fix.keepsEverything ? "Commands have not run yet." : "Review before running. These commands may permanently discard changes.",
             terminal: terminal,
             buttons: [
                 DialogButton(title: "Cancel", kind: .secondary, isEnabled: !isRunning, action: close),
@@ -124,7 +124,7 @@ extension GitFixModel {
         }
         var sentences: [DialogText] = ["git refused \(code: ShellCommand.text(refused.command))."]
         if refused.skipped > 0 {
-            sentences.append(refused.skipped == 1 ? "The command after it didn't run." : "The \(refused.skipped.formatted()) commands after it didn't run.")
+            sentences.append(refused.skipped == 1 ? "The remaining command was skipped." : "The remaining \(refused.skipped.formatted()) commands were skipped.")
         }
         sentences.append("Git output is shown below.")
         // The agent often gets it right once it has seen what git said, and

@@ -351,7 +351,7 @@ extension SubmodulePanelTests {
         await settledWithSection(work)
 
         let report = try report(work)
-        #expect(report.sections.map(\.band) == ["2 uncommitted files inside · checked out at \(short(world.commits[4])), as recorded"])
+        #expect(report.sections.map(\.band) == ["2 uncommitted files in submodule · checked out at \(short(world.commits[4])), as recorded"])
         #expect(report.sections[0].files.map(\.path) == ["Notes.md", "lib.txt"])
         #expect(work.file.shownSubmodule?.submoduleStaging == .nothingToStage)
     }

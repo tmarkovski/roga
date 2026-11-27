@@ -131,9 +131,9 @@ struct Sidebar: View {
         let entries = arrangementEntries
         return HoverIcon(size: 24) { Icon.slidersHorizontal.image }
             .overlay { RefMenuArea(entries: entries, opensOnClick: true, opener: arrangementOpener) }
-            .help("Group, Sort and Show")
+            .help("Sidebar view options")
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Group, Sort and Show")
+            .accessibilityLabel("Sidebar view options")
             .accessibilityAddTraits(.isButton)
             .accessibilityAction { arrangementOpener.open() }
             .accessibilityActions { refMenuActions(entries) }
@@ -153,7 +153,7 @@ struct Sidebar: View {
     /// Asks for a folder to look in, then shows the popover with the clones in
     /// it.
     private func lookInAnotherFolder() {
-        askForFolder { chooseRepositoryFolder(message: "Choose a folder to look in, or a repository.") } then: { folder in
+        askForFolder { chooseRepositoryFolder(message: "Choose a repository or a folder to scan.") } then: { folder in
             adding.pickedFolders.append(folder)
         }
     }

@@ -88,7 +88,7 @@ struct StashActionsTests {
         let undo = try #require(work.branch.undoFinished)
         undo.perform()
         await settled(work)
-        #expect(work.branch.finished == "Your changes are back")
+        #expect(work.branch.finished == "Stashed changes restored")
         #expect(try await stashes(work).isEmpty)
         #expect(try read("README.md", in: work) == "mine\n")
         #expect(try read("new.txt", in: work) == "new\n")
@@ -103,7 +103,7 @@ struct StashActionsTests {
 
         work.model.putBack(try await newestStash(work))
         await settled(work)
-        #expect(work.branch.finished == "Put back 1 file")
+        #expect(work.branch.finished == "Restored 1 file from stash")
         #expect(try await stashes(work).isEmpty)
         #expect(try read("README.md", in: work) == "mine\n")
         #expect(work.model.selectedRow == 0)
@@ -148,7 +148,7 @@ struct StashActionsTests {
             Issue.record("Expected the dialog for the conflict")
             return
         }
-        #expect(content.title == "Putting the stash back stopped on a conflict")
+        #expect(content.title == "Stash application has conflicts")
         #expect(content.buttons.map(\.title) == ["Undo", "Resolve"])
 
         work.branch.undoStashConflict()

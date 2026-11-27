@@ -31,7 +31,7 @@ final class WorktreeRepairModel {
     /// it there.
     func locate(_ worktree: Worktree, in repository: ListedRepository, list: RepositoryList, select: @escaping (WorktreeSelection) -> Void) {
         guard let folder = chooseRepositoryFolder(
-            message: "Where is the worktree for \(worktree.title) now?",
+            message: "Choose the current worktree folder for \(worktree.title).",
             near: worktree.path
         ) else { return }
         repair(worktree, in: repository, movedTo: folder, list: list, select: select)

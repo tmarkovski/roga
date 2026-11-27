@@ -111,7 +111,7 @@ struct AgentListSection: View {
                             Button("Add Custom Agent…") { isAdding = true }
                                 .buttonStyle(.contextual)
                                 .fixedSize()
-                                .help("Add an agent that Roga runs with a command")
+                                .help("Add a command-line agent")
                         }
                     }
                 }
@@ -255,7 +255,7 @@ struct AgentStatusSection: View {
         switch item {
         case .hooks:
             SettingsBlock {
-                // It redraws each minute for "Last heard from 2 minutes ago".
+                // Update the relative activity time each minute.
                 // The time it gives is the minute's start, which would say a
                 // minute less, so the line asks for the time itself.
                 TimelineView(.everyMinute) { _ in
@@ -561,18 +561,18 @@ enum AgentSummaries {
         case .failed?, nil:
             if button?.action == .install, agents.helperPath == nil {
                 button?.isEnabled = false
-                note = "Hook installation unavailable: roga helper missing."
+                note = "Roga couldn't find the helper needed to install hooks."
             }
         }
         return HookLine(tone: tone, text: text, button: button, note: note, problems: (failure.map { [$0] } ?? []) + filesError)
     }
 
-    /// "Last heard from 2 minutes ago, in acme/api.", or nil when Roga hasn't
+    /// The agent's last activity, or nil when Roga hasn't
     /// heard from the agent since it opened.
     static func heardSentence(_ heard: AgentProvider.Heard?, now: Date, place: (String) -> String) -> String? {
         guard let heard else { return nil }
-        let folder = heard.cwd.map { ", " + place($0) } ?? ""
-        return "Last heard from \(ago(heard.date, now: now))\(folder)."
+        let folder = heard.cwd.map { " " + place($0) } ?? ""
+        return "Last activity \(ago(heard.date, now: now))\(folder)."
     }
 
     /// Where an agent was working, as the sidebar knows it: the repository

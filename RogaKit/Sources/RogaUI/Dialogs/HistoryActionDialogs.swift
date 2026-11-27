@@ -59,9 +59,9 @@ extension ResetMode {
 
     var summary: String {
         switch self {
-        case .keep: "The files change to match the commit, and your uncommitted changes come along."
-        case .soft: "The files stay as they are, and what the commits changed comes back staged."
-        case .mixed: "The files stay as they are, and what the commits changed comes back unstaged."
+        case .keep: "Updates files to match the selected commit and preserves uncommitted changes."
+        case .soft: "Moves the branch to the selected commit. Keeps the working files and staging as they are."
+        case .mixed: "Keeps the working files. Changes relative to the selected commit are unstaged."
         case .hard: "The files and the index change to match the commit, and uncommitted changes are lost."
         }
     }
@@ -137,7 +137,7 @@ extension RepositoryModel {
 
         var sentences: [DialogText] = ["\(code: name) moves to \(code: short)."]
         if !commitSwitch.goesBack {
-            sentences.append("\(code: short) isn't on \(code: name)'s line, so its commits are replaced by that line's.")
+            sentences.append("\(code: short) is outside the current history of \(code: name). Resetting switches the branch to the selected commit's history.")
         }
         if commitSwitch.lostCount > 0 {
             sentences.append(commitSwitch.lostCount == 1
@@ -152,7 +152,7 @@ extension RepositoryModel {
         }
         var note: DialogText?
         if pending.filesAreUnknown {
-            note = "The uncommitted files can't be listed, so there may be some."
+            note = "Couldn't check for uncommitted changes."
         } else if pending.uncommittedFiles > 0 {
             note = pending.uncommittedFiles == 1 ? "1 file has uncommitted changes." : "\(pending.uncommittedFiles.formatted()) files have uncommitted changes."
         }
@@ -178,9 +178,9 @@ extension RepositoryModel {
         let short = String(pick.commit.hex.prefix(8))
         let cancel = { [weak self] in self?.pendingCherryPick = nil; return () }
         let onto = history?.refs.currentBranch.map(Ref.shortName) ?? "HEAD"
-        var sentences: [DialogText] = ["This applies what \(code: short) changed to \(code: onto), as a new commit."]
+        var sentences: [DialogText] = ["Applies the changes from \(code: short) to \(code: onto) as a new commit."]
         if pick.isMerge {
-            sentences.append("It's a merge, so this applies what it brought in against its first parent, \(code: String(pick.parents[0].hex.prefix(8))).")
+            sentences.append("This is a merge commit. Git applies its changes relative to its first parent, \(code: String(pick.parents[0].hex.prefix(8))).")
         }
         if pick.headContains {
             sentences.append("\(code: onto) already has this commit, so there may be nothing to apply.")
@@ -221,17 +221,17 @@ extension BranchModel {
             title = "Merge \(other) into \(here)?"
             button = "Merge"
             total = integration.incomingCount
-            let coming = total == 1 ? "1 commit comes" : "\(total.formatted()) commits come"
-            sentences.append("\(coming) into \(code: here) from \(code: other).")
+            let coming = total == 1 ? "1 commit" : "\(total.formatted()) commits"
+            sentences.append("Merge \(coming) from \(code: other) into \(code: here).")
             sentences.append(integration.ownCount > 0
-                ? "A merge commit joins the two lines."
-                : "\(code: here) has nothing of its own, so it moves to \(code: other) with no merge commit.")
+                ? "Git creates a merge commit."
+                : "\(code: here) fast-forwards to \(code: other).")
         case .rebase:
             title = "Rebase \(here) onto \(other)?"
             button = "Rebase"
             total = integration.ownCount
             let yours = total == 1 ? "1 commit" : "\(total.formatted()) commits"
-            sentences.append("\(code: here) gets \(code: other)'s commits, and then \(yours) of its own go on top, with new hashes.")
+            sentences.append("Git reapplies \(yours) from \(code: here) on top of \(code: other) with new hashes.")
             if integration.pushedCount > 0 {
                 note = integration.pushedCount == 1
                     ? "1 of these is already on its upstream, so pushing afterward will need a force push."

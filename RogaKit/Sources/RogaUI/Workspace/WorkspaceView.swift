@@ -499,7 +499,7 @@ public struct WorkspaceView: View {
             ContentUnavailableView {
                 Label("Can't Find \(repository.name)", icon: .folderSearch)
             } description: {
-                Text("It was at \(repository.path), and it has been moved or deleted.")
+                Text("The repository may have been moved or deleted from \(repository.path).")
             } actions: {
                 Button("Locate…") { locate(repository) }
                 Button("Remove from Sidebar") { list.remove(repository) }
@@ -733,7 +733,7 @@ public struct WorkspaceView: View {
         // the title row.
         let model = recent.existingModel(for: row)
         if model?.branch.isBusy == true {
-            return "git is still running in this worktree. Try again once it's done."
+            return "Wait for the current Git operation to finish, then try again."
         }
         do {
             try await session.create(NewBranch(name: name, inNewWorktree: true), in: row.worktree)

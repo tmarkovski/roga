@@ -500,7 +500,7 @@ final class CommitComposer {
         draftBeforeAmending = nil
         phase = .idle
         self.message = ""
-        branch.undoFinished = made.previous == nil ? nil : .init(help: "Undo the Commit") { [weak self] in self?.undoLastCommit() }
+        branch.undoFinished = made.previous == nil ? nil : .init(help: "Undo Last Commit") { [weak self] in self?.undoLastCommit() }
     }
 
     /// Whether Changes > Undo Commit can take back the latest commit made here.
@@ -534,7 +534,7 @@ final class CommitComposer {
             generator.forget()
             message = restored
             showChanges()
-            return "Undid the commit"
+            return "Last commit undone"
         }
     }
 

@@ -681,7 +681,7 @@ struct HookStatusRow: View {
     }
 }
 
-/// What Install Hooks runs, in a popover from Show Commands, so that the
+/// Hook installation commands, in a popover from Show Commands, so that the
 /// commands are a click away without filling the screen (decision 29). Its
 /// commands run along its bottom edge, as the agents' popover has its
 /// command.
@@ -691,11 +691,11 @@ private struct HooksCommands: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("What Install Hooks runs")
+            Text("Hook installation commands")
                 .font(.system(size: 13, weight: .semibold))
                 .padding(EdgeInsets(top: 13, leading: 16, bottom: 3, trailing: 16))
                 .accessibilityAddTraits(.isHeader)
-            Text("The same commands work in Terminal, if you'd rather run them yourself.")
+            Text("You can also run these commands in Terminal.")
                 .font(.system(size: 12.5))
                 .foregroundStyle(DialogColors.note)
                 .fixedSize(horizontal: false, vertical: true)

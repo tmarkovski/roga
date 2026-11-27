@@ -109,7 +109,7 @@ struct HistoryActionsTests {
         let dialog = try message(work)
         #expect(dialog.id == "integration")
         #expect(dialog.title == "Merge origin/feature into main?")
-        #expect(dialog.message?.plain == "1 commit comes into main from origin/feature. A merge commit joins the two lines.")
+        #expect(dialog.message?.plain == "Merge 1 commit from origin/feature into main. Git creates a merge commit.")
         #expect(dialog.cards == [[.commit(hash: "b07dd8d5", subject: "Add notes")]])
         #expect(dialog.terminal == [.command(["merge", "--no-edit", "--ff", "origin/feature"])])
         #expect(dialog.buttons.map(\.kind) == [.secondary, .primary])
@@ -149,7 +149,7 @@ struct HistoryActionsTests {
         work.branch.askToIntegrate(.merge, ref: "refs/remotes/origin/main")
         await settled(work)
         #expect(work.branch.pendingIntegration == nil)
-        #expect(try message(work).title == "Nothing to bring in")
+        #expect(try message(work).title == "Already up to date")
     }
 
     @Test func aMergeDoesntRunIfHeadMovedWhileItAsked() async throws {
@@ -218,7 +218,7 @@ struct HistoryActionsTests {
         await settled(work)
         let dialog = try message(work)
         #expect(dialog.title == "Rebase main onto origin/feature?")
-        #expect(dialog.message?.plain == "main gets origin/feature's commits, and then 1 commit of its own go on top, with new hashes.")
+        #expect(dialog.message?.plain == "Git reapplies 1 commit from main on top of origin/feature with new hashes.")
         #expect(dialog.note?.plain == "1 of these is already on its upstream, so pushing afterward will need a force push.")
         #expect(dialog.cards == [[.commit(hash: "da9ff973", subject: "Change the app")]])
         #expect(dialog.terminal == [.command(["rebase", "origin/feature"])])
@@ -239,7 +239,7 @@ struct HistoryActionsTests {
         await settled(work)
         #expect(try await head(work, "HEAD~1") == addNotes)
         #expect(try read("README.md", in: work) == "mine\n")
-        #expect(work.branch.finished == "Rebased onto origin/feature · your changes are back")
+        #expect(work.branch.finished == "Rebased onto origin/feature · uncommitted changes restored")
     }
 
     @Test func aRebaseThatStopsIsARebaseEvenThoughGitIsPickingACommit() async throws {
@@ -346,7 +346,7 @@ struct HistoryActionsTests {
         await settled(work)
         #expect(try await git("log", "-1", "--format=%s", in: work.path) == "Add notes")
         #expect(try await git("diff", "--cached", "--name-only", in: work.path) == "README.md")
-        #expect(work.branch.finished == "Cherry-picked b07dd8d5 · your changes are back")
+        #expect(work.branch.finished == "Cherry-picked b07dd8d5 · uncommitted changes restored")
     }
 
     // MARK: Resetting
@@ -395,7 +395,7 @@ struct HistoryActionsTests {
         let work = try await worktree()
         let pending = try await askToReset(work, to: addNotes)
         #expect(pending.modes == [.keep, .hard])
-        #expect(work.model.dialog(for: pending).message?.plain.contains("isn't on main's line") == true)
+        #expect(work.model.dialog(for: pending).message?.plain.contains("is outside the current history of main") == true)
     }
 
     @Test func softLeavesTheCommitsChangesStaged() async throws {
@@ -448,7 +448,7 @@ struct HistoryActionsTests {
         pending.mode = .hard
         #expect(pending.isDestructive)
         #expect(work.model.dialog(for: pending).buttons.map(\.kind) == [.secondary, .destructive])
-        #expect(work.model.dialog(for: pending).note?.plain == "The uncommitted files can't be listed, so there may be some.")
+        #expect(work.model.dialog(for: pending).note?.plain == "Couldn't check for uncommitted changes.")
         pending.mode = .keep
         #expect(!pending.isDestructive)
     }

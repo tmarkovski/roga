@@ -25,7 +25,7 @@ extension RepositoryModel {
                   let stash = try await session.stashChanges(message: Stashes.message(for: paths), in: worktree),
                   let self else { return nil }
             await showNewStash(stash)
-            branch.undoFinished = BranchModel.FinishedUndo(help: "Put the Changes Back") { [weak self] in
+            branch.undoFinished = BranchModel.FinishedUndo(help: "Undo Stash") { [weak self] in
                 self?.putBack(stash, named: "the stash", keeping: false, isUndo: true)
             }
             return paths.count == 1 ? "Stashed 1 file" : "Stashed \(paths.count.formatted()) files"
@@ -45,7 +45,7 @@ extension RepositoryModel {
             let message = try await session.drop(stash: stash.commit, in: worktree)
             guard let self else { return nil }
             if selectedCommit.stash?.commit == stash.commit { leaveDeletedStash() }
-            branch.undoFinished = BranchModel.FinishedUndo(help: "Undo the Delete") { [weak self] in
+            branch.undoFinished = BranchModel.FinishedUndo(help: "Restore Deleted Stash") { [weak self] in
                 self?.restore(stash.commit, message: message)
             }
             return "Deleted “\(BranchModel.shortened(stash.rowTitle))”"
@@ -53,15 +53,15 @@ extension RepositoryModel {
     }
 
     private func putBack(_ commit: ObjectID, named name: String, keeping: Bool, isUndo: Bool) {
-        branch.run(nil, failure: isUndo ? "Can't put the changes back" : "Can't put back \(name)") { [weak self, session, worktree] in
+        branch.run(nil, failure: isUndo ? "Can't restore stashed changes" : "Can't apply \(name)") { [weak self, session, worktree] in
             let outcome = try await session.putBack(stash: commit, keeping: keeping, in: worktree)
             guard let self else { return nil }
             switch outcome {
             case .back(let files, let unstaged):
                 selectChangesOnceTheyShow()
-                var words = isUndo ? "Your changes are back" : files == 1 ? "Put back 1 file" : "Put back \(files.formatted()) files"
-                if keeping { words += " · the stash stays" }
-                if unstaged { words += " · its staging wasn’t kept" }
+                var words = isUndo ? "Stashed changes restored" : files == 1 ? "Restored 1 file from stash" : "Restored \(files.formatted()) files from stash"
+                if keeping { words += " · stash retained" }
+                if unstaged { words += " · staging could not be restored" }
                 return words
             case .conflicted(let files, let indexBefore, let ran):
                 branch.stashConflict = BranchModel.StashConflict(stash: commit, name: name, files: files, indexBefore: indexBefore, ran: ran, keeping: keeping)
@@ -71,9 +71,9 @@ extension RepositoryModel {
     }
 
     private func restore(_ commit: ObjectID, message: String) {
-        branch.run(nil, failure: "Can't bring the stash back", changesNothing: true) { [session, worktree] in
+        branch.run(nil, failure: "Can't restore deleted stash", changesNothing: true) { [session, worktree] in
             try await session.restore(stash: commit, message: message, in: worktree)
-            return "The stash is back, at the top of the list"
+            return "Restored stash to the top of the list"
         }
     }
 
