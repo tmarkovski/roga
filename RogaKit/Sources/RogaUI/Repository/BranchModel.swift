@@ -381,6 +381,11 @@ final class BranchModel {
     /// a row's menu, such as Create in history or New branch from stash… in the
     /// refs panel, or nil to hang from the New Branch button (decision 83).
     var newRefPlace: MenuAnchor.Place?
+    /// The branch that the popover for renaming is for, while it shows.
+    var renameStart: RenameStart?
+    /// Where that popover hangs when a row's menu asked for it, or nil to hang
+    /// from the branch's name in the branch row.
+    var renamePlace: MenuAnchor.Place?
 
     /// Shows the popover for a new branch under the New Branch button, starting
     /// from where the worktree is.
@@ -1272,24 +1277,64 @@ final class BranchModel {
 
     // MARK: Renaming
 
-    /// Renames the worktree's branch here and nowhere else (decision 120),
-    /// and says so in the title row, with a button that renames it back.
+    /// A local branch to rename, with what it tracks, which the popover says it
+    /// keeps.
+    struct RenameStart: Equatable {
+        /// The branch's full name.
+        var branch: String
+        /// The full name of its upstream, or nil when it has none or that's gone.
+        var upstream: String?
+
+        /// The branch's short name, which the popover's field starts with.
+        var name: String { Ref.shortName(branch) }
+    }
+
+    /// Shows the popover for renaming the worktree's branch, under its name in
+    /// the branch row, from the popover about the checkout or the menu bar's
+    /// Branch menu.
+    func startRename() {
+        guard !isBusy, let status else { return }
+        renamePlace = nil
+        renameStart = RenameStart(branch: status.branch, upstream: status.upstream)
+    }
+
+    /// Shows the popover for renaming a local branch, from its menu in history
+    /// or the refs panel.
+    ///
+    /// - Parameters:
+    ///   - branch: The branch's full name.
+    ///   - upstream: The full name of what it tracks, or nil when it has none.
+    ///   - place: Where the menu that asked for it opened, which the popover
+    ///     hangs from (decision 83).
+    func startRename(of branch: String, upstream: String?, from place: MenuAnchor.Place?) {
+        guard !isBusy, branch.hasPrefix(Ref.branchPrefix) else { return }
+        renamePlace = place
+        renameStart = RenameStart(branch: branch, upstream: upstream)
+    }
+
+    /// Closes the popover for renaming, wherever it hangs.
+    func closeRename() {
+        renameStart = nil
+        renamePlace = nil
+    }
+
+    /// Renames a local branch here and nowhere else (decision 120), and says
+    /// so in the title row, with a button that renames it back.
     ///
     /// - Returns: What stopped it, which the popover shows, or nil once it's
     ///   renamed, or when the name is the one it has.
-    func rename(to name: String) async -> String? {
-        guard let status else { return nil }
-        return await rename(BranchRename(branch: Ref.shortName(status.branch), name: name))
+    func rename(_ start: RenameStart, to name: String) async -> String? {
+        await rename(BranchRename(branch: start.name, name: name))
     }
 
-    /// What the popover that renames the branch says about its upstream, or
-    /// nil when it has none: that it keeps tracking it, and unless that's the
-    /// main branch, that `↑` pushes to it by its name there.
-    var renameNote: String? {
-        guard let upstream = status?.upstream else { return nil }
+    /// What the popover for renaming says about the branch's upstream, or nil
+    /// when it has none: that it keeps tracking it, and unless that's the main
+    /// branch, that pushing it goes there by that name.
+    func renameNote(for start: RenameStart) -> String? {
+        guard let upstream = start.upstream else { return nil }
         let name = Ref.shortName(upstream)
-        if upstream == mainDistance?.base { return "It keeps tracking \(name)." }
-        return "It keeps tracking \(name), which keeps its name, and ↑ pushes to it by that name."
+        if upstream == measuredDistance?.base { return "It keeps tracking \(name)." }
+        return "It keeps tracking \(name), which keeps its name, and pushing it goes there by that name."
     }
 
     private func rename(_ rename: BranchRename) async -> String? {

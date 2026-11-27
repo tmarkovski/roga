@@ -46,7 +46,6 @@ private struct BranchBlock: View {
     let unlock: () -> Void
     @State private var isHovering = false
     @State private var showsDetail = false
-    @State private var showsRename = false
 
     /// How wide it gets, so that a long name leaves the agent room.
     private static let widest: CGFloat = 300
@@ -106,28 +105,39 @@ private struct BranchBlock: View {
             .accessibilityValue([line.words, line.conflicts].compactMap(\.self).joined(separator: ", "))
             .accessibilityHint("Shows the worktree's folder and how far the branch is from main")
             .popover(isPresented: $showsDetail, arrowEdge: .bottom) {
-                CheckoutPopover(
-                    branch: branch,
-                    worktree: worktree,
-                    repositoryName: repositoryName,
-                    switchBranch: switchBranch,
-                    rename: { showsRename = true },
-                    unlock: unlock
-                ) {
+                CheckoutPopover(branch: branch, worktree: worktree, repositoryName: repositoryName, switchBranch: switchBranch, unlock: unlock) {
                     showsDetail = false
                 }
             }
-            // A view of its own, since one view shows one popover.
+            // Views of their own, since one view shows one popover. Renaming
+            // hangs from here when it comes from the popover about the
+            // checkout or the menu bar, and from the row whose menu asked
+            // for it otherwise.
             .background {
                 Color.clear
-                    .popover(isPresented: $showsRename, arrowEdge: .bottom) {
-                        if let status = branch.status {
-                            RenameBranchPopover(branch: branch, current: Ref.shortName(status.branch)) {
-                                showsRename = false
-                            }
+                    .popover(isPresented: renameBinding(atRow: false), arrowEdge: .bottom) {
+                        if let start = branch.renameStart {
+                            RenameBranchPopover(branch: branch, start: start, close: branch.closeRename)
                         }
                     }
             }
+            .background {
+                AnchoredPopover(isPresented: renameBinding(atRow: true), place: branch.renamePlace) {
+                    if let start = branch.renameStart {
+                        RenameBranchPopover(branch: branch, start: start, close: branch.closeRename)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Whether the popover for renaming shows here or at a row, which follows
+    /// the model both ways.
+    private func renameBinding(atRow: Bool) -> Binding<Bool> {
+        Binding {
+            branch.renameStart != nil && (branch.renamePlace != nil) == atRow
+        } set: { isShown in
+            if !isShown { branch.closeRename() }
         }
     }
 
@@ -181,8 +191,6 @@ struct CheckoutPopover: View {
     let worktree: Worktree
     let repositoryName: String
     let switchBranch: (() -> Void)?
-    /// Opens the popover that renames the branch.
-    let rename: () -> Void
     let unlock: () -> Void
     let close: () -> Void
     @State private var copied: Copied?
@@ -268,7 +276,7 @@ struct CheckoutPopover: View {
                     // status to say what becomes of its upstream.
                     if worktree.branch != nil, branch.status != nil {
                         Button("Rename Branch…") {
-                            after(close, rename)
+                            after(close) { branch.startRename() }
                         }
                         .disabled(branch.isBusy)
                     }
@@ -572,6 +580,12 @@ struct BranchMenuItems: View {
         }
         item(isInMenuBar ? "Switch Branch…" : "Switch branch…", icon: nil) { switchBranch?() }
             .disabled(switchBranch == nil)
+        // The menu bar's only, since the menus in the window that open from a
+        // count are about pulling and pushing (decision 120).
+        if isInMenuBar {
+            item("Rename Branch…", icon: nil) { branch.startRename() }
+                .disabled(branch.status == nil || branch.isBusy)
+        }
     }
 
     /// A menu item with its icon, which menus leave out unless told otherwise.
@@ -1128,28 +1142,27 @@ private struct NewBranchPopover: View {
     }
 }
 
-/// Renames the worktree's branch here and nowhere else (decision 120), and
-/// shows the exact command as it's typed. It says what becomes of the
-/// branch's upstream, which is nothing: the branch keeps tracking it, and it
-/// keeps its name on the remote.
+/// Renames a local branch here and nowhere else (decision 120), and shows the
+/// exact command as it's typed. It says what becomes of the branch's
+/// upstream, which is nothing: the branch keeps tracking it, and it keeps its
+/// name on the remote.
 private struct RenameBranchPopover: View {
     let branch: BranchModel
-    /// The branch's short name, which the field starts with.
-    let current: String
+    let start: BranchModel.RenameStart
     let close: () -> Void
     @State private var name: String
     @State private var refusal: String?
     @State private var isRenaming = false
 
-    init(branch: BranchModel, current: String, close: @escaping () -> Void) {
+    init(branch: BranchModel, start: BranchModel.RenameStart, close: @escaping () -> Void) {
         self.branch = branch
-        self.current = current
+        self.start = start
         self.close = close
-        _name = State(initialValue: current)
+        _name = State(initialValue: start.name)
     }
 
     private var rename: BranchRename {
-        BranchRename(branch: current, name: name.trimmingCharacters(in: .whitespaces))
+        BranchRename(branch: start.name, name: name.trimmingCharacters(in: .whitespaces))
     }
 
     var body: some View {
@@ -1165,7 +1178,7 @@ private struct RenameBranchPopover: View {
             create: perform,
             close: close
         ) {
-            if let note = branch.renameNote {
+            if let note = branch.renameNote(for: start) {
                 Text(note)
                     .font(.system(size: 12))
                     .foregroundStyle(DialogColors.note)
@@ -1179,7 +1192,7 @@ private struct RenameBranchPopover: View {
         guard !rename.name.isEmpty, !isRenaming else { return }
         isRenaming = true
         Task {
-            refusal = await branch.rename(to: rename.name)
+            refusal = await branch.rename(start, to: rename.name)
             isRenaming = false
             if refusal == nil { close() }
         }
