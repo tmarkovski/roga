@@ -93,6 +93,106 @@ struct RefDetailsTests {
         let details = try await openSession(clone).refDetails(in: clone)
         let feature = try #require(details.branches.first { $0.shortName == "feature" })
         #expect(feature.comparison == BranchComparison(other: "main", ahead: 1, behind: 0))
+        #expect(feature.upstream == nil)
+        #expect(feature.goneUpstream == "refs/remotes/origin/feature")
+        let main = try #require(details.branches.first { $0.shortName == "main" })
+        #expect(main.upstream == "refs/remotes/origin/main")
+        #expect(main.goneUpstream == nil)
+    }
+
+    @Test func aBranchWhoseCommitsAreAllInMainIsMerged() async throws {
+        let (session, repository) = try await makeRepository()
+        // done's commit is merged, fresh was made from main before that and has
+        // nothing of its own, and open has a commit main doesn't.
+        try await runGit("branch", "fresh", in: repository)
+        try await runGit("switch", "--quiet", "--create", "done", in: repository)
+        try await commit("Done", in: repository)
+        try await runGit("switch", "--quiet", "--create", "open", "main", in: repository)
+        try await commit("Open", in: repository)
+        try await runGit("switch", "--quiet", "main", in: repository)
+        try await runGit("merge", "--quiet", "--no-ff", "--no-edit", "done", in: repository)
+
+        let details = try await session.refDetails(in: repository)
+        func branch(_ name: String) throws -> BranchDetails { try #require(details.branches.first { $0.shortName == name }) }
+        #expect(try branch("done").isMerged)
+        #expect(try branch("done").main == BranchComparison(other: "main", ahead: 0, behind: 1))
+        // Its reflog says it never moved, so it hasn't been merged, however far
+        // behind main it is.
+        #expect(try !branch("fresh").isMerged)
+        #expect(try branch("fresh").main == BranchComparison(other: "main", ahead: 0, behind: 2))
+        #expect(try !branch("open").isMerged)
+        #expect(try !branch("main").isMerged)
+        #expect(try branch("main").main == nil)
+    }
+
+    @Test func aBranchWhoseReflogHasLostItsFirstLinesIsMergedOnceItsInMain() async throws {
+        let (session, repository) = try await makeRepository()
+        try await runGit("switch", "--quiet", "--create", "trimmed", in: repository)
+        try await commit("One", in: repository)
+        try await commit("Two", in: repository)
+        try await runGit("switch", "--quiet", "main", in: repository)
+        try await runGit("merge", "--quiet", "--no-ff", "--no-edit", "trimmed", in: repository)
+        // Only its last line is left, which moves it from one commit to the next.
+        let reflog = repository + "/.git/logs/refs/heads/trimmed"
+        let lines = try String(contentsOfFile: reflog, encoding: .utf8).split(separator: "\n")
+        try Data((String(try #require(lines.last)) + "\n").utf8).write(to: URL(filePath: reflog))
+
+        let details = try await session.refDetails(in: repository)
+        #expect(details.branches.first { $0.shortName == "trimmed" }?.isMerged == true)
+    }
+
+    @Test func aBranchWithoutAReflogIsntMerged() async throws {
+        let (session, repository) = try await makeRepository()
+        try await runGit("switch", "--quiet", "--create", "done", in: repository)
+        try await commit("Done", in: repository)
+        try await runGit("switch", "--quiet", "main", in: repository)
+        try await runGit("merge", "--quiet", "--no-ff", "--no-edit", "done", in: repository)
+        try FileManager.default.removeItem(atPath: repository + "/.git/logs/refs/heads/done")
+
+        let details = try await session.refDetails(in: repository)
+        #expect(details.branches.first { $0.shortName == "done" }?.isMerged == false)
+    }
+
+    @Test func aRemoteBranchThatMainHasMovedPastIsMerged() async throws {
+        let (_, server) = try await makeRepository()
+        try await runGit("switch", "--quiet", "--create", "done", in: server)
+        try await commit("Done", in: server)
+        try await runGit("switch", "--quiet", "--create", "open", "main", in: server)
+        try await commit("Open", in: server)
+        try await runGit("switch", "--quiet", "main", in: server)
+        try await runGit("merge", "--quiet", "--no-ff", "--no-edit", "done", in: server)
+        let clone = (server as NSString).deletingLastPathComponent + "/clone"
+        try await TestGit.make().run(GitCommand("clone", "--quiet", server, clone))
+        // Another remote's main branch isn't merged, however far behind it is.
+        try await runGit("update-ref", "refs/remotes/fork/main", "origin/main~1", in: clone)
+        // later is merged on the server after the clone, and the clone fetches
+        // without pulling, so its main is behind origin/main.
+        try await runGit("switch", "--quiet", "--create", "later", in: server)
+        try await commit("Later", in: server)
+        try await runGit("switch", "--quiet", "main", in: server)
+        try await runGit("merge", "--quiet", "--no-ff", "--no-edit", "later", in: server)
+        try await runGit("fetch", "--quiet", in: clone)
+
+        let details = try await openSession(clone).refDetails(in: clone)
+        let branches = details.remotes.flatMap(\.branches)
+        func branch(_ name: String) throws -> RemoteBranchDetails { try #require(branches.first { $0.name == "refs/remotes/" + name }) }
+        #expect(try branch("origin/done").isMerged)
+        #expect(try branch("origin/done").main == BranchComparison(other: "main", ahead: 0, behind: 1))
+        #expect(try branch("origin/later").isMerged)
+        #expect(try !branch("origin/open").isMerged)
+        #expect(try !branch("origin/main").isMerged)
+        #expect(try !branch("fork/main").isMerged)
+    }
+
+    @Test func saysWhenTheWorktreeThatHasABranchIsLocked() async throws {
+        let (session, repository) = try await makeRepository()
+        let folder = (repository as NSString).deletingLastPathComponent + "/locked"
+        try await runGit("worktree", "add", "--quiet", "-b", "agent/locked", folder, in: repository)
+        try await runGit("worktree", "lock", "--reason=An agent is working", folder, in: repository)
+
+        let details = try await session.refDetails(in: repository)
+        #expect(details.branches.first { $0.shortName == "agent/locked" }?.isWorktreeLocked == true)
+        #expect(details.branches.first { $0.shortName == "main" }?.isWorktreeLocked == false)
     }
 
     @Test func saysWhichWorktreeHasEachBranch() async throws {

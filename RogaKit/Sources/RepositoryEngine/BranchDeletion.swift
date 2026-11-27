@@ -148,11 +148,13 @@ public struct CommitBranchesDeletion: Sendable, Hashable {
     ///   - commit: The commit they were on when someone asked. Any that have moved
     ///     since, as an agent's branch may have, are left out: they're no longer what
     ///     was asked about, and counting them as if they were here would hide
-    ///     whatever they moved to.
+    ///     whatever they moved to. Nil for branches on different commits, as the
+    ///     merged branches the refs panel deletes are, which are taken wherever
+    ///     they are now, leaving out any that are gone.
     ///   - limit: The most commits to list.
     static func prepare(
         branches names: [String],
-        on commit: ObjectID,
+        on commit: ObjectID?,
         limit: Int,
         in worktree: String,
         worktrees: [Worktree],
@@ -162,7 +164,7 @@ public struct CommitBranchesDeletion: Sendable, Hashable {
         async let remoteAddresses = RefDetailsLoader.remoteAddresses(git: git, in: worktree)
         let refs = try await refList.refs
         let remotes = Set(try await remoteAddresses.keys)
-        let here = Set(refs.filter { $0.peeled == commit }.map(\.name))
+        let here = Set(refs.filter { ref in commit.map { ref.peeled == $0 } ?? true }.map(\.name))
 
         let all = names.filter(here.contains).map { name in
             BranchDeletion(

@@ -735,14 +735,19 @@ extension BranchModel {
             + deletion.branches.filter { !choice.picked.contains($0.ref) }.map { TerminalLine.room($0.arguments) }
         return DialogContent(
             id: "branchChoice",
-            title: "Delete which branches?",
+            title: choice.mergedInto == nil ? "Delete which branches?" : "Delete merged branches?",
             switches: deletion.branches.enumerated().map { index, branch in
                 let others = deletion.branches.filter { $0.ref != branch.ref }
+                let detail: DialogText = if let main = choice.mergedInto, branch.place == .local, deletion.lostCount == 0 {
+                    "Its commits are all in \(code: main)."
+                } else if branch.place == .local {
+                    .ofDeletingBranch(losing: 0, losingWithItsRemoteBranch: deletion.lostCount, remoteBranch: others.count == 1 ? others[0] : nil)
+                } else {
+                    .ofDeletingRemoteBranch(branch)
+                }
                 return DialogSwitch(
                     title: "\(code: branch.shortName)",
-                    detail: branch.place == .local
-                        ? .ofDeletingBranch(losing: 0, losingWithItsRemoteBranch: deletion.lostCount, remoteBranch: others.count == 1 ? others[0] : nil)
-                        : .ofDeletingRemoteBranch(branch),
+                    detail: detail,
                     isOn: choice.picked.contains(branch.ref),
                     // There's any number of these, so they go by their place in the list.
                     key: index < 9 ? Character(String(index + 1)) : nil,

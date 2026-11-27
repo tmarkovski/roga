@@ -1,6 +1,7 @@
 import Foundation
 import GitCore
 import Observation
+import SwiftUI
 import RepositoryEngine
 
 /// What the refs panel shows of a worktree's repository. The lists on screen
@@ -95,6 +96,14 @@ final class RefsModel {
     var wantsFilterFocus = false
     /// Whether the filter field shows, which it doesn't until someone asks for it.
     private(set) var isFilterShown = false
+    /// What the pointer has rested on, in the panel or among the window's tabs,
+    /// which lights up the rows and the tab that go with it (decision 119).
+    private(set) var pointing: Pointing?
+    /// The rows and the tab that light up with what the pointer rests on.
+    private(set) var links = Links()
+    /// The pill at the edge of the list that names the row `links` lights up,
+    /// while that row is out of view, and says which way it is.
+    private(set) var pill: Pill?
 
     /// Says that the submodules have been listed again, and whether each one's
     /// own repository has been read for that list yet, so that the panels can
@@ -117,6 +126,14 @@ final class RefsModel {
     /// thousands of branches, and the panel asks for them on every step of the
     /// arrow keys.
     @ObservationIgnored private var grouped: (sort: Sort, filter: String, collapsed: Set<String>, rows: BranchRows)?
+    /// Where each branch's row is among the rows of branches, local ones first
+    /// and then each remote's, which says whether a row out of view is above
+    /// or below the ones in view.
+    @ObservationIgnored private var rowOrder: [String: Int] = [:]
+    /// The full names of the branches whose rows are in view.
+    @ObservationIgnored private var visibleRows: Set<String> = []
+    /// What the pointer is on now, which lights up once it has rested there.
+    @ObservationIgnored private var wanted: Pointing?
 
     init(session: RepositorySession, worktree: String) {
         self.session = session
@@ -154,6 +171,171 @@ final class RefsModel {
         content = new
         sorted = nil
         grouped = nil
+        showLinks()
+    }
+
+    // MARK: What the pointer lights up
+
+    /// Something the pointer can rest on that has rows or a tab tied to it.
+    enum Pointing: Hashable {
+        /// A local or remote branch's row, by the branch's full name.
+        case ref(String)
+        /// A worktree's tab, by the worktree's folder.
+        case worktree(String)
+    }
+
+    /// What lights up with what the pointer rests on.
+    struct Links: Equatable {
+        /// The full names of the branches whose rows tint, in the order the
+        /// panel lists them.
+        var refs: [String] = []
+        /// The folder of the worktree whose tab glows.
+        var worktree: String?
+        /// Whether they're the branch checked out here and its upstream, which
+        /// light up in its green rather than in sky.
+        var isCurrent = false
+    }
+
+    /// The pill at the edge of the list.
+    struct Pill: Equatable {
+        /// The branch's short name, as in `origin/tm/fix-login`.
+        var name: String
+        /// Whether its row is below the rows in view rather than above them.
+        var isBelow: Bool
+        var isCurrent: Bool
+    }
+
+    /// How long the pointer rests on something before what goes with it lights
+    /// up, so that running the pointer down the list doesn't flash every tab on
+    /// the way.
+    static let restingTime = Duration.milliseconds(150)
+    /// How long what lit up stays after the pointer leaves, so that moving from
+    /// one row to the next doesn't turn it off and on again.
+    static let leavingTime = Duration.milliseconds(80)
+
+    /// Says that the pointer is on something, which lights up what goes with it
+    /// once the pointer has rested there.
+    func point(at target: Pointing) {
+        wanted = target
+        Task { [weak self] in
+            try? await Task.sleep(for: Self.restingTime)
+            guard let self, self.wanted == target else { return }
+            self.setPointing(target)
+        }
+    }
+
+    /// Says that the pointer has left something. What lit up goes, unless the
+    /// pointer has moved on to something else already.
+    func stopPointing(at target: Pointing) {
+        guard wanted == target else { return }
+        wanted = nil
+        Task { [weak self] in
+            try? await Task.sleep(for: Self.leavingTime)
+            guard let self, self.wanted == nil else { return }
+            self.setPointing(nil)
+        }
+    }
+
+    private func setPointing(_ target: Pointing?) {
+        guard target != pointing else { return }
+        pointing = target
+        showLinks()
+    }
+
+    /// Records whether a branch's row is in view, which says whether the pill
+    /// shows.
+    func setVisible(_ visible: Bool, ref name: String) {
+        if visible { visibleRows.insert(name) } else { visibleRows.remove(name) }
+        if links.refs.first == name { showPill() }
+    }
+
+    private func showLinks() {
+        let details: RefDetails? = if case .loaded(let details) = content { details } else { nil }
+        let new = Self.links(for: pointing, in: details)
+        if new != links { links = new }
+        showPill()
+    }
+
+    private func showPill() {
+        let new = Self.pill(for: links, visible: visibleRows, order: rowOrder)
+        if new != pill { pill = new }
+    }
+
+    /// The pill for what lights up, while the first row it lights up is out of
+    /// view, pointing past the rows in view toward it.
+    ///
+    /// - Parameters:
+    ///   - visible: The full names of the branches whose rows are in view.
+    ///   - order: Where each branch's row is among the rows of branches.
+    static func pill(for links: Links, visible: Set<String>, order: [String: Int]) -> Pill? {
+        guard let target = links.refs.first, !visible.contains(target) else { return nil }
+        let isBelow = if let index = order[target], let top = visible.compactMap({ order[$0] }).min() {
+            index > top
+        } else {
+            // In a closed folder or section, a remote branch is below the
+            // local ones and a local one above the remotes.
+            target.hasPrefix(Ref.remoteBranchPrefix)
+        }
+        return Pill(name: Ref.shortName(target), isBelow: isBelow, isCurrent: links.isCurrent)
+    }
+
+    /// What lights up with what the pointer rests on. A local branch lights up
+    /// its upstream's row and the tab of the worktree that has it. A remote
+    /// branch lights up the local branches that track it and the tab of the
+    /// first of them that a worktree has. A tab lights up its branch's row.
+    static func links(for pointing: Pointing?, in details: RefDetails?) -> Links {
+        guard let pointing, let details else { return Links() }
+        switch pointing {
+        case .ref(let name):
+            if let branch = details.branches.first(where: { $0.name == name }) {
+                let isListed = details.remotes.contains { $0.branches.contains { $0.name == branch.upstream } }
+                return Links(
+                    refs: isListed ? branch.upstream.map { [$0] } ?? [] : [],
+                    worktree: branch.worktree,
+                    isCurrent: name == details.currentBranch
+                )
+            }
+            let trackers = details.branches.filter { $0.upstream == name }
+            return Links(
+                refs: trackers.map(\.name),
+                worktree: trackers.first { $0.worktree != nil }?.worktree,
+                isCurrent: trackers.contains { $0.name == details.currentBranch }
+            )
+        case .worktree(let path):
+            guard let branch = details.branches.first(where: { $0.worktree == path }) else { return Links() }
+            return Links(refs: [branch.name], isCurrent: branch.name == details.currentBranch)
+        }
+    }
+
+    /// The color that a row or tab lights up in: the current branch's green
+    /// (decision 27), or the sky that a local branch's name has in history.
+    var linkColor: Color { links.isCurrent ? Palette.current : Palette.otherBranch }
+
+    /// The tint of a branch's row while what the pointer rests on lights it
+    /// up, which is the selection's strength in the link's color, so that it
+    /// can't be taken for a selection.
+    func linkTint(for name: String) -> Color? {
+        links.refs.contains(name) ? linkColor.opacity(0.14) : nil
+    }
+
+    /// The local branches that track each remote branch, by the remote
+    /// branch's full name, from the lists as git gave them, so that the filter
+    /// doesn't change what a remote branch's row says.
+    var trackers: [String: [BranchDetails]] {
+        guard case .loaded(let details) = content else { return [:] }
+        return Dictionary(grouping: details.branches.filter { $0.upstream != nil }, by: { $0.upstream ?? "" })
+    }
+
+    /// The full names of the merged branches that no worktree has, which the
+    /// button on the Branches heading deletes, from the lists as git gave them
+    /// rather than as the filter leaves them.
+    var deletableMergedBranches: [BranchDetails] {
+        guard case .loaded(let details) = content else { return [] }
+        return Self.deletableMergedBranches(in: details)
+    }
+
+    static func deletableMergedBranches(in details: RefDetails) -> [BranchDetails] {
+        details.branches.filter { $0.isMerged && $0.worktree == nil && $0.name != details.currentBranch }
     }
 
     /// Lists the worktree's submodules again, and then reads how each one's
@@ -238,6 +420,8 @@ final class RefsModel {
         guard let details = shown(sort: sort) else { return nil }
         let rows = Self.branchRows(details, sort: sort, collapsed: filter.isEmpty ? collapsed : [])
         grouped = (sort, filter, collapsed, rows)
+        let names = rows.local.compactMap(\.branch?.name) + details.remotes.flatMap { (rows.remotes[$0.name] ?? []).compactMap(\.branch?.name) }
+        rowOrder = Dictionary(names.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
         return rows
     }
 
@@ -472,14 +656,88 @@ struct BranchRows {
 }
 
 extension BranchDetails {
-    /// The second line of a branch's row: where it's checked out and how far
-    /// it is from the branch it's compared with, or else when it last changed.
-    func subtitle(isCurrent: Bool, now: Date = Date()) -> String {
-        var parts: [String] = []
-        if !isCurrent, let worktree { parts.append("in " + (worktree as NSString).lastPathComponent) }
-        if let comparison { parts.append(comparison.summary) }
-        if parts.isEmpty, let date { parts.append(RefDates.relative(date, now: now)) }
-        return parts.joined(separator: " · ")
+    /// What a branch's row says after its name (decision 119).
+    enum RowState: Equatable {
+        /// The branch checked out here, which has a checkmark.
+        case checkedOut
+        /// Commits to pull from its upstream and commits to push to it, in
+        /// gray, as a tab has them. For a branch without an upstream, it's the
+        /// commits the main branch doesn't have, which haven't gone anywhere.
+        case counts(behind: Int, ahead: Int)
+        /// Its commits are all in the main branch already.
+        case merged
+        /// Nothing to say.
+        case quiet
+    }
+
+    func rowState(isCurrent: Bool) -> RowState {
+        if isCurrent { return .checkedOut }
+        if upstream != nil, let comparison, comparison.ahead > 0 || comparison.behind > 0 {
+            return .counts(behind: comparison.behind, ahead: comparison.ahead)
+        }
+        if upstream == nil, let main, main.ahead > 0 { return .counts(behind: 0, ahead: main.ahead) }
+        return isMerged ? .merged : .quiet
+    }
+
+    /// Whether its name is gray: it's merged, and nothing has it checked out,
+    /// so it's done with.
+    func isDone(isCurrent: Bool) -> Bool {
+        isMerged && !isCurrent && worktree == nil
+    }
+
+    /// Its tooltip, after its whole name: where it's checked out, how far it
+    /// is from its upstream and from the main branch, and when it last changed.
+    /// The row has no second line (decision 119), so this is where the rest is,
+    /// and VoiceOver reads it as the row's value.
+    func details(isCurrent: Bool, now: Date = Date()) -> [String] {
+        var lines: [String] = []
+        if isCurrent {
+            lines.append("Checked out here")
+        } else if let worktree {
+            lines.append("In the worktree \((worktree as NSString).lastPathComponent)" + (isWorktreeLocked ? ", which is locked" : ""))
+        }
+        if upstream != nil, let comparison {
+            lines.append(comparison.summary.capitalizedFirst)
+        } else if let goneUpstream {
+            lines.append("Its upstream, \(Ref.shortName(goneUpstream)), is gone")
+        } else if main != nil {
+            lines.append("No upstream")
+        }
+        if isMerged, let main {
+            lines.append("Merged into \(main.other)")
+        } else if let main, upstream != nil || goneUpstream != nil || main.ahead > 0 || main.behind > 0 {
+            lines.append(main.summary.capitalizedFirst)
+        }
+        if let date { lines.append("Last commit " + RefDates.relative(date, now: now)) }
+        return lines
+    }
+}
+
+extension RemoteBranchDetails {
+    /// Its tooltip, after its whole name: which local branches track it, whether
+    /// it's merged, and when it last changed. The date used to be at the end of
+    /// its row (decision 119).
+    ///
+    /// - Parameter trackers: The short names of the local branches that track it.
+    func details(trackedBy trackers: [String], now: Date = Date()) -> [String] {
+        var lines: [String] = []
+        switch trackers.count {
+        case 0: lines.append("No branch here tracks it")
+        case 1: lines.append("Tracked by \(trackers[0])")
+        default: lines.append("Tracked by \(trackers[0]) and \(trackers.count - 1) more")
+        }
+        if isMerged, let main {
+            lines.append("Merged into \(main.other)")
+        }
+        if let date { lines.append("Last commit " + RefDates.relative(date, now: now)) }
+        return lines
+    }
+}
+
+extension String {
+    /// With its first letter in capitals, as a line of a tooltip starts.
+    fileprivate var capitalizedFirst: String {
+        prefix(1).uppercased() + dropFirst()
     }
 }
 
