@@ -1270,6 +1270,13 @@ final class RepositoryModel {
         return reviewMain
     }
 
+    /// The main branch's full name, which deleting a folder of branches or the
+    /// ones picked in the refs panel leaves out (decision 121), or nil until
+    /// history has read the refs, or when there's no main branch.
+    var mainBranch: String? {
+        reviewMain?.refs.first
+    }
+
     /// Works out what branches are reviewed against, once for each history,
     /// because every branch's row in the refs panel asks.
     private static func reviewMain(_ refs: RefList) -> (refs: [String], title: String)? {

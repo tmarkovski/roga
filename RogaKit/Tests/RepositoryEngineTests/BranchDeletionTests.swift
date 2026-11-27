@@ -38,7 +38,7 @@ struct BranchDeletionTests {
     func makeBranch(_ name: String, commits: Int, in folder: String) async throws -> [String] {
         try await runGit("switch", "--quiet", "--create", name, "main", in: folder)
         var made: [String] = []
-        for index in 0..<commits { made.insert(try await commit("Commit \(index)", in: folder), at: 0) }
+        for index in 0..<commits { made.insert(try await commit("Commit \(index) on \(name)", in: folder), at: 0) }
         try await runGit("switch", "--quiet", "main", in: folder)
         return made
     }
@@ -219,6 +219,104 @@ struct BranchDeletionTests {
         try await runGit("fetch", "--quiet", in: clone.work)
         #expect(try await runGit("symbolic-ref", "refs/remotes/origin/HEAD", in: clone.work) == "refs/remotes/origin/main")
         #expect(try await prepare("refs/remotes/origin/main", in: clone).lostCount == 1)
+    }
+
+    // MARK: Branches on different commits
+
+    func prepare(apart names: [String], in clone: Clone, keepingMain: Bool = false, limit: Int = 5) async throws -> CommitBranchesDeletion {
+        try await clone.session.prepareToDelete(branches: names, on: nil, keepingMain: keepingMain, limit: limit, in: clone.work)
+    }
+
+    /// The clone's `origin/HEAD` names `main`, so the local `main` is the main
+    /// branch. The clone leaves it, since git won't delete a branch that's
+    /// checked out anyway.
+    @Test func keepsTheMainBranchWhenAskedTo() async throws {
+        let clone = try await clone()
+        try await makeBranch("tm/one", commits: 1, in: clone.work)
+        try await runGit("switch", "--quiet", "--detach", in: clone.work)
+        let names = ["refs/heads/main", "refs/heads/tm/one"]
+        let kept = try await prepare(apart: names, in: clone, keepingMain: true)
+        #expect(kept.branches.map(\.ref) == ["refs/heads/tm/one"])
+        #expect(kept.main?.ref == "refs/heads/main")
+        #expect(kept.lostBy == [["refs/heads/tm/one"]: 1])
+
+        let all = try await prepare(apart: names, in: clone)
+        #expect(all.branches.map(\.ref) == names)
+        #expect(all.main == nil)
+    }
+
+    @Test func countsWhatEachOfSeveralBranchesLeadsToApart() async throws {
+        let clone = try await clone()
+        try await makeBranch("tm/one", commits: 1, in: clone.work)
+        try await makeBranch("tm/two", commits: 2, in: clone.work)
+        let deletion = try await prepare(apart: ["refs/heads/tm/one", "refs/heads/tm/two"], in: clone)
+        #expect(deletion.lostCount == 3)
+        #expect(deletion.lostBy == [["refs/heads/tm/one"]: 1, ["refs/heads/tm/two"]: 2])
+        #expect(deletion.lostCount(deleting: ["refs/heads/tm/one"]) == 1)
+        #expect(deletion.lostCount(deleting: ["refs/heads/tm/two"]) == 2)
+        #expect(deletion.lostCount(deleting: ["refs/heads/tm/one", "refs/heads/tm/two"]) == 3)
+        #expect(deletion.lostCount(onlyBy: "refs/heads/tm/two") == 2)
+        #expect(deletion.lostCount(sharedBy: "refs/heads/tm/two") == 0)
+    }
+
+    /// A branch made from another one leads to that one's commits too, so they
+    /// go only when both do.
+    @Test func commitsTwoBranchesLeadToGoOnlyWithBoth() async throws {
+        let clone = try await clone()
+        try await makeBranch("tm/base", commits: 2, in: clone.work)
+        try await runGit("switch", "--quiet", "--create", "tm/next", "tm/base", in: clone.work)
+        try await commit("On next", in: clone.work)
+        try await runGit("switch", "--quiet", "main", in: clone.work)
+        let base = "refs/heads/tm/base"
+        let next = "refs/heads/tm/next"
+        let deletion = try await prepare(apart: [base, next], in: clone)
+        #expect(deletion.lostCount == 3)
+        #expect(deletion.lostBy == [[base, next]: 2, [next]: 1])
+        #expect(deletion.lostCount(deleting: [base]) == 0)
+        #expect(deletion.lostCount(deleting: [next]) == 1)
+        #expect(deletion.lostCount(deleting: [base, next]) == 3)
+        #expect(deletion.lostCount(onlyBy: base) == 0)
+        #expect(deletion.lostCount(sharedBy: base) == 2)
+    }
+
+    @Test func aBranchThatsMergedLosesNothingAmongOthers() async throws {
+        let clone = try await clone()
+        try await makeBranch("tm/kept", commits: 1, in: clone.work)
+        try await runGit("branch", "tm/merged", "main", in: clone.work)
+        let deletion = try await prepare(apart: ["refs/heads/tm/kept", "refs/heads/tm/merged"], in: clone)
+        #expect(deletion.lostBy == [["refs/heads/tm/kept"]: 1])
+        #expect(deletion.lostCount(deleting: ["refs/heads/tm/merged"]) == 0)
+        #expect(deletion.lostCount(onlyBy: "refs/heads/tm/merged") == 0)
+    }
+
+    /// Branches on one commit all lead to the same commits.
+    @Test func branchesOnACommitShareEveryCommitTheyLose() async throws {
+        let clone = try await clone()
+        let made = try await makeBranch("topic", commits: 2, in: clone.work)
+        try await runGit("branch", "copy", "topic", in: clone.work)
+        let deletion = try await prepare(branches: ["refs/heads/topic", "refs/heads/copy"], on: made[0], in: clone)
+        #expect(deletion.lostBy == [["refs/heads/topic", "refs/heads/copy"]: 2])
+        #expect(deletion.lostCount(deleting: ["refs/heads/topic"]) == 0)
+        #expect(deletion.lostCount(deleting: ["refs/heads/topic", "refs/heads/copy"]) == 2)
+    }
+
+    /// A merge's commits get the branches of every child.
+    @Test func passesBranchesDownThroughAMerge() throws {
+        // d is a merge of b and c, which both come from a. e is another
+        // branch's tip on c.
+        let listed = """
+        dddd bbbb cccc
+        eeee cccc
+        bbbb aaaa
+        cccc aaaa
+        aaaa ffff
+        """
+        let id = { (letter: Character) in try #require(ObjectID(hex: String(repeating: letter, count: 40))) }
+        let lines = listed.split(separator: "\n").map { line in
+            line.split(separator: " ").map { String(repeating: $0.first!, count: 40) }.joined(separator: " ")
+        }.joined(separator: "\n")
+        let owners = LostCommits.owners(listed: lines, tips: ["merge": try id("d"), "other": try id("e")])
+        #expect(owners == [["merge"]: 2, ["merge", "other"]: 2, ["other"]: 1])
     }
 
     // MARK: The branches on a commit

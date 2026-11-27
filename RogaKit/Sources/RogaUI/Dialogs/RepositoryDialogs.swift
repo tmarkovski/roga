@@ -719,31 +719,42 @@ extension BranchModel {
         )
     }
 
-    /// Asks which of the branches on a commit should go. Everything stays where it is
+    /// Asks which of several branches should go. Everything stays where it is
     /// while the switches flip, because a sheet can't change size.
     func dialog(for choice: BranchChoice) -> DialogContent {
         let cancel = { [weak self] in self?.branchChoice = nil; return () }
         let deletion = choice.deletion
+        let staying = deletion.branches.filter { !choice.picked.contains($0.ref) }
+        // On one commit, any branch that stays keeps them all. On different
+        // commits, they can be on any of the ones that stay.
+        let keeper: String? = if case .onCommit = choice.kind {
+            staying.first?.shortName
+        } else {
+            staying.count == 1 ? staying[0].shortName : "the branches switched off"
+        }
         let commits = DialogContent.commitRows(
             choice.commits,
             total: deletion.lostCount,
             losing: choice.lostCount,
-            stayingOn: deletion.branches.first { !choice.picked.contains($0.ref) }?.shortName
+            stayingOn: keeper
         )
         // Each switch that's off leaves room for its command.
         let terminal = choice.deletions.map { TerminalLine.command($0.arguments) }
-            + deletion.branches.filter { !choice.picked.contains($0.ref) }.map { TerminalLine.room($0.arguments) }
+            + staying.map { TerminalLine.room($0.arguments) }
         return DialogContent(
             id: "branchChoice",
-            title: choice.mergedInto == nil ? "Delete which branches?" : "Delete merged branches?",
+            title: choice.title,
             switches: deletion.branches.enumerated().map { index, branch in
                 let others = deletion.branches.filter { $0.ref != branch.ref }
-                let detail: DialogText = if let main = choice.mergedInto, branch.place == .local, deletion.lostCount == 0 {
-                    "Its commits are all in \(code: main)."
-                } else if branch.place == .local {
-                    .ofDeletingBranch(losing: 0, losingWithItsRemoteBranch: deletion.lostCount, remoteBranch: others.count == 1 ? others[0] : nil)
-                } else {
+                let detail: DialogText = switch choice.kind {
+                case _ where branch.place != .local:
                     .ofDeletingRemoteBranch(branch)
+                case .onCommit:
+                    .ofDeletingBranch(losing: 0, losingWithItsRemoteBranch: deletion.lostCount, remoteBranch: others.count == 1 ? others[0] : nil)
+                case .merged(let main) where deletion.lostCount == 0:
+                    "Its commits are all in \(code: main)."
+                case .merged, .folder, .picked:
+                    .ofDeletingOneOf(branch.ref, in: deletion)
                 }
                 return DialogSwitch(
                     title: "\(code: branch.shortName)",
@@ -757,7 +768,10 @@ extension BranchModel {
                 }
             },
             cardsAfterSwitches: commits.isEmpty ? [] : [commits],
-            note: .stayingCheckedOut(deletion.checkedOut.map(\.shortName)),
+            note: .sentences([
+                deletion.main.map { "\(code: $0.shortName) stays, because it's the main branch." },
+                .stayingCheckedOut(deletion.checkedOut.map(\.shortName)),
+            ].compactMap(\.self)),
             terminal: terminal,
             buttons: [
                 .cancel(cancel),
@@ -918,6 +932,17 @@ extension DialogText {
         if losing == 1 { return "1 commit isn't on any other branch or tag." }
         if losing > 1 { return "\(losing.formatted()) commits aren't on any other branch or tag." }
         if losingWithItsRemoteBranch > 0, let remoteBranch { return "Its commits are also on \(code: remoteBranch.shortName)." }
+        return "Its commits are all on other branches or tags."
+    }
+
+    /// What a switch says for one of several branches on different commits:
+    /// how many commits only it has, or else whether some of its commits are on
+    /// no branch outside the dialog, which go if the others with them go too.
+    static func ofDeletingOneOf(_ ref: String, in deletion: CommitBranchesDeletion) -> DialogText {
+        let only = deletion.lostCount(onlyBy: ref)
+        if only == 1 { return "1 commit isn't on any other branch or tag." }
+        if only > 1 { return "\(only.formatted()) commits aren't on any other branch or tag." }
+        if deletion.lostCount(sharedBy: ref) > 0 { return "Some of its commits are only on branches in this list." }
         return "Its commits are all on other branches or tags."
     }
 

@@ -227,28 +227,58 @@ final class BranchModel {
         var checkedOut: [String] = []
     }
 
-    /// Deleting some of the branches on a commit, while someone chooses which.
+    /// Deleting some of several branches, while someone chooses which.
     struct BranchChoice: Equatable {
+        /// Which branches these are, which says what the dialog is called and
+        /// which of them start on.
+        enum Kind: Equatable {
+            /// The branches on one commit, from history's Delete….
+            case onCommit
+            /// The merged branches that the button on the refs panel's Branches
+            /// heading deletes, with the main branch's short name.
+            case merged(into: String)
+            /// The local branches in a folder of the refs panel, from the folder's
+            /// menu, with the folder's path, as in `tm/`.
+            case folder(String)
+            /// The local branches picked in the refs panel with Command or Shift.
+            case picked
+        }
+
         var deletion: CommitBranchesDeletion
         /// The full names of what's picked so far. This lives with the question rather
         /// than in the view, so that a button reads it when it's pressed.
         var picked: Set<String>
         /// The newest commits that deleting all of them loses.
         var commits: [ListedCommit]
-        /// The main branch's short name, when these are the merged branches the refs
-        /// panel offers to delete rather than the branches on one commit.
-        var mergedInto: String?
+        var kind: Kind
 
-        /// Starts with every local branch going and every remote branch staying, unless
-        /// those local branches are all there is and would take commits with them. There's
-        /// no telling then which name to keep, so nothing starts on.
-        init(deletion: CommitBranchesDeletion, commits: [ListedCommit], mergedInto: String? = nil) {
+        /// A folder's branches and the ones picked in the refs panel all start on,
+        /// since someone asked for those by name. Otherwise it starts with every
+        /// local branch going and every remote branch staying, unless those local
+        /// branches are all there is and would take commits with them. There's no
+        /// telling then which name to keep, so nothing starts on.
+        init(deletion: CommitBranchesDeletion, commits: [ListedCommit], kind: Kind = .onCommit) {
             self.deletion = deletion
             self.commits = commits
-            self.mergedInto = mergedInto
+            self.kind = kind
             let local = deletion.branches.filter { $0.place == .local }
-            let losesCommits = deletion.lostCount > 0 && local.count == deletion.branches.count
-            picked = losesCommits ? [] : Set(local.map(\.ref))
+            switch kind {
+            case .folder, .picked:
+                picked = Set(local.map(\.ref))
+            case .onCommit, .merged:
+                let losesCommits = deletion.lostCount > 0 && local.count == deletion.branches.count
+                picked = losesCommits ? [] : Set(local.map(\.ref))
+            }
+        }
+
+        /// What the dialog asks.
+        var title: String {
+            switch kind {
+            case .onCommit: "Delete which branches?"
+            case .merged: "Delete merged branches?"
+            case .folder(let path): "Delete the branches in \(path)?"
+            case .picked: deletion.branches.count == 1 ? "Delete 1 branch?" : "Delete \(deletion.branches.count.formatted()) branches?"
+            }
         }
 
         /// What's picked, with remotes last, because they're shared.
@@ -257,10 +287,10 @@ final class BranchModel {
             return picked.filter { !$0.reachesRemote } + picked.filter(\.reachesRemote)
         }
 
-        /// How many commits go with what's picked. Any branch that stays keeps them all,
-        /// because they're all on one commit.
+        /// How many commits go with what's picked. A commit stays while any branch
+        /// that leads to it stays.
         var lostCount: Int {
-            picked.count == deletion.branches.count ? deletion.lostCount : 0
+            deletion.lostCount(deleting: picked)
         }
 
         /// Whether what's picked can't be brought back, or reaches a remote.
@@ -1155,19 +1185,59 @@ final class BranchModel {
     ///   - names: The full names of the merged branches that no worktree has.
     ///   - main: The main branch's short name, which the dialog names.
     func askToDelete(merged names: [String], into main: String) {
+        askToDelete(
+            apart: names,
+            kind: .merged(into: main),
+            gone: "The merged branches have gone, or a worktree has them, since the list was read."
+        )
+    }
+
+    /// Asks about deleting some local branches at once, from a folder's menu in
+    /// the refs panel or the branches picked there with Command or Shift
+    /// (decision 121). The dialog has a switch for each, all on. They're on
+    /// different commits, so each is taken wherever it is now, and the dialog
+    /// says which commits only they have.
+    ///
+    /// - Parameters:
+    ///   - names: The branches' full names, including any that are checked out,
+    ///     which the dialog says stay.
+    ///   - kind: `.folder` or `.picked`.
+    func askToDelete(branches names: [String], as kind: BranchChoice.Kind) {
+        askToDelete(apart: names, kind: kind, gone: "The branches have gone since the list was read.")
+    }
+
+    /// Asks which of some branches on different commits should go. The main
+    /// branch stays, since deleting it along with others is never what someone
+    /// means (decision 121).
+    ///
+    /// - Parameter gone: What to say when none of them are left to delete and
+    ///   none are checked out or the main branch.
+    private func askToDelete(apart names: [String], kind: BranchChoice.Kind, gone: String) {
         guard !isBusy, !names.isEmpty else { return }
         preparingDeletion = Task {
             do {
-                let deletion = try await session.prepareToDelete(branches: names, on: nil, limit: Self.overwrittenLimit, in: worktree)
+                let deletion = try await session.prepareToDelete(
+                    branches: names,
+                    on: nil,
+                    keepingMain: true,
+                    limit: Self.overwrittenLimit,
+                    in: worktree
+                )
                 if deletion.branches.isEmpty {
+                    let checkedOut = deletion.checkedOut.map(\.shortName)
+                    var sentences: [String] = []
+                    if let main = deletion.main { sentences.append("\(main.shortName) stays, because it's the main branch.") }
+                    if !checkedOut.isEmpty {
+                        sentences.append("\(Self.list(checkedOut)) \(checkedOut.count == 1 ? "is" : "are") checked out, and git won't delete a branch that's checked out.")
+                    }
                     failure = Failure(
                         title: "Nothing to delete",
-                        message: "The merged branches have gone, or a worktree has them, since the list was read.",
+                        message: sentences.isEmpty ? gone : sentences.joined(separator: " "),
                         changedNothing: true
                     )
                     lookAgain()
                 } else {
-                    branchChoice = BranchChoice(deletion: deletion, commits: await listed(deletion.lost), mergedInto: main)
+                    branchChoice = BranchChoice(deletion: deletion, commits: await listed(deletion.lost), kind: kind)
                 }
             } catch {
                 failure = Failure(title: "Can't delete branches", error: error, changedNothing: true)

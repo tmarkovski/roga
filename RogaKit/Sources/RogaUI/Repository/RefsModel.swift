@@ -83,14 +83,26 @@ final class RefsModel {
     /// worktree that has none, or whose submodules can't be read, has an empty
     /// list, and so no section.
     private(set) var submodules: [Submodule] = []
-    /// The text that narrows every section at once.
-    var filter = ""
+    /// The text that narrows every section at once. Changing it lets go of the
+    /// picked branches, which it could hide.
+    var filter = "" {
+        didSet {
+            if filter != oldValue, !picked.isEmpty { picked = [] }
+        }
+    }
     /// The full name of the ref whose row the user selected. It only shows as
     /// selected while history has that ref's commit selected.
     private(set) var selectedRef: String?
     /// Goes up when the user moves through the rows with the keyboard, so that
     /// the list knows to scroll to the selected one.
     private(set) var selectionSteps = 0
+    /// The local branches picked with Command-click and Shift-click, by full
+    /// name, which a right-click on one of them deletes together (decision 121).
+    /// Empty while there's only the one selected row.
+    private(set) var picked: Set<String> = []
+    /// The local branch a Shift-click picks from: the last one clicked without
+    /// Shift.
+    @ObservationIgnored private var pickAnchor: String?
     /// Whether a menu command asked for the keyboard to go to the filter, which
     /// the panel does once it's showing.
     var wantsFilterFocus = false
@@ -171,6 +183,12 @@ final class RefsModel {
         content = new
         sorted = nil
         grouped = nil
+        // A picked branch that's gone, as one just deleted is, isn't picked.
+        if !picked.isEmpty, case .loaded(let details) = new {
+            let names = Set(details.branches.map(\.name))
+            picked = picked.intersection(names)
+            if picked.count < 2 { picked = [] }
+        }
         showLinks()
     }
 
@@ -425,15 +443,75 @@ final class RefsModel {
         return rows
     }
 
-    /// Selects a ref's row.
+    /// Selects a ref's row, which leaves only that one selected.
     func select(ref name: String) {
         selectedRef = name
+        picked = []
+        pickAnchor = name
     }
 
     /// Records that the keyboard moved the selection to a ref's row.
     func step(to name: String) {
         selectedRef = name
+        picked = []
+        pickAnchor = name
         selectionSteps += 1
+    }
+
+    /// Picks a local branch along with the ones picked already, or leaves it out
+    /// if it's picked, for a Command-click (decision 121). The first one picks
+    /// the selected row too, when that's a local branch, as a list does.
+    ///
+    /// - Parameters:
+    ///   - name: The branch's full name.
+    ///   - selected: The full name of the local branch whose row shows as
+    ///     selected, if there is one.
+    /// - Returns: Whether the branch is picked now.
+    @discardableResult
+    func pick(toggling name: String, selected: String?) -> Bool {
+        var picked = picked
+        if picked.isEmpty, let selected, selected != name { picked.insert(selected) }
+        let isPicked = picked.remove(name) == nil
+        if isPicked {
+            picked.insert(name)
+            selectedRef = name
+        } else if selectedRef == name {
+            selectedRef = nil
+        }
+        // One picked branch is just the selected row.
+        if picked.count == 1, let only = picked.first {
+            selectedRef = only
+            picked = []
+        }
+        self.picked = picked
+        pickAnchor = name
+        return isPicked
+    }
+
+    /// Picks the local branches from the last one clicked without Shift to this
+    /// one, for a Shift-click (decision 121).
+    ///
+    /// - Parameters:
+    ///   - name: The branch's full name.
+    ///   - rows: The full names of the local branches in the order their rows
+    ///     show, which are the ones a Shift-click can reach.
+    ///   - selected: The full name of the local branch whose row shows as
+    ///     selected, which the range starts from when nothing else was clicked.
+    func pick(through name: String, in rows: [String], selected: String?) {
+        let from = pickAnchor.flatMap { rows.firstIndex(of: $0) } ?? selected.flatMap { rows.firstIndex(of: $0) }
+        guard let from, let to = rows.firstIndex(of: name), from != to else {
+            select(ref: name)
+            return
+        }
+        let anchor = pickAnchor ?? selected
+        picked = Set(rows[min(from, to)...max(from, to)])
+        selectedRef = name
+        pickAnchor = anchor
+    }
+
+    /// Picks nothing, leaving the selected row as it is.
+    func clearPicked() {
+        picked = []
     }
 
     /// Orders the lists. The current branch comes first, where it's easy to

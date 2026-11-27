@@ -96,7 +96,7 @@ roga/
 │   │   │   ├── CommitRevert.swift      reverting a commit, and what to say before it
 │   │   │   ├── ChangesAside.swift      setting aside changes in the way of a pull or a reset, decision 59
 │   │   │   ├── ConflictCommands.swift  reading a file's conflicts, writing what resolves them, and keeping a side, decision 60
-│   │   │   ├── BranchDeletion.swift    what deleting a branch would lose, and deleting it
+│   │   │   ├── BranchDeletion.swift    what deleting a branch would lose, and which of several branches lead to each commit they would lose, decision 121, and deleting it
 │   │   │   ├── WorktreeDeletion.swift  what deleting a linked worktree would lose
 │   │   │   ├── DiffLoader.swift        the files a commit changed or two commits differ in, and their patches
 │   │   │   ├── StashContents.swift     a stash's staged, unstaged and untracked files, and a branch's review, decision 56
