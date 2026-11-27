@@ -147,6 +147,15 @@ body{margin:0}
 .l2 .o{color:var(--act)}
 .l2 .lk{margin-right:3px;display:flex}
 .ag .l1 .t{color:var(--tx2);flex:none}
+/* D: the icon and the mark sit in the first line, as in today's chip,
+   and the second line starts under them, at the block's left edge. */
+.co.inl,.ag.inl{padding:0 9px 0 7px}
+.inl .l1{align-items:center}
+.inl .l1>.ic{color:var(--tx2);margin-right:5px}
+.inl .l1>.mk{margin-right:6px}
+/* 13 points, the size of the text beside them, as a symbol in a line of
+   text is drawn. */
+.inl .l1>.ic,.inl .l1>.mk,.inl .l1>.mk svg{width:13px;height:13px}
 .ag .short,.narrow .ag .long{display:none}
 .narrow .ag .short{display:block}
 .ag.warn .l1{color:var(--warn)}
@@ -699,8 +708,10 @@ def bar_today(s: Scene, h: Hooks, narrow: bool = False) -> str:
     return f'<div class="brow{tight(s)}{h.row}">{"".join(parts)}</div>'
 
 
-def agent_block(s: Scene, h: Hooks) -> str:
-    """A's and C's agent: its mark, then what state it's in over what it's doing."""
+def agent_block(s: Scene, h: Hooks, *, inline: bool = False) -> str:
+    """A's, C's and D's agent: its mark, then what state it's in over what
+    it's doing. D puts the mark in the first line, and the second line
+    starts under it."""
     a = s.lead
     first, line, time, tone = two_lines(s)
     t = f'<span class="t">&nbsp;· {esc(time)}</span>' if time else ""
@@ -708,8 +719,9 @@ def agent_block(s: Scene, h: Hooks) -> str:
     # In a narrow column the first line says only whose it is, as a
     # ViewThatFits would pick, and the mark and the color say the rest.
     short = a.who if len(s.agents) == 1 else f"{a.who} +{len(s.agents) - 1}"
-    btn = (f'<button class="ag{tone}" type="button"{h.ag_click}>{MARK[a.state]}<span class="two">'
-           f'<span class="l1"><span class="cut long">{esc(first)}</span><span class="cut short">{esc(short)}</span>{t}</span>'
+    lead_mark, inl, l1_mark = ("", " inl", MARK[a.state]) if inline else (MARK[a.state], "", "")
+    btn = (f'<button class="ag{tone}{inl}" type="button"{h.ag_click}>{lead_mark}<span class="two">'
+           f'<span class="l1">{l1_mark}<span class="cut long">{esc(first)}</span><span class="cut short">{esc(short)}</span>{t}</span>'
            f'<span class="l2"><span class="cut{shim}">{esc(line)}</span></span></span></button>')
     return wrap(btn, "aw h36", tip=f"{first}: {line}" + (f" · {time}" if time else ""),
                 tip_on=h.tip_on == "ag", pop=h.ag_pop, fill=h.ag_fill)
@@ -717,16 +729,23 @@ def agent_block(s: Scene, h: Hooks) -> str:
 
 def bar_two(s: Scene, h: Hooks, option: str) -> str:
     """A: the branch over its folder. C: the branch over how far it is from
-    main. D: C, with every control in the row as tall as its two-line blocks."""
-    icon = COMMIT16 if s.branch is None else BRANCH16
+    main. D: C, with every control in the row as tall as its two-line blocks,
+    and the branch's icon and the agent's mark in their first lines."""
+    inline = option == "D"
     second = folder_html(s) if option == "A" else relation_html(s)
     tip = summary(s) if option == "A" else f"{s.folder}\n{summary(s)}"
-    btn = (f'<button class="co" type="button"{h.co_click}>{icon}<span class="two">'
-           f'<span class="l1">{name_html(s)}</span><span class="l2">{second}</span></span></button>')
+    if inline:
+        # Today's chip draws the branch's icon even for a detached HEAD,
+        # whose hash and "detached" already say it.
+        lead_icon, inl, l1_icon = "", " inl", BRANCH
+    else:
+        lead_icon, inl, l1_icon = (COMMIT16 if s.branch is None else BRANCH16), "", ""
+    btn = (f'<button class="co{inl}" type="button"{h.co_click}>{lead_icon}<span class="two">'
+           f'<span class="l1">{l1_icon}{name_html(s)}</span><span class="l2">{second}</span></span></button>')
     parts = [wrap(btn, "cw h36", tip=tip, tip_on=h.tip_on == "co", pop=h.co_pop, fill=h.co_fill),
              counts(s, h), roga_words(s)]
     if s.speaks:
-        parts.append(agent_block(s, h))
+        parts.append(agent_block(s, h, inline=inline))
     parts.append('<span class="sp"></span>')
     parts.append(right_end(s, count=False))
     even = " even" if option == "D" else ""
@@ -961,7 +980,7 @@ def board_heights() -> Board:
     scene = Scene(agents=[RUN_TESTS], behind=3)
     rows = [("today", "Today", "Every control 32 points"),
             ("C", "C", "The two-line blocks 36, the rest 32"),
-            ("D", "D", "Every control 36 points")]
+            ("D", "D", "Every control 36 points, icons inline")]
     label_w = 270
     cols = f"{label_w}px {WIDE}px {WIDE}px"
     cells = ['<span class="st-h"></span>', '<span class="st-h">As it looks</span>',
@@ -1136,7 +1155,8 @@ INTROS = [
     "in agent/fix-login. A gives the branch and the agent two lines each in the row's 44 points, with the folder under "
     "the branch. B shrinks every part to a label and leaves the words to tooltips and popovers. C keeps A's two lines "
     "but puts how far the branch is from origin/main under it, and leaves the folder to the tooltip and the popover. "
-    "D is C with every control in the row as tall as its two-line blocks.",
+    "D is C with every control in the row as tall as its two-line blocks, and the branch's icon and the agent's mark "
+    "in their first lines.",
     "The first board shows how tall each control's fill is in today's row, in C and in D, as they look and with every "
     "fill showing at once. In A to D a click on the branch opens a popover about the checkout instead of the menu: the "
     "folder with Show in "
@@ -1199,7 +1219,11 @@ NOTES = {
     "Bb-D.dc.html": "D is C with every control in the row 36 points tall: the counts, Fetch, New Branch and the order "
                     "as well as the branch and the agent. Today's row draws every control at 32, so the fills under "
                     "the pointer match as it slides along the row. C's two-line blocks need 36, which leaves the counts "
-                    "between them shorter than their neighbours. The icon button style already takes a size.",
+                    "between them shorter than their neighbours. The icon button style already takes a size. The "
+                    "branch's icon sits in the first line, before the name, as in today's chip, and the agent's mark "
+                    "before its state, so the second lines start at the blocks' left edges and give the agent's words "
+                    "about 24 points more. The icon is always the branch's, since a detached HEAD's hash and the word "
+                    "detached already say it.",
     "Bb-Heights.dc.html": "The boards before this one drew the counts at 28 points, where the app draws them at 32, "
                           "and they're 32 now. In C the counts are still 4 points shorter than the blocks on either "
                           "side of them, which is easiest to see with every fill showing. D evens them out at 36, which "

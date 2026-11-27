@@ -10,7 +10,7 @@ The boards draw the middle column at 680 points, as in the default window, and a
 - **A · Two lines** gives the branch and the agent two lines each in the row's 44 points, as a window's title and subtitle share a toolbar. The folder sits under the branch, cut in its middle so that its last part stays. The agent's state and how long sit over what it's doing, as in `Claude Code is working · 6 min` over `Run the test suite`, and the light runs through the second line.
 - **B · Labels** shrinks every part to a short label, the folder's last part, the branch, the counts and the agent's name and time, and moves the words into tooltips and popovers.
 - **C · Against main** keeps A's two lines, but the branch's second line says how far it is from `origin/main`, and the folder moves to the tooltip and the popover.
-- **D · C at one height** is C with every control in the row 36 points tall, as its two-line blocks are.
+- **D · C at one height** is C with every control in the row 36 points tall, as its two-line blocks are, and with the branch's icon and the agent's mark in their first lines rather than beside both.
 
 In A to D the number of commits moves into the order's menu, which leaves the agent the room it shared with it, and the branch's menu becomes a popover about the checkout:
 
@@ -49,6 +49,8 @@ Today's row draws every control at 32 points: the branch's chip, the counts, the
 D raises every control in the row to 36 points, which leaves 4 points above and below each fill in the 44-point row. The icon button style already takes a size. Squeezing the two-line blocks into 32 points instead would leave about 2 points above and below their text, which looks cramped beside the single-line buttons. The tabs in the row above stay at 32, since they're a different kind of control in a different row.
 
 An earlier version of these boards drew the counts at 28 points, where the app draws them at 32. They're 32 in every option now.
+
+D also moves the branch's icon into the first line, before the name, as today's chip draws it, and the agent's mark before its state. Both are 13 points, the size of the text beside them, where today's chip draws the icon at about 15. Smaller than 12, the icon's two circles and curve run together, and each point it loses gives only a point back to the line. A and C give each a 16-point column beside both lines, which treats them as more than they are. The icon is always the branch's, since the app draws it even for a detached HEAD, whose hash and the word `detached` already say it, and the mark's color already carries the agent's state. With both in their first lines, the second lines start at the blocks' left edges, which gives the agent's words about 24 more points before they're cut. The second line's text starts a little left of the first line's, while the block's left edge stays straight.
 
 ## What to watch in C
 
