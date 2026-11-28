@@ -248,11 +248,22 @@ struct HouseAnimationTests {
         #expect(BranchModel.Action.fetching.timeToPlayHouse == .zero)
     }
 
-    @Test func theWordsBesideTheHouseMoveTheWayItWorks() {
-        #expect(WordsArrival(.push) == .fromLeft)
-        #expect(WordsArrival(.heave) == .fromRight)
-        #expect(WordsArrival(.waddle) == .fade)
-        #expect(WordsArrival(.run) == .fade)
+    @Test func aPushOrAPullPlaysInTheCountsPlaceAndAnUndoBeforeTheWords() {
+        let pushing = BranchActivityShown(house: BranchModel.Action.pushing.houseAnimation)
+        #expect(pushing.houseByCounts == .push)
+        #expect(pushing.houseByWords == nil)
+        let pulling = BranchActivityShown(house: BranchModel.Action.pulling.houseAnimation)
+        #expect(pulling.houseByCounts == .heave)
+        #expect(pulling.houseByWords == nil)
+        #expect(BranchActivityShown(house: BranchModel.Action.deletingFromRemote.houseAnimation).houseByCounts == .push)
+        for action in [BranchModel.Action.undoing, .aborting, .continuingRebase] {
+            let shown = BranchActivityShown(house: action.houseAnimation)
+            #expect(shown.houseByCounts == nil)
+            #expect(shown.houseByWords == .waddle)
+        }
+        let still = BranchActivityShown()
+        #expect(still.houseByCounts == nil)
+        #expect(still.houseByWords == nil)
     }
 
     @Test func playingOnceTakesOneCycleAtTheSpeed() {
