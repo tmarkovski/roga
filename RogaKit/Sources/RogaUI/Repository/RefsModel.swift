@@ -48,8 +48,9 @@ final class RefsModel {
             }
         }
 
-        /// How many it has, in words, as in `12 branches`, for its header's
-        /// tooltip, since the header shows no count (decision 84).
+        /// How many it has, in words, as in `12 branches`, for VoiceOver to
+        /// say after its header's title, where the header shows the number
+        /// (decision 125).
         func counted(_ count: Int) -> String {
             let one = switch self {
             case .branches: "branch"

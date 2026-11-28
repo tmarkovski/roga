@@ -110,6 +110,7 @@ struct RefsPanel: View {
                 VStack(alignment: .leading, spacing: 0) {
                     let isFiltering = !refs.filter.isEmpty
                     let submodules = refs.shownSubmodules
+                    let first = firstSection(details, submodules: submodules.count)
                     if isFiltering, details.isEmpty, submodules.isEmpty {
                         Text("No refs match “\(refs.filter)”")
                             .font(.system(size: 12))
@@ -117,7 +118,7 @@ struct RefsPanel: View {
                             .padding(16)
                             .frame(maxWidth: .infinity)
                     }
-                    section(.branches, count: details.branches.count, command: deleteMergedCommand) {
+                    section(.branches, count: details.branches.count, first: first, command: deleteMergedCommand) {
                         ForEach(rows.local) { row in
                             switch row.content {
                             case .folder(let ref, let name, let count, let isCollapsed):
@@ -127,7 +128,7 @@ struct RefsPanel: View {
                             }
                         }
                     }
-                    section(.remotes, count: details.remotes.count, command: SectionCommand(icon: .plus, help: "Add a remote") {
+                    section(.remotes, count: details.remotes.count, first: first, command: SectionCommand(title: "Add Remote…", icon: .plus, help: "Add a remote") {
                         model.branch.remoteDraft = BranchModel.RemoteDraft()
                     }) {
                         let trackers = refs.trackers
@@ -143,17 +144,17 @@ struct RefsPanel: View {
                             }
                         }
                     }
-                    section(.tags, count: details.tags.count) {
+                    section(.tags, count: details.tags.count, first: first) {
                         ForEach(details.tags, id: \.name) { tag in
                             tagRow(tag)
                         }
                     }
-                    section(.stashes, count: details.stashes.count) {
+                    section(.stashes, count: details.stashes.count, first: first) {
                         ForEach(details.stashes, id: \.position) { stash in
                             stashRow(stash)
                         }
                     }
-                    section(.submodules, count: submodules.count) {
+                    section(.submodules, count: submodules.count, first: first) {
                         ForEach(submodules, id: \.path) { submodule in
                             submoduleRow(submodule)
                         }
@@ -161,6 +162,7 @@ struct RefsPanel: View {
                 }
                 .padding(.bottom, 10)
             }
+            .coordinateSpace(.named(RefSectionHeader.space))
             // A scroll view reaches up under the title row, where the panel's
             // commands are, and draws over the panel's header, which comes
             // before it. So rows that went past a section's pinned header
@@ -196,33 +198,33 @@ struct RefsPanel: View {
         let merged = refs.deletableMergedBranches
         guard !merged.isEmpty, let main = merged.first?.main?.other else { return nil }
         let words = merged.count == 1 ? "Delete 1 merged branch…" : "Delete \(merged.count.formatted()) merged branches…"
-        return SectionCommand(icon: .deleteBranch, help: words) {
+        return SectionCommand(title: "Delete Merged…", icon: .deleteBranch, help: words, isDestructive: true) {
             isListFocused = true
             model.branch.askToDelete(merged: merged.map(\.name), into: main)
         }
     }
 
+    /// The section at the top of the list, which needs no line above its
+    /// heading, because the panel's header ends in one.
+    private func firstSection(_ details: RefDetails, submodules: Int) -> RefsModel.Section? {
+        let counts: [RefsModel.Section: Int] = [
+            .branches: details.branches.count,
+            .remotes: details.remotes.count,
+            .tags: details.tags.count,
+            .stashes: details.stashes.count,
+            .submodules: submodules,
+        ]
+        return RefsModel.Section.allCases.first { $0.isShown(count: counts[$0] ?? 0, isFiltering: !refs.filter.isEmpty) }
+    }
+
     /// A section, unless it has nothing to show and no reason to stay.
-    @ViewBuilder private func section<Rows: View>(_ section: RefsModel.Section, count: Int, command: SectionCommand? = nil, @ViewBuilder rows: () -> Rows) -> some View {
+    @ViewBuilder private func section<Rows: View>(_ section: RefsModel.Section, count: Int, first: RefsModel.Section?, command: SectionCommand? = nil, @ViewBuilder rows: () -> Rows) -> some View {
         if section.isShown(count: count, isFiltering: !refs.filter.isEmpty) {
             let isCollapsed = isCollapsed(section)
-            // Each section is a stack of its own, so that remotes and tags,
-            // the sections that can have thousands of rows, have rows of one
-            // height, and the stack can tell how tall it is without having laid
-            // them all out. A folder's row is shorter than a local branch's,
-            // but there are seldom many of either.
-            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: .sectionHeaders) {
-                Section {
-                    if !isCollapsed {
-                        rows()
-                    }
-                } header: {
-                    RefSectionHeader(section: section, count: count, isCollapsed: isCollapsed, command: command) {
-                        isListFocused = true
-                        setCollapsed(!isCollapsed, section)
-                    }
-                }
-            }
+            RefSection(section: section, count: count, isCollapsed: isCollapsed, isFirst: section == first, command: command, toggle: {
+                isListFocused = true
+                setCollapsed(!isCollapsed, section)
+            }, rows: rows)
         }
     }
 
@@ -718,69 +720,134 @@ private struct RefsPanelHeader<Commands: View>: View {
     }
 }
 
-/// A command at the right of a section's heading: the plus that adds a remote,
-/// and on Branches, the button that deletes the merged branches (decision 119).
+/// A command on a section's heading: Add Remote… on Remotes, and on Branches,
+/// Delete Merged… while there are merged branches to delete (decision 119). It's
+/// in words while there's room, as the buttons on the headings of uncommitted
+/// files are, and an icon in a narrower panel (decision 125).
 struct SectionCommand {
+    let title: String
     let icon: Icon
-    /// Its tooltip and its name for VoiceOver.
+    /// Its tooltip, which says more than its title.
     let help: String
+    /// Whether it deletes something, which makes it red, as Discard All… is.
+    var isDestructive = false
     let action: () -> Void
 }
 
-/// A section's title with a chevron after it, and at its right, the section's
-/// command, if it has one. Clicking it collapses or expands the section, unless it
-/// has nothing to show, which leaves no chevron and nothing to click. It stays
-/// in place as the section's rows scroll under it, so it has a background of
-/// its own.
+/// A section of the panel: its heading, and its rows unless it's collapsed. The
+/// heading stays at the top while the rows scroll under it, and it's pushed
+/// away by the next section's.
+///
+/// Each section is a stack of its own, so that remotes and tags, the sections
+/// that can have thousands of rows, have rows of one height, and the stack can
+/// tell how tall it is without having laid them all out. A folder's row is
+/// shorter than a local branch's, but there are seldom many of either.
+private struct RefSection<Rows: View>: View {
+    let section: RefsModel.Section
+    let count: Int
+    let isCollapsed: Bool
+    let isFirst: Bool
+    let command: SectionCommand?
+    let toggle: () -> Void
+    @ViewBuilder let rows: Rows
+    /// Whether the heading is held at the top of the list while the section's
+    /// rows scroll under it. Only this section reads it, so scrolling draws
+    /// nothing else again, and it changes only as the heading sticks or comes
+    /// loose.
+    @State private var isPinned = false
+
+    var body: some View {
+        LazyVStack(alignment: .leading, spacing: 0, pinnedViews: .sectionHeaders) {
+            Section {
+                if !isCollapsed {
+                    rows
+                }
+            } header: {
+                RefSectionHeader(section: section, count: count, isCollapsed: isCollapsed, isFirst: isFirst, isPinned: isPinned, command: command, toggle: toggle)
+            }
+        }
+        // The heading is held while the section's top has gone past the top of
+        // the list and there's more of it below the heading. Once the next
+        // section pushes it away, it's back in its place at the section's end.
+        .onGeometryChange(for: Bool.self) { proxy in
+            let frame = proxy.frame(in: .named(RefSectionHeader.space))
+            return frame.minY < -0.5 && frame.maxY > RefSectionHeader.height + 0.5
+        } action: { isPinned = $0 }
+    }
+}
+
+/// A section's title, how many it has and a chevron, and at its right the
+/// section's command, if it has one, looking as the headings of the lists of
+/// uncommitted files do (decision 125). Clicking it collapses or expands the
+/// section, unless it has nothing to show, which leaves no count, no chevron and
+/// nothing to click. A line parts it from the section above, and while it's
+/// held at the top, from the rows that scroll under it instead. It has a
+/// background of its own, for the rows to go under.
 private struct RefSectionHeader: View {
     let section: RefsModel.Section
     let count: Int
     let isCollapsed: Bool
+    /// Whether it's the first section in the list, right under the panel's
+    /// header, which ends in a line of its own.
+    let isFirst: Bool
+    /// Whether it's held at the top while the section's rows scroll under it.
+    let isPinned: Bool
     var command: SectionCommand?
     let toggle: () -> Void
 
-    /// How far the icon is from the right of its box: it's about 9 points wide
-    /// at its size, in a box of 22.
-    private static let iconInset = 6.0
+    /// The coordinate space of the list's visible frame, for a section to tell
+    /// whether its heading is held at the top.
+    static let space = "refs"
+    /// As tall as a heading over uncommitted files.
+    static var height: Double { StuckHeadings.headingHeight }
+    /// The room inside a command's box, before and after its words or icon.
+    /// The box goes that far past the line the rows' labels end on, so that
+    /// the words themselves end on that line.
+    private static let commandInset = 6.0
 
     var body: some View {
-        HStack(spacing: 4) {
-            Text(section.title)
-                .font(.system(size: 12, weight: .medium))
+        HStack(spacing: 6) {
+            // The title and count never give way, because they say what the
+            // section is, and the command has a shorter form.
+            HStack(spacing: 8) {
+                Text(section.title)
+                    .fontWeight(.medium)
+                    .fixedSize()
+                if count > 0 {
+                    Text(count, format: .number)
+                        .foregroundStyle(.secondary)
+                        .fixedSize()
+                }
+            }
             if count > 0 {
                 Chevron(pointsDown: !isCollapsed)
             }
             Spacer(minLength: 8)
-            // The header's right is for its commands. It shows no count, which
-            // would read like the numbers that ask for something, such as
-            // commits to pull (decision 84).
             if let command {
-                Button(action: command.action) {
-                    HoverIcon(size: 22) { command.icon.image }
-                }
-                .buttonStyle(.plain)
-                .help(command.help)
-                // The icon is in the middle of a box that's wider than it,
-                // which is what turns gray under the pointer. The box goes
-                // past the line the rows' labels end on, so that the icon
-                // itself ends on that line.
-                .padding(.trailing, -Self.iconInset)
+                commandButton(command)
+                    .layoutPriority(1)
+                    .padding(.trailing, -Self.commandInset)
             }
         }
-        .foregroundStyle(.secondary)
+        .font(.system(size: 12))
+        .frame(height: StuckHeadings.titleHeight)
         .padding(.leading, 16)
         .padding(.trailing, 14)
-        .frame(height: 28)
+        .padding(.vertical, StuckHeadings.aroundTitle)
         .background(Palette.surface)
+        .overlay(alignment: isPinned ? .bottom : .top) {
+            Rectangle()
+                .fill(Palette.separator)
+                .frame(height: 1)
+                .opacity(isPinned || !isFirst ? 1 : 0)
+        }
         .contentShape(Rectangle())
         .onTapGesture {
             if count > 0 { toggle() }
         }
-        // How many it has is in its tooltip, as a folder's is.
-        .help(section.counted(count))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(section.title)
-        .accessibilityValue(count > 0 ? "\(count), \(isCollapsed ? "Collapsed" : "Expanded")" : "\(count)")
+        .accessibilityValue(count > 0 ? "\(section.counted(count)), \(isCollapsed ? "Collapsed" : "Expanded")" : section.counted(count))
         .accessibilityHint(count > 0 ? "Shows or hides its rows" : "")
         .accessibilityAddTraits(count > 0 ? [.isHeader, .isButton] : .isHeader)
         .accessibilityAction(.default) {
@@ -789,6 +856,29 @@ private struct RefSectionHeader: View {
         .accessibilityActions {
             if let command { Button(command.help, action: command.action) }
         }
+    }
+
+    /// The command in words, or as an icon when the words don't fit, since
+    /// words cut short say nothing.
+    private func commandButton(_ command: SectionCommand) -> some View {
+        ViewThatFits(in: .horizontal) {
+            Button(action: command.action) {
+                Text(command.title)
+                    .fontWeight(.medium)
+                    .lineLimit(1)
+                    .padding(.horizontal, Self.commandInset)
+                    .frame(height: StuckHeadings.titleHeight)
+            }
+            .fixedSize()
+            Button(action: command.action) {
+                command.icon.image
+                    .font(.system(size: 13))
+                    .frame(width: StuckHeadings.titleHeight, height: StuckHeadings.titleHeight)
+            }
+        }
+        .buttonStyle(HeadingButtonStyle())
+        .foregroundStyle(command.isDestructive ? Palette.red : Color.primary)
+        .help(command.help)
     }
 }
 
@@ -1126,8 +1216,8 @@ private struct RefsPill: View {
     /// Which edge this one is at: the bottom, for a row below the ones in view.
     let isBelow: Bool
 
-    /// How tall a section's heading is (`RefSectionHeader`).
-    private static let headingHeight = 28.0
+    /// How tall a section's heading is.
+    private static var headingHeight: Double { RefSectionHeader.height }
 
     var body: some View {
         let pill = refs.pill.flatMap { $0.isBelow == isBelow ? $0 : nil }

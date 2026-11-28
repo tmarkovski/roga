@@ -91,7 +91,7 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [81](0081-stash-in-one-click-and-put-stashes-back-from-their-menu.md) | Stash in one click, and put stashes back from their menu | Accepted |
 | [82](0082-make-worktrees-from-the-sidebar-where-theyre-listed.md) | Make worktrees from the sidebar, where they're listed | The menu bar's New Worktree… opened on a tab, and the sidebar's worktree rows made a choice, by [95](0095-a-repositorys-worktrees-as-tabs.md) |
 | [83](0083-open-a-new-refs-popover-where-it-was-asked-for.md) | Open a new ref's popover where it was asked for | Accepted |
-| [84](0084-headers-show-no-counts.md) | Headers show no counts | Accepted |
+| [84](0084-headers-show-no-counts.md) | Headers show no counts | Counts put back on the refs panel's section headers by [125](0125-give-the-refs-panels-sections-the-headings-the-uncommitted-files-have.md) |
 | [85](0085-keep-the-refs-panels-button-in-the-windows-corner.md) | Keep the refs panel's button in the window's corner | The row it's in drawn by Roga rather than the toolbar in [96](0096-draw-the-title-row-at-44-points.md) |
 | [86](0086-gray-the-words-of-the-uncommitted-row.md) | Gray the words of the uncommitted row | Accepted |
 | [87](0087-sort-refs-from-the-panels-menu.md) | Sort refs from the panel's menu | Accepted |
@@ -126,8 +126,9 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [116](0116-offer-to-delete-a-locked-worktree-anyway.md) | Offer to delete a locked worktree anyway, unlock it, and show the lock in the sidebar | Accepted |
 | [117](0117-copy-a-signatures-key-and-add-it-to-github-from-the-signature-line.md) | Copy a signature's key, and add it to GitHub, from the Signature line | Accepted |
 | [118](0118-follow-a-changed-setting-without-making-another-thread-wait-for-the-main-thread.md) | Follow a changed setting without making another thread wait for the main thread | Accepted |
-| [119](0119-branches-on-one-line-and-what-the-pointer-lights-up.md) | Branches on one line, merged branches, and what the pointer lights up | Accepted |
+| [119](0119-branches-on-one-line-and-what-the-pointer-lights-up.md) | Branches on one line, merged branches, and what the pointer lights up | The Branches heading's button put in words, as Delete Merged…, by [125](0125-give-the-refs-panels-sections-the-headings-the-uncommitted-files-have.md) |
 | [120](0120-say-how-far-the-branch-is-from-main-and-make-its-menu-a-popover.md) | Say how far the branch is from main, and make its menu a popover | Accepted |
 | [121](0121-delete-a-folder-of-branches-or-the-branches-picked.md) | Delete a folder of branches, or the branches picked with Command and Shift | Accepted |
 | [122](0122-play-the-houses-windows-for-an-agent-at-work.md) | Play the house's windows for an agent at work | Accepted |
 | [123](0123-the-agent-provider-keeps-what-only-it-writes.md) | The agent provider keeps what only it writes, without reading it back | Accepted |
+| [125](0125-give-the-refs-panels-sections-the-headings-the-uncommitted-files-have.md) | Give the refs panel's sections the headings the uncommitted files have | Accepted |
