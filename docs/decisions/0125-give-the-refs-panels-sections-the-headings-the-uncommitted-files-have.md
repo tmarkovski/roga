@@ -1,6 +1,6 @@
 # 125. Give the refs panel's sections the headings the uncommitted files have
 
-Accepted on 2026-11-28. This puts counts back on the refs panel's section headers, which [decision 84](0084-headers-show-no-counts.md) took off, and puts the commands on those headers in words. The sidebar's header for its list keeps its count in its tooltip, as decision 84 says. The button that deletes merged branches is still the one [decision 119](0119-branches-on-one-line-and-what-the-pointer-lights-up.md) added, in words now.
+Accepted on 2026-11-28. This puts counts back on the refs panel's section headers, which [decision 84](0084-headers-show-no-counts.md) took off, and puts the commands on those headers in words. It also gives line counts the font's own digits everywhere, in place of digits of one width. The sidebar's header for its list keeps its count in its tooltip, as decision 84 says. The button that deletes merged branches is still the one [decision 119](0119-branches-on-one-line-and-what-the-pointer-lights-up.md) added, in words now.
 
 ## Context
 
@@ -20,11 +20,14 @@ Decision 84 took the counts off because a gray number beside a title looked like
 
 **Clicking a heading still collapses or expands its section.** VoiceOver says how many in words, as in `12 branches, Expanded`. The tooltip that had the count is gone, since the heading shows it.
 
+**Line counts use the font's own digits**, on headings and on rows alike, rather than digits of one width. On a heading such as **Unstaged 14 +644 −346**, the count of files had the font's own digits and the line counts had digits of one width, so the numbers looked like two sizes of type, though all of them are 12 points. A submodule's label, which takes the line counts' place on its row, uses the font's own digits too.
+
 ## Consequences
 
 - A collapsed section says how big it is.
 - The two panels' headings read the same way: the title, how many, and at the right what the heading can do.
 - The count on Remotes is how many remotes there are, not how many of their branches the section lists.
 - A heading is 4 points taller than before, so a full panel shows a little less.
+- In a list of files, the line counts' digits no longer line up from one row to the next, and a count gets a little wider or narrower as it changes, such as while an agent edits a file.
 - The sidebar's **Repositories** header keeps its count in its tooltip, as decision 84 has it.
 - The panel for uncommitted changes is unchanged, and its lists still can't be collapsed.
