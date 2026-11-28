@@ -20,16 +20,17 @@ struct WorktreeAgent: Equatable, Identifiable {
 /// session.
 ///
 /// It speaks for the most urgent of them, as a sidebar row's mark does, and
-/// keeps a finished session after someone has looked, since the worktree on
-/// screen counts as seen at once. So a finished one gets a gray check rather
-/// than the blue dot, which means that nobody has looked yet.
+/// keeps a finished session for two minutes after someone has looked, since
+/// the worktree on screen counts as seen at once. So a finished one gets a
+/// gray check rather than the blue dot, which means that nobody has looked
+/// yet.
 struct AgentLine: Equatable {
     /// What starts the line.
     enum Mark: Equatable {
         /// The sidebar's mark: the amber circle, or in the popover, the
         /// windows at work.
         case agent(AgentSummary.State)
-        /// A gray check in a circle, for a turn that ended.
+        /// A gray check, for a turn that ended.
         case finished
         /// A red cross in a circle, for a turn that ended with an error.
         case failed

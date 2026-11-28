@@ -524,6 +524,76 @@ struct AgentMonitorTests {
         #expect(monitor.worktreeAgents("/git/api", in: list).isEmpty)
     }
 
+    /// For the worktree on screen, the first look is when the agent finishes.
+    @Test func theBranchRowLetsGoOfWhatFinishedTwoMinutesAfterALook() {
+        let monitor = monitor()
+        monitor.receive(event("UserPromptSubmit", "a", in: "/git/api", at: 540))
+        monitor.receive(event("Stop", "a", in: "/git/api", at: 600, activity: "Added the tooltip"))
+        monitor.showing(worktree: "/git/api", appearsActive: true, in: list)
+        monitor.now = { [start] in start.addingTimeInterval(600 + 119) }
+        #expect(monitor.worktreeAgents("/git/api", in: list).map(\.phase) == [.finished(failed: false)])
+        monitor.now = { [start] in start.addingTimeInterval(600 + 120) }
+        #expect(monitor.worktreeAgents("/git/api", in: list).isEmpty)
+        // Its next turn shows again.
+        monitor.receive(event("UserPromptSubmit", "a", in: "/git/api", at: 800))
+        #expect(monitor.worktreeAgents("/git/api", in: list).map(\.phase) == [.working])
+    }
+
+    @Test func whatFinishedBehindStaysTwoMinutesFromTheLook() {
+        let monitor = monitor()
+        monitor.receive(event("Stop", "a", in: "/git/api", at: 60))
+        monitor.showing(worktree: "/git/api", appearsActive: false, in: list)
+        // Nobody has looked, so it stays however long ago it finished.
+        monitor.now = { [start] in start.addingTimeInterval(3600) }
+        #expect(monitor.worktreeAgents("/git/api", in: list).count == 1)
+        // The window comes to the front.
+        monitor.showing(worktree: "/git/api", appearsActive: true, in: list)
+        monitor.now = { [start] in start.addingTimeInterval(3600 + 119) }
+        #expect(monitor.worktreeAgents("/git/api", in: list).count == 1)
+        monitor.now = { [start] in start.addingTimeInterval(3600 + 120) }
+        #expect(monitor.worktreeAgents("/git/api", in: list).isEmpty)
+    }
+
+    /// Each look that sees another session finish is later than the last, and
+    /// a session that went already doesn't come back for it, even once the
+    /// looks that saw it have been let go of.
+    @Test func whatWentFromTheBranchRowStaysGone() {
+        let monitor = monitor()
+        let ids = { Set(monitor.worktreeAgents("/git/api", in: list).map(\.id.id)) }
+        monitor.now = { [start] in start.addingTimeInterval(10) }
+        monitor.receive(event("Stop", "a", in: "/git/api", at: 10))
+        monitor.showing(worktree: "/git/api", appearsActive: true, in: list)
+
+        monitor.now = { [start] in start.addingTimeInterval(300) }
+        #expect(ids().isEmpty)
+        monitor.receive(event("Stop", "b", host: .codex, in: "/git/api", at: 300))
+        monitor.showing(worktree: "/git/api", appearsActive: true, in: list)
+        #expect(ids() == ["b"])
+
+        monitor.now = { [start] in start.addingTimeInterval(600) }
+        monitor.receive(event("Stop", "c", in: "/git/api", at: 600))
+        monitor.showing(worktree: "/git/api", appearsActive: true, in: list)
+        #expect(ids() == ["c"])
+        monitor.now = { [start] in start.addingTimeInterval(720) }
+        #expect(ids().isEmpty)
+    }
+
+    /// Nothing else changes when the two minutes run out, so the monitor
+    /// says so itself.
+    @Test func theBranchRowRedrawsWhenTheTwoMinutesRunOut() async {
+        let monitor = monitor()
+        monitor.lingerWake = .milliseconds(50)
+        monitor.receive(event("Stop", "a", in: "/git/api", at: 600))
+        monitor.showing(worktree: "/git/api", appearsActive: true, in: list)
+        let changes = Mutex(0)
+        withObservationTracking {
+            _ = monitor.worktreeAgents("/git/api", in: list)
+        } onChange: {
+            changes.withLock { $0 += 1 }
+        }
+        #expect(await AgentTestSupport.eventually { changes.withLock { $0 } == 1 })
+    }
+
     @Test func thePopoverCountsASessionsSubagents() {
         let monitor = monitor()
         let key = SessionKey(host: .claude, id: "a")

@@ -63,10 +63,18 @@ public final class AgentMonitor {
     /// have any. Only the branch row's popover reads it (decision 100), so it's
     /// kept apart from `marks` for the same reason as `activities`.
     private var subagents: [SessionKey: Int] = [:]
-    /// When someone last looked at each worktree, by its folder as git lists it.
-    /// It's kept in memory only: after a relaunch, what finished before is old
-    /// news.
-    private var seen: [String: Date] = [:]
+    /// When someone looked at each worktree, by its folder as git lists it,
+    /// in the order they looked. A look counts when it takes a finished
+    /// session's dot away. The sidebar goes by the latest look, but the
+    /// branch row needs the first look after each session finished, so the
+    /// looks of the last `finishedLinger` stay too, after the latest look
+    /// before them, which answers for every look older than it. They're kept
+    /// in memory only: after a relaunch, what finished before is old news.
+    private var looks: [String: [Date]] = [:]
+    /// Goes up each time a look becomes `finishedLinger` old, which is when a
+    /// finished session it saw goes from the branch row. Nothing else changes
+    /// then, so only the branch row reads it, to redraw.
+    private var lingersEnded = 0
 
     @ObservationIgnored private var state = AgentSessions()
     @ObservationIgnored private var agents: AgentProvider?
@@ -116,6 +124,16 @@ public final class AgentMonitor {
     /// Roga asks whether it is. Long tools are quiet, and so is a session after
     /// someone pressed Esc, which sends nothing.
     static let quietLimit = Duration.seconds(90)
+
+    /// How long, in seconds, the branch row keeps a finished session after
+    /// someone first looks at its worktree (decision 100). The worktree on
+    /// screen counts as seen at once, so without a limit a reply would stay
+    /// there until the agent's next turn, which can be hours later.
+    static let finishedLinger: TimeInterval = 120
+    /// How long after a look the branch rows redraw to let go of what it saw,
+    /// a second past `finishedLinger` so that the clocks can't disagree about
+    /// whether the time is up. Tests shorten it.
+    @ObservationIgnored var lingerWake = Duration.seconds(finishedLinger + 1)
 
     public convenience init(supportFolder: URL) {
         self.init(supportFolder: supportFolder, checkInterval: .seconds(30))
@@ -481,11 +499,11 @@ public final class AgentMonitor {
     /// ones a collapsed repository hides.
     func summary(forWorktrees paths: [String], in list: RepositoryList) -> AgentSummary? {
         let byWorktree = placedMarks(in: list)
-        let seen = seen
+        let looks = looks
         var shown: [Mark] = []
         for path in paths {
             guard let placed = byWorktree[path] else { continue }
-            let seenAt = seen[path]
+            let seenAt = looks[path]?.last
             shown += placed.filter { mark in
                 if case .finished = mark.phase { seenAt.map { mark.since > $0 } ?? true } else { true }
             }
@@ -500,12 +518,25 @@ public final class AgentMonitor {
     /// for the branch row of the window that shows it (decision 100), in no
     /// particular order. Unlike a mark, it keeps a finished session after
     /// someone has looked, since the worktree on screen counts as seen at once:
-    /// what it finished stays until its next turn or until its session ends.
+    /// what it finished stays for `finishedLinger` after the first look at
+    /// the worktree since it finished, or until its next turn or the end of
+    /// its session, if those come sooner.
     ///
     /// It reads the marks and the lines, as a row with a mark does, so that a
-    /// new line redraws whatever shows it.
+    /// new line redraws whatever shows it, and it reads when a look became
+    /// old enough, so that the row redraws when a finished session goes.
     func worktreeAgents(_ path: String, in list: RepositoryList) -> [WorktreeAgent] {
-        let placed = placedMarks(in: list)[path, default: []].filter { $0.phase != .idle }
+        _ = lingersEnded
+        let looks = looks[path, default: []]
+        let lingerFrom = now().addingTimeInterval(-Self.finishedLinger)
+        let placed = placedMarks(in: list)[path, default: []].filter { mark in
+            switch mark.phase {
+            case .idle: false
+            case .working, .waiting: true
+            // It goes once someone looked after it finished, long enough ago.
+            case .finished: !looks.contains { $0 >= mark.since && $0 <= lingerFrom }
+            }
+        }
         guard !placed.isEmpty else { return [] }
         let activities = activities
         return placed.map { WorktreeAgent(id: $0.key, host: $0.host, phase: $0.phase, since: $0.since, activity: activities[$0.key]) }
@@ -524,14 +555,34 @@ public final class AgentMonitor {
     /// would go. It can tell once the rows have placed the marks as they are;
     /// until then it notes the look anyway.
     func markSeen(worktree path: String) {
-        let seenAt = seen[path]
+        let earlier = looks[path, default: []]
         if let placement, placement.marksVersion == marksVersion, placement.foldersVersion == foldersVersion {
+            let seenAt = earlier.last
             let hasDot = placement.byWorktree[path, default: []].contains { mark in
                 if case .finished = mark.phase { seenAt.map { mark.since > $0 } ?? true } else { false }
             }
             guard hasDot else { return }
         }
-        seen[path] = now()
+        let time = now()
+        // Of the looks a finished session could still be waiting on, the
+        // latest one at least `finishedLinger` old has let go of everything
+        // an older look saw, so the older ones can go.
+        let lingerFrom = time.addingTimeInterval(-Self.finishedLinger)
+        var kept = earlier.filter { $0 > lingerFrom }
+        if let old = earlier.filter({ $0 <= lingerFrom }).max() { kept.insert(old, at: 0) }
+        kept.append(time)
+        looks[path] = kept
+        wakeBranchRows()
+    }
+
+    /// Redraws the branch rows once the look just noted is `finishedLinger`
+    /// old, when what it saw goes from them.
+    private func wakeBranchRows() {
+        let wake = lingerWake
+        Task { [weak self] in
+            try? await Task.sleep(for: wake)
+            self?.lingersEnded &+= 1
+        }
     }
 
     /// Someone selected the worktree a window shows, and so looked at it.

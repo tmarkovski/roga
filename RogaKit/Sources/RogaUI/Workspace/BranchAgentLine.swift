@@ -114,15 +114,18 @@ struct AgentLineMark: View {
         case .agent(let state):
             AgentMark(state: state, size: size)
         case .finished:
-            circle(.circleCheck)
+            symbol(.check)
                 .foregroundStyle(.secondary)
         case .failed:
-            circle(.circleX)
+            symbol(.circleX)
                 .foregroundStyle(Palette.red)
         }
     }
 
-    private func circle(_ icon: Icon) -> some View {
+    /// An icon at the waiting circle's size. The bare check is a little
+    /// narrower than a circle at that size, which keeps it from looking
+    /// heavier than the marks around it.
+    private func symbol(_ icon: Icon) -> some View {
         icon.image
             .font(AgentMark.circleFont(size: size))
             .frame(width: size, height: size)
