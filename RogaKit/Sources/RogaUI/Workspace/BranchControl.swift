@@ -71,7 +71,7 @@ struct BranchControl: View {
                 .padding(.leading, 7)
                 .padding(.trailing, 9)
                 .modifier(WidthCap(width: Self.widest))
-                .frame(height: BranchBar.controlHeight)
+                .frame(height: BranchBar.sectionHeight)
                 .background { PopoverSectionFill(isHovering: isHovering, isOpen: showsDetail) }
                 .contentShape(Rectangle())
                 .onHover { isHovering = $0 }
@@ -381,8 +381,8 @@ struct CheckoutPopover: View {
 }
 
 /// Fetch and New Branch, as icons at the right end of the branch's row, before
-/// history's commands (decisions 45 and 95), as tall as everything else in the
-/// row (decision 120). They stay where they are while the branch's name
+/// history's commands (decisions 45 and 95), as big as the icon buttons in a
+/// panel's header (decision 126). They stay where they are while the branch's name
 /// changes and the counts before them come and go (decision 124). The menu
 /// bar's Branch menu has both as well.
 struct BranchButtons: View {
@@ -412,7 +412,7 @@ private struct FetchButton: View {
             Button(action: branch.fetch) {
                 FetchDrop(isFetching: branch.isFetching)
             }
-            .buttonStyle(.icon(size: BranchBar.controlHeight))
+            .buttonStyle(.icon(size: BranchBar.buttonSize))
             .disabled(branch.status?.remote == nil)
             .help(branch.fetchHelp(now: context.date))
             .accessibilityLabel("Fetch")
@@ -445,7 +445,7 @@ private struct NewBranchButton: View {
         } label: {
             Icon.newBranch.image
         }
-        .buttonStyle(IconButtonStyle(size: BranchBar.controlHeight, isOn: isOpenHere.wrappedValue))
+        .buttonStyle(IconButtonStyle(size: BranchBar.buttonSize, isOn: isOpenHere.wrappedValue))
         .opensOnPress(isOpenHere, open: branch.startNewBranch)
         .help(help)
         .accessibilityLabel("New Branch")
@@ -911,7 +911,7 @@ private struct UnfinishedWorkControl: View {
             .accessibilityElement(children: .ignore)
             .foregroundStyle(unfinished.hasConflicts ? AnyShapeStyle(Palette.red) : AnyShapeStyle(.secondary))
             .padding(.horizontal, 6)
-            .frame(minHeight: BranchBar.controlHeight)
+            .frame(minHeight: BranchBar.sectionHeight)
             .background {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(isHovering ? Palette.buttonHover : .clear)
@@ -1073,7 +1073,7 @@ private struct BranchCount: View {
         .accessibilityElement(children: .ignore)
         .foregroundStyle(isOrange ? AnyShapeStyle(Palette.action) : AnyShapeStyle(.secondary))
         .padding(.horizontal, 6)
-        .frame(minWidth: BranchBar.controlHeight, minHeight: BranchBar.controlHeight)
+        .frame(minWidth: BranchBar.buttonSize, minHeight: BranchBar.buttonSize)
         .background {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(isHovering ? Palette.buttonHover : .clear)

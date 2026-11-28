@@ -159,8 +159,8 @@ struct CheckoutNote: View {
 /// 119), and a note while history opens slowly.
 struct HistoryCommands: View {
     let model: RepositoryModel
-    /// How tall the order's button is, as tall as the row's other controls.
-    var controlHeight: CGFloat = 32
+    /// How big the order's button is, as big as the row's other buttons.
+    var buttonSize: CGFloat = 32
     @State private var orderOpener = RefMenuOpener()
 
     var body: some View {
@@ -192,7 +192,7 @@ struct HistoryCommands: View {
         let entries = Self.orderMenu(commits: model.commitCountDescription, sort: model.sort) { model.sort = $0 }
         // The refs panel's icon for sorting, since this orders history rather
         // than leaving anything out.
-        return HoverIcon(size: controlHeight) { Icon.sort.image }
+        return HoverIcon(size: buttonSize) { Icon.sort.image }
             .overlay { RefMenuArea(entries: entries, opensOnClick: true, opener: orderOpener) }
             .help("Order of History")
             .accessibilityElement(children: .ignore)

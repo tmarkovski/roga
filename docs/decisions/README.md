@@ -127,9 +127,10 @@ Records written before [decision 34](0034-name-the-app-roga.md) call the app yag
 | [117](0117-copy-a-signatures-key-and-add-it-to-github-from-the-signature-line.md) | Copy a signature's key, and add it to GitHub, from the Signature line | Accepted |
 | [118](0118-follow-a-changed-setting-without-making-another-thread-wait-for-the-main-thread.md) | Follow a changed setting without making another thread wait for the main thread | Accepted |
 | [119](0119-branches-on-one-line-and-what-the-pointer-lights-up.md) | Branches on one line, merged branches, and what the pointer lights up | The Branches heading's button put in words, as Delete Merged…, by [125](0125-give-the-refs-panels-sections-the-headings-the-uncommitted-files-have.md) |
-| [120](0120-say-how-far-the-branch-is-from-main-and-make-its-menu-a-popover.md) | Say how far the branch is from main, and make its menu a popover | Accepted |
+| [120](0120-say-how-far-the-branch-is-from-main-and-make-its-menu-a-popover.md) | Say how far the branch is from main, and make its menu a popover | The row's buttons put back at a header's 32 points by [126](0126-give-the-branch-rows-buttons-a-headers-size.md) |
 | [121](0121-delete-a-folder-of-branches-or-the-branches-picked.md) | Delete a folder of branches, or the branches picked with Command and Shift | Accepted |
 | [122](0122-play-the-houses-windows-for-an-agent-at-work.md) | Play the house's windows for an agent at work | Accepted |
 | [123](0123-the-agent-provider-keeps-what-only-it-writes.md) | The agent provider keeps what only it writes, without reading it back | Accepted |
 | [124](0124-put-pull-and-push-beside-fetch.md) | Put Pull and Push beside Fetch | Accepted |
 | [125](0125-give-the-refs-panels-sections-the-headings-the-uncommitted-files-have.md) | Give the refs panel's sections the headings the uncommitted files have | Accepted |
+| [126](0126-give-the-branch-rows-buttons-a-headers-size.md) | Give the branch row's buttons a header's size | Accepted |

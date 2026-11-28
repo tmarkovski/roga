@@ -14,8 +14,8 @@ import SwiftUI
 /// the second line is cut at its end, and the first gives way to the agent's
 /// name alone.
 ///
-/// It's a button, 36 points tall like everything else in the row, and a click
-/// opens a popover with a section for each session. Since that only shows
+/// It's a button, 36 points tall as the branch is, and a click opens a
+/// popover with a section for each session. Since that only shows
 /// more, it fades to a row's lighter gray under the pointer, as the branch
 /// does, rather than a button's, as the counts do. It redraws as an agent reaches another
 /// minute, and with each new line. When what it says changes, as when an agent
@@ -95,7 +95,7 @@ struct BranchAgentLine: View {
                 .contentTransition(.opacity)
                 .padding(.leading, 7)
                 .padding(.trailing, 9)
-                .frame(height: BranchBar.controlHeight)
+                .frame(height: BranchBar.sectionHeight)
                 .background { PopoverSectionFill(isHovering: isHovering, isOpen: showsDetail) }
                 .contentShape(Rectangle())
                 .onHover { isHovering = $0 }

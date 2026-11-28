@@ -15,9 +15,10 @@ import SwiftUI
 /// (decisions 100 and 119), except while Roga says what it's doing or just did,
 /// whose words come first.
 ///
-/// Every control in it is 36 points tall, as its two-line blocks need, so that
-/// the gray that fills one under the pointer is the same height from one end of
-/// the row to the other. When the row is short of room, the agent's words are
+/// The branch and the agent's line are 36 points tall, as their two lines
+/// need, and so is a worktree stuck partway, which sits beside the branch
+/// (decision 120). The buttons at the right end are as big as a panel header's
+/// icon buttons (decision 126). When the row is short of room, the agent's words are
 /// cut short first, and its first line gives way to its name, which stays
 /// whole, then the line under the branch's name is cut short, and then the
 /// name. The counts, Fetch and New Branch stay.
@@ -40,14 +41,19 @@ struct BranchBar: View {
 
     /// The space between the branch's buttons and the line after them, and
     /// after the line, so that it has about 14 points on each side between New
-    /// Branch's icon and the number of commits.
+    /// Branch's icon and the order's.
     private static let lineGap = 6.0
     /// How tall the line after the branch's buttons is, about as tall as their
     /// icons.
     private static let lineHeight = 18.0
-    /// How tall every control in the row is, which leaves 4 points above and
-    /// below each in the row's 44.
-    static let controlHeight: CGFloat = 36
+    /// How tall the branch, the agent's line and a worktree stuck partway are,
+    /// as their two lines need, which leaves 4 points above and below each in
+    /// the row's 44 (decision 120).
+    static let sectionHeight: CGFloat = 36
+    /// How big the counts, Fetch, New Branch and the order are: as big as the
+    /// icon buttons in a panel's header, since they're buttons of the same
+    /// kind (decision 126).
+    static let buttonSize = IconButtonStyle().size
 
     var body: some View {
         BranchActivity(branch: model.branch, switchBranch: switchBranch) { words, counts in
@@ -113,7 +119,7 @@ struct BranchBar: View {
                             .padding(.horizontal, Self.lineGap)
                             .accessibilityHidden(true)
                     }
-                    HistoryCommands(model: model, controlHeight: Self.controlHeight)
+                    HistoryCommands(model: model, buttonSize: Self.buttonSize)
                 }
             }
         }
