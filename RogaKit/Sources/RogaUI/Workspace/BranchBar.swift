@@ -147,3 +147,23 @@ struct BranchBar: View {
         return branch.finished != nil
     }
 }
+
+/// The gray behind a part of the branch's row that opens a popover about it,
+/// as the branch and the agent's line do. A click there only shows more, so it
+/// takes a row's lighter gray under the pointer rather than a button's, and a
+/// selected row's while its popover is open, which says where the popover came
+/// from. It fades in and out, so that moving the pointer along the row doesn't
+/// flash it, except for someone who asked for less motion.
+struct PopoverSectionFill: View {
+    let isHovering: Bool
+    let isOpen: Bool
+    @Environment(\.accessibilityReduceMotion) private var reducesMotion
+
+    static let fade = Animation.easeOut(duration: 0.12)
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .fill(isOpen ? Palette.selection : isHovering ? Palette.hover : .clear)
+            .animation(reducesMotion ? nil : Self.fade, value: [isHovering, isOpen])
+    }
+}

@@ -9,7 +9,9 @@ import SwiftUI
 /// and 119): its name, with the branch's icon before it, over how far the
 /// branch is from the main branch on the remote, as in `4 ahead, 12 behind
 /// origin/main` (decision 120). A click opens the popover about the checkout,
-/// on the press (decision 111), and its tooltip has the worktree's folder. The
+/// on the press (decision 111), and its tooltip has the worktree's folder.
+/// Since a click only shows more, it fades to a row's lighter gray under the
+/// pointer rather than a button's, as the agent's line does. The
 /// counts that pull and push are at the row's other end, before Fetch
 /// (decision 124).
 ///
@@ -70,10 +72,7 @@ struct BranchControl: View {
                 .padding(.trailing, 9)
                 .modifier(WidthCap(width: Self.widest))
                 .frame(height: BranchBar.controlHeight)
-                .background {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(isHovering || showsDetail ? Palette.buttonHover : .clear)
-                }
+                .background { PopoverSectionFill(isHovering: isHovering, isOpen: showsDetail) }
                 .contentShape(Rectangle())
                 .onHover { isHovering = $0 }
             }
