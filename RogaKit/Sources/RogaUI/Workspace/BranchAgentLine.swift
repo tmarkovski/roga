@@ -16,17 +16,33 @@ import SwiftUI
 /// It's a button, 36 points tall like everything else in the row: it fills
 /// with gray under the pointer, as the counts do, and a click opens a popover
 /// with a section for each session. It redraws as an agent reaches another
-/// minute, and with each new line.
+/// minute, and with each new line. When what it says changes, as when an agent
+/// finishes or starts on something else, the old words and mark fade into the
+/// new ones rather than changing at once, except for someone who asked for less
+/// motion.
 struct BranchAgentLine: View {
     let line: AgentLine
     let monitor: AgentMonitor
     let model: RepositoryModel
     @State private var isHovering = false
     @State private var showsDetail = false
+    @Environment(\.accessibilityReduceMotion) private var reducesMotion
 
     /// The second line's font, as AppKit has it, which the light draws the
     /// words in again to light them up.
     private static let wordsFont = NSFont.systemFont(ofSize: 11)
+    /// How what the line says fades into what it says next.
+    private static let fade = Animation.easeInOut(duration: 0.25)
+
+    /// Everything the line shows, which fades as a whole whenever any of it
+    /// changes.
+    private struct Shown: Equatable {
+        var mark: AgentLine.Mark?
+        var state: String
+        var short: String
+        var time: String?
+        var words: String?
+    }
 
     var body: some View {
         TimelineView(WholeMinutes(of: [line.summary])) { context in
@@ -40,6 +56,7 @@ struct BranchAgentLine: View {
                         if let mark = line.mark {
                             AgentLineMark(mark: mark, size: 13)
                                 .padding(.trailing, 6)
+                                .transition(.opacity)
                         }
                         // The name alone stays whole, so that in a narrow
                         // column the line under the branch's name is cut
@@ -71,6 +88,9 @@ struct BranchAgentLine: View {
                     }
                 }
                 .lineLimit(1)
+                // A word that changes fades out where it was as the new one
+                // fades in, rather than the two sliding past each other.
+                .contentTransition(.opacity)
                 .padding(.leading, 7)
                 .padding(.trailing, 9)
                 .frame(height: BranchBar.controlHeight)
@@ -80,6 +100,12 @@ struct BranchAgentLine: View {
                 }
                 .contentShape(Rectangle())
                 .onHover { isHovering = $0 }
+                // Only a change in what it says fades, so the gray under the
+                // pointer still comes and goes at once.
+                .animation(
+                    reducesMotion ? nil : Self.fade,
+                    value: Shown(mark: line.mark, state: lines.state, short: lines.short, time: lines.time, words: lines.words)
+                )
             }
             .buttonStyle(.plain)
             .opensOnPress($showsDetail)
@@ -114,15 +140,18 @@ struct AgentLineMark: View {
         case .agent(let state):
             AgentMark(state: state, size: size)
         case .finished:
-            circle(.circleCheck)
+            symbol(.check)
                 .foregroundStyle(.secondary)
         case .failed:
-            circle(.circleX)
+            symbol(.circleX)
                 .foregroundStyle(Palette.red)
         }
     }
 
-    private func circle(_ icon: Icon) -> some View {
+    /// An icon at the waiting circle's size. The bare check is a little
+    /// narrower than a circle at that size, which keeps it from looking
+    /// heavier than the marks around it.
+    private func symbol(_ icon: Icon) -> some View {
         icon.image
             .font(AgentMark.circleFont(size: size))
             .frame(width: size, height: size)
