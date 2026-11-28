@@ -4,13 +4,14 @@ import SwiftUI
 /// The row under the tabs, at the top of the middle column, which says where the
 /// worktree's branch stands and acts on it (decision 95). It holds what the
 /// title row held before the tabs took that row: the branch, over how far it is
-/// from the main branch on the remote (decision 120), with its counts, which
-/// pull and push (decision 19), then at the right end Fetch and New Branch, a
-/// thin line, and the order of history. It's as tall as a panel's header and
-/// lines up with the refs panel's. Who the commits go out as isn't here, since
-/// it's the whole repository's, and the title row has it (decision 105).
+/// from the main branch on the remote (decision 120), then at the right end
+/// the counts, which pull and push (decisions 19 and 124), Fetch and New
+/// Branch, a thin line, and the order of history. It's as tall as a panel's
+/// header and lines up with the refs panel's. Who the commits go out as isn't
+/// here, since it's the whole repository's, and the title row has it
+/// (decision 105).
 ///
-/// After the counts, it says what the worktree's agent is doing, in two lines
+/// After the branch, it says what the worktree's agent is doing, in two lines
 /// (decisions 100 and 119), except while Roga says what it's doing or just did,
 /// whose words come first.
 ///
@@ -49,9 +50,17 @@ struct BranchBar: View {
     static let controlHeight: CGFloat = 36
 
     var body: some View {
+        BranchActivity(branch: model.branch, switchBranch: switchBranch) { words, counts in
+            row(words: words, counts: counts)
+        }
+    }
+
+    /// The row, with Roga's words after the branch and the counts before Fetch
+    /// (decision 124).
+    private func row(words: BranchWords, counts: BranchCounts) -> some View {
         let line = agentLine
         let showsLine = line != nil && !rogaIsSpeaking
-        HStack(spacing: 0) {
+        return HStack(spacing: 0) {
             if worktree.isBare {
                 Text(worktree.title)
                     .font(.system(size: 13))
@@ -59,8 +68,16 @@ struct BranchBar: View {
                     .lineLimit(1)
                     .padding(.leading, 5)
             } else {
-                BranchControl(branch: model.branch, worktree: worktree, repositoryName: repositoryName, switchBranch: switchBranch, unlock: unlock)
-                    .layoutPriority(1)
+                HStack(spacing: 2) {
+                    BranchControl(branch: model.branch, worktree: worktree, repositoryName: repositoryName, switchBranch: switchBranch, unlock: unlock)
+                        .layoutPriority(1)
+                    // Roga's words stay whole, and the branch's name is cut
+                    // short for them.
+                    words
+                        .fixedSize()
+                        .layoutPriority(2)
+                }
+                .layoutPriority(1)
             }
             if showsLine, let line {
                 BranchAgentLine(line: line, monitor: monitor, model: model)
@@ -78,7 +95,13 @@ struct BranchBar: View {
                         .padding(.trailing, 6)
                 }
                 if !worktree.isBare {
-                    BranchButtons(branch: model.branch, worktree: worktree, showWorktree: showWorktree)
+                    // The counts talk to the remote as Fetch does, so they sit
+                    // with it, where they stay put whatever the branch is called.
+                    HStack(spacing: 2) {
+                        counts
+                            .fixedSize()
+                        BranchButtons(branch: model.branch, worktree: worktree, showWorktree: showWorktree)
+                    }
                 }
                 // A line between them and history's commands, which they don't
                 // act on, once history has loaded and they show.
@@ -115,9 +138,9 @@ struct BranchBar: View {
         return AgentLine(monitor.worktreeAgents(worktree.path, in: list))
     }
 
-    /// Whether Roga says what git is doing or just did after the counts, as in
-    /// `Committed 9f2c1ab` with Undo, or beside the house while it pulls or
-    /// pushes. A fetch says nothing there.
+    /// Whether Roga says what git is doing or just did after the branch, as in
+    /// `Committed 9f2c1ab` with Undo, or `Pushing to origin…` while the house
+    /// works in the counts' place. A fetch says nothing there.
     private var rogaIsSpeaking: Bool {
         let branch = model.branch
         if let action = branch.action, action != .fetching { return true }

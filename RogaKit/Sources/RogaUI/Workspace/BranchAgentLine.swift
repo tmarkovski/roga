@@ -3,15 +3,16 @@ import AppKit
 import IconUI
 import SwiftUI
 
-/// What the agent in the worktree on screen is doing, after the counts in the
-/// branch row (decision 100), in two lines (decision 120): who and what state
-/// they're in, with how long, over what they're doing, as in `Claude Code is
-/// working · 6 min` over `Run the test suite`. While an agent works, a light in
-/// Roga's orange runs through the second line, since the worktree's tab plays
-/// the windows at work a few points above. Otherwise the first line starts with a mark, and
-/// it's amber while an agent waits for you and red when its turn ended with an
-/// error. When the row is short of room, the second line is cut at its end, and
-/// the first gives way to the agent's name alone.
+/// What the agent in the worktree on screen is doing, after the branch in the
+/// branch row (decisions 100 and 124), in two lines (decision 120): who and
+/// what state they're in, with how long, over what they're doing, as in
+/// `Claude Code is working · 6 min` over `Run the test suite`. While an agent
+/// works, a light in Roga's orange runs through the second line, since the
+/// worktree's tab plays the windows at work a few points above. Otherwise the
+/// first line starts with a mark, and it's amber while an agent waits for you
+/// and red when its turn ended with an error. When the row is short of room,
+/// the second line is cut at its end, and the first gives way to the agent's
+/// name alone.
 ///
 /// It's a button, 36 points tall like everything else in the row: it fills
 /// with gray under the pointer, as the counts do, and a click opens a popover
