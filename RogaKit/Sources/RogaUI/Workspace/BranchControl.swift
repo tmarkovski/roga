@@ -5,11 +5,16 @@ import MenuUI
 import RepositoryEngine
 import SwiftUI
 
-/// The branch at the start of the branch's row, under the tabs, as its name
-/// over how far it is from the main branch on the remote, and after it the
-/// counts that pull and push (decisions 19, 95 and 119). The counts show only
-/// when there's something to do, and the row reads as a sentence:
-/// `agent/fix-login ↑2`.
+/// The branch at the start of the branch's row, under the tabs (decisions 95
+/// and 119): its name, with the branch's icon before it, over how far the
+/// branch is from the main branch on the remote, as in `4 ahead, 12 behind
+/// origin/main` (decision 120). A click opens the popover about the checkout,
+/// on the press (decision 111), and its tooltip has the worktree's folder. The
+/// counts that pull and push are at the row's other end, before Fetch
+/// (decision 124).
+///
+/// The icon is the branch's even for a detached `HEAD`, as the chip before
+/// it drew, since the commit's ID and `detached` already say what it is.
 struct BranchControl: View {
     let branch: BranchModel
     let worktree: Worktree
@@ -18,31 +23,6 @@ struct BranchControl: View {
     /// Goes to the refs panel's filter, or nil when the refs panel doesn't fit.
     let switchBranch: (() -> Void)?
     /// Takes the worktree's lock off.
-    let unlock: () -> Void
-
-    var body: some View {
-        HStack(spacing: 2) {
-            BranchBlock(branch: branch, worktree: worktree, repositoryName: repositoryName, switchBranch: switchBranch, unlock: unlock)
-                .layoutPriority(1)
-            BranchCounts(branch: branch, switchBranch: switchBranch)
-                .fixedSize()
-                .layoutPriority(2)
-        }
-    }
-}
-
-/// The branch's name, with the branch's icon before it, over how far the
-/// branch is from the main branch on the remote, as in `4 ahead, 12 behind
-/// origin/main` (decision 120). A click opens the popover about the checkout,
-/// on the press (decision 111), and its tooltip has the worktree's folder.
-///
-/// The icon is the branch's even for a detached `HEAD`, as the chip before
-/// it drew, since the commit's ID and `detached` already say what it is.
-private struct BranchBlock: View {
-    let branch: BranchModel
-    let worktree: Worktree
-    let repositoryName: String
-    let switchBranch: (() -> Void)?
     let unlock: () -> Void
     @State private var isHovering = false
     @State private var showsDetail = false
@@ -403,8 +383,9 @@ struct CheckoutPopover: View {
 
 /// Fetch and New Branch, as icons at the right end of the branch's row, before
 /// history's commands (decisions 45 and 95), as tall as everything else in the
-/// row (decision 120). They stay where they are while the branch's name and
-/// counts change. The menu bar's Branch menu has both as well.
+/// row (decision 120). They stay where they are while the branch's name
+/// changes and the counts before them come and go (decision 124). The menu
+/// bar's Branch menu has both as well.
 struct BranchButtons: View {
     let branch: BranchModel
     let worktree: Worktree
@@ -600,53 +581,33 @@ struct BranchMenuItems: View {
     private static let noIcon = Image(nsImage: NSImage(size: NSSize(width: 16, height: 16), flipped: false) { _ in true })
 }
 
-/// `↓3` and `↑1`, then what git is doing or just did. A pull or a push goes in
-/// steps: the house zooms in where the counts were, then the words come out
-/// beside it and move what's to their right along. When git is done the words
-/// change to what happened while the house keeps going, and when those words
-/// have had their moment, the house zooms out and the words close up as the
-/// counts come back, all at once (decision 93). A commit or a
-/// discard has no house, so its words open after the counts, which stay, so that
+/// What the branch's row shows of what git is doing or just did, in two places
+/// (decision 124), which `content` puts where they go in the row. After the
+/// branch, `BranchWords` has what the worktree is stuck partway through, if
+/// anything, then Roga's words, as in `Pushing to origin…` or `Committed
+/// 9f2c1ab` with Undo. At the row's other end, before Fetch, `BranchCounts` has
+/// `↓3` and `↑1`.
+///
+/// A pull or a push goes in steps: the house zooms in where the counts were,
+/// then the words open after the branch. When git is done the words change to
+/// what happened while the house keeps going, and when those words have had
+/// their moment, the house zooms out and the words close up as the counts come
+/// back, all at once (decision 93). Undoing a pull, aborting and continuing a
+/// rebase waddle before the words instead, where they were asked for. A commit
+/// or a discard has no house, so its words open and the counts stay, so that
 /// `↑` can push what was just committed while `Committed 9f2c1ab` and its Undo
 /// are still showing (decision 76). With the house off in Settings, a push or a
 /// pull does the same (decision 112). A fetch shows nothing here, because the
 /// house drops through the Fetch button instead (decisions 45 and 55).
-private struct BranchCounts: View {
-    /// How the title row moves from one step to the next.
-    private enum Motion {
-        static let zoom = Animation.spring(duration: 0.24, bounce: 0.25)
-        /// How long the house gets to zoom in before the words start.
-        static let zoomTime = Duration.milliseconds(160)
-        static let words = Animation.snappy(duration: 0.3)
-    }
-
-    /// What's on screen, which follows the branch's activity a step at a time.
-    private struct Shown: Equatable {
-        var house: HouseAnimation?
-        /// These stay after they stop showing, so that they can close up.
-        var words = ""
-        var arrival = WordsArrival.fade
-        var showsWords = false
-        var showsCounts = true
-    }
-
-    /// What git is doing, or what it just did. The note about what it did can
-    /// start before the action ends, and the action comes first.
-    private enum Activity: Equatable {
-        case idle
-        /// The action, and its house, if it has one.
-        case running(BranchModel.Action, house: HouseAnimation?)
-        /// The words, and the house of the action they're about, if it had one.
-        case finished(String, house: HouseAnimation?)
-    }
-
+struct BranchActivity<Content: View>: View {
     let branch: BranchModel
     let switchBranch: (() -> Void)?
-    @State private var shown = Shown()
+    @ViewBuilder let content: (BranchWords, BranchCounts) -> Content
+    @State private var shown = BranchActivityShown()
     @Environment(\.accessibilityReduceMotion) private var reducesMotion
     @AppStorage(UserDefaults.animatesHouseKey) private var animatesHouse = true
 
-    private var activity: Activity {
+    private var activity: GitActivity {
         if let action = branch.action, action != .fetching { .running(action, house: house(action)) }
         else if let finished = branch.finished { .finished(finished, house: branch.finishedAction.flatMap(house)) }
         else { .idle }
@@ -659,17 +620,133 @@ private struct BranchCounts: View {
     }
 
     var body: some View {
+        content(
+            BranchWords(branch: branch, shown: shown),
+            BranchCounts(branch: branch, shown: shown, switchBranch: switchBranch)
+        )
+        .task(id: activity) { await show(activity) }
+    }
+
+    private func show(_ activity: GitActivity) async {
+        switch activity {
+        case .idle:
+            move(ActivityMotion.words) {
+                shown.house = nil
+                shown.showsWords = false
+            }
+        case .finished(let words, let house):
+            // The house keeps going beside what it did, so that it's still
+            // there to see after a quick push, and what it plays in place of
+            // waits for it to go. Words that something else announced take it
+            // away, as a discard does just after a push.
+            move(ActivityMotion.words) {
+                shown.house = house
+                shown.words = words
+                shown.showsWords = true
+            }
+        case .running(let action, let house):
+            guard let house else {
+                // Outside the animation, because turning what just happened into
+                // these moves what's to the right past where it ends up.
+                shown.words = action.title
+                // The counts stay, as they do while a fetch runs, and clicking
+                // one does nothing until git is done.
+                move(ActivityMotion.words) {
+                    shown.house = nil
+                    shown.showsWords = true
+                }
+                return
+            }
+            move(ActivityMotion.zoom) {
+                shown.house = house
+                shown.showsWords = false
+            }
+            if !reducesMotion {
+                guard (try? await Task.sleep(for: ActivityMotion.zoomTime)) != nil else { return }
+            }
+            shown.words = action.title
+            move(ActivityMotion.words) { shown.showsWords = true }
+        }
+    }
+
+    /// Someone who asked for less motion gets each step straight away.
+    private func move(_ animation: Animation, _ change: () -> Void) {
+        withAnimation(reducesMotion ? nil : animation, change)
+    }
+}
+
+/// What the branch's row shows of git's activity, which follows it a step at
+/// a time.
+struct BranchActivityShown: Equatable {
+    var house: HouseAnimation?
+    /// These stay after they stop showing, so that they can close up.
+    var words = ""
+    var showsWords = false
+
+    /// The house of a push or a pull, which plays in the counts' place.
+    var houseByCounts: HouseAnimation? {
+        house.flatMap { $0.playsByTheCounts ? $0 : nil }
+    }
+
+    /// The house of anything else, which plays before the words.
+    var houseByWords: HouseAnimation? {
+        house.flatMap { $0.playsByTheCounts ? nil : $0 }
+    }
+}
+
+extension HouseAnimation {
+    /// Whether the house plays in the counts' place, before Fetch, rather than
+    /// before the words after the branch (decision 124). A push or a pull
+    /// talks to the remote, as Fetch does, and the counts start it. An undo,
+    /// an abort or a rebase going on is asked for from Undo or from what the
+    /// worktree is stuck partway through, after the branch.
+    var playsByTheCounts: Bool {
+        switch self {
+        case .push, .heave, .tugOfWar: true
+        case .waddle, .run: false
+        }
+    }
+}
+
+/// What git is doing, or what it just did. The note about what it did can
+/// start before the action ends, and the action comes first.
+private enum GitActivity: Equatable {
+    case idle
+    /// The action, and its house, if it has one.
+    case running(BranchModel.Action, house: HouseAnimation?)
+    /// The words, and the house of the action they're about, if it had one.
+    case finished(String, house: HouseAnimation?)
+}
+
+/// How the branch's row moves from one step to the next.
+private enum ActivityMotion {
+    static let zoom = Animation.spring(duration: 0.24, bounce: 0.25)
+    /// How long the house gets to zoom in before the words start.
+    static let zoomTime = Duration.milliseconds(160)
+    static let words = Animation.snappy(duration: 0.3)
+}
+
+/// The part of git's activity that follows the branch: what the worktree is
+/// stuck partway through, then the waddle of an undo, an abort or a rebase
+/// going on in its place, then Roga's words and Undo. The words fade in where
+/// they'll stay, as the house that says which way the commits go is at the
+/// other end of the row.
+struct BranchWords: View {
+    let branch: BranchModel
+    let shown: BranchActivityShown
+
+    var body: some View {
         HStack(spacing: 0) {
-            // Before the words, so that they stay where they always are, and so
-            // that Undo and `↑` aren't side by side, where a slip would push the
-            // commit that was meant to be taken back.
-            if shown.showsCounts {
-                counts
+            // A worktree that's stuck comes before anything else it could do,
+            // and the house that aborts or goes on with it works in its place.
+            if let unfinished = branch.unfinished, shown.houseByWords == nil {
+                UnfinishedWorkControl(branch: branch, unfinished: unfinished)
+                    .transition(roomOpening(keepsTrailingEnd: false))
             }
             // It takes no room without a house, and its room opens and closes
             // along with the zoom, so that the words never run into the house.
             ZStack {
-                if let house = shown.house {
+                if let house = shown.houseByWords {
                     HouseAnimationView(animation: house, height: 21)
                         .id(house)
                         .padding(.leading, 4)
@@ -683,7 +760,7 @@ private struct BranchCounts: View {
                 .contentTransition(.interpolate)
                 .padding(.leading, 5)
                 .padding(.trailing, 4)
-                .modifier(WordsReveal(isShown: shown.showsWords, arrival: shown.arrival))
+                .modifier(WordsReveal(isShown: shown.showsWords))
                 .accessibilityHidden(!shown.showsWords)
             if shown.showsWords, let undo = branch.undoFinished {
                 Button("Undo", action: undo.perform)
@@ -696,91 +773,47 @@ private struct BranchCounts: View {
         }
         .font(.system(size: 13))
         .lineLimit(1)
-        .task(id: activity) { await show(activity) }
     }
+}
 
-    @ViewBuilder private var counts: some View {
-        // A worktree that's stuck comes before anything else it could do, and
-        // during a rebase it isn't on a branch to have counts.
-        if let unfinished = branch.unfinished {
-            UnfinishedWorkControl(branch: branch, unfinished: unfinished)
-                .transition(Self.countsTransition)
-        } else if let status = branch.status {
-            HStack(spacing: 2) {
-                if status.behind > 0 {
-                    pullCount(status)
+/// `↓3` and `↑1`, before Fetch, or the house of a push or a pull in their
+/// place while git runs (decision 124). Undo is at the other end of the row,
+/// so a slip can't push the commit that was meant to be taken back.
+struct BranchCounts: View {
+    let branch: BranchModel
+    let shown: BranchActivityShown
+    let switchBranch: (() -> Void)?
+
+    var body: some View {
+        HStack(spacing: 0) {
+            // A worktree that's stuck says so after the branch instead, and
+            // during a rebase it isn't on a branch to have counts.
+            if shown.houseByCounts == nil, branch.unfinished == nil, let status = branch.status {
+                HStack(spacing: 2) {
+                    if status.behind > 0 {
+                        pullCount(status)
+                    }
+                    if status.ahead > 0 {
+                        pushCount(status)
+                    } else if status.upstream == nil, status.push != nil {
+                        firstPush
+                    }
                 }
-                if status.ahead > 0 {
-                    pushCount(status)
-                } else if status.upstream == nil, status.push != nil {
-                    firstPush
+                .transition(roomOpening(keepsTrailingEnd: true))
+            }
+            ZStack {
+                if let house = shown.houseByCounts {
+                    HouseAnimationView(animation: house, height: 21)
+                        .id(house)
+                        .padding(.horizontal, 4)
+                        // From its trailing edge, beside Fetch, which stays
+                        // put while the room for it opens and closes.
+                        .transition(.scale(scale: 0.2, anchor: .trailing).combined(with: .opacity))
                 }
             }
-            .transition(Self.countsTransition)
         }
-    }
-
-    /// Their room opens a frame at a time, as the house's room closes, or for a
-    /// moment they'd have room for both, and what's to their right would jump.
-    private static var countsTransition: AnyTransition {
-        .asymmetric(
-            insertion: .modifier(active: CountsOpening(amount: 0), identity: CountsOpening(amount: 1))
-                .combined(with: .opacity),
-            removal: .opacity
-        )
-    }
-
-    private func show(_ activity: Activity) async {
-        switch activity {
-        case .idle:
-            move(Motion.words) {
-                shown.house = nil
-                shown.showsWords = false
-                shown.showsCounts = true
-            }
-        case .finished(let words, let house):
-            // The house keeps going beside what it did, so that it's still
-            // there to see after a quick push, and the counts wait for it to
-            // go. Words that something else announced take it away, as a
-            // discard does just after a push.
-            move(Motion.words) {
-                shown.house = house
-                shown.words = words
-                shown.showsWords = true
-                shown.showsCounts = house == nil
-            }
-        case .running(let action, let house):
-            guard let house else {
-                // Outside the animation, because turning what just happened into
-                // these moves what's to the right past where it ends up.
-                shown.words = action.title
-                shown.arrival = .fade
-                // The counts stay, as they do while a fetch runs, and clicking
-                // one does nothing until git is done.
-                move(Motion.words) {
-                    shown.house = nil
-                    shown.showsWords = true
-                    shown.showsCounts = true
-                }
-                return
-            }
-            move(Motion.zoom) {
-                shown.house = house
-                shown.showsWords = false
-                shown.showsCounts = false
-            }
-            if !reducesMotion {
-                guard (try? await Task.sleep(for: Motion.zoomTime)) != nil else { return }
-            }
-            shown.words = action.title
-            shown.arrival = WordsArrival(house)
-            move(Motion.words) { shown.showsWords = true }
-        }
-    }
-
-    /// Someone who asked for less motion gets each step straight away.
-    private func move(_ animation: Animation, _ change: () -> Void) {
-        withAnimation(reducesMotion ? nil : animation, change)
+        .font(.system(size: 13))
+        .lineLimit(1)
     }
 
     private func pullCount(_ status: BranchStatus) -> some View {
@@ -831,8 +864,24 @@ private struct BranchCounts: View {
     }
 }
 
-/// Says what the worktree is stuck partway through, in place of the counts, and
-/// opens a menu of what can be done about it (decision 28). It's red with a
+/// How the counts, or what the worktree is stuck partway through, come back:
+/// their room opens a frame at a time, as the house's room closes, or for a
+/// moment the row would need room for both. It keeps the end that stays put
+/// against its edge, the trailing end beside Fetch and the leading end after
+/// the branch.
+private func roomOpening(keepsTrailingEnd: Bool) -> AnyTransition {
+    .asymmetric(
+        insertion: .modifier(
+            active: RoomOpening(amount: 0, keepsTrailingEnd: keepsTrailingEnd),
+            identity: RoomOpening(amount: 1, keepsTrailingEnd: keepsTrailingEnd)
+        )
+        .combined(with: .opacity),
+        removal: .opacity
+    )
+}
+
+/// Says what the worktree is stuck partway through, after the branch, and opens
+/// a menu of what can be done about it (decision 28). It's red with a
 /// triangle only while there are conflicts. With none left, nothing is wrong, but
 /// it still isn't finished, so it stays in gray.
 private struct UnfinishedWorkControl: View {
@@ -880,63 +929,31 @@ private struct UnfinishedWorkControl: View {
     }
 }
 
-/// How the words in the title row arrive, which says which way the commits are
-/// going, the way the house's lean does.
-enum WordsArrival: Equatable {
-    /// Out from behind the house, moving what's to their right along.
-    case fromLeft
-    /// In from the right, toward the house that's pulling them.
-    case fromRight
-    /// In place, for what has no direction to show.
-    case fade
-
-    init(_ house: HouseAnimation) {
-        switch house {
-        case .push: self = .fromLeft
-        case .heave, .tugOfWar: self = .fromRight
-        case .waddle, .run: self = .fade
-        }
-    }
-}
-
-/// Opens room for the words and moves them in, or does the reverse.
+/// Opens room for the words and fades them in, or does the reverse.
 private struct WordsReveal: ViewModifier {
-    /// How far the words travel when they come in from the right.
-    private static let travel: CGFloat = 24
-    /// This outlasts the room opening. Most of the way would otherwise go by
-    /// while they're still faint and clipped, and what's to their right would be
-    /// moving the opposite way for all of it.
-    private static let glide = Animation.easeOut(duration: 0.45)
-
     let isShown: Bool
-    let arrival: WordsArrival
-    @Environment(\.accessibilityReduceMotion) private var reducesMotion
 
     func body(content: Content) -> some View {
-        PartWidth(amount: isShown ? 1 : 0, keepsTrailingEnd: arrival == .fromLeft) {
+        PartWidth(amount: isShown ? 1 : 0, keepsTrailingEnd: false) {
             content
-                .offset(x: !isShown && arrival == .fromRight ? Self.travel : 0)
-                .animation(reducesMotion ? nil : Self.glide, value: isShown)
                 .opacity(isShown ? 1 : 0)
         }
         .clipped()
     }
 }
 
-/// Opens room for the counts as they come back.
-private struct CountsOpening: ViewModifier {
+/// Opens room for the counts, or for what the worktree is stuck partway
+/// through, as they come back.
+private struct RoomOpening: ViewModifier {
     let amount: Double
+    let keepsTrailingEnd: Bool
 
     func body(content: Content) -> some View {
-        PartWidth(amount: amount, keepsTrailingEnd: false) { content }
+        PartWidth(amount: amount, keepsTrailingEnd: keepsTrailingEnd) { content }
             .clipped()
     }
 }
 
-/// Takes up a part of its content's width, keeping one end of the content against
-/// its edge. The part is animated by laying out again on every frame, so what's
-/// beside this moves exactly with that end, rather than animating on its own and
-/// drifting ahead of it.
 /// Keeps its content no wider than `width`, while letting it be as narrow as
 /// it is. A frame's `maxWidth` would stretch it to that width whenever there's
 /// room, and take the room from the agent's words.
@@ -1007,6 +1024,10 @@ private struct WrappingRow: Layout {
     }
 }
 
+/// Takes up a part of its content's width, keeping one end of the content against
+/// its edge. The part is animated by laying out again on every frame, so what's
+/// beside this moves exactly with that end, rather than animating on its own and
+/// drifting ahead of it.
 private struct PartWidth: Layout {
     var amount: Double
     let keepsTrailingEnd: Bool

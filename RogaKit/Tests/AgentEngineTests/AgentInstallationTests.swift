@@ -155,32 +155,49 @@ struct AgentInstallationTests {
         try FakeAgent.script("echo 'no version here'", named: "codex", in: silent)
         let old = try FakeAgent.folder(with: "codex", printing: "codex-cli 0.120.0")
 
-        let folders: [String] = [failing, crashing, hanging, silent].map(FakeAgent.path) + [old]
-        let lookup = await locate(.codex, searchPath: folders, timeLimit: .milliseconds(500))
+        let home = NSHomeDirectory()
+        func shown(_ path: String) -> String {
+            path.hasPrefix(home + "/") ? "~" + path.dropFirst(home.count) : path
+        }
+
+        // The copies that answer get the usual limit. They answer at once, but
+        // a busy machine can take longer than a short limit to start them,
+        // which would report them as hanging.
+        let answering: [String] = [failing, crashing, silent].map(FakeAgent.path) + [old]
+        let lookup = await locate(.codex, searchPath: answering)
         guard case .unusable(let skipped) = lookup else {
             Issue.record("Expected every copy to be unusable, got \(lookup)")
             return
         }
-        let paths = folders.map { $0 + "/codex" }
+        let paths = answering.map { $0 + "/codex" }
         #expect(skipped.map(\.executable) == paths)
         let reasons: [SkippedAgent.Reason] = [
             .noVersion(status: .exited(2), errorOutput: "Error: unknown option"),
             .noVersion(status: .signaled(6), errorOutput: "dyld[4242]: Library not loaded: @rpath/libnode.dylib"),
-            .timedOut,
             .noVersion(status: .exited(0), errorOutput: "no version here"),
             .tooOld(AgentVersion(major: 0, minor: 120, patch: 0)),
         ]
         #expect(skipped.map(\.reason) == reasons)
-        let home = NSHomeDirectory()
-        let shown = paths.map { $0.hasPrefix(home + "/") ? "~" + $0.dropFirst(home.count) : $0 }
         let descriptions = [
-            "\(shown[0]) exited with status 2 before saying its version: Error: unknown option",
-            "\(shown[1]) stopped by signal 6 before saying its version: Library not loaded: @rpath/libnode.dylib",
-            "\(shown[2]) didn't say its version within 5 seconds",
-            "\(shown[3]) didn't print a readable version: no version here",
-            "\(shown[4]) is Codex 0.120.0, older than 0.137.0",
+            "\(shown(paths[0])) exited with status 2 before saying its version: Error: unknown option",
+            "\(shown(paths[1])) stopped by signal 6 before saying its version: Library not loaded: @rpath/libnode.dylib",
+            "\(shown(paths[2])) didn't print a readable version: no version here",
+            "\(shown(paths[3])) is Codex 0.120.0, older than 0.137.0",
         ]
         #expect(skipped.map(\.description) == descriptions)
+
+        // The one that hangs gets a short limit, so that the test doesn't wait
+        // out the usual one. However busy the machine is, it can't answer in
+        // time.
+        let hangingPath = FakeAgent.path(hanging) + "/codex"
+        let hung = await locate(.codex, searchPath: [FakeAgent.path(hanging)], timeLimit: .milliseconds(500))
+        guard case .unusable(let timedOut) = hung else {
+            Issue.record("Expected the copy that hangs to be unusable, got \(hung)")
+            return
+        }
+        #expect(timedOut.map(\.executable) == [hangingPath])
+        #expect(timedOut.map(\.reason) == [.timedOut])
+        #expect(timedOut.map(\.description) == ["\(shown(hangingPath)) didn't say its version within 5 seconds"])
     }
 
     @Test func abbreviatesTheHomeFolderWhenDescribingACopy() {
