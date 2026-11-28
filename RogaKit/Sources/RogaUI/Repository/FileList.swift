@@ -507,7 +507,6 @@ struct ChangedFileRow: View {
                     if let label = file.submoduleLabel {
                         Text(label.text)
                             .font(.system(size: 12))
-                            .monospacedDigit()
                             .foregroundStyle(label.isUncommitted ? AnyShapeStyle(Color.orange) : AnyShapeStyle(.secondary))
                             .fixedSize()
                     }
@@ -595,7 +594,9 @@ extension DiffFile.Status {
     }
 }
 
-/// Lines added in green and removed in red.
+/// Lines added in green and removed in red. Its digits are the font's own,
+/// rather than digits of one width, so that on a heading they look like the
+/// count of files beside them (decision 125).
 struct LineCounts: View {
     let added: Int
     let removed: Int
@@ -607,6 +608,5 @@ struct LineCounts: View {
             Text("−\(removed.formatted())")
                 .foregroundStyle(removed > 0 ? Palette.red : Color.secondary)
         }
-        .monospacedDigit()
     }
 }

@@ -447,6 +447,36 @@ struct Chevron: View {
     }
 }
 
+/// Words or an icon on a heading in a list, the lists of uncommitted files' or
+/// the refs panel's sections', with nothing around them until the pointer is
+/// over them, when they get a rounded gray fill. That way the buttons weigh no
+/// more than the heading's title, in words or as icons.
+struct HeadingButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HoverFill(isPressed: configuration.isPressed) {
+            configuration.label
+        }
+    }
+}
+
+private struct HoverFill<Label: View>: View {
+    let isPressed: Bool
+    @ViewBuilder var label: Label
+    @State private var isHovering = false
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        label
+            .background {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(isPressed ? Palette.buttonPressed : isHovering ? Palette.buttonHover : .clear)
+            }
+            .contentShape(Rectangle())
+            .opacity(isEnabled ? 1 : 0.4)
+            .onHover { isHovering = $0 && isEnabled }
+    }
+}
+
 /// An icon in a square that fills with gray while the pointer is over it.
 /// Menus use it as their label, because they don't take a button style.
 struct HoverIcon<Icon: View>: View {
