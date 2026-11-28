@@ -4,6 +4,7 @@ import Foundation
 import GitCore
 import GitRunner
 import HistoryUI
+import MenuUI
 import RepositoryEngine
 import TestSupport
 import Testing
@@ -56,13 +57,42 @@ struct RepositoryModelTests {
         #expect(model.history?.sort == .date)
     }
 
-    @Test func saysHowManyCommitsOnceItHasReadThemAll() async throws {
+    @Test func saysItsLoadingCommitsUntilItHasReadThemAllAndThenHowMany() async throws {
         let repository = try await Fixture.repository("basic")
         let model = RepositoryModel(session: try await openSession(), worktree: repository)
-        #expect(model.commitCountDescription == nil)
+        #expect(model.commitCountDescription == "Loading commits…")
         await model.load()
         let count = try #require(model.history?.rows.count)
         #expect(model.commitCountDescription == (count == 1 ? "1 commit" : "\(count.formatted()) commits"))
+    }
+
+    @Test func theOrdersMenuHasTheCountThenTheOrderInASubmenu() {
+        var sorted: [HistoryOrder.Sort] = []
+        let entries = HistoryCommands.orderMenu(commits: "531 commits", sort: .topological) { sorted.append($0) }
+        guard entries.count == 3, case let .header(count) = entries[0], case .divider = entries[1],
+              case let .submenu(title, value, _, options) = entries[2] else {
+            Issue.record("The count comes first, then a line, then the order in a submenu.")
+            return
+        }
+        #expect(count.plain == "531 commits")
+        #expect(title.plain == "Order")
+        #expect(value == "Topological")
+        let choices = options.compactMap { entry -> (String, Bool)? in
+            if case let .option(title, isChecked, _) = entry { (title.plain, isChecked) } else { nil }
+        }
+        #expect(choices.map { $0.0 } == ["Topological", "Date"])
+        #expect(choices.map { $0.1 } == [true, false])
+        if case let .option(_, _, action) = options[1] { action() }
+        #expect(sorted == [.date])
+    }
+
+    @Test func theOrdersMenuIsOnlyTheOrderWithoutACount() {
+        let entries = HistoryCommands.orderMenu(commits: nil, sort: .date) { _ in }
+        guard entries.count == 1, case let .submenu(_, value, _, _) = entries[0] else {
+            Issue.record("Without a count, the menu is the order's submenu alone.")
+            return
+        }
+        #expect(value == "Date")
     }
 
     /// A model of a copy of the `basic` repository, which can be changed.

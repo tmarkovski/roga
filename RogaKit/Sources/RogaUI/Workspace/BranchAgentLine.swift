@@ -14,9 +14,10 @@ import SwiftUI
 /// the second line is cut at its end, and the first gives way to the agent's
 /// name alone.
 ///
-/// It's a button, 36 points tall like everything else in the row: it fills
-/// with gray under the pointer, as the counts do, and a click opens a popover
-/// with a section for each session. It redraws as an agent reaches another
+/// It's a button, 36 points tall as the branch is, and a click opens a
+/// popover with a section for each session. Since that only shows
+/// more, it fades to a row's lighter gray under the pointer, as the branch
+/// does, rather than a button's, as the counts do. It redraws as an agent reaches another
 /// minute, and with each new line. When what it says changes, as when an agent
 /// finishes or starts on something else, the old words and mark fade into the
 /// new ones rather than changing at once, except for someone who asked for less
@@ -94,15 +95,12 @@ struct BranchAgentLine: View {
                 .contentTransition(.opacity)
                 .padding(.leading, 7)
                 .padding(.trailing, 9)
-                .frame(height: BranchBar.controlHeight)
-                .background {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(isHovering || showsDetail ? Palette.buttonHover : .clear)
-                }
+                .frame(height: BranchBar.sectionHeight)
+                .background { PopoverSectionFill(isHovering: isHovering, isOpen: showsDetail) }
                 .contentShape(Rectangle())
                 .onHover { isHovering = $0 }
-                // Only a change in what it says fades, so the gray under the
-                // pointer still comes and goes at once.
+                // Only a change in what it says fades this slowly. The gray
+                // under the pointer has its own, quicker fade.
                 .animation(
                     reducesMotion ? nil : Self.fade,
                     value: Shown(mark: line.mark, state: lines.state, short: lines.short, time: lines.time, words: lines.words)

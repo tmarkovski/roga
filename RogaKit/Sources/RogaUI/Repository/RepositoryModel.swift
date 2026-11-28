@@ -366,10 +366,14 @@ final class RepositoryModel {
         return "detached at " + head.hex.prefix(8)
     }
 
-    /// How many commits history has, once it has read them all.
+    /// How many commits history has once it has read them all, and that it's
+    /// still reading them until then. Nothing when history couldn't load.
     var commitCountDescription: String? {
-        guard let history, history.isComplete else { return nil }
-        return history.rows.count == 1 ? "1 commit" : "\(history.rows.count.formatted()) commits"
+        if let history, history.isComplete {
+            return history.rows.count == 1 ? "1 commit" : "\(history.rows.count.formatted()) commits"
+        }
+        if case .failed = phase { return nil }
+        return "Loading commits…"
     }
 
     /// Names the sides of a conflicted file by where they came from, from the labels

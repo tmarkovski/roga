@@ -3,6 +3,7 @@ import CommitGraph
 import GitCore
 import GitRunner
 import IconUI
+import MenuUI
 import RepositoryEngine
 import SwiftUI
 
@@ -157,9 +158,10 @@ struct CheckoutNote: View {
 /// commits history shows, which leaves the row's room to the agent (decision
 /// 119), and a note while history opens slowly.
 struct HistoryCommands: View {
-    @Bindable var model: RepositoryModel
-    /// How tall the order's button is, as tall as the row's other controls.
-    var controlHeight: CGFloat = 32
+    let model: RepositoryModel
+    /// How big the order's button is, as big as the row's other buttons.
+    var buttonSize: CGFloat = 32
+    @State private var orderOpener = RefMenuOpener()
 
     var body: some View {
         HStack(spacing: 4) {
@@ -183,31 +185,52 @@ struct HistoryCommands: View {
         }
     }
 
+    /// The order's button. It's one of Roga's own menus, as the sidebar's and
+    /// the refs panel's are, so the order is a submenu that says which one is
+    /// chosen.
     private var orderMenu: some View {
-        Menu {
-            // Every commit history shows, from every branch, remote branch
-            // and tag, rather than the branch's, so it goes with history's
-            // order.
-            if let commits = model.commitCountDescription {
-                Text("History shows \(commits)")
-                Divider()
-            }
-            Picker("Order", selection: $model.sort) {
-                Text("Topological order").tag(HistoryOrder.Sort.topological)
-                Text("Date order").tag(HistoryOrder.Sort.date)
-            }
-            .pickerStyle(.inline)
-        } label: {
-            // The refs panel's icon for sorting, since this orders history
-            // rather than leaving anything out.
-            HoverIcon(size: controlHeight) { Icon.sort.image }
+        let entries = Self.orderMenu(commits: model.commitCountDescription, sort: model.sort) { model.sort = $0 }
+        // The refs panel's icon for sorting, since this orders history rather
+        // than leaving anything out.
+        return HoverIcon(size: buttonSize) { Icon.sort.image }
+            .overlay { RefMenuArea(entries: entries, opensOnClick: true, opener: orderOpener) }
+            .help("Order of History")
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Order of History")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { orderOpener.open() }
+            .accessibilityActions { refMenuActions(entries) }
+    }
+
+    /// The order's menu: how many commits history shows, or that it's still
+    /// reading them, then the order in a submenu that says which, as the
+    /// sidebar's Sort by does.
+    ///
+    /// The count is every commit history shows, from every branch, remote
+    /// branch and tag, rather than the branch's, so it goes with history's
+    /// order.
+    static func orderMenu(commits: String?, sort: HistoryOrder.Sort, setSort: @escaping (HistoryOrder.Sort) -> Void) -> [RefMenu.Entry] {
+        var entries: [RefMenu.Entry] = []
+        if let commits {
+            entries += [.header(RefMenu.Title(commits)), .divider]
         }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .help("Order of History")
-        .accessibilityLabel("Order of History")
+        entries.append(.submenu("Order", value: sort.title, entries: HistoryOrder.Sort.inMenus.map { option in
+            .option(RefMenu.Title(option.title), isChecked: sort == option) { setSort(option) }
+        }))
+        return entries
+    }
+}
+
+extension HistoryOrder.Sort {
+    /// The orders, as the menus list them.
+    static let inMenus: [Self] = [.topological, .date]
+
+    /// What the order's menu calls it.
+    var title: String {
+        switch self {
+        case .topological: "Topological"
+        case .date: "Date"
+        }
     }
 }
 
